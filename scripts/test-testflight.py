@@ -707,11 +707,10 @@ os.execv({git!r}, [{git!r}, *sys.argv[1:]])
                 self.assertEqual(reruns, [])
                 self.assertIn(reason, output)
 
-    def test_release_archives_the_tag_versions_without_tests_and_retries_follow_it(self):
+    def test_release_archives_the_tag_versions_without_tests(self):
         workflows = SCRIPTS.parent / ".github/workflows"
         release = (workflows / "release.yml").read_text()
         self.assertIn("\nname: Release\n", release)
-        self.assertIn("\n    workflows: [Release]\n", (workflows / "release-retry.yml").read_text())
         self.assertIn('MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD"', release)
         self.assertNotIn("ci-full", release)
         self.assertNotIn("make test", release)

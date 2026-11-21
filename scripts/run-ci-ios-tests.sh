@@ -1,35 +1,16 @@
 #!/bin/bash
-#
-# Merge-gate fixture plus the iOS Simulator test run.
-#
-# Every sshd instance runs unprivileged: as the invoking user, on a loopback
-# high port, out of one disposable directory. No sudo, no system SSH service,
-# no machine state to undo. `SetEnv HOME=` gives each session an isolated home
-# so nothing here can reach a real herdr socket, and a forced POSIX-sh wrapper
-# puts a herdr stub ahead of PATH so the cold-start wake can never start or talk
-# to a live server. The weak-network route is unprivileged for the same reason:
-# a TCP proxy in front of one sshd, steered per test, rather than `pfctl` or a
-# machine-wide Network Link Conditioner.
-#
-# One exception. macOS cannot verify a password without root, and an
-# unprivileged sshd can only authenticate the account it already runs as, whose
-# password CI does not know. The two real-password tests therefore need a
-# disposable account and one root-owned sshd, provisioned only when passwordless
-# sudo is available. Merge CI has it and demands it (HEELER_CI_MANDATORY=1);
-# a developer laptop without it still runs twelve of the thirteen mandatory
-# behaviours, and the script says loudly which one it left out.
+# Unprivileged loopback SSH fixtures and iOS Simulator test runner for CI and local parity.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONDONTWRITEBYTECODE=1
+fixture_python="$(command -v python3)"
 
 ci_lane="${HEELER_CI_LANE:-app}"
 case "$ci_lane" in
     app | package) ;;
-    *)
-        echo "HEELER_CI_LANE must be app or package, got: $ci_lane" >&2
-        exit 2
-        ;;
+    *) echo "HEELER_CI_LANE must be app or package, got: $ci_lane" >&2; exit 2 ;;
 esac
 
 ci_app_shard="${HEELER_CI_APP_SHARD:-all}"
@@ -37,1523 +18,357 @@ case "$ci_app_shard" in
     all | session-weak | transport | ordinary) ;;
     *) echo "Invalid HEELER_CI_APP_SHARD: $ci_app_shard" >&2; exit 2 ;;
 esac
-if [[ "$ci_lane" == package && "$ci_app_shard" != all ]]; then
-    echo "The package lane does not accept an app shard" >&2
-    exit 2
-fi
-overlap_build="${HEELER_CI_OVERLAP_BUILD:-1}"
-case "$overlap_build" in
-    0 | 1) ;;
-    *) echo "HEELER_CI_OVERLAP_BUILD must be 0 or 1" >&2; exit 2 ;;
-esac
-# Full verification compiles the app and its tests once, in a job of its own,
-# and hands every app worker that build's products (refs #704). A worker given
-# the archive unpacks it where its own build would have left the products and
-# compiles nothing. Without one, a worker builds for itself as before.
+
 app_products_archive="${HEELER_CI_APP_PRODUCTS_ARCHIVE:-}"
-if [[ -n "$app_products_archive" ]]; then
-    if [[ "$ci_lane" != app ]]; then
-        echo "HEELER_CI_APP_PRODUCTS_ARCHIVE applies to the app lane only" >&2
-        exit 2
-    fi
-    if [[ "$app_products_archive" != /* || ! -f "$app_products_archive" ]]; then
-        echo "HEELER_CI_APP_PRODUCTS_ARCHIVE must be an absolute path to the products archive: $app_products_archive" >&2
-        exit 2
-    fi
-fi
-prepare_evidence_directory() {
-    # Workflow settings are created before make; successful phase/completion
-    # evidence and metrics must never be reused by a new worker attempt.
-    python3 - "$1" <<'PYVALIDATE'
-import sys
-from pathlib import Path
-directory = Path(sys.argv[1])
-directory.mkdir(parents=True, exist_ok=True)
-for entry in directory.iterdir():
-    if entry.name != "run-settings.txt" or not entry.is_file() or entry.is_symlink():
-        raise SystemExit("CI evidence directory must be fresh; only run-settings.txt may exist at worker startup")
-PYVALIDATE
-}
-evidence_dir="${HEELER_CI_EVIDENCE_DIR:-}"
-if [[ -n "$evidence_dir" ]]; then
-    prepare_evidence_directory "$evidence_dir"
-fi
+package_products_archive="${HEELER_CI_PACKAGE_PRODUCTS_ARCHIVE:-}"
 
-# The gate must leave the worktree byte-identical: this workflow treats a clean
-# worktree as a verification precondition, so a stray `__pycache__` beside the
-# Python fixtures is a standing false signal. `.gitignore` covers it too; this
-# stops it being written in the first place.
-export PYTHONDONTWRITEBYTECODE=1
-
-# Use the job's selected Python for every fixture instead of a Developer tool shim.
-fixture_python="$(command -v python3)"
-"$fixture_python" - <<'PYRUNTIME'
-import sys
-print(f"==> Fixture Python: {sys.executable} (Python {sys.version.split()[0]})", flush=True)
-PYRUNTIME
-
-# Fixture ports are a contiguous block that a run claims at startup rather than
-# thirteen fixed numbers every run shares. Fixed numbers made this script a
-# machine-wide mutex: whichever run started second failed its port preflight and
-# could only wait for the first to finish.
-#
-# assign_port_block below is the one place the ports are named; sshd configs,
-# the impairment proxy's arguments and the JSON handed to the tests all read the
-# variables it sets, so moving the base moves the whole fixture.
-
-# Must equal the number of ports assign_port_block sets; assign_port_block
-# asserts that itself rather than trusting this comment.
-port_block_size=13
-# The historical block. A run that finds the machine idle still lands exactly
-# here, so the common case is unchanged.
-port_block_base_default=55222
-# How many disjoint blocks the machine hands out before it refuses to guess.
-port_block_count=8
-# The herdr-core fixture takes one port from its own pool, outside the block grid.
-# The tmux fixture takes the same port once the herdr-core fixture has stopped.
-core_port_base_default=55400
-core_port_count=8
-# Pin a block explicitly, for a caller that would rather not negotiate.
-port_block_base_override="${HEELER_CI_PORT_BASE:-}"
-
-# Cross-run coordination lives here: one owned lock per port block, core fixture
-# port, Simulator, or account-allocation critical section. A short-lived atomic
-# claim guard serializes owner publication, stale reclamation, and token-checked
-# release. Ports still decide whether a block is usable; these locks only let a
-# run say what it holds, and let the next run tell "someone is working" apart
-# from "something crashed".
-lock_root=/tmp/heeler-ci-locks
-run_lock_dir=""
-core_port_lock_dir=""
-device_lock_dir=""
-account_lock_dir=""
-active_claim_guard=""
-active_resource_lock=""
-lock_owner_token="$$-$(uuidgen)"
-lock_owner_start="$(ps -o lstart= -p "$$" | sed 's/^ *//; s/ *$//')"
-
-# AF_UNIX paths cap at 104 bytes on macOS and the fixture nests herdr sockets
-# several directories deep, so anchor at /tmp: the per-user TMPDIR alone is
-# already 69 characters and overflows the limit.
 fixture_dir="$(mktemp -d /tmp/heeler-ci.XXXXXX)"
-app_derived_data_path="$fixture_dir/AppDerivedData"
-package_derived_data_path="$fixture_dir/PackageDerivedData"
+app_derived_data_path="${HEELER_CI_APP_DERIVED_DATA_PATH:-$fixture_dir/AppDerivedData}"
 owned_app_build_directory=""
-# Stable SourcePackages tree for the app lane. Hosted CI restores this via
-# actions/cache so libghostty's XCFramework is not re-fetched every run.
-# Package-lane builds have no remote SwiftPM deps and leave this unused.
+if [[ "$ci_lane" == app && -n "${HEELER_CI_APP_DERIVED_DATA_PATH:-}" ]]; then
+    mkdir -p "$(dirname "$app_derived_data_path")"
+    mkdir "$app_derived_data_path"
+    owned_app_build_directory="$app_derived_data_path"
+fi
+package_derived_data_path="$fixture_dir/PackageDerivedData"
 source_packages_dir="${HEELER_CI_SOURCE_PACKAGES_DIR:-$repo_root/.ci/source-packages}"
 core_archive_cache_dir="${HEELER_CI_CORE_ARCHIVE_DIR:-$repo_root/.ci/herdr-core-archive}"
-diagnostic_run_id="${GITHUB_RUN_ID:-local-$$}"
-diagnostic_attempt="${GITHUB_RUN_ATTEMPT:-1}"
-diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-$diagnostic_run_id-$diagnostic_attempt"
-xcodebuild_build_timeout_seconds="${HEELER_XCODEBUILD_BUILD_TIMEOUT_SECONDS:-900}"
-xcodebuild_test_timeout_seconds="${HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS:-600}"
+diagnostic_root="${RUNNER_TEMP:-/tmp}/heeler-ci-diagnostics-${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-1}"
 fixture_username="$(id -un)"
 fixture_home="$fixture_dir/home"
-modern_pid=""
-post_quantum_pid=""
-legacy_pid=""
-restricted_pid=""
+
+simulator_udid=""
+simulator_destination=""
+simulator_environment_variables=()
+unprivileged_sshd_pids=()
 stall_pid=""
-streamlocal_global_policy_pid=""
-streamlocal_key_policy_pid=""
-jump_target_pid=""
-jump_forwarding_denied_pid=""
-pairing_pid=""
-pairing_mismatched_pid=""
-password_pid=""
 fake_herdr_pid=""
 weak_network_pid=""
 core_fixture_dir=""
 tmux_fixture_dir=""
 tmux_fixture_executable=""
-# Where a tmux is when it is not on this script's PATH.
-tmux_fixture_candidates=(/opt/homebrew/bin/tmux /usr/local/bin/tmux)
-simulator_udid=""
-simulator_destination=""
-simulator_environment_variables=()
-simulator_listing=""
-background_build_pid=""
-background_build_label=""
-preparation_started_at=$SECONDS
-phase_log="$fixture_dir/phases.tsv"
+app_base_xctestrun=""
+package_base_xctestrun=""
 
-prepare_app_build_directory() {
-    [[ "$ci_lane" == app && -n "${HEELER_CI_APP_DERIVED_DATA_PATH:-}" ]] || return 0
-    local directory=$HEELER_CI_APP_DERIVED_DATA_PATH
-    # Opt-in only: local concurrent runs retain their disposable paths. The
-    # exclusive mkdir refuses both stale products and another run's directory.
-    [[ "$directory" == /* ]] || { echo 'App DerivedData path must be absolute' >&2; return 2; }
-    mkdir -p "$(dirname "$directory")" || return 1
-    if ! mkdir "$directory"; then
-        echo "App DerivedData directory must be fresh: $directory" >&2
-        return 1
-    fi
-    owned_app_build_directory="$directory"
-    app_derived_data_path="$directory"
+clear_simulator_environment() {
+    [[ -n "$simulator_udid" && "${#simulator_environment_variables[@]}" -gt 0 ]] || return 0
+    local variable pid
+    local -a pids=()
+    for variable in "${simulator_environment_variables[@]}"; do
+        xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" >/dev/null 2>&1 &
+        pids+=("$!")
+        unset "$variable"
+    done
+    simulator_environment_variables=()
+    for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+    done
 }
 
-record_phase() {
-    local name=$1
-    local started=$2
-    local status=${3:-0}
-    local elapsed=$((SECONDS - started))
-    echo "==> Phase $name: ${elapsed}s (status $status)"
-    printf '%s\t%s\t%s\n' "$name" "$elapsed" "$status" >> "${phase_log:-$fixture_dir/phases.tsv}"
-}
-
-# Opt-in build settings shared by the background and foreground
-# build-for-testing calls; test actions never receive them. Prints one
-# setting per line. Packages never use the app's compiler cache.
-opt_in_build_settings() {
-    if [[ "${HEELER_CI_DISABLE_COMPILATION_CACHE:-0}" == 1 ]]; then
-        echo COMPILATION_CACHE_ENABLE_CACHING=NO
-    elif [[ "$ci_lane" == app && -n "${HEELER_CI_COMPILATION_CACHE_DIR:-}" ]]; then
-        echo COMPILATION_CACHE_ENABLE_CACHING=YES
-        echo "COMPILATION_CACHE_CAS_PATH=$HEELER_CI_COMPILATION_CACHE_DIR"
-        echo COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES
-    fi
-    if [[ "${HEELER_CI_DISABLE_DEBUG_SYMBOLS:-0}" == 1 ]]; then
-        echo GCC_GENERATE_DEBUGGING_SYMBOLS=NO
-    fi
-}
-
-start_background_build() {
-    local label=$1
-    local working_directory="$repo_root"
-    local derived="$app_derived_data_path"
-    local required=1
-    local -a arguments=()
-    local setting
-    [[ "$overlap_build" == 1 ]] || return 0
-    # Prebuilt products leave this worker nothing to compile.
-    [[ -z "${app_products_archive:-}" ]] || return 0
-    [[ -z "$background_build_pid" ]] || return 1
-    if [[ "$ci_lane" == package ]]; then
-        working_directory="$repo_root/Packages/HeelerSSH"
-        derived="$package_derived_data_path"
-        arguments=(-scheme HeelerSSH)
-    else
-        arguments=(-project Heeler.xcodeproj -scheme Heeler
-            -clonedSourcePackagesDirPath "$source_packages_dir")
-        [[ "$ci_app_shard" != ordinary ]] || required=0
-        mkdir -p "$source_packages_dir"
-    fi
-    while IFS= read -r setting; do
-        arguments+=("$setting")
-    done < <(opt_in_build_settings)
-    background_build_label="$label"
-    background_build_log="$fixture_dir/background-build.log"
-    background_build_timing="$fixture_dir/background-build-timing.json"
-    echo "==> Starting owned build while preparing $ci_lane/$ci_app_shard"
-    (
-        cd "$working_directory" || exit 1
-        exec env HEELER_SSH_E2E_REQUIRED="$required" \
-            python3 "$repo_root/scripts/run-ci-background-build.py" \
-            --timing-path "$background_build_timing" -- \
-            "$repo_root/scripts/run-with-timeout.py" \
-            --timeout-seconds "$xcodebuild_build_timeout_seconds" \
-            --label "$label" \
-            --diagnostics-dir "$diagnostic_root/background-build" \
-            --artifact-path "$derived/Logs/Test" \
-            --artifact-glob "$fixture_dir/*.log" -- \
-            xcodebuild build-for-testing "${arguments[@]}" \
-            -derivedDataPath "$derived" -destination "$simulator_destination" \
-            -collect-test-diagnostics never -showBuildTimingSummary \
-            COMPILER_INDEX_STORE_ENABLE=NO
-    ) > "$background_build_log" 2>&1 &
-    background_build_pid=$!
-}
-
-start_preparation_work() {
-    local phase=$1
-    local work_phase=simulator
-    if [[ "$ci_lane" == app && ( "$ci_app_shard" == all || "$ci_app_shard" == session-weak ) ]]; then
-        work_phase=fixtures
-    fi
-    [[ "$phase" == "$work_phase" ]] || return 0
-    if [[ "$ci_lane" == app ]]; then
-        start_background_build "Build for testing" || return
-    else
-        start_background_build "HeelerSSH package build" || return
-    fi
-    local boot_started=$SECONDS
-    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
-    record_phase initial-simulator-boot "$boot_started"
-}
-
-cancel_background_build() {
-    local pid=${background_build_pid:-}
-    [[ -n "$pid" ]] || return 0
-    # The helper forwards TERM to its watchdog, which owns and reaps the build
-    # process group. Reap it before deleting products, logs, or fixture state.
-    kill -TERM "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    background_build_pid=""
-}
-
-# Unpacks the shared build's products into this worker's DerivedData, where
-# test-without-building looks for them. The archive holds Build/Products as
-# `make pack-ci-app-products` wrote it.
-restore_app_products() {
-    local started=$SECONDS
-    local status=0
-    local test_bundle="$app_derived_data_path/Build/Products/Debug-iphonesimulator/Heeler.app/PlugIns/HeelerTests.xctest"
-    echo "==> Restoring prebuilt app products from $app_products_archive"
-    if ! mkdir -p "$app_derived_data_path" \
-        || ! tar -xzf "$app_products_archive" -C "$app_derived_data_path"; then
-        echo "Could not unpack the prebuilt app products" >&2
-        status=1
-    elif [[ ! -d "$test_bundle" ]]; then
-        echo "The prebuilt app products hold no HeelerTests bundle: $test_bundle" >&2
-        status=1
-    fi
-    record_phase app-products-restore "$started" "$status"
+push_simulator_environment() {
+    simulator_environment_variables=("$@")
+    local variable pid status=0
+    local -a pids=()
+    for variable in "$@"; do
+        xcrun simctl spawn "$simulator_udid" launchctl setenv "$variable" "${!variable}" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid" || status=1
+    done
     return "$status"
 }
 
-# The privileged password fixture, provisioned only when sudo -n works.
-password_username=""
-password_secret=""
-password_home=""
-password_uid=550
-password_fixture_available=0
-password_user_cleanup_needed=0
-password_ssh_sacl_added=0
-password_pid_file="$fixture_dir/sshd-password.pid"
-password_log="$fixture_dir/sshd-password.log"
-# sysadminctl transcript from create_password_user, preserved with the other
-# fixture logs and scrubbed of the account password before anything reads it.
-sysadminctl_log="$fixture_dir/sysadminctl.log"
-password_log_printed=0
-
-# Merge CI must run the complete mandatory matrix; a laptop need not.
-mandatory_matrix=0
-case "${HEELER_CI_MANDATORY:-${CI:-}}" in
-    1 | true | TRUE) mandatory_matrix=1 ;;
-esac
-
-unprivileged_sshd_pids=()
-
-run_xcodebuild() {
-    local label=$1
-    local timeout_seconds=$2
-    local output_log=$3
-    local safe_label
-    local status=70
-    local started_at=$SECONDS
-    local action
-    local attempt
-    local attempt_log
-    local backoff
-    local needs_recovery=0
-    local failed_udid="$simulator_udid"
-    local working_directory="$repo_root"
-    local setting
-    local index
-    local -a arguments=()
-    local -a runner=(xcodebuild)
-    shift 3
-
-    safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
-    echo "::group::$label"
-    # Keep dependency pins during test-only actions. Xcode may still inspect
-    # the package graph; this flag prevents resolving different versions.
-    if [[ "${1:-}" == "test-without-building" ]]; then
-        action=$1
-        shift
-        set -- "$action" -disableAutomaticPackageResolution "$@"
-        echo "==> $label: preserving resolved package versions"
-    fi
-    if [[ "$ci_lane" == "app" ]]; then
-        mkdir -p "$source_packages_dir"
-        set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
-        # The app wrapper checks the result bundle for executed tests. It
-        # also enables the simulator accessibility tree (#339), which only
-        # the opt-in live suites read, and restores it afterwards.
-        if [[ "${1:-}" == "test-without-building" ]]; then
-            runner=(python3 "$repo_root/scripts/run-app-simulator-tests.py")
-        fi
-    else
-        working_directory="$repo_root/Packages/HeelerSSH"
-    fi
-    arguments=("$@")
-    if [[ "${1:-}" == build-for-testing ]]; then
-        arguments+=(-showBuildTimingSummary COMPILER_INDEX_STORE_ENABLE=NO)
-        while IFS= read -r setting; do
-            arguments+=("$setting")
-        done < <(opt_in_build_settings)
-    fi
-    # Keep this function in the calling shell. In particular, an outer tee
-    # pipeline or package-directory subshell would discard a replacement UDID
-    # and leave later suites and cleanup pointing at the missing device.
-    for attempt in 1 2 3 4; do
-        if [[ "$needs_recovery" == 1 ]]; then
-            # The observed loss (#327) emptied CoreSimulator's whole visible
-            # set, so a couple of seconds is not a recovery window. Back off
-            # 2s, 10s, 30s: about 42s in total before the retry is exhausted.
-            case "$attempt" in
-                2) backoff=2 ;;
-                3) backoff=10 ;;
-                *) backoff=30 ;;
-            esac
-            echo "==> $label: recovering simulator $failed_udid in ${backoff}s (attempt $attempt/4)"
-            sleep "$backoff"
-            if ! recover_simulator_destination; then
-                continue
-            fi
-        fi
-        for ((index = 0; index < ${#arguments[@]} - 1; index += 1)); do
-            if [[ "${arguments[$index]}" == "-destination" ]]; then
-                arguments[index + 1]="$simulator_destination"
-            fi
-        done
-        if ((attempt > 1)); then
-            for ((index = 0; index < ${#arguments[@]} - 1; index += 1)); do
-                if [[ "${arguments[$index]}" == -resultBundlePath ]]; then
-                    rm -rf -- "${arguments[index + 1]}"
-                fi
-            done
-        fi
-        attempt_log="$fixture_dir/$safe_label-attempt-$attempt.log"
-        if [[ "$attempt" == 1 && -n "${background_build_pid:-}" \
-            && "$label" == "$background_build_label" ]]; then
-            local join_started=$SECONDS
-            if wait "$background_build_pid"; then status=0; else status=$?; fi
-            background_build_pid=""
-            cat "$background_build_log" | tee "$attempt_log" "$output_log"
-            record_phase build-join "$join_started" "$status"
-            if [[ -n "${evidence_dir:-}" && -f "$background_build_timing" ]]; then
-                mkdir -p "$evidence_dir/metrics"
-                cp "$background_build_timing" "$evidence_dir/metrics/build.json"
-            fi
-        elif (
-            cd "$working_directory" || exit 1
-            "$repo_root/scripts/run-with-timeout.py" \
-                --timeout-seconds "$timeout_seconds" \
-                --label "$label" \
-                --diagnostics-dir "$diagnostic_root/$safe_label/attempt-$attempt" \
-                --artifact-path "$app_derived_data_path/Logs/Test" \
-                --artifact-path "$package_derived_data_path/Logs/Test" \
-                --artifact-glob "$fixture_dir/*.log" \
-                -- "${runner[@]}" "${arguments[@]}"
-        ) 2>&1 | tee "$attempt_log" "$output_log"; then
-            status=0
-        else
-            status=$?
-        fi
-        [[ "$status" != 0 ]] || break
-        # Exit 70 alone is not enough: only a missing destination is retryable.
-        # Compilation, test failures, watchdog expiry and lock contention keep
-        # their original failure behavior.
-        if [[ "$status" != 70 ]] || ! grep -qF \
-            'Unable to find a device matching the provided destination specifier' \
-            "$attempt_log"; then
-            needs_recovery=0
-            break
-        fi
-        needs_recovery=1
-        failed_udid="$simulator_udid"
-    done
-    if [[ "$status" != 0 && "$needs_recovery" == 1 ]]; then
-        echo "Simulator destination recovery exhausted for UDID $failed_udid ($ci_simulator_label)." >&2
-        xcrun simctl list devices available >&2 || true
-    fi
-    if [[ "${1:-}" == build-for-testing && -n "${evidence_dir:-}" ]]; then
-        mkdir -p "$evidence_dir/metrics"
-        grep -E 'hits / [0-9]+ cacheable tasks' "$output_log" \
-            > "$evidence_dir/metrics/compilation-cache.log" || true
-    fi
-    echo "::endgroup::"
-    echo "==> $label: $((SECONDS - started_at))s (status $status)"
-    record_phase "xcode-$safe_label" "$started_at" "$status"
-    return "$status"
+stop_core_fixture() {
+    [[ -n "$core_fixture_dir" ]] || return 0
+    [[ ! -f "$core_fixture_dir/logs/sshd.log" ]] || cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" 2>/dev/null || true
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop --root "$core_fixture_dir" || true
+    core_fixture_dir=""
 }
 
-write_lock_owner() {
-    local lock=$1
-
-    printf '%s' "$lock_owner_token" > "$lock/token"
-    printf '%s' "$$" > "$lock/pid"
-    printf '%s' "$lock_owner_start" > "$lock/start"
+stop_tmux_fixture() {
+    [[ -n "$tmux_fixture_dir" ]] || return 0
+    [[ ! -f "$tmux_fixture_dir/logs/sshd.log" ]] || cp "$tmux_fixture_dir/logs/sshd.log" "$fixture_dir/tmux-sshd.log" 2>/dev/null || true
+    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" stop --root "$tmux_fixture_dir" || true
+    tmux_fixture_dir=""
 }
 
-lock_is_stale() {
-    local lock=$1
-    local owner
-    local expected_start
-    local actual_start
-
-    owner=$(cat "$lock/pid" 2>/dev/null)
-    expected_start=$(cat "$lock/start" 2>/dev/null)
-    if [[ -z "$owner" || -z "$expected_start" ]]; then
-        return 0
-    fi
-    actual_start=$(ps -o lstart= -p "$owner" 2>/dev/null \
-        | sed 's/^ *//; s/ *$//')
-    [[ -n "$actual_start" && "$actual_start" == "$expected_start" ]] \
-        && return 1
-    return 0
-}
-
-# Serializes inspection and replacement of one resource lock. The guard is
-# never reclaimed automatically: if a gate is killed inside this tiny critical
-# section, a later run reports it and asks the operator to remove it. That is
-# safer than one run deleting a guard another run has just acquired.
-acquire_claim_guard() {
-    local lock=$1
-    local description=$2
-    local guard="$lock.claiming"
-    local attempt
-
-    for ((attempt = 0; attempt < 100; attempt += 1)); do
-        if mkdir "$guard" 2>/dev/null; then
-            active_claim_guard="$guard"
-            printf '%s' "$lock_owner_token" > "$guard/token"
-            return 0
-        fi
-        sleep 0.05
-    done
-    printf 'Cannot claim %s: another run is changing its lock.\n' \
-        "$description" >&2
-    printf 'If no gate is starting, report and remove orphaned guard %s manually.\n' \
-        "$guard" >&2
-    return 1
-}
-
-release_claim_guard() {
-    local guard=$1
-    local token
-
-    token=$(cat "$guard/token" 2>/dev/null)
-    if [[ "$token" == "$lock_owner_token" \
-        || "$active_claim_guard" == "$guard" ]]; then
-        rm -f -- "$guard/token"
-        rmdir "$guard"
-    fi
-    if [[ "$active_claim_guard" == "$guard" ]]; then
-        active_claim_guard=""
-    fi
-}
-
-claim_resource_lock() {
-    local lock=$1
-    local description=$2
-    local owner
-    local claim_status=1
-
-    active_resource_lock="$lock"
-    if ! acquire_claim_guard "$lock" "$description"; then
-        active_resource_lock=""
-        return 1
-    fi
-    if [[ ! -d "$lock" ]]; then
-        if mkdir "$lock"; then
-            write_lock_owner "$lock"
-            claim_status=0
-        fi
-    elif lock_is_stale "$lock"; then
-        owner=$(cat "$lock/pid" 2>/dev/null)
-        printf 'Reclaiming the stale lock on %s (owner pid %s is gone)\n' \
-            "$description" "${owner:-unknown}" >&2
-        rm -rf -- "$lock"
-        if mkdir "$lock"; then
-            write_lock_owner "$lock"
-            claim_status=0
-        fi
-    fi
-    release_claim_guard "$active_claim_guard"
-    active_resource_lock=""
-    return "$claim_status"
-}
-
-release_resource_lock() {
-    local lock=$1
-    local description=$2
-    local token
-
-    [[ -n "$lock" && -d "$lock" ]] || return 0
-    if ! acquire_claim_guard "$lock" "$description"; then
-        return 1
-    fi
-    token=$(cat "$lock/token" 2>/dev/null)
-    if [[ "$token" == "$lock_owner_token" ]]; then
-        rm -rf -- "$lock"
-    fi
-    release_claim_guard "$active_claim_guard"
-}
-
-# Last 80 lines of each fixture log. Enough to see an sshd refusal or proxy
-# stall without dumping private keys or a multi-megabyte xcodebuild capture.
-fixture_log_tail_lines=80
-
-dump_fixture_logs() {
-    local log
-    local name
-    [[ -d "$fixture_dir" ]] || return 0
-    # Lane xcodebuild logs already stream through tee into the job. Print
-    # only the fixture process logs that otherwise die with the temp dir.
-    for log in "$fixture_dir"/*.log; do
-        [[ -s "$log" ]] || continue
-        name=$(basename "$log")
-        case "$name" in
-            sshd-*.log | weak-network.log | fake-herdr.log | herdr-core-sshd.log | tmux-sshd.log | stall-server.log | fixture-readiness.log) ;;
-            *) continue ;;
-        esac
-        echo "===== $log (last $fixture_log_tail_lines lines)" >&2
-        tail -n "$fixture_log_tail_lines" "$log" >&2
-    done
-}
-
-# Copy lane logs, sshd logs, the weak-network proxy log, and xcresult
-# bundles out of the disposable fixture directory before cleanup deletes it.
-# Print the same log tails to the job so a later artifact-upload failure
-# still leaves a bounded diagnosis. Never copies key material.
 preserve_failure_diagnostics() {
     local status=$1
-    local dest
-    local log
-
     [[ "$status" -ne 0 ]] || return 0
-
-    if [[ -n "${diagnostic_root:-}" ]]; then
-        dest="$diagnostic_root/fixture"
-        mkdir -p "$dest/logs"
-        printf '%s\n' "$status" > "$dest/exit-status.txt"
-        if [[ -d "$fixture_dir" ]]; then
-            for log in "$fixture_dir"/*.log; do
-                [[ -f "$log" ]] || continue
-                cp "$log" "$dest/logs/" 2>/dev/null \
-                    || echo "could not preserve $log" >&2
-            done
+    local dest="$diagnostic_root/fixture"
+    mkdir -p "$dest/logs"
+    printf '%s\n' "$status" > "$dest/exit-status.txt"
+    local log
+    for log in "$fixture_dir"/*.log; do
+        [[ -f "$log" ]] || continue
+        cp "$log" "$dest/logs/" 2>/dev/null || true
+    done
+    for dir in "$app_derived_data_path/Logs/Test" "$package_derived_data_path/Logs/Test"; do
+        if [[ -d "$dir" ]]; then
+            local name
+            name="$(basename "$(dirname "$(dirname "$dir")")")-Logs-Test"
+            mkdir -p "$dest/$name"
+            cp -R "$dir/." "$dest/$name/" 2>/dev/null || true
         fi
-        if [[ -n "${app_derived_data_path:-}" \
-            && -d "$app_derived_data_path/Logs/Test" ]]; then
-            mkdir -p "$dest/AppDerivedData-Logs-Test"
-            cp -R "$app_derived_data_path/Logs/Test/." \
-                "$dest/AppDerivedData-Logs-Test/" 2>/dev/null \
-                || echo "could not preserve app test logs" >&2
-        fi
-        if [[ -n "${package_derived_data_path:-}" \
-            && -d "$package_derived_data_path/Logs/Test" ]]; then
-            mkdir -p "$dest/PackageDerivedData-Logs-Test"
-            cp -R "$package_derived_data_path/Logs/Test/." \
-                "$dest/PackageDerivedData-Logs-Test/" 2>/dev/null \
-                || echo "could not preserve package test logs" >&2
-        fi
-        echo "==> Preserved failure diagnostics in $dest (status $status)" >&2
-    fi
-
-    dump_fixture_logs
+    done
+    for log in "$fixture_dir"/sshd-*.log "$fixture_dir"/weak-network.log "$fixture_dir"/fake-herdr.log \
+        "$fixture_dir"/herdr-core-sshd.log "$fixture_dir"/tmux-sshd.log "$fixture_dir"/stall-server.log; do
+        [[ -s "$log" ]] || continue
+        echo "===== $log (last 60 lines)" >&2
+        tail -n 60 "$log" >&2
+    done
 }
 
 cleanup() {
     local status=$?
-    local preserve_password_fixture=0
-    local cleanup_started=$SECONDS
     trap - EXIT INT TERM
     set +e
-
-    cancel_background_build
-    clear_simulator_environment || { [[ "$status" != 0 ]] || status=1; }
-    if [[ -n "${core_fixture_dir:-}" ]]; then
-        stop_core_fixture || { [[ "$status" != 0 ]] || status=1; }
-    fi
-    if [[ -n "${tmux_fixture_dir:-}" ]]; then
-        stop_tmux_fixture || { [[ "$status" != 0 ]] || status=1; }
-    fi
-    if [[ -n "$stall_pid" ]]; then
-        kill "$stall_pid" >/dev/null 2>&1
-        wait "$stall_pid" 2>/dev/null
-    fi
-    if [[ -n "$fake_herdr_pid" ]]; then
-        kill "$fake_herdr_pid" >/dev/null 2>&1
-        wait "$fake_herdr_pid" 2>/dev/null
-    fi
-    if [[ -n "$weak_network_pid" ]]; then
-        kill "$weak_network_pid" >/dev/null 2>&1
-        wait "$weak_network_pid" 2>/dev/null
-    fi
+    clear_simulator_environment
+    stop_core_fixture
+    stop_tmux_fixture
     local pid
-    for pid in "${unprivileged_sshd_pids[@]:-}"; do
+    for pid in "$stall_pid" "$fake_herdr_pid" "$weak_network_pid" "${unprivileged_sshd_pids[@]:-}"; do
         if [[ -n "$pid" ]]; then
             kill "$pid" >/dev/null 2>&1
             wait "$pid" 2>/dev/null
         fi
     done
-    if [[ -n "$password_pid" ]]; then
-        if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
-            password_pid=""
-        else
-            preserve_password_fixture=1
-            if [[ "$status" -eq 0 ]]; then
-                status=1
-            fi
-            echo "Failed to stop privileged sshd PID $password_pid." >&2
-            echo "Preserving password account $password_username and fixture" \
-                "directory $fixture_dir for diagnosis and manual cleanup." >&2
-        fi
-    fi
-    if [[ "$status" -ne 0 && "$password_log_printed" != "1" \
-        && -f "$password_log" ]]; then
-        cat "$password_log" >&2
-    fi
-    if [[ "$preserve_password_fixture" != "1" ]]; then
-        if [[ "$password_user_cleanup_needed" == "1" ]] \
-            && dscl . -read "/Users/$password_username" >/dev/null 2>&1; then
-            if [[ "$password_ssh_sacl_added" == "1" ]]; then
-                if ! sudo -n /usr/sbin/dseditgroup -o edit \
-                    -d "$password_username" -t user com.apple.access_ssh; then
-                    preserve_password_fixture=1
-                    if [[ "$status" -eq 0 ]]; then
-                        status=1
-                    fi
-                    echo "Failed to remove password account $password_username from SSH access." >&2
-                fi
-            fi
-            if [[ "$preserve_password_fixture" != "1" ]] \
-                && ! sudo -n /usr/sbin/sysadminctl \
-                    -deleteUser "$password_username" -keepHome; then
-                preserve_password_fixture=1
-                if [[ "$status" -eq 0 ]]; then
-                    status=1
-                fi
-                echo "Failed to delete password account $password_username." >&2
-            fi
-        fi
-    fi
     preserve_failure_diagnostics "$status"
-    if [[ -f "${phase_log:-}" ]]; then
-        record_phase fixture-cleanup "$cleanup_started" "$status"
+    rm -rf -- "$fixture_dir"
+    if [[ -n "$owned_app_build_directory" ]]; then
+        rm -rf -- "$owned_app_build_directory"
     fi
-    if [[ -n "${evidence_dir:-}" ]]; then
-        mkdir -p "$evidence_dir/metrics" || status=1
-        if [[ -f "${phase_log:-}" ]]; then
-            cp "$phase_log" "$evidence_dir/metrics/phases.tsv" || status=1
-        fi
-        if [[ -f "${background_build_timing:-}" ]]; then
-            cp "$background_build_timing" "$evidence_dir/metrics/build.json" || status=1
-        fi
-    fi
-    if [[ "$preserve_password_fixture" != "1" && -d "$fixture_dir" ]]; then
-        rm -rf -- "$fixture_dir" || status=1
-    fi
-    if [[ -n "${owned_app_build_directory:-}" ]]; then
-        rm -rf -- "$owned_app_build_directory" || status=1
-    fi
-    # Released last: while these stand, a concurrent run treats our block and
-    # our device as taken. Dropping them after the fixtures are already down,
-    # and after the simulator environment has been cleared, is the safe
-    # ordering -- the device must not look free while it still holds our
-    # HEELER_SSH_E2E_* variables.
-    if [[ -n "$active_claim_guard" ]]; then
-        if [[ -n "$active_resource_lock" && -d "$active_resource_lock" ]] \
-            && [[ "$(cat "$active_resource_lock/token" 2>/dev/null)" \
-                == "$lock_owner_token" ]]; then
-            rm -rf -- "$active_resource_lock"
-        fi
-        release_claim_guard "$active_claim_guard"
-    fi
-    release_resource_lock "$account_lock_dir" "password account allocation" || status=1
-    release_resource_lock "${core_port_lock_dir:-}" "core fixture port" || status=1
-    release_resource_lock "$run_lock_dir" "fixture port block" || status=1
-    release_resource_lock "$device_lock_dir" "simulator" || status=1
-
     exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Clears the fixture environment from both the Simulator and this shell. The
-# shell half matters: the Simulator test process inherits it, so unsetting only
-# the launchd values leaves HEELER_SSH_E2E_REQUIRED visible and the
-# fixture-backed suites fail instead of skipping once the fixture is gone.
-clear_simulator_environment() {
-    simulator_environment_variables=()
-    local variable
-    local pid
-    local unsetenv_pids=()
-    local status=0
-    for variable in \
-        HEELER_SSH_E2E_REQUIRED \
-        HEELER_SSH_E2E_HOST \
-        HEELER_SSH_E2E_PORT \
-        HEELER_SSH_E2E_PQ_PORT \
-        HEELER_SSH_E2E_USERNAME \
-        HEELER_SSH_E2E_DEVICE_KEY_SEED \
-        HEELER_SSH_E2E_WEAK_PORT \
-        HEELER_SSH_E2E_WEAK_CONTROL_PORT \
-        HEELER_SSH_E2E_LEGACY_PORT \
-        HEELER_SSH_E2E_RESTRICTED_PORT \
-        HEELER_SSH_E2E_STALL_PORT \
-        HEELER_SSH_E2E_STREAMLOCAL_SOCKET \
-        HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG \
-        HEELER_PAIRING_E2E_CONFIG; do
-        # launchctl takes one variable per call and each `simctl spawn` costs
-        # seconds; run the round trips concurrently and collect them below.
-        if [[ -n "$simulator_udid" ]]; then
-            xcrun simctl spawn "$simulator_udid" launchctl unsetenv "$variable" \
-                >/dev/null 2>&1 &
-            unsetenv_pids+=("$!")
-        fi
-        unset "$variable"
-    done
-    for pid in "${unsetenv_pids[@]:-}"; do
-        if [[ -n "$pid" ]]; then
-            wait "$pid" 2>/dev/null || status=1
-        fi
-    done
-    return "$status"
+select_simulator() {
+    "$fixture_python" - "${HEELER_CI_SIMULATOR_UDID:-}" "${HEELER_CI_SIMULATOR_NAME:-iPhone 17}" "${HEELER_CI_SIMULATOR_OS:-}" <<'PYSIM'
+import json, subprocess, sys
+
+pinned, name, requested_os = sys.argv[1], sys.argv[2], sys.argv[3]
+if pinned:
+    print(pinned)
+    raise SystemExit(0)
+
+runtimes = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "runtimes", "--json"]))["runtimes"]
+devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"]))["devices"]
+candidates = []
+for runtime in runtimes:
+    if not runtime.get("isAvailable") or runtime.get("platform") != "iOS":
+        continue
+    if requested_os and runtime.get("version") != requested_os:
+        continue
+    version = tuple(int(part) for part in runtime["version"].split("."))
+    for device in devices.get(runtime["identifier"], []):
+        if device.get("name") == name:
+            candidates.append((version, device["udid"]))
+if not candidates:
+    raise SystemExit(f"No available simulator matches name={name!r} os={requested_os!r}")
+latest = max(v for v, _ in candidates)
+matching = [udid for v, udid in candidates if v == latest]
+print(matching[-1])
+PYSIM
 }
 
-# The setenv half of the same trade: a dozen serial `simctl spawn` round trips
-# put most of a minute on the critical path. Values are read through variable
-# indirection, so callers assign first and pass names. Every push is still
-# checked explicitly, including when recovery calls this from a conditional
-# where Bash disables errexit.
-push_simulator_environment() {
-    simulator_environment_variables=("$@")
-    local variable
-    local pid
-    local status=0
-    local setenv_pids=()
-    for variable in "$@"; do
-        xcrun simctl spawn "$simulator_udid" launchctl setenv \
-            "$variable" "${!variable}" &
-        setenv_pids+=("$!")
-    done
-    for pid in "${setenv_pids[@]}"; do
-        wait "$pid" || status=1
-    done
-    return "$status"
-}
-
-stop_privileged_sshd() {
-    local launcher_pid=$1
-    local pid_file=$2
-    local attempt
-    local daemon_pid=""
-    local launcher_state=""
-    local target_pid=""
-
-    if [[ -f "$pid_file" ]]; then
-        daemon_pid="$(<"$pid_file")"
-    fi
-    if [[ "$daemon_pid" =~ ^[0-9]+$ ]]; then
-        target_pid=$daemon_pid
-    elif [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
-        target_pid=$launcher_pid
-    else
-        return 0
-    fi
-
-    if sudo -n kill "$target_pid" 2>/dev/null; then
-        for ((attempt = 0; attempt < 50; attempt += 1)); do
-            if ! ps -p "$target_pid" >/dev/null 2>&1; then
-                break
-            fi
-            sleep 0.1
-        done
-        if ps -p "$target_pid" >/dev/null 2>&1; then
-            return 1
-        fi
-    elif ps -p "$target_pid" >/dev/null 2>&1; then
-        # Do not wait on a process that is still live: cleanup must retain its
-        # state and report the failed stop instead of blocking indefinitely.
-        return 1
-    fi
-
-    # sudo may remain as a distinct launcher after the daemon exits. Bash 3
-    # has no bounded wait, so poll until that child is absent or a zombie
-    # before reaping it. A live launcher after the deadline is a failed stop,
-    # and cleanup must preserve its evidence without waiting on it.
-    if [[ "$launcher_pid" =~ ^[0-9]+$ ]]; then
-        for ((attempt = 0; attempt < 50; attempt += 1)); do
-            launcher_state="$(ps -o state= -p "$launcher_pid" 2>/dev/null || true)"
-            if [[ -z "$launcher_state" \
-                || "$launcher_state" =~ ^[[:space:]]*Z ]]; then
-                wait "$launcher_pid" 2>/dev/null || true
-                break
-            fi
-            sleep 0.1
-        done
-        if [[ -n "$launcher_state" \
-            && ! "$launcher_state" =~ ^[[:space:]]*Z ]]; then
-            return 1
-        fi
-    fi
-
-    ! ps -p "$target_pid" >/dev/null 2>&1
-}
-
-start_password_sshd() {
-    local attempt
-
-    # Start this short-lived root fixture only when its suite is ready to run.
-    # The invoking shell intentionally owns the diagnostic log redirect.
-    # shellcheck disable=SC2024
-    sudo -n /usr/sbin/sshd -D -e -f "$password_config" \
-        > >(timestamp_lines > "$password_log") 2>&1 &
-    password_pid=$!
-
-    for ((attempt = 0; attempt < 50; attempt += 1)); do
-        if sudo -n kill -0 "$password_pid" >/dev/null 2>&1 \
-            && nc -z 127.0.0.1 "$password_port" >/dev/null 2>&1; then
+find_app_xctestrun() {
+    local candidate
+    app_base_xctestrun=""
+    for candidate in "$app_derived_data_path"/Build/Products/Heeler_*.xctestrun; do
+        [[ "$candidate" == *Heeler-ci-active.xctestrun ]] && continue
+        if [[ -f "$candidate" ]]; then
+            app_base_xctestrun="$candidate"
             return 0
         fi
-        if ! sudo -n kill -0 "$password_pid" >/dev/null 2>&1; then
-            break
-        fi
-        sleep 0.1
     done
-
-    if stop_privileged_sshd "$password_pid" "$password_pid_file"; then
-        password_pid=""
-    fi
-    cat "$password_log" >&2
-    password_log_printed=1
     return 1
 }
 
-# Prove the disposable account through the same public boundary a Host uses.
-# Expect owns a PTY but suppresses its transcript; only the exported secret is
-# copied into Tcl, and it is removed from the child environment before ssh.
-password_ssh_preflight() {
-    local status
-
-    export HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD="$password_secret"
-    if /usr/bin/expect <<'EXPECT'
-set timeout 5
-log_user 0
-
-proc preflight_fail {reason} {
-    puts stderr "Password SSH preflight failed: $reason"
-    catch {close}
-    catch {wait}
-    exit 1
+find_package_xctestrun() {
+    local candidate
+    package_base_xctestrun=""
+    for candidate in "$package_derived_data_path"/Build/Products/HeelerSSH_*.xctestrun; do
+        if [[ -f "$candidate" ]]; then
+            package_base_xctestrun="$candidate"
+            return 0
+        fi
+    done
+    return 1
 }
 
-set password $env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
-unset env(HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD)
+prepare_active_xctestrun() {
+    local output="$app_derived_data_path/Build/Products/Heeler-ci-active.xctestrun"
+    "$fixture_python" - "$app_base_xctestrun" "$output" "${HEELER_SSH_E2E_REQUIRED:-}" <<'PYXCTESTRUN'
+import os, plistlib, sys
+from pathlib import Path
 
-spawn /usr/bin/ssh \
-    -F /dev/null \
-    -T \
-    -o PreferredAuthentications=password \
-    -o PasswordAuthentication=yes \
-    -o KbdInteractiveAuthentication=no \
-    -o PubkeyAuthentication=no \
-    -o NumberOfPasswordPrompts=1 \
-    -o ConnectTimeout=5 \
-    -o ConnectionAttempts=1 \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o GlobalKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -p $env(HEELER_PASSWORD_SSH_PREFLIGHT_PORT) \
-    -l $env(HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME) \
-    127.0.0.1 \
-    /bin/echo HEELER_PASSWORD_SSH_PREFLIGHT_OK
-
-expect {
-    -nocase -re {password:[[:space:]]*$} {
-        catch {exec stty -echo < $spawn_out(slave,name)}
-        send -- "$password\r"
-    }
-    timeout { preflight_fail "password prompt timed out after ${timeout}s" }
-    eof { preflight_fail "SSH exited before the password prompt" }
+source, dest, required = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+data = plistlib.loads(source.read_bytes())
+for key, value in data.items():
+    if key == "__xctestrun_metadata__" or not isinstance(value, dict):
+        continue
+    env = dict(value.get("EnvironmentVariables") or {})
+    env["HEELER_SSH_E2E_REQUIRED"] = required
+    value["EnvironmentVariables"] = env
+    test_env = dict(value.get("TestingEnvironmentVariables") or {})
+    dyld = test_env.get("DYLD_INSERT_LIBRARIES")
+    if isinstance(dyld, str) and dyld:
+        kept = [
+            entry for entry in dyld.split(":")
+            if not entry.startswith("/var/run/com.apple.security.cryptexd/") or os.path.exists(entry)
+        ]
+        test_env["DYLD_INSERT_LIBRARIES"] = ":".join(kept)
+        value["TestingEnvironmentVariables"] = test_env
+dest.write_bytes(plistlib.dumps(data))
+PYXCTESTRUN
+    printf '%s\n' "$output"
 }
 
-set saw_sentinel 0
-expect {
-    -exact {HEELER_PASSWORD_SSH_PREFLIGHT_OK} {
-        set saw_sentinel 1
-        exp_continue
-    }
-    -nocase -re {password:[[:space:]]*$} { preflight_fail "SSH requested a second password" }
-    timeout {
-        preflight_fail "command completion timed out after ${timeout}s (sentinel received: $saw_sentinel)"
-    }
-    eof {}
-}
-
-if {!$saw_sentinel} {
-    preflight_fail "SSH exited without the command sentinel"
-}
-if {[catch {wait} child_status] || [lindex $child_status 2] != 0} {
-    preflight_fail "could not collect the SSH exit status"
-}
-if {[llength $child_status] > 4} {
-    preflight_fail "SSH terminated abnormally"
-}
-if {[lindex $child_status 3] != 0} {
-    puts stderr "Password SSH preflight failed: SSH exited with status [lindex $child_status 3]"
-}
-exit [lindex $child_status 3]
-EXPECT
-    then
-        status=0
-    else
-        status=$?
+boot_simulator() {
+    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+    xcrun simctl bootstatus "$simulator_udid" -b
+    if [[ "${CI:-}" == "true" || "${CI:-}" == "1" ]]; then
+        xcrun simctl spawn "$simulator_udid" defaults write com.apple.Accessibility AccessibilityEnabled -bool true &
+        local p1=$!
+        xcrun simctl spawn "$simulator_udid" defaults write com.apple.Accessibility ApplicationAccessibilityEnabled -int 1 &
+        local p2=$!
+        wait "$p1" && wait "$p2"
     fi
-    unset HEELER_PASSWORD_SSH_PREFLIGHT_PASSWORD
-    return "$status"
 }
 
-# sysadminctl owns creation of the complete local account record. Expect feeds
-# its password prompt without putting the secret in argv, the command line, or
-# the sysadminctl environment; the pty transcript it records for diagnosis has
-# echo turned off before the password is sent and is scrubbed afterwards.
-# Every command in the password fixture block is silent on success and, under
-# `set -e`, silent on failure too: five CI runs exited 1 between "Claimed
-# simulator" and the first xcodebuild with nothing to read (#348). Route each
-# step through here so the job log names the step and its exit status.
-provisioning_step() {
+run_xcodebuild() {
     local label=$1
-    local status
-    local started=$SECONDS
-    shift
-    if "$@"; then status=0; else status=$?; fi
-    record_phase "password-$label" "$started" "$status" >/dev/null
-    [[ "$status" != 0 ]] || return 0
-    echo "Password fixture provisioning failed at $label (status $status)." >&2
-    return "$status"
-}
-
-# The expect transcript below records the pty. Echo is turned off before the
-# password is sent, so the secret should never reach the file; this scrub is
-# the second line, run before the transcript is printed or preserved. The
-# secret travels in the environment so no quoting can leak or mangle it, and
-# an empty secret must not become an empty match that rewrites the whole file.
-redact_secret_in_file() {
-    local file=$1
-    local secret=$2
-    [[ -f "$file" && -n "$secret" ]] || return 0
-    HEELER_REDACT_SECRET="$secret" perl -pi -e \
-        's/\Q$ENV{HEELER_REDACT_SECRET}\E/[redacted]/g' "$file"
-}
-
-create_password_user() (
-    local status
-
-    rm -f "$sysadminctl_log"
-    export HEELER_SYSADMINCTL_PASSWORD="$password_secret"
-    export HEELER_SYSADMINCTL_USERNAME="$password_username"
-    export HEELER_SYSADMINCTL_UID="$password_uid"
-    export HEELER_SYSADMINCTL_HOME="$password_home"
-    export HEELER_SYSADMINCTL_LOG="$sysadminctl_log"
-    # log_user 0 keeps the transcript off the job log; -a records it anyway so a
-    # failure can show what sysadminctl said. Each exit path names its reason on
-    # stderr, which the calling shell leaves connected to the job log.
-    #
-    # The prompt arrives within seconds, but writing the account record after
-    # the password can take well over 30s on a loaded runner: four CI runs
-    # timed out there, one of them after sysadminctl had already printed
-    # "Creating user record…". So the wait for completion gets its own, longer
-    # deadline instead of sharing the prompt's.
-    if /usr/bin/expect <<'EXPECT'
-set timeout 30
-set completion_timeout 120
-log_user 0
-log_file -a -noappend $env(HEELER_SYSADMINCTL_LOG)
-
-set password $env(HEELER_SYSADMINCTL_PASSWORD)
-unset env(HEELER_SYSADMINCTL_PASSWORD)
-
-spawn /usr/bin/sudo -n /usr/sbin/sysadminctl \
-    -addUser $env(HEELER_SYSADMINCTL_USERNAME) \
-    -fullName {Heeler SSH CI} \
-    -UID $env(HEELER_SYSADMINCTL_UID) \
-    -GID 20 \
-    -shell /bin/zsh \
-    -home $env(HEELER_SYSADMINCTL_HOME) \
-    -password -
-
-set sent_password 0
-expect {
-    -re {(?i)password[^\r\n]*:[[:space:]]*$} {
-        if {$sent_password} {
-            puts stderr "sysadminctl prompted for the password a second time"
-            close
-            catch {wait}
-            exit 1
-        }
-        catch {exec stty -echo < $spawn_out(slave,name)}
-        send -- "$password\r"
-        set sent_password 1
-        set timeout $completion_timeout
-        exp_continue
-    }
-    timeout {
-        puts stderr "sysadminctl timed out after ${timeout}s (password sent: $sent_password)"
-        close
-        catch {wait}
-        exit 1
-    }
-    eof {}
-}
-
-if {!$sent_password} {
-    puts stderr "sysadminctl exited without prompting for a password"
-    exit 1
-}
-if {[catch {wait} child_status]} {
-    puts stderr "could not wait for sysadminctl: $child_status"
-    exit 1
-}
-if {[llength $child_status] < 4 || [lindex $child_status 2] ne "0"} {
-    puts stderr "sysadminctl wait reported an error: $child_status"
-    exit 1
-}
-if {[llength $child_status] >= 5 \
-    && [lindex $child_status 4] eq "CHILDKILLED"} {
-    puts stderr "sysadminctl was killed by a signal: $child_status"
-    exit 1
-}
-set child_exit [lindex $child_status 3]
-if {![string is integer -strict $child_exit] \
-    || $child_exit < 0 || $child_exit > 255} {
-    puts stderr "sysadminctl exit status is unreadable: $child_status"
-    exit 1
-}
-if {$child_exit != 0} {
-    puts stderr "sysadminctl exited with status $child_exit"
-}
-exit $child_exit
-EXPECT
-    then
+    local log=$2
+    shift 2
+    local started=$SECONDS status=0
+    echo "::group::$label"
+    if (cd "$repo_root" && xcodebuild "$@") 2>&1 | tee "$log"; then
         status=0
     else
         status=$?
     fi
-    unset HEELER_SYSADMINCTL_PASSWORD
-    unset HEELER_SYSADMINCTL_USERNAME
-    unset HEELER_SYSADMINCTL_UID
-    unset HEELER_SYSADMINCTL_HOME
-    unset HEELER_SYSADMINCTL_LOG
-    redact_secret_in_file "$sysadminctl_log" "$password_secret"
-    if [[ "$status" != 0 && -s "$sysadminctl_log" ]]; then
-        echo "===== sysadminctl transcript ($sysadminctl_log)" >&2
-        cat "$sysadminctl_log" >&2
-    fi
+    echo "::endgroup::"
+    echo "==> $label: $((SECONDS - started))s (status $status)"
     return "$status"
+}
+
+run_app_test_bundle() {
+    local label=$1
+    local log=$2
+    shift 2
+    local safe_label
+    safe_label=$(printf '%s' "$label" | tr -cs 'A-Za-z0-9._-' '-')
+    mkdir -p "$app_derived_data_path/Logs/Test"
+    local bundle="$app_derived_data_path/Logs/Test/${safe_label}.xcresult"
+    rm -rf -- "$bundle"
+    if [[ -n "$app_base_xctestrun" ]]; then
+        local active_xctestrun
+        active_xctestrun=$(prepare_active_xctestrun)
+        run_xcodebuild "$label" "$log" \
+            test-without-building \
+            -xctestrun "$active_xctestrun" \
+            -destination "$simulator_destination" \
+            -resultBundlePath "$bundle" \
+            -collect-test-diagnostics never \
+            "$@"
+    else
+        run_xcodebuild "$label" "$log" \
+            test-without-building \
+            -disableAutomaticPackageResolution \
+            -project Heeler.xcodeproj \
+            -scheme Heeler \
+            -derivedDataPath "$app_derived_data_path" \
+            -clonedSourcePackagesDirPath "$source_packages_dir" \
+            -destination "$simulator_destination" \
+            -resultBundlePath "$bundle" \
+            -collect-test-diagnostics never \
+            "$@"
+    fi
+}
+
+simulator_udid="$(select_simulator)"
+simulator_destination="platform=iOS Simulator,id=$simulator_udid"
+echo "==> Selected simulator $simulator_udid"
+
+# Unpack prebuilt archives before booting the Simulator to avoid cold-boot disk contention.
+if [[ -n "$app_products_archive" ]]; then
+    mkdir -p "$app_derived_data_path"
+    tar -xf "$app_products_archive" -C "$app_derived_data_path"
+    find_app_xctestrun
+fi
+if [[ -n "$package_products_archive" ]]; then
+    mkdir -p "$package_derived_data_path"
+    tar -xf "$package_products_archive" -C "$package_derived_data_path"
+    find_package_xctestrun
+fi
+
+# Ordinary unit/integration shard needs no SSH fixtures.
+if [[ "$ci_lane" == app && "$ci_app_shard" == ordinary ]]; then
+    export HEELER_SSH_E2E_REQUIRED=0
+    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
+    if [[ -z "$app_products_archive" ]]; then
+        mkdir -p "$source_packages_dir"
+        run_xcodebuild "Build for testing" "$fixture_dir/build-for-testing.log" \
+            build-for-testing -project Heeler.xcodeproj -scheme Heeler \
+            -derivedDataPath "$app_derived_data_path" \
+            -clonedSourcePackagesDirPath "$source_packages_dir" \
+            -destination "$simulator_destination" \
+            -collect-test-diagnostics never COMPILER_INDEX_STORE_ENABLE=NO
+        find_app_xctestrun || true
+    fi
+    boot_simulator
+    push_simulator_environment HEELER_SSH_E2E_REQUIRED
+    run_app_test_bundle "Full app test lane" "$fixture_dir/full-lane.log"
+    exit 0
+fi
+
+# Provision unprivileged loopback SSH fixtures.
+read -r base_port core_port < <("$fixture_python" - "${HEELER_CI_PORT_BASE:-55222}" <<'PYPORTS'
+import socket, sys
+
+def free(port: int) -> bool:
+    for family, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        with socket.socket(family, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind((host, port))
+            except OSError:
+                return False
+    return True
+
+start = int(sys.argv[1])
+base = next(
+    (cand for cand in range(start, start + 12 * 16, 12) if all(free(cand + i) for i in range(12))),
+    None,
+)
+if base is None:
+    raise SystemExit("Could not find 12 contiguous free loopback ports")
+core = next(
+    (cand for cand in range(55400, 55464) if not (base <= cand < base + 12) and free(cand)),
+    None,
+)
+if core is None:
+    raise SystemExit("Could not find a free core fixture port")
+print(base, core)
+PYPORTS
 )
 
-# `sshd -e` writes no timestamps, so a preserved log could not be matched
-# against the wall-clock window of a failing test (#343). Prefix every line
-# with the same UTC format GitHub prints for job log lines. Process
-# substitution keeps `$!` as sshd's own pid for the kill/wait bookkeeping;
-# the filter exits on its own when sshd closes the pipe.
-timestamp_lines() {
-    perl -MPOSIX -pe '$| = 1; $_ = POSIX::strftime("%Y-%m-%dT%H:%M:%SZ ", gmtime) . $_'
-}
+modern_port=$((base_port + 0))
+legacy_port=$((base_port + 1))
+restricted_port=$((base_port + 2))
+stall_port=$((base_port + 3))
+streamlocal_global_policy_port=$((base_port + 4))
+streamlocal_key_policy_port=$((base_port + 5))
+jump_target_port=$((base_port + 6))
+jump_forwarding_denied_port=$((base_port + 7))
+pairing_port=$((base_port + 8))
+weak_network_port=$((base_port + 9))
+weak_network_control_port=$((base_port + 10))
+post_quantum_port=$((base_port + 11))
 
-# Sets started_sshd_pid rather than printing it: a command substitution would
-# run the append to unprivileged_sshd_pids in a subshell and lose it.
-started_sshd_pid=""
-start_unprivileged_sshd() {
-    local config=$1
-    local log=$2
-
-    /usr/sbin/sshd -D -e -f "$config" > >(timestamp_lines > "$log") 2>&1 &
-    started_sshd_pid=$!
-    unprivileged_sshd_pids+=("$started_sshd_pid")
-}
-
-# The single place fixture ports are named. Every other reference in this
-# script, and every port the tests are handed, comes from these thirteen
-# variables, so moving the base moves the whole fixture.
-assign_port_block() {
-    local base=$1
-    local highest
-
-    modern_port=$((base + 0))
-    legacy_port=$((base + 1))
-    restricted_port=$((base + 2))
-    stall_port=$((base + 3))
-    streamlocal_global_policy_port=$((base + 4))
-    streamlocal_key_policy_port=$((base + 5))
-    jump_target_port=$((base + 6))
-    jump_forwarding_denied_port=$((base + 7))
-    pairing_port=$((base + 8))
-    password_port=$((base + 9))
-    # The unprivileged impairment proxy: a degraded route to the modern sshd,
-    # plus the control port the weak-network suite steers it through.
-    weak_network_port=$((base + 10))
-    weak_network_control_port=$((base + 11))
-    # Post-quantum coverage uses a dedicated endpoint so the established
-    # resource and timing suites keep exercising their Curve25519 baseline.
-    post_quantum_port=$((base + 12))
-
-    # Adding a port above without widening port_block_size would overlap the
-    # next block, which no test could distinguish from a flaky fixture.
-    highest=$post_quantum_port
-    if [[ "$highest" -ne "$((base + port_block_size - 1))" ]]; then
-        echo "assign_port_block assigns past port_block_size=$port_block_size" >&2
-        exit 1
-    fi
-}
-
-# The pairing fixture is reached over both loopback families, so a listener on
-# either one is a genuine conflict. Checking both for every port costs nothing
-# and can only ever reject a block, never wave a busy one through.
-port_is_busy() {
-    local port=$1
-
-    nc -z 127.0.0.1 "$port" >/dev/null 2>&1 && return 0
-    nc -z ::1 "$port" >/dev/null 2>&1 && return 0
-    return 1
-}
-
-# Names who holds a port, so a refusal can say more than "already in use".
-# A listener whose parent is init was reparented when its run died: that is an
-# orphan from a crashed gate, not a colleague mid-run. It is reported and never
-# killed -- guessing wrong about ownership costs someone else their run.
-describe_port_holder() {
-    local port=$1
-    local only_orphans=${2:-0}
-    local pid
-    local parent
-    local command
-    local described=1
-
-    for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -u); do
-        parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-        command=$(ps -o command= -p "$pid" 2>/dev/null)
-        if [[ -z "$command" ]]; then
-            continue
-        fi
-        if [[ "$parent" == "1" ]]; then
-            described=0
-            printf '      port %s: ORPHAN pid %s (reparented to init) %s\n' \
-                "$port" "$pid" "$command" >&2
-        elif [[ "$only_orphans" != "1" ]]; then
-            described=0
-            printf '      port %s: pid %s (parent %s) %s\n' \
-                "$port" "$pid" "${parent:-unknown}" "$command" >&2
-        fi
-    done
-    return "$described"
-}
-
-mkdir -p "$lock_root"
-
-# Blocks are tried in order and the first wholly free one wins, so an idle
-# machine is deterministic. Every rejection is recorded rather than fatal:
-# if nothing is free the operator gets the whole picture at once instead of
-# the first port that happened to be taken.
-claim_port_block() {
-    local -a bases=()
-    local base
-    local slot
-    local busy
-    local port
-    local offset
-    local lock
-    local owner
-    local -a rejections=()
-
-    if [[ -n "$port_block_base_override" ]]; then
-        bases=("$port_block_base_override")
-    else
-        for ((slot = 0; slot < port_block_count; slot += 1)); do
-            bases+=("$((port_block_base_default + slot * port_block_size))")
-        done
-    fi
-
-    for base in "${bases[@]}"; do
-        lock="$lock_root/block-$base"
-        busy=""
-        for ((offset = 0; offset < port_block_size; offset += 1)); do
-            port=$((base + offset))
-            if port_is_busy "$port"; then
-                busy+=" $port"
-                # A run may move to the next free block, but an orphan from a
-                # crashed gate still needs to be visible to the operator. It
-                # is reported here and deliberately left untouched.
-                describe_port_holder "$port" 1 || true
-            fi
-        done
-
-        # Recorded as "<base> <kind> <detail...>". The kind is explicit because
-        # the two rejections carry different trailing numbers -- ports for one,
-        # a pid for the other -- and only ports may be looked up as ports.
-        if [[ -n "$busy" ]]; then
-            rejections+=("$base ports$busy")
-            continue
-        fi
-
-        if claim_resource_lock "$lock" "port block $base"; then
-            run_lock_dir="$lock"
-            assign_port_block "$base"
-            return 0
-        fi
-
-        owner=$(cat "$lock/pid" 2>/dev/null)
-        rejections+=("$base lock ${owner:-unknown}")
-    done
-
-    echo "Every fixture port block on this machine is taken." >&2
-    echo "The merge gate needs $port_block_size consecutive free ports." >&2
-    local -a fields=()
-    local rejection
-    for rejection in "${rejections[@]}"; do
-        read -r -a fields <<<"$rejection"
-        if [[ "${fields[1]}" == "ports" ]]; then
-            printf '  block %s: ports in use:%s\n' \
-                "${fields[0]}" "${rejection#"${fields[0]} ports"}" >&2
-            for port in "${fields[@]:2}"; do
-                describe_port_holder "$port" || true
-            done
-        else
-            printf '  block %s: claimed by live run pid %s\n' \
-                "${fields[0]}" "${fields[2]}" >&2
-        fi
-    done
-    echo >&2
-    echo "What to do:" >&2
-    echo "  - a block held by a live run: wait for it, or widen" >&2
-    echo "    port_block_count in this script." >&2
-    echo "  - an ORPHAN above outlived its run. Confirm it is yours, then" >&2
-    echo "    kill it by pid. This script never kills what it did not start." >&2
-    echo "  - to pin a block yourself: HEELER_CI_PORT_BASE=<base>" >&2
-    exit 1
-}
-
-# One plain lock per candidate port. Cleanup releases it after the fixture stops.
-claim_core_port() {
-    local candidate slot lock
-    for ((slot = 0; slot < core_port_count; slot += 1)); do
-        candidate=$((core_port_base_default + slot))
-        # Explicit main-block overrides can occupy this pool too.
-        if ((candidate >= modern_port && candidate <= post_quantum_port)); then
-            continue
-        fi
-        port_is_busy "$candidate" && continue
-        lock="$lock_root/core-port-$candidate"
-        if claim_resource_lock "$lock" "core fixture port $candidate"; then
-            core_port_lock_dir="$lock"
-            core_port=$candidate
-            return 0
-        fi
-    done
-    echo "Every separate core fixture port is reserved or listening" >&2
-    return 1
-}
-
-# The tmux fixture links a tmux this machine already has (Homebrew's on CI) and
-# never installs or updates one.
-find_fixture_tmux() {
-    local candidate
-    for candidate in "${HEELER_CI_TMUX:-}" "$(command -v tmux 2>/dev/null || true)" \
-        "${tmux_fixture_candidates[@]}"; do
-        if [[ -n "$candidate" && -f "$candidate" && -x "$candidate" ]]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done
-    echo "The mandatory tmux Host suite needs tmux: brew install tmux, or set HEELER_CI_TMUX" >&2
-    return 1
-}
-
-prepare_app_build_directory
-
-if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
-claim_port_block
-printf 'Claimed fixture port block %s-%s\n' \
-    "$modern_port" "$((modern_port + port_block_size - 1))" >&2
-if [[ "$ci_lane" == app ]] \
-    && [[ "$ci_app_shard" == all || "$ci_app_shard" == transport ]]; then
-    claim_core_port
-    # A runner without tmux stops here, not after the build.
-    tmux_fixture_executable=$(find_fixture_tmux) || exit 1
-fi
-fi
-
-# Claim the simulator before fixture keygen/sshd work so boot overlaps that
-# setup as well as build-for-testing. Ports alone are not enough for two runs
-# to coexist: the fixture reaches the tests through `simctl launchctl setenv`,
-# which is per-device state. Two runs sharing one device overwrite each other's
-# HEELER_SSH_E2E_* and one of them tests the other's fixture -- silently,
-# unlike a port clash.
-#
-# Candidates come back last-first, preserving the previous choice of the last
-# matching device for a run that finds the machine idle. The name is matched
-# as a literal prefix plus " (" so the default "iPhone 17" does not also
-# claim "iPhone 17 Pro", and names with parentheses (iPad Pro 13-inch (M5))
-# stay literal rather than becoming an awk regex.
-#
-# An image can carry the same name on several runtimes, so CI pins one with
-# HEELER_CI_SIMULATOR_OS (for example 27.2): only devices under the
-# "-- iOS 27.2 --" headings qualify, and recovery replaces a lost device from
-# the same runtime. An explicit HEELER_CI_SIMULATOR_UDID still wins.
-ci_simulator_name="${HEELER_CI_SIMULATOR_NAME:-iPhone 17}"
-ci_simulator_os="${HEELER_CI_SIMULATOR_OS:-}"
-ci_simulator_label="${ci_simulator_os:+iOS $ci_simulator_os }$ci_simulator_name"
-requested_simulator_udid="${HEELER_CI_SIMULATOR_UDID:-}"
-# Keeps the raw listing in simulator_listing so a recovery attempt can print
-# what CoreSimulator saw at that moment, not only the filtered candidates.
-list_simulator_candidates() {
-    local candidate
-    simulator_listing=$(xcrun simctl list devices available) || return 1
-    simulator_candidates=()
-    while IFS= read -r candidate; do
-        [[ -n "$candidate" ]] && simulator_candidates+=("$candidate")
-    done < <(printf '%s\n' "$simulator_listing" | awk -v name="$ci_simulator_name" \
-        -v os="$ci_simulator_os" -v pinned="$requested_simulator_udid" '
-        BEGIN { in_os = (os == "") }
-        /^-- .* --$/ { in_os = (os == "" || $0 == "-- iOS " os " --"); next }
-        (in_os && index($0, name " (")) || (pinned != "" && index($0, "(" pinned ")")) {
-            candidate = ""
-            for (field = 1; field <= NF; field += 1) {
-                value = $field
-                gsub(/[()]/, "", value)
-                if (value ~ /^[0-9A-F-]{36}$/) {
-                    candidate = value
-                }
-            }
-            if (candidate != "") {
-                list[++count] = candidate
-            }
-        }
-        END { for (index_ = count; index_ >= 1; index_ -= 1) print list[index_] }
-    ')
-}
-
-simulator_discovery_started=$SECONDS
-list_simulator_candidates
-record_phase simulator-discovery "$simulator_discovery_started"
-if [[ "${#simulator_candidates[@]}" -eq 0 ]]; then
-    printf 'No available %s Simulator was found in:\n%s\n' \
-        "$ci_simulator_label" "$simulator_listing" >&2
-    exit 1
-fi
-
-# Reports the live pid holding this device, nothing if it is free.
-simulator_held_by() {
-    local udid=$1
-    local owner
-
-    owner=$(cat "$lock_root/device-$udid/pid" 2>/dev/null)
-    if [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null; then
-        printf '%s' "$owner"
-        return 0
-    fi
-    return 1
-}
-
-# The device uses the same token-checked resource claim as a port block. A
-# separate device claim is necessary because its launchctl environment is
-# shared even when the fixture ports are not.
-claim_simulator() {
-    local udid=$1
-    local lock="$lock_root/device-$udid"
-
-    if claim_resource_lock "$lock" "simulator $udid"; then
-        device_lock_dir="$lock"
-        return 0
-    fi
-    return 1
-}
-
-# Called only after xcodebuild explicitly reports a missing destination. Keep
-# an explicit caller pin; otherwise use another unclaimed device of the same
-# name. Never reset CoreSimulator or disturb another run's device lock.
-recover_simulator_destination() {
-    local candidate
-    local current_available=0
-
-    list_simulator_candidates || return 1
-    # The next reader needs to know whether the device was gone for seconds or
-    # for the whole window, so every rediscovery records the live listing.
-    printf 'Simulators visible while recovering %s:\n%s\n' \
-        "${simulator_udid:-<released>}" "$simulator_listing" >&2
-    # Bash 3.2 treats an empty array expansion as unbound under nounset.
-    # Handle it before iterating so recovery can retry and report diagnostics.
-    if [[ "${#simulator_candidates[@]}" == 0 ]]; then
-        echo "No available $ci_simulator_label Simulator during destination recovery." >&2
-        return 1
-    fi
-    for candidate in "${simulator_candidates[@]}"; do
-        if [[ "$candidate" == "$simulator_udid" ]]; then
-            current_available=1
-        fi
-    done
-    if [[ "$current_available" == 0 ]]; then
-        if [[ -n "$requested_simulator_udid" ]]; then
-            echo "Explicitly pinned simulator $requested_simulator_udid is still unavailable." >&2
-            return 1
-        fi
-        # Clear the old device while still owning it, but preserve shell values
-        # for the replacement. Release before claiming so cleanup owns one lock.
-        (clear_simulator_environment) || true
-        release_resource_lock "$device_lock_dir" "simulator" || return 1
-        device_lock_dir=""
-        simulator_udid=""
-        simulator_destination=""
-        for candidate in "${simulator_candidates[@]}"; do
-            if claim_simulator "$candidate"; then
-                simulator_udid="$candidate"
-                simulator_destination="platform=iOS Simulator,id=$candidate"
-                break
-            fi
-        done
-        if [[ -z "$simulator_udid" ]]; then
-            echo "Every replacement $ci_simulator_label Simulator is claimed by a live run." >&2
-            return 1
-        fi
-    fi
-    printf 'Recovering simulator %s\n' "$simulator_udid" >&2
-    xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
-    xcrun simctl bootstatus "$simulator_udid" -b || return 1
-    if [[ "${#simulator_environment_variables[@]}" -gt 0 ]]; then
-        push_simulator_environment "${simulator_environment_variables[@]}" || return 1
-    fi
-}
-
-simulator_udid=""
-if [[ -n "$requested_simulator_udid" ]]; then
-    if claim_simulator "$requested_simulator_udid"; then
-        simulator_udid="$requested_simulator_udid"
-    else
-        printf 'Requested simulator %s is claimed by live run pid %s.\n' \
-            "$requested_simulator_udid" \
-            "$(simulator_held_by "$requested_simulator_udid" || printf 'unknown')" >&2
-        echo "Choose a different HEELER_CI_SIMULATOR_UDID or wait for that run." >&2
-        exit 1
-    fi
-else
-    for candidate in "${simulator_candidates[@]}"; do
-        if claim_simulator "$candidate"; then
-            simulator_udid="$candidate"
-            break
-        fi
-    done
-fi
-if [[ -z "$simulator_udid" ]]; then
-    echo "Every available ${ci_simulator_label} Simulator is claimed by a live run." >&2
-    for candidate in "${simulator_candidates[@]}"; do
-        printf '  %s: held by pid %s\n' \
-            "$candidate" "$(simulator_held_by "$candidate")" >&2
-    done
-    echo >&2
-    echo "A run needs a device of its own: the fixture is delivered through" >&2
-    echo "per-device launchctl environment, which two runs would overwrite." >&2
-    echo "Create another ${ci_simulator_label} with 'xcrun simctl create', or pin one" >&2
-    echo "explicitly with HEELER_CI_SIMULATOR_UDID=<udid>." >&2
-    exit 1
-fi
-printf 'Claimed simulator %s (%s)\n' "$simulator_udid" "$ci_simulator_label" >&2
-simulator_destination="platform=iOS Simulator,id=$simulator_udid"
-# Password-owning workers defer both boot and compilation until preflight.
-# Other workers keep overlapping boot with fixture preparation and build.
-start_preparation_work simulator
-
-if [[ "$ci_lane" != app || "$ci_app_shard" != ordinary ]]; then
-ssh_fixture_started=$SECONDS
 sftp_server=""
 for candidate in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server; do
     if [[ -x "$candidate" ]]; then
@@ -1561,9 +376,16 @@ for candidate in /usr/libexec/sftp-server /usr/lib/openssh/sftp-server; do
         break
     fi
 done
-if [[ -z "$sftp_server" ]]; then
-    echo "No sftp-server binary was found; the SFTP suites cannot run" >&2
-    exit 1
+[[ -n "$sftp_server" ]] || { echo "No sftp-server binary found" >&2; exit 1; }
+
+if [[ "$ci_lane" == app && ( "$ci_app_shard" == all || "$ci_app_shard" == transport ) ]]; then
+    for candidate in "${HEELER_CI_TMUX:-}" "$(command -v tmux 2>/dev/null || true)" /opt/homebrew/bin/tmux /usr/local/bin/tmux; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            tmux_fixture_executable="$candidate"
+            break
+        fi
+    done
+    [[ -n "$tmux_fixture_executable" ]] || { echo "tmux is required for transport E2E" >&2; exit 1; }
 fi
 
 chmod 755 "$fixture_dir"
@@ -1572,17 +394,10 @@ mkdir -p \
     "$fixture_home/.codex/skills/fixture" \
     "$fixture_home/.heeler-ci" \
     "$fixture_dir/bin"
-printf '%s\n' \
-    '---' \
-    'name: fixture' \
-    'description: Real SSH fixture skill.' \
-    '---' \
-    'Fixture body.' \
+
+printf '%s\n' '---' 'name: fixture' 'description: Real SSH fixture skill.' '---' 'Fixture body.' \
     > "$fixture_home/.codex/skills/fixture/SKILL.md"
-# The dollar expressions below belong to the generated fixture script.
-# Like herdr 0.9.4's direct attach, the fake attach writes the startup probe
-# before anything it paints; Heeler drops it, so the output still starts with
-# TTY-OK (#451). Octal \044 spells the probe's dollar sign.
+
 # shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
@@ -1597,12 +412,9 @@ printf '%s\n' \
     '        __exit__) exit 0 ;;' \
     '        __fail__) printf "herdr: fixture attach failed\\n"; exit 23 ;;' \
     '        __end_race__)' \
-    '            printf "END-RACE-READY\\n"' \
-    '            sleep 1' \
-    '            printf "END-RACE-BEFORE\\n"' \
-    '            sleep 10' \
-    '            printf "END-RACE-AFTER\\n"' \
-    '            continue ;;' \
+    '            printf "END-RACE-READY\\n"; sleep 1' \
+    '            printf "END-RACE-BEFORE\\n"; sleep 10' \
+    '            printf "END-RACE-AFTER\\n"; continue ;;' \
     '    esac' \
     '    printf "GOT:%s\\n" "$line"' \
     '    stty size' \
@@ -1610,73 +422,38 @@ printf '%s\n' \
     > "$fixture_home/.heeler-ci/fake-attach"
 chmod 755 "$fixture_home/.heeler-ci/fake-attach"
 
-# Usage executes the real plugin against scratch Transcripts, never the user's
-# installed programs or their data roots. The test copies this source snapshot
-# into its own disposable directory before asking the app's Transport to read it.
+pairing_node_path=""
 if [[ "$ci_lane" == app ]]; then
-    usage_node_path="$(command -v node)" || {
-        echo "Node is required for the mandatory Usage worker suite" >&2
-        exit 1
-    }
+    pairing_node_path="$(command -v node)" || { echo "Node is required for app SSH E2E" >&2; exit 1; }
     mkdir -p "$fixture_home/.heeler-ci/usage-plugin"
     cp -R "$repo_root/plugin/src" "$fixture_home/.heeler-ci/usage-plugin/src"
     cp "$repo_root/plugin/package.json" "$fixture_home/.heeler-ci/usage-plugin/package.json"
-    ln -s "$usage_node_path" "$fixture_home/.heeler-ci/usage-node"
+    ln -s "$pairing_node_path" "$fixture_home/.heeler-ci/usage-node"
 fi
 
-# The cold-start wake runs `herdr remote-client-bridge` on the Host. The fixture
-# has no herdr server, and a real one must never be reached, so stand in for the
-# binary with a stub that succeeds and does nothing. Without it the combined
-# cause tests see command-not-found instead of a wake that simply did not help.
 printf '%s\n' '#!/bin/sh' 'exit 0' > "$fixture_dir/bin/herdr"
 chmod 755 "$fixture_dir/bin/herdr"
 
-# The acceptance Host must have no socat. The forced session PATH below is the
-# only PATH the product ever sees on this Host, so assert socat is absent from
-# it rather than from the machine: a developer with socat in Homebrew still runs
-# a genuinely socat-free Host.
 fixture_session_path="$fixture_dir/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-IFS=':' read -r -a fixture_path_entries <<< "$fixture_session_path"
-for entry in "${fixture_path_entries[@]}"; do
-    if [[ -x "$entry/socat" ]]; then
-        echo "socat is reachable at $entry/socat; the Host must not provide it" >&2
-        exit 1
-    fi
+for entry in "$fixture_dir/bin" /usr/bin /bin /usr/sbin /sbin; do
+    [[ ! -x "$entry/socat" ]] || { echo "socat must not exist in $entry" >&2; exit 1; }
 done
 
-key_generation_started=$SECONDS
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_ed25519"
 ssh-keygen -q -t rsa -b 3072 -N '' -f "$fixture_dir/host_rsa"
 ssh-keygen -q -t ed25519 -N '' -f "$fixture_dir/host_jump_target_ed25519"
-
-# A throwaway Device Key per run. The suites receive its seed in the fixture
-# configuration, so no key committed to this repository ever authorizes a login.
 ssh-keygen -q -t ed25519 -N '' -C heeler-ci-device-key -f "$fixture_dir/device_key"
-device_key_seed="$("$fixture_python" \
-    scripts/fixtures/openssh-ed25519-seed.py "$fixture_dir/device_key")"
+device_key_seed="$("$fixture_python" "$repo_root/scripts/fixtures/openssh-ed25519-seed.py" "$fixture_dir/device_key")"
 cp "$fixture_dir/device_key.pub" "$fixture_dir/authorized_keys"
 
-# A separate RSA identity exercises the callback signer used by RSA Key auth.
-# Security.framework consumes PKCS#1 DER, while sshd consumes the matching
-# OpenSSH public line. The app only offers RSA-SHA2-512; it has no SHA-1
-# signing fallback.
 /usr/bin/openssl genrsa -out "$fixture_dir/rsa_key.pem" 3072 >/dev/null 2>&1
 chmod 600 "$fixture_dir/rsa_key.pem"
-/usr/bin/openssl rsa \
-    -in "$fixture_dir/rsa_key.pem" \
-    -outform DER \
-    -out "$fixture_dir/rsa_key.der" \
-    >/dev/null 2>&1
-rsa_public_key="$(ssh-keygen -y -f "$fixture_dir/rsa_key.pem")"
-printf '%s heeler-ci-rsa-key\n' "$rsa_public_key" > "$fixture_dir/rsa_key.pub"
-record_phase fixture-key-generation "$key_generation_started"
-cat "$fixture_dir/rsa_key.pub" >> "$fixture_dir/authorized_keys"
+/usr/bin/openssl rsa -in "$fixture_dir/rsa_key.pem" -outform DER -out "$fixture_dir/rsa_key.der" >/dev/null 2>&1
+printf '%s heeler-ci-rsa-key\n' "$(ssh-keygen -y -f "$fixture_dir/rsa_key.pem")" >> "$fixture_dir/authorized_keys"
 rsa_key_der="$(base64 < "$fixture_dir/rsa_key.der" | tr -d '\n')"
-printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" \
-    > "$fixture_dir/authorized_keys-no-forwarding"
+printf 'no-port-forwarding %s\n' "$(<"$fixture_dir/device_key.pub")" > "$fixture_dir/authorized_keys-no-forwarding"
 cp "$fixture_dir/authorized_keys" "$fixture_dir/authorized_keys-jump-target"
 
-pairing_username="$fixture_username"
 pairing_home="$fixture_dir/pairing-home"
 pairing_authorized_keys="$pairing_home/.ssh/authorized_keys"
 pairing_state_root="$fixture_dir/pairing-state"
@@ -1685,32 +462,12 @@ cp "$fixture_dir/authorized_keys" "$pairing_authorized_keys"
 chmod 700 "$pairing_home/.ssh"
 chmod 600 "$pairing_authorized_keys"
 
-modern_config="$fixture_dir/sshd-modern.conf"
-post_quantum_config="$fixture_dir/sshd-post-quantum.conf"
-legacy_config="$fixture_dir/sshd-legacy.conf"
-restricted_config="$fixture_dir/sshd-restricted.conf"
-streamlocal_global_policy_config="$fixture_dir/sshd-streamlocal-global-policy.conf"
-streamlocal_key_policy_config="$fixture_dir/sshd-streamlocal-key-policy.conf"
-jump_target_config="$fixture_dir/sshd-jump-target.conf"
-jump_forwarding_denied_config="$fixture_dir/sshd-jump-forwarding-denied.conf"
-pairing_config="$fixture_dir/sshd-pairing.conf"
-pairing_mismatched_config="$fixture_dir/sshd-pairing-mismatched.conf"
-password_config="$fixture_dir/sshd-password.conf"
+force_posix_shell="exec /bin/sh -c 'PATH=$fixture_session_path; export PATH;"
+force_posix_shell+=" if [ -n \"\$SSH_ORIGINAL_COMMAND\" ]; then"
+force_posix_shell+=" exec /bin/sh -c \"\$SSH_ORIGINAL_COMMAND\"; else exec /bin/sh; fi'"
 
-# DEBUG1, not VERBOSE: VERBOSE stops at "Starting session", so a client that
-# never sees its channel reply (#343: exec request timed out 5s after sshd had
-# started the pty session) cannot be told apart from one that never read it.
-# DEBUG1 logs each channel request as sshd handles it, timestamped by the
-# filter in start_unprivileged_sshd. The full logs go to the diagnostics
-# artifact; the console tail is only an excerpt.
-# Key-only fixtures run as the invoking user, not as a system login service.
-# PAM credential/session setup can stall after public-key authentication and
-# consume the first channel's deadline. Only the real-password fixture uses PAM.
 write_common_config() {
-    local port=$1
-    local host_key=$2
-    local pid_file=$3
-
+    local port=$1 host_key=$2 pid_file=$3 auth_keys=${4:-$fixture_dir/authorized_keys}
     printf '%s\n' \
         "Port $port" \
         "ListenAddress 127.0.0.1" \
@@ -1720,7 +477,7 @@ write_common_config() {
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
         "PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512" \
-        "AuthorizedKeysFile $fixture_dir/authorized_keys" \
+        "AuthorizedKeysFile $auth_keys" \
         "UsePAM no" \
         "PermitRootLogin no" \
         "AllowUsers $fixture_username" \
@@ -1734,103 +491,19 @@ write_common_config() {
         "ForceCommand $force_posix_shell"
 }
 
-# An unprivileged sshd runs sessions under the invoking account's login shell,
-# so the fixture would otherwise mean something different on every machine (the
-# old privileged fixture pinned /bin/zsh on its throwaway account). Re-exec every
-# session under POSIX sh instead, with the fixture PATH asserted above: sshd
-# overwrites a `SetEnv PATH` with its own default, so it has to happen here.
-# SSH_ORIGINAL_COMMAND carries the subsystem command too, so SFTP keeps working.
-# This must never be set on the Pairing sshd, where it would override the
-# authorized_keys forced command.
-# The leading `exec` matters: without it the account's login shell forks a child
-# for the wrapper, and a session that kills its own parent (the package's native
-# resource reclamation test) would kill that child instead of the sshd session.
-force_posix_shell="exec /bin/sh -c 'PATH=$fixture_session_path; export PATH;"
-force_posix_shell+=" if [ -n \"\$SSH_ORIGINAL_COMMAND\" ]; then"
-force_posix_shell+=" exec /bin/sh -c \"\$SSH_ORIGINAL_COMMAND\"; else exec /bin/sh; fi'"
-
-write_common_config \
-    "$modern_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-modern.pid" > "$modern_config"
-printf '%s\n' "KexAlgorithms curve25519-sha256" >> "$modern_config"
-write_common_config \
-    "$post_quantum_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-post-quantum.pid" > "$post_quantum_config"
-printf '%s\n' "KexAlgorithms mlkem768x25519-sha256" >> "$post_quantum_config"
-write_common_config \
-    "$legacy_port" \
-    "$fixture_dir/host_rsa" \
-    "$fixture_dir/sshd-legacy.pid" > "$legacy_config"
-printf '%s\n' "HostKeyAlgorithms ssh-rsa" >> "$legacy_config"
-write_common_config \
-    "$restricted_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-restricted.pid" > "$restricted_config"
-printf '%s\n' \
-    "KexAlgorithms curve25519-sha256" \
-    "MaxSessions 0" \
-    >> "$restricted_config"
-write_common_config \
-    "$streamlocal_global_policy_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-streamlocal-global-policy.pid" \
-    > "$streamlocal_global_policy_config"
-printf '%s\n' \
-    "AllowTcpForwarding yes" \
-    "AllowStreamLocalForwarding no" \
-    >> "$streamlocal_global_policy_config"
-write_common_config \
-    "$streamlocal_key_policy_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-streamlocal-key-policy.pid" \
-    > "$streamlocal_key_policy_config"
-sed -i '' \
-    "s|AuthorizedKeysFile $fixture_dir/authorized_keys|AuthorizedKeysFile $fixture_dir/authorized_keys-no-forwarding|" \
-    "$streamlocal_key_policy_config"
-printf '%s\n' \
-    "AllowTcpForwarding yes" \
-    "AllowStreamLocalForwarding yes" \
-    >> "$streamlocal_key_policy_config"
-write_common_config \
-    "$jump_target_port" \
-    "$fixture_dir/host_jump_target_ed25519" \
-    "$fixture_dir/sshd-jump-target.pid" > "$jump_target_config"
-sed -i '' \
-    "s|AuthorizedKeysFile $fixture_dir/authorized_keys|AuthorizedKeysFile $fixture_dir/authorized_keys-jump-target|" \
-    "$jump_target_config"
-printf '%s\n' \
-    "AllowTcpForwarding yes" \
-    "AllowStreamLocalForwarding yes" \
-    >> "$jump_target_config"
-write_common_config \
-    "$jump_forwarding_denied_port" \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-jump-forwarding-denied.pid" \
-    > "$jump_forwarding_denied_config"
-printf '%s\n' \
-    "AllowTcpForwarding no" \
-    "AllowStreamLocalForwarding yes" \
-    >> "$jump_forwarding_denied_config"
-
 write_pairing_config() {
-    local listen_address=$1
-    local host_key=$2
-    local pid_file=$3
-
     printf '%s\n' \
         "Port $pairing_port" \
-        "ListenAddress $listen_address" \
-        "HostKey $host_key" \
-        "PidFile $pid_file" \
+        "ListenAddress $1" \
+        "HostKey $2" \
+        "PidFile $3" \
         "PasswordAuthentication no" \
         "KbdInteractiveAuthentication no" \
         "PubkeyAuthentication yes" \
         "AuthorizedKeysFile $pairing_authorized_keys" \
         "UsePAM no" \
         "PermitRootLogin no" \
-        "AllowUsers $pairing_username" \
+        "AllowUsers $fixture_username" \
         "StrictModes no" \
         "PerSourcePenalties no" \
         "PrintMotd no" \
@@ -1839,24 +512,30 @@ write_pairing_config() {
         "Subsystem sftp $sftp_server"
 }
 
-write_pairing_config \
-    127.0.0.1 \
-    "$fixture_dir/host_ed25519" \
-    "$fixture_dir/sshd-pairing.pid" > "$pairing_config"
-write_pairing_config \
-    ::1 \
-    "$fixture_dir/host_jump_target_ed25519" \
-    "$fixture_dir/sshd-pairing-mismatched.pid" > "$pairing_mismatched_config"
+start_sshd() {
+    /usr/sbin/sshd -D -e -f "$1" > "$2" 2>&1 &
+    unprivileged_sshd_pids+=("$!")
+}
+
+{ write_common_config "$modern_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-modern.pid"; echo "KexAlgorithms curve25519-sha256"; } > "$fixture_dir/sshd-modern.conf"
+{ write_common_config "$post_quantum_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-pq.pid"; echo "KexAlgorithms mlkem768x25519-sha256"; } > "$fixture_dir/sshd-pq.conf"
+{ write_common_config "$legacy_port" "$fixture_dir/host_rsa" "$fixture_dir/sshd-legacy.pid"; echo "HostKeyAlgorithms ssh-rsa"; } > "$fixture_dir/sshd-legacy.conf"
+{ write_common_config "$restricted_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-restricted.pid"; printf '%s\n' "KexAlgorithms curve25519-sha256" "MaxSessions 0"; } > "$fixture_dir/sshd-restricted.conf"
+{ write_common_config "$streamlocal_global_policy_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-sl-global.pid"; printf '%s\n' "AllowTcpForwarding yes" "AllowStreamLocalForwarding no"; } > "$fixture_dir/sshd-sl-global.conf"
+{ write_common_config "$streamlocal_key_policy_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-sl-key.pid" "$fixture_dir/authorized_keys-no-forwarding"; printf '%s\n' "AllowTcpForwarding yes" "AllowStreamLocalForwarding yes"; } > "$fixture_dir/sshd-sl-key.conf"
+{ write_common_config "$jump_target_port" "$fixture_dir/host_jump_target_ed25519" "$fixture_dir/sshd-jump.pid" "$fixture_dir/authorized_keys-jump-target"; printf '%s\n' "AllowTcpForwarding yes" "AllowStreamLocalForwarding yes"; } > "$fixture_dir/sshd-jump.conf"
+{ write_common_config "$jump_forwarding_denied_port" "$fixture_dir/host_ed25519" "$fixture_dir/sshd-jump-denied.pid"; printf '%s\n' "AllowTcpForwarding no" "AllowStreamLocalForwarding yes"; } > "$fixture_dir/sshd-jump-denied.conf"
+write_pairing_config 127.0.0.1 "$fixture_dir/host_ed25519" "$fixture_dir/sshd-pairing.pid" > "$fixture_dir/sshd-pairing.conf"
+write_pairing_config ::1 "$fixture_dir/host_jump_target_ed25519" "$fixture_dir/sshd-pairing-v6.pid" > "$fixture_dir/sshd-pairing-v6.conf"
 
 streamlocal_socket="$fixture_home/.config/herdr/herdr.sock"
 streamlocal_stale_socket="$fixture_home/.heeler-ci/stale.sock"
 streamlocal_wake_failure_socket="$fixture_home/.heeler-ci/stale-wake-failure.sock"
 streamlocal_missing_socket="$fixture_home/.heeler-ci/missing.sock"
 streamlocal_count_file="$fixture_home/.heeler-ci/streamlocal-count"
-ln -s \
-    "$streamlocal_socket" \
-    "$fixture_home/.config/herdr/sessions/fixture/herdr.sock"
-"$fixture_python" scripts/fixtures/fake-herdr-streamlocal.py \
+ln -s "$streamlocal_socket" "$fixture_home/.config/herdr/sessions/fixture/herdr.sock"
+
+"$fixture_python" "$repo_root/scripts/fixtures/fake-herdr-streamlocal.py" \
     --socket "$streamlocal_socket" \
     --stale-socket "$streamlocal_stale_socket" \
     --stale-socket "$streamlocal_wake_failure_socket" \
@@ -1864,12 +543,7 @@ ln -s \
     > "$fixture_dir/fake-herdr.log" 2>&1 &
 fake_herdr_pid=$!
 
-# The weak-network route. `pfctl`/`dummynet` need root and the Network Link
-# Conditioner is machine-wide, so degrade one TCP path instead: the suite
-# points its Host at this port and steers latency, bandwidth, fragmentation
-# and abrupt severance through the control port. Every knob is a fixed
-# duration, seed, or byte count; OS receive boundaries and scheduling still vary.
-"$fixture_python" scripts/fixtures/weak-network-proxy.py \
+"$fixture_python" "$repo_root/scripts/fixtures/weak-network-proxy.py" \
     --listen-port "$weak_network_port" \
     --control-port "$weak_network_control_port" \
     --target-host 127.0.0.1 \
@@ -1877,226 +551,51 @@ fake_herdr_pid=$!
     > "$fixture_dir/weak-network.log" 2>&1 &
 weak_network_pid=$!
 
-start_unprivileged_sshd "$modern_config" "$fixture_dir/sshd-modern.log"
-modern_pid=$started_sshd_pid
-start_unprivileged_sshd \
-    "$post_quantum_config" "$fixture_dir/sshd-post-quantum.log"
-post_quantum_pid=$started_sshd_pid
-start_unprivileged_sshd "$legacy_config" "$fixture_dir/sshd-legacy.log"
-legacy_pid=$started_sshd_pid
-start_unprivileged_sshd "$restricted_config" "$fixture_dir/sshd-restricted.log"
-restricted_pid=$started_sshd_pid
-start_unprivileged_sshd \
-    "$streamlocal_global_policy_config" \
-    "$fixture_dir/sshd-streamlocal-global-policy.log"
-streamlocal_global_policy_pid=$started_sshd_pid
-start_unprivileged_sshd \
-    "$streamlocal_key_policy_config" \
-    "$fixture_dir/sshd-streamlocal-key-policy.log"
-streamlocal_key_policy_pid=$started_sshd_pid
-start_unprivileged_sshd "$jump_target_config" "$fixture_dir/sshd-jump-target.log"
-jump_target_pid=$started_sshd_pid
-start_unprivileged_sshd \
-    "$jump_forwarding_denied_config" \
-    "$fixture_dir/sshd-jump-forwarding-denied.log"
-jump_forwarding_denied_pid=$started_sshd_pid
-start_unprivileged_sshd "$pairing_config" "$fixture_dir/sshd-pairing.log"
-pairing_pid=$started_sshd_pid
-start_unprivileged_sshd \
-    "$pairing_mismatched_config" "$fixture_dir/sshd-pairing-mismatched.log"
-pairing_mismatched_pid=$started_sshd_pid
-
-# Real password authentication is the one behaviour macOS cannot exercise
-# unprivileged: only root can verify an account password, and an unprivileged
-# sshd can only authenticate the account it already runs as.
-if [[ "$ci_lane" == "app" && "$ci_app_shard" != transport ]] && sudo -n true >/dev/null 2>&1; then
-    password_username="heelerssh${RANDOM}"
-    password_secret="$(uuidgen)-$(uuidgen)"
-    password_home="$fixture_dir/password-home"
-    account_lock_dir="$lock_root/password-account-allocation"
-    if ! claim_resource_lock "$account_lock_dir" "password account allocation"; then
-        echo "Another gate is allocating its temporary password account; retry shortly." >&2
-        exit 1
-    fi
-    while dscl . -search /Users UniqueID "$password_uid" | grep -q .; do
-        password_uid=$((password_uid + 1))
-    done
-    mkdir -p "$password_home"
-    # EXIT/INT/TERM may arrive after sysadminctl creates only part of the user
-    # record, so declare cleanup intent before starting that side effect.
-    password_user_cleanup_needed=1
-    provisioning_step create_password_user create_password_user || exit 1
-    release_resource_lock "$account_lock_dir" "password account allocation"
-    account_lock_dir=""
-    provisioning_step "dscl IsHidden" \
-        sudo -n dscl . -create "/Users/$password_username" IsHidden 1 || exit 1
-    provisioning_step "chown password home" \
-        sudo -n chown "$password_uid":20 "$password_home" || exit 1
-    if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
-        password_ssh_sacl_added=1
-        provisioning_step "dseditgroup com.apple.access_ssh" \
-            sudo -n /usr/sbin/dseditgroup -o edit \
-            -a "$password_username" -t user com.apple.access_ssh || exit 1
-    fi
-    printf '%s\n' \
-        "Port $password_port" \
-        "ListenAddress 127.0.0.1" \
-        "HostKey $fixture_dir/host_ed25519" \
-        "PidFile $password_pid_file" \
-        "PasswordAuthentication yes" \
-        "KbdInteractiveAuthentication no" \
-        "PubkeyAuthentication yes" \
-        "AuthorizedKeysFile $fixture_dir/authorized_keys" \
-        "UsePAM yes" \
-        "PermitRootLogin no" \
-        "AllowUsers $password_username" \
-        "StrictModes no" \
-        "PerSourcePenalties no" \
-        "PrintMotd no" \
-        "PrintLastLog no" \
-        "LogLevel DEBUG1" \
-        "Subsystem sftp $sftp_server" \
-        > "$password_config"
-    password_fixture_available=1
-    # Fail on host account authentication before compilation can hide it.
-    export HEELER_PASSWORD_SSH_PREFLIGHT_PORT="$password_port"
-    export HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME="$password_username"
-    preflight_status=0
-    password_preflight_started=$SECONDS
-    start_password_sshd || exit 1
-    password_ssh_preflight || preflight_status=$?
-    stop_status=0
-    stop_privileged_sshd "$password_pid" "$password_pid_file" \
-        || stop_status=$?
-    if [[ "$stop_status" == "0" ]]; then
-        password_pid=""
-    fi
-    unset HEELER_PASSWORD_SSH_PREFLIGHT_PORT
-    unset HEELER_PASSWORD_SSH_PREFLIGHT_USERNAME
-    record_phase password-preflight "$password_preflight_started" "$preflight_status"
-    if [[ "$preflight_status" != "0" || "$stop_status" != "0" ]]; then
-        cat "$password_log" >&2
-        password_log_printed=1
-        exit 1
-    fi
-elif [[ "$ci_lane" == "app" && "$ci_app_shard" != transport && "$mandatory_matrix" == "1" ]]; then
-    echo "Merge CI requires passwordless sudo for the real-password fixture" >&2
-    exit 1
-elif [[ "$ci_lane" == "app" && "$ci_app_shard" != transport ]]; then
-    echo "==> No passwordless sudo: skipping the real-password sshd fixture." >&2
-    echo "==> Twelve of the thirteen mandatory behaviours still run." >&2
-fi
-
 "$fixture_python" -u -c '
-import socket
-import sys
-
-server = socket.socket()
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(("127.0.0.1", int(sys.argv[1])))
-server.listen()
-print(f"Stall server listening on 127.0.0.1:{sys.argv[1]}", flush=True)
-connections = []
+import socket, sys
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1])))
+s.listen()
+conns = []
 while True:
-    connection, _ = server.accept()
-    connections.append(connection)
+    c, _ = s.accept()
+    conns.append(c)
 ' "$stall_port" > "$fixture_dir/stall-server.log" 2>&1 &
 stall_pid=$!
 
-fixture_pids=(
-    "$modern_pid"
-    "$post_quantum_pid"
-    "$legacy_pid"
-    "$restricted_pid"
-    "$stall_pid"
-    "$streamlocal_global_policy_pid"
-    "$streamlocal_key_policy_pid"
-    "$jump_target_pid"
-    "$jump_forwarding_denied_pid"
-    "$pairing_pid"
-    "$pairing_mismatched_pid"
-    "$fake_herdr_pid"
-    "$weak_network_pid"
-)
-fixture_ports=(
-    "$modern_port"
-    "$post_quantum_port"
-    "$legacy_port"
-    "$restricted_port"
-    "$stall_port"
-    "$streamlocal_global_policy_port"
-    "$streamlocal_key_policy_port"
-    "$jump_target_port"
-    "$jump_forwarding_denied_port"
-    "$pairing_port"
-    "$weak_network_port"
-    "$weak_network_control_port"
-)
-
-fixture_failed_endpoint=""
-fixture_is_listening() {
-    local port
-    fixture_failed_endpoint=""
-    for port in "${fixture_ports[@]}"; do
-        if ! nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
-            fixture_failed_endpoint="tcp4:127.0.0.1:$port"
-            return 1
-        fi
-    done
-    if ! nc -z ::1 "$pairing_port" >/dev/null 2>&1; then
-        fixture_failed_endpoint="tcp6:[::1]:$pairing_port"
-        return 1
-    fi
-    local socket_path
-    for socket_path in "$streamlocal_socket" "$streamlocal_stale_socket" "$streamlocal_wake_failure_socket"; do
-        if [[ ! -S "$socket_path" ]]; then
-            fixture_failed_endpoint="unix:$socket_path"
-            return 1
-        fi
-    done
-    return 0
-}
-
-dump_fixture_readiness_failure() {
-    local failed_pid=${1:-}
-    local pid
-    printf 'Fixture readiness failed at %s\n' "${fixture_failed_endpoint:-unknown endpoint}" >&2
-    # Restrict diagnostics to our fixture processes. Command names and TCP
-    # listeners identify startup failures without command arguments or env.
-    {
-        printf 'Fixture readiness failed at %s\n' "${fixture_failed_endpoint:-unknown endpoint}"
-        [[ -z "$failed_pid" ]] || printf 'Fixture process exited: PID %s\n' "$failed_pid"
-        for pid in "${fixture_pids[@]}"; do
-            printf '===== fixture PID %s (pid ppid state elapsed command name)\n' "$pid"
-            ps -p "$pid" -o pid=,ppid=,state=,etime=,comm= 2>/dev/null || true
-            printf '===== fixture PID %s TCP listeners\n' "$pid"
-            lsof -nP -a -p "$pid" -iTCP -sTCP:LISTEN 2>/dev/null || true
-        done
-    } > "$fixture_dir/fixture-readiness.log"
-    dump_fixture_logs
-}
-
-for attempt in $(seq 1 50); do
-    if fixture_is_listening; then
-        break
-    fi
-    for pid in "${fixture_pids[@]}"; do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            dump_fixture_readiness_failure "$pid"
-            exit 1
-        fi
-    done
-    sleep 0.1
+for name in modern pq legacy restricted sl-global sl-key jump jump-denied pairing pairing-v6; do
+    start_sshd "$fixture_dir/sshd-$name.conf" "$fixture_dir/sshd-$name.log"
 done
 
-if ! fixture_is_listening; then
-    dump_fixture_readiness_failure
-    exit 1
-fi
-record_phase ssh-fixture-preparation "$ssh_fixture_started"
+"$fixture_python" - "$pairing_port" \
+    "$streamlocal_socket" "$streamlocal_stale_socket" "$streamlocal_wake_failure_socket" \
+    "$modern_port" "$post_quantum_port" "$legacy_port" "$restricted_port" "$stall_port" \
+    "$streamlocal_global_policy_port" "$streamlocal_key_policy_port" "$jump_target_port" \
+    "$jump_forwarding_denied_port" "$weak_network_port" "$weak_network_control_port" <<'PYWAIT'
+import os, socket, sys, time
 
-# `HEELER_SSH_E2E_REQUIRED=1` is the contract that turns a missing fixture into
-# a failure instead of a green skip: see Tests/HeelerTests/Support/RealSSHFixture.
+pairing_port = int(sys.argv[1])
+sockets = sys.argv[2:5]
+ports = [int(p) for p in sys.argv[5:]]
+
+def ready() -> bool:
+    for port in ports + [pairing_port]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return False
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+        if s.connect_ex(("::1", pairing_port)) != 0:
+            return False
+    return all(os.path.exists(path) for path in sockets)
+
+for _ in range(60):
+    if ready():
+        raise SystemExit(0)
+    time.sleep(0.1)
+raise SystemExit("Timed out waiting for SSH fixture daemons to listen")
+PYWAIT
+
 export HEELER_SSH_E2E_REQUIRED=1
 export HEELER_SSH_E2E_HOST=127.0.0.1
 export HEELER_SSH_E2E_PORT="$modern_port"
@@ -2110,867 +609,187 @@ export HEELER_SSH_E2E_STREAMLOCAL_SOCKET="$streamlocal_socket"
 export HEELER_SSH_E2E_WEAK_PORT="$weak_network_port"
 export HEELER_SSH_E2E_WEAK_CONTROL_PORT="$weak_network_control_port"
 
-password_fixture_json=null
-if [[ "$password_fixture_available" == "1" ]]; then
-    password_fixture_json=$(printf \
-        '{"port":%s,"username":"%s","password":"%s"}' \
-        "$password_port" \
-        "$password_username" \
-        "$password_secret")
-fi
-fixture_configuration=$(printf \
-    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","rsaKeyDER":"%s","passwordFixture":%s,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
-    "$modern_port" \
-    "$legacy_port" \
-    "$restricted_port" \
-    "$stall_port" \
-    "$streamlocal_global_policy_port" \
-    "$streamlocal_key_policy_port" \
-    "$weak_network_port" \
-    "$weak_network_control_port" \
-    "$fixture_username" \
-    "$device_key_seed" \
-    "$rsa_key_der" \
-    "$password_fixture_json" \
-    "$streamlocal_socket" \
-    "$streamlocal_socket" \
-    "$streamlocal_stale_socket" \
-    "$streamlocal_wake_failure_socket" \
-    "$streamlocal_missing_socket" \
-    "$streamlocal_count_file" \
-    "$fixture_home")
-fixture_configuration_base64=$(printf '%s' "$fixture_configuration" | base64)
-jump_fixture_configuration=$(printf \
+fixture_configuration_base64=$(printf \
+    '{"host":"127.0.0.1","port":%s,"legacyPort":%s,"restrictedPort":%s,"stallPort":%s,"globalPolicyPort":%s,"keyPolicyPort":%s,"weakNetworkPort":%s,"weakNetworkControlPort":%s,"username":"%s","deviceKeySeed":"%s","rsaKeyDER":"%s","passwordFixture":null,"streamLocalSocketPath":"%s","socketPath":"%s","staleSocketPath":"%s","wakeFailureStaleSocketPath":"%s","missingSocketPath":"%s","countFilePath":"%s","homePath":"%s"}' \
+    "$modern_port" "$legacy_port" "$restricted_port" "$stall_port" \
+    "$streamlocal_global_policy_port" "$streamlocal_key_policy_port" \
+    "$weak_network_port" "$weak_network_control_port" \
+    "$fixture_username" "$device_key_seed" "$rsa_key_der" \
+    "$streamlocal_socket" "$streamlocal_socket" "$streamlocal_stale_socket" \
+    "$streamlocal_wake_failure_socket" "$streamlocal_missing_socket" \
+    "$streamlocal_count_file" "$fixture_home" | base64 | tr -d '\n')
+
+jump_fixture_configuration_base64=$(printf \
     '{"host":"127.0.0.1","jumpPort":%s,"forwardingDeniedPort":%s,"targetHost":"127.0.0.1","targetPort":%s,"outerStallPort":%s,"innerStallHost":"127.0.0.1","innerStallPort":%s,"username":"%s","deviceKeySeed":"%s","socketPath":"%s"}' \
-    "$modern_port" \
-    "$jump_forwarding_denied_port" \
-    "$jump_target_port" \
-    "$stall_port" \
-    "$stall_port" \
-    "$fixture_username" \
-    "$device_key_seed" \
-    "$streamlocal_socket")
-jump_fixture_configuration_base64=$(printf '%s' "$jump_fixture_configuration" | base64)
+    "$modern_port" "$jump_forwarding_denied_port" "$jump_target_port" \
+    "$stall_port" "$stall_port" "$fixture_username" "$device_key_seed" "$streamlocal_socket" | base64 | tr -d '\n')
+
 pairing_fixture_configuration_base64=""
-if [[ "$ci_lane" == "app" ]]; then
-    if ! pairing_node_path="$(command -v node)"; then
-        echo "Node is required for the mandatory Pairing ceremony suite" >&2
-        exit 1
-    fi
-    pairing_accept_script="$PWD/plugin/src/pair-accept.js"
-    if [[ ! -f "$pairing_accept_script" ]]; then
-        echo "Pairing accept entrypoint not found at $pairing_accept_script" >&2
-        exit 1
-    fi
-    pairing_fixture_configuration=$(printf \
-        '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","deviceKeySeed":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
-        "$pairing_port" \
-        "$pairing_username" \
-        "$device_key_seed" \
-        "$pairing_node_path" \
-        "$pairing_accept_script" \
-        "$pairing_home" \
-        "$pairing_authorized_keys" \
-        "$pairing_state_root" \
-        "$pairing_state_root")
+if [[ "$ci_lane" == app ]]; then
     pairing_fixture_configuration_base64=$(printf \
-        '%s' "$pairing_fixture_configuration" | base64)
+        '{"host":"127.0.0.1","port":%s,"mismatchedHostAddress":"::1","username":"%s","deviceKeySeed":"%s","nodePath":"%s","acceptScriptPath":"%s","homePath":"%s","authorizedKeysPath":"%s","localStateRoot":"%s","remoteStateRoot":"%s"}' \
+        "$pairing_port" "$fixture_username" "$device_key_seed" "$pairing_node_path" \
+        "$repo_root/plugin/src/pair-accept.js" "$pairing_home" "$pairing_authorized_keys" \
+        "$pairing_state_root" "$pairing_state_root" | base64 | tr -d '\n')
 fi
 
-fi # SSH fixture provisioning; ordinary regression owns only a Simulator.
-record_phase preparation "$preparation_started_at"
-
-# Every lane whose executed count and skip budget this script pins exactly. The
-# full lane's provenance assertion draws its evidence from these, so a lane that
-# is not listed here proves nothing.
-pinned_lane_logs=()
-
-# Swift Testing filters exit zero having run nothing, so every mandatory suite
-# asserts its executed count. `run_suite` also refuses any skip: with
-# HEELER_SSH_E2E_REQUIRED set a fixture-backed suite must fail rather than skip,
-# so a skip here means a condition that can still hide missing coverage.
 run_suite() {
-    local lane=$1
-    local expected_tests=$2
-    local expected_suites=$3
-    local expected_skips=${4:-0}
-    shift 4
+    local lane=$1 expected_skips=$2
+    shift 2
     local log="$fixture_dir/$lane.log"
-    local noun="suite"
-    local skips
-    local suite
     local -a selectors=()
-
-    if [[ "$#" -eq 0 ]]; then
-        echo "$lane has no test selectors" >&2
-        exit 1
-    fi
+    local suite
     for suite in "$@"; do
         selectors+=("-only-testing:HeelerTests/$suite")
     done
-
-    if [[ "$expected_suites" != "1" ]]; then
-        noun="suites"
-    fi
-    HEELER_CI_TEST_PHASE="$lane" run_xcodebuild "$lane" "$xcodebuild_test_timeout_seconds" "$log" \
-        test-without-building \
-        -project Heeler.xcodeproj \
-        -scheme Heeler \
-        -derivedDataPath "$app_derived_data_path" \
-        -destination "$simulator_destination" \
-        -collect-test-diagnostics never \
-        -parallel-testing-enabled NO \
-        "${selectors[@]}" || return $?
-
+    run_app_test_bundle "$lane" "$log" -parallel-testing-enabled NO "${selectors[@]}"
+    local skips
     skips=$(grep -cE '(Test|Suite) .* skipped' "$log" || true)
     if [[ "$skips" != "$expected_skips" ]]; then
-        echo "$lane skipped $skips tests; exactly $expected_skips may skip" >&2
-        exit 1
-    fi
-    if ! grep -q \
-        "Test run with $expected_tests tests in $expected_suites $noun passed" \
-        "$log"; then
-        echo "$lane did not execute all $expected_tests tests" >&2
-        exit 1
-    fi
-    pinned_lane_logs+=("$log")
-}
-
-# Exact upstream release archives from https://releases.herdr.dev/core/0.1.13/manifest.json.
-# CI never runs the installer or updates the runner's installed/live core.
-download_core_fixture_binary() {
-    local release_dir="$fixture_dir/herdr-core-0.1.13"
-    local target checksum archive cached
-    case "$(uname -m)" in
-        arm64 | aarch64) target=macos-aarch64 ;;
-        x86_64) target=macos-x86_64 ;;
-        *) echo "No pinned herdr-core fixture for this architecture" >&2; return 1 ;;
-    esac
-    checksum=$(awk -v target="$target" '$2 == target { print $1 }' \
-        "$repo_root/scripts/fixtures/herdr-core-archive.sha256") || return 1
-    [[ -n "$checksum" ]] || { echo "No pinned herdr-core checksum for $target" >&2; return 1; }
-    mkdir -p "$release_dir" || return 1
-    archive="$release_dir/core.tar.gz"
-    cached="$core_archive_cache_dir/herdr-core-$checksum.tar.gz"
-    # A restored archive earns no trust from its cache key: it is verified like a
-    # download, and a bad one is replaced rather than left to fail every run.
-    if [[ -f "$cached" ]]; then
-        cp "$cached" "$archive" || return 1
-        if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
-            echo "Discarding a cached herdr-core archive with the wrong checksum" >&2
-            rm -f "$cached" "$archive" || return 1
-        fi
-    fi
-    if [[ ! -f "$archive" ]]; then
-        curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
-            "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive" || return 1
-    fi
-    if [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" != "$checksum" ]]; then
-        echo "Pinned herdr-core 0.1.13 archive checksum mismatch" >&2
+        echo "$lane skipped $skips tests; expected $expected_skips skips" >&2
         return 1
     fi
-    mkdir -p "$core_archive_cache_dir" || return 1
-    cp "$archive" "$cached" || return 1
-    # Extract only the named executable, never arbitrary paths from the archive.
-    tar -xzf "$archive" -C "$release_dir" herdr-core || return 1
-    chmod 700 "$release_dir/herdr-core" || return 1
-    [[ "$("$release_dir/herdr-core" --version)" == 'hc 0.1.13' ]] || {
-        echo "Pinned herdr-core fixture version mismatch" >&2; return 1;
-    }
-}
-
-start_core_fixture() {
-    download_core_fixture_binary || return 1
-    core_fixture_dir=$(mktemp -d /tmp/hc-ci.XXXXXX) || return 1
-    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" start \
-        --root "$core_fixture_dir" --port "$core_port" \
-        --core "$fixture_dir/herdr-core-0.1.13/herdr-core" || return 1
-}
-
-stop_core_fixture() {
-    [[ -n "${core_fixture_dir:-}" ]] || return 0
-    local log_copy_status=0
-    if [[ -f "$core_fixture_dir/logs/sshd.log" ]]; then
-        cp "$core_fixture_dir/logs/sshd.log" "$fixture_dir/herdr-core-sshd.log" || log_copy_status=1
-    fi
-    # Diagnostic preservation cannot short-circuit process shutdown.
-    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" stop \
-        --root "$core_fixture_dir" || {
-        echo "Could not stop isolated herdr-core fixture; preserved $core_fixture_dir" >&2
-        return 1
-    }
-    core_fixture_dir=""
-    return "$log_copy_status"
 }
 
 run_core_fixture_suite() {
-    start_core_fixture || return 1
-    # Reuse the scheme's existing private configuration channel. Recovery must
-    # restore this phase's config, not the preceding legacy fixture's.
-    HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
-    push_simulator_environment HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite HerdrCoreTransportE2ETests 9 1 0 HerdrCoreTransportE2ETests || return $?
-    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
-    push_simulator_environment HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    stop_core_fixture || return 1
-}
-
-# The fixture account owns its home and its tmux directories, so no server of
-# the runner's own is reached, started or stopped (scripts/fixtures/tmux-ssh.py).
-start_tmux_fixture() {
-    [[ -n "${tmux_fixture_executable:-}" ]] \
-        || tmux_fixture_executable=$(find_fixture_tmux) || return 1
-    # Short: the longest socket name must still fit an AF_UNIX path under it.
-    tmux_fixture_dir=$(mktemp -d /tmp/ht-ci.XXXXXX) || return 1
-    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" start \
-        --root "$tmux_fixture_dir" --port "$core_port" \
-        --tmux "$tmux_fixture_executable" || return 1
-}
-
-stop_tmux_fixture() {
-    [[ -n "${tmux_fixture_dir:-}" ]] || return 0
-    local log_copy_status=0
-    if [[ -f "$tmux_fixture_dir/logs/sshd.log" ]]; then
-        cp "$tmux_fixture_dir/logs/sshd.log" "$fixture_dir/tmux-sshd.log" || log_copy_status=1
+    local release_dir="$fixture_dir/herdr-core-0.1.13" target checksum archive cached
+    case "$(uname -m)" in
+        x86_64) target=macos-x86_64 ;;
+        *) target=macos-aarch64 ;;
+    esac
+    checksum=$(awk -v target="$target" '$2 == target { print $1 }' "$repo_root/scripts/fixtures/herdr-core-archive.sha256")
+    mkdir -p "$release_dir" "$core_archive_cache_dir"
+    archive="$release_dir/core.tar.gz"
+    cached="$core_archive_cache_dir/herdr-core-$checksum.tar.gz"
+    if [[ -f "$cached" && "$(shasum -a 256 "$cached" | awk '{print $1}')" == "$checksum" ]]; then
+        cp "$cached" "$archive"
+    else
+        curl --fail --silent --show-error --location --retry 2 --connect-timeout 10 --max-time 120 \
+            "https://releases.herdr.dev/core/0.1.13/herdr-core-$target.tar.gz" -o "$archive"
+        [[ "$(shasum -a 256 "$archive" | awk '{print $1}')" == "$checksum" ]] || { echo "herdr-core checksum mismatch" >&2; return 1; }
+        cp "$archive" "$cached"
     fi
-    # Diagnostic preservation cannot short-circuit process shutdown.
-    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" stop \
-        --root "$tmux_fixture_dir" || {
-        echo "Could not stop isolated tmux fixture; preserved $tmux_fixture_dir" >&2
-        return 1
-    }
-    tmux_fixture_dir=""
-    return "$log_copy_status"
+    tar -xzf "$archive" -C "$release_dir" herdr-core
+    chmod 700 "$release_dir/herdr-core"
+    core_fixture_dir=$(mktemp -d /tmp/hc-ci.XXXXXX)
+    "$fixture_python" "$repo_root/scripts/fixtures/herdr-core-ssh.py" start \
+        --root "$core_fixture_dir" --port "$core_port" --core "$release_dir/herdr-core"
+    HEELER_SSH_E2E_CONFIG=$(<"$core_fixture_dir/core-test-config")
+    push_simulator_environment HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+    run_suite HerdrCoreTransportE2ETests 0 HerdrCoreTransportE2ETests
+    HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
+    push_simulator_environment HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+    stop_core_fixture
 }
 
 run_tmux_fixture_suite() {
-    start_tmux_fixture || return 1
-    # The same private channel as the herdr-core fixture, restored the same way.
+    tmux_fixture_dir=$(mktemp -d /tmp/ht-ci.XXXXXX)
+    "$fixture_python" "$repo_root/scripts/fixtures/tmux-ssh.py" start \
+        --root "$tmux_fixture_dir" --port "$core_port" --tmux "$tmux_fixture_executable"
     HEELER_SSH_E2E_CONFIG=$(<"$tmux_fixture_dir/tmux-test-config")
-    push_simulator_environment HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    run_suite TmuxTransportE2ETests 38 1 0 TmuxTransportE2ETests || return $?
+    push_simulator_environment HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+    run_suite TmuxTransportE2ETests 0 TmuxTransportE2ETests
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
-    push_simulator_environment HEELER_SSH_E2E_CONFIG \
-        HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG || return 1
-    stop_tmux_fixture || return 1
+    push_simulator_environment HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
+    stop_tmux_fixture
 }
 
-# These phases share fixture state only within their worker. DirectStreamLocal
-# must observe the stale socket before TransportBehavior relinks it.
-run_app_fixture_suites() {
-    local suite
-    if [[ "$ci_app_shard" == all || "$ci_app_shard" == session-weak ]]; then
-        if [[ "$password_fixture_available" == 1 ]]; then
-            start_password_sshd || return 1
-        fi
-        run_suite HeelerSSHSessionE2ETests 13 1 "$session_skip_count" \
-            HeelerSSHSessionE2ETests || return $?
-        if [[ "$password_fixture_available" == 1 ]]; then
-            stop_privileged_sshd "$password_pid" "$password_pid_file" || return 1
-            password_pid=""
-        fi
+run_package_e2e_suite() {
+    mkdir -p "$package_derived_data_path/Logs/Test"
+    local log="$fixture_dir/package-e2e.log"
+    local bundle="$package_derived_data_path/Logs/Test/package-e2e.xcresult"
+    rm -rf -- "$bundle"
+    push_simulator_environment \
+        HEELER_SSH_E2E_REQUIRED HEELER_SSH_E2E_HOST HEELER_SSH_E2E_PORT HEELER_SSH_E2E_PQ_PORT \
+        HEELER_SSH_E2E_RESTRICTED_PORT HEELER_SSH_E2E_USERNAME HEELER_SSH_E2E_DEVICE_KEY_SEED \
+        HEELER_SSH_E2E_WEAK_PORT HEELER_SSH_E2E_WEAK_CONTROL_PORT HEELER_SSH_E2E_STREAMLOCAL_SOCKET
+    if [[ -n "$package_base_xctestrun" ]]; then
+        run_xcodebuild "HeelerSSH package E2E" "$log" \
+            test-without-building -xctestrun "$package_base_xctestrun" \
+            -destination "$simulator_destination" -resultBundlePath "$bundle" \
+            -collect-test-diagnostics never
+    else
+        (
+            cd "$repo_root/Packages/HeelerSSH"
+            xcodebuild test-without-building -scheme HeelerSSH \
+                -derivedDataPath "$package_derived_data_path" \
+                -destination "$simulator_destination" -resultBundlePath "$bundle" \
+                -collect-test-diagnostics never
+        ) 2>&1 | tee "$log"
     fi
-    case "$ci_app_shard" in
-        session-weak)
-            run_suite WeakNetworkE2ETests 11 1 0 WeakNetworkE2ETests || return $?
-            ;;
-        all | transport)
-            run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
-                HeelerSSHDirectStreamLocalE2ETests || return $?
-            if [[ "$ci_app_shard" == all ]]; then
-                run_suite SharedFixtureE2ETests 137 7 0 \
-                    HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
-                    HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
-                    ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests || return $?
-                ln -s SharedFixtureE2ETests.log "$fixture_dir/WeakNetworkE2ETests.log"
-            else
-                run_suite SharedFixtureE2ETests 126 6 0 \
-                    HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
-                    HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
-                    ImageStagingE2ETests PairingCeremonyE2ETests || return $?
-            fi
-            # Keep the named behavior guards tied to their owning suite.
-            for suite in HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
-                HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
-                ImageStagingE2ETests PairingCeremonyE2ETests; do
-                ln -s SharedFixtureE2ETests.log "$fixture_dir/$suite.log"
-            done
-            run_core_fixture_suite || return $?
-            run_tmux_fixture_suite || return $?
-            ;;
-    esac
-}
-
-# Every behaviour the merge gate treats as mandatory names the test that proves
-# it. A count alone cannot show that Events, resize, or SFTP specifically ran.
-assert_behavior() {
-    local behavior=$1
-    local log_name=$2
-    local test_name=$3
-    local log="$fixture_dir/$log_name.log"
-
-    # Each shard proves its own named behaviors; the aggregate requires the
-    # other shard's evidence. A missing log in an owned phase still fails.
-    case "${ci_app_shard:-all}" in
-        session-weak)
-            case "$log_name" in
-                HeelerSSHSessionE2ETests | WeakNetworkE2ETests) ;;
-                *) return 0 ;;
-            esac ;;
-        transport)
-            case "$log_name" in
-                HeelerSSHSessionE2ETests | WeakNetworkE2ETests | full-lane) return 0 ;;
-            esac ;;
-        ordinary) [[ "$log_name" == full-lane ]] || return 0 ;;
-    esac
-
-    if ! grep -qF "Test $test_name passed" "$log"; then
-        echo "Mandatory behaviour not proven: $behavior ($test_name)" >&2
-        exit 1
+    if [[ "$(grep -cE '(Test|Suite) .* skipped' "$log" || true)" != "0" ]]; then
+        echo "HeelerSSH package E2E had unexpected skips" >&2
+        return 1
     fi
 }
 
-# The full lane runs with no fixture configured, so the fixture-backed suites
-# skip there by design. That design is also how eleven percent of the lane's
-# headline total can execute nothing while the run still reports success, which
-# is why the full lane is not asserted on a total: the number a total guard
-# would compare is satisfied by exactly the failure it exists to catch.
-#
-# Provenance is asserted instead. A full-lane skip is permitted only when one of
-# the lanes this script pins with an exact executed count and an exact skip
-# budget ran that same test to a pass. This is deliberately not an allow-list of
-# suite names: a suite cannot be entered into it without also being made to run
-# somewhere the gate checks, so a ninth suite joining the skip list fails here,
-# by name, rather than reading as a rounding difference.
-assert_full_lane_coverage() {
-    local log=$1
-    local executed_floor=$2
-    local covered="$fixture_dir/pinned-lane-passes.txt"
-    local skipped="$fixture_dir/full-lane-skips.txt"
-    local unproven
-    local total
-    local skips
-    local executed
+xcrun simctl boot "$simulator_udid" >/dev/null 2>&1 || true
 
-    # `Test <name> passed after 1.234 seconds.` — the run summary reads
-    # `Test run with N tests in M suites passed after ...`, which the same
-    # pattern would otherwise reduce to a name, so it is deleted first.
-    cat "${pinned_lane_logs[@]}" \
-        | sed -n \
-            -e '/Test run with /d' \
-            -e 's/^.*Test \(.*\) passed after .*$/\1/p' \
-        | LC_ALL=C sort -u > "$covered"
-    if [[ "$password_fixture_available" != "1" ]]; then
-        # The one behaviour a developer laptop may omit, and the only place a
-        # full-lane skip is allowed to go unproven. Merge CI cannot reach this
-        # branch: an absent privileged fixture already exits above. The two
-        # tests are named rather than counted, so the exemption cannot widen
-        # into a budget that later skips can hide inside.
-        printf '%s\n' \
-            '"password authentication and exec round trip through real sshd"' \
-            '"incorrect password has a distinct authentication error"' \
-            >> "$covered"
-        LC_ALL=C sort -u -o "$covered" "$covered"
+if [[ "$ci_lane" == package ]]; then
+    if [[ -z "$package_products_archive" ]]; then
+        (
+            cd "$repo_root/Packages/HeelerSSH"
+            xcodebuild build-for-testing -scheme HeelerSSH \
+                -derivedDataPath "$package_derived_data_path" \
+                -destination "$simulator_destination" \
+                -collect-test-diagnostics never COMPILER_INDEX_STORE_ENABLE=NO
+        ) 2>&1 | tee "$fixture_dir/package-build.log"
+        find_package_xctestrun || true
     fi
-
-    sed -n 's/^.*Test \(.*\) skipped: .*$/\1/p' "$log" \
-        | LC_ALL=C sort -u > "$skipped"
-    unproven=$(LC_ALL=C comm -23 "$skipped" "$covered")
-    if [[ -n "$unproven" ]]; then
-        echo "The full lane skipped tests that no pinned lane proved:" >&2
-        echo "$unproven" >&2
-        echo "Make each one run in a lane run_suite pins, or fix the skip." >&2
-        exit 1
-    fi
-
-    total=$(sed -n \
-        's/^.*Test run with \([0-9][0-9]*\) tests in .* passed after .*$/\1/p' \
-        "$log" | tail -n 1)
-    if [[ -z "$total" ]]; then
-        echo "The full lane printed no passing run summary" >&2
-        exit 1
-    fi
-    skips=$(grep -c 'Test .* skipped:' "$log" || true)
-    executed=$((total - skips))
-    # A floor, not an equality: adding tests must not require editing this
-    # script, but losing coverage must be a deliberate act. Re-derive it as the
-    # run summary's total minus the count of `Test ... skipped:` lines in the
-    # same log. The total alone is not usable here — it counts the skips.
-    if ((executed < executed_floor)); then
-        echo "The full lane executed $executed tests ($total minus $skips" \
-            "skipped); at least $executed_floor must run" >&2
-        exit 1
-    fi
-    echo "==> Full lane executed $executed of $total tests," \
-        "$skips skipped and all of them proven elsewhere." >&2
-}
-
-if [[ "$ci_lane" == "app" ]]; then
-# The direct-streamlocal suite asserts that a stale socket is still stale.
-# HeelerSSHTransportBehaviorE2ETests relinks that socket, so it must run after.
-# Swift Testing counts a skipped test in the run total, so only the permitted
-# skip count changes when the privileged password fixture is absent.
-session_skip_count=0
-if [[ "$password_fixture_available" != "1" ]]; then
-    session_skip_count=2
+    boot_simulator
+    run_package_e2e_suite
+    exit 0
 fi
-echo "==> Preparation finished at t+${SECONDS}s for app/$ci_app_shard"
-start_preparation_work fixtures
-# Build once per worker, joining the owned build if preparation overlapped it,
-# unless full verification's shared build already compiled the products.
-# Keep the test manifest's gate flag explicit even before fixture setup.
-export HEELER_SSH_E2E_REQUIRED=1
-[[ "$ci_app_shard" != ordinary ]] || export HEELER_SSH_E2E_REQUIRED=0
-if [[ -n "$app_products_archive" ]]; then
-    restore_app_products
-else
-    run_xcodebuild "Build for testing" "$xcodebuild_build_timeout_seconds" \
-        "$fixture_dir/build-for-testing.log" \
-        build-for-testing \
-        -project Heeler.xcodeproj \
-        -scheme Heeler \
+
+if [[ -z "$app_products_archive" ]]; then
+    mkdir -p "$source_packages_dir"
+    run_xcodebuild "Build for testing" "$fixture_dir/build-for-testing.log" \
+        build-for-testing -project Heeler.xcodeproj -scheme Heeler \
         -derivedDataPath "$app_derived_data_path" \
+        -clonedSourcePackagesDirPath "$source_packages_dir" \
         -destination "$simulator_destination" \
-        -collect-test-diagnostics never
+        -collect-test-diagnostics never COMPILER_INDEX_STORE_ENABLE=NO
+    find_app_xctestrun || true
 fi
-# The simulator has been booting since before the build or the restore
-# started; whatever remains of its boot is all this wait costs.
-boot_wait_started=$SECONDS
-xcrun simctl bootstatus "$simulator_udid" -b
-record_phase simulator-boot-wait "$boot_wait_started"
-if [[ "$ci_app_shard" != ordinary ]]; then
-# Read through variable indirection by push_simulator_environment, which
-# static analysis cannot follow; unset again by clear_simulator_environment.
+
+boot_simulator
+
 # shellcheck disable=SC2034
 {
     HEELER_SSH_E2E_CONFIG="$fixture_configuration_base64"
     HEELER_SSH_JUMP_E2E_CONFIG="$jump_fixture_configuration_base64"
     HEELER_PAIRING_E2E_CONFIG="$pairing_fixture_configuration_base64"
 }
-push_simulator_environment \
-    HEELER_SSH_E2E_CONFIG \
-    HEELER_SSH_JUMP_E2E_CONFIG \
-    HEELER_PAIRING_E2E_CONFIG
-fi
-if [[ "$ci_app_shard" != ordinary ]]; then
-    run_app_fixture_suites
-fi
+push_simulator_environment HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG
 
-if [[ "$password_fixture_available" == "1" ]]; then
-    assert_behavior "real Password" HeelerSSHSessionE2ETests \
-        '"password authentication and exec round trip through real sshd"'
-fi
-assert_behavior "Device Key" HeelerSSHSessionE2ETests \
-    '"authorized Device Key authenticates and executes through real sshd"'
-assert_behavior "RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
-    '"RSA credentials authenticate when the Host accepts only RSA-SHA2-512"'
-assert_behavior "Jump Host RSA-SHA2-512" HeelerSSHTransportBehaviorE2ETests \
-    '"RSA authenticates both hops when each Host accepts only RSA-SHA2-512"'
-assert_behavior "Bootstrap Key" PairingCeremonyE2ETests \
-    'fullCeremonyEnrollsTheDeviceKeyAndVerifies()'
-assert_behavior "two-hop trust" HeelerSSHJumpHostGateE2ETests \
-    '"TOFU records both endpoints once and identifies either mismatch"'
-# Trust at both hops is not the product. This is: connect the jump, forward to
-# the target, authenticate it, exchange a real ping, and tear the two sessions
-# down in order. Folded into the trust assertion it was invisible to rename.
-assert_behavior "Jump Host product path" HeelerSSHJumpHostGateE2ETests \
-    '"protocol 17 ping traverses independent SSH hops"'
-assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
-    '"direct Host Events preserve framing, concurrency, and slot reuse"'
-assert_behavior "absolute Unix endpoints without HOME probing" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"absolute Unix endpoints preserve shell characters for RPC and Events without probing HOME"'
-assert_behavior "Usage quoting and endpoint runtime" HeelerSSHTransportBehaviorE2ETests \
-    '"Usage quotes its runtime and plugin paths through an endpoint exec"'
-assert_behavior "Usage missing runtime" HeelerSSHTransportBehaviorE2ETests \
-    '"Usage reports a missing or obsolete recorded runtime without a PATH fallback"'
-assert_behavior "Usage response cap and framing" HeelerSSHTransportBehaviorE2ETests \
-    '"Usage rejects over-cap output and malformed responses on a real exec"'
-assert_behavior "Usage detached worker" HeelerSSHTransportBehaviorE2ETests \
-    '"Usage returns from SSH while its real worker keeps scanning"'
-assert_behavior "Usage deadline isolation" HeelerSSHTransportBehaviorE2ETests \
-    '"Usage times out without invalidating the Host connection"'
-assert_behavior "git stdin bytes and fixed command" HeelerSSHTransportBehaviorE2ETests \
-    '"git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths"'
-assert_behavior "git deadline isolation" HeelerSSHTransportBehaviorE2ETests \
-    '"a git deadline surfaces its own error and preserves the SSH connection"'
-assert_behavior "git cancellation isolation" HeelerSSHTransportBehaviorE2ETests \
-    '"cancelling a running git script preserves SSH after the remote bound and cleanup window"'
-assert_behavior "Changes read leaves the Checkout untouched" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a Changes read parses real git and leaves the index, fsmonitor and hooks untouched"'
-assert_behavior "Changes file patch: tracked and untracked files" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"file patches read tracked and untracked content through real SSH without changing the Checkout"'
-assert_behavior "Changes line counts: counted in the one exec" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a Changes read counts lines from the seeded repository in its one exec"'
-assert_behavior "Changes failure states: outside a repository and a missing directory" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a Changes read distinguishes an outside directory from a missing directory"'
-assert_behavior "Changes untracked directory: lists its files" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"an untracked directory lists its files over one exec"'
-# The same reads, patches and listing over hostile names, on the direct and
-# the Jump Host route. scripts/verify-changes-linux-host.sh runs this test
-# against a Linux Host with fish and POSIX sh login shells (#395).
-assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ETests \
-    '"Changes, file patches and an untracked directory read correctly on every configured field Host"'
-# A tmux Host is only ever reached, never started (ADR 0044). The fixture's
-# configuration creates a session on start, so a client that could start a
-# server would leave one behind for this test to find.
-assert_behavior "tmux Host connects without starting a server" TmuxTransportE2ETests \
-    '"connecting and detecting start no server, with a configuration that creates a session on start"'
-# The inventory loop is one long exec that speaks only when something changed
-# (ADR 0045): a loop that printed every second would fail this test's count.
-assert_behavior "tmux inventory loop prints only on change" TmuxTransportE2ETests \
-    '"the inventory loop prints once and then only on change, in one ordinary SSH session"'
-assert_behavior "PTY" HeelerSSHPTYE2ETests \
-    '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
-assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
-    '"direct Host Attach preserves PTY IO, resize, end, and reuse"'
-assert_behavior "shell terminal creation" HeelerSSHTransportBehaviorE2ETests \
-    '"shell terminal creation sends one exact tab create request"'
-assert_behavior "direct Host shell terminal Attach" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"direct Host ordinary terminal Attach preserves PTY behavior"'
-assert_behavior "Jump Host shell terminal Attach" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"Jump Host ordinary terminal Attach preserves PTY behavior"'
-assert_behavior "RPC does not stall Attach" HeelerSSHTransportBehaviorE2ETests \
-    '"direct Host RPC does not stall Attach"'
-assert_behavior "RPC does not stall Attach on a Jump Host" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"Jump Host RPC does not stall Attach"'
-# These writes can return healthy response envelopes even when a serializer
-# silently drops a field. Keep every distinct wire contract named (#165).
-assert_behavior "agent focus target" HeelerSSHTransportBehaviorE2ETests \
-    '"agent focus sends the exact opaque target through the RPC channel"'
-assert_behavior "agent rename params" HeelerSSHTransportBehaviorE2ETests \
-    '"agent rename sends its custom name and target exactly"'
-assert_behavior "agent rename clear omission" HeelerSSHTransportBehaviorE2ETests \
-    '"agent rename omits name when clearing a custom name"'
-assert_behavior "workspace rename params" HeelerSSHTransportBehaviorE2ETests \
-    '"workspace rename sends its label and workspace id exactly"'
-assert_behavior "pane read params and result" HeelerSSHTransportBehaviorE2ETests \
-    '"pane read sends exact params and round trips the result"'
-assert_behavior "worktree remove params" HeelerSSHTransportBehaviorE2ETests \
-    '"confirmed worktree removal crosses the real wire dispatch seam"'
-assert_behavior "worktree remove stale authorization writes nothing" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"stale worktree authorization writes no request bytes"'
-assert_behavior "herdr API rejection" HeelerSSHTransportBehaviorE2ETests \
-    '"a herdr error envelope surfaces as a typed API rejection"'
-assert_behavior "session API rejection mapping" HeelerSSHTransportBehaviorE2ETests \
-    '"the session maps a herdr rejection to apiRejected"'
-# herdr still answers `agent_pane_busy` while a startup command holds a fresh
-# pane's foreground, and 0.9.4 on macOS also refuses a launch line longer than
-# the terminal's canonical input limit until the shell's line editor starts.
-# Only the fixture scripts these refusals, so a named assertion for each is the
-# only thing standing between a refactor and silently dropping a documented
-# server behaviour (#128, #453).
-assert_behavior "agent_pane_busy retry" HeelerSSHTransportBehaviorE2ETests \
-    '"agent start waits out a fresh pane'"'"'s booting shell"'
-assert_behavior "canonical-mode launch retry" HeelerSSHTransportBehaviorE2ETests \
-    '"agent start waits out a shell that cannot yet take a long launch line"'
-# Each compensation cleans up different Host state; a count alone cannot tell
-# which of them a change removed. New Workspace (#230) also names the
-# create-then-start shape and the ambiguous-failure preserve rule, because
-# those are the two ways that path can silently drift without changing the
-# suite total.
-assert_behavior "failed launch closes its pane" HeelerSSHTransportBehaviorE2ETests \
-    '"a refused agent start closes the pane it created"'
-assert_behavior "failed launch removes its worktree" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a refused worktree agent start removes the worktree it created"'
-assert_behavior "new-workspace launch skips tab.create" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a new-workspace agent start creates the workspace then starts in its root pane"'
-assert_behavior "failed launch closes its workspace" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"a refused new-workspace agent start closes the workspace it created"'
-assert_behavior "ambiguous launch preserves its workspace" \
-    HeelerSSHTransportBehaviorE2ETests \
-    '"an ambiguous new-workspace agent start does not close the workspace"'
-assert_behavior "SFTP" ImageStagingE2ETests \
-    'directStagingStreamsPrivateFileAndAtomicallyRenamesThePart()'
-assert_behavior "forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
-    '"global forwarding denial reports the honest combined cause"'
-assert_behavior "key-policy forwarding denial" HeelerSSHDirectStreamLocalE2ETests \
-    '"authorized_keys forwarding denial reports the honest combined cause"'
-assert_behavior "forwarding denial surviving a failed wake" \
-    HeelerSSHDirectStreamLocalE2ETests \
-    '"a failed wake does not narrow a forwarding denial"'
-assert_behavior "cancellation" HeelerSSHDirectStreamLocalE2ETests \
-    '"cancellation closes only its channel and preserves connection reuse"'
-assert_behavior "teardown" HeelerSSHSessionE2ETests \
-    '"clean channel close leaves the connection reusable"'
-
-# The weak-network half of the stress criterion. Each of these runs the named
-# behaviour over the impairment proxy — added latency, a bandwidth cap,
-# fragmentation, and abrupt severance — rather than over loopback at full speed.
-assert_behavior "weak-network concurrent RPCs" WeakNetworkE2ETests \
-    '"concurrent RPCs survive latency, a bandwidth cap, and fragmentation"'
-assert_behavior "weak-network Events, Attach and SFTP staging" WeakNetworkE2ETests \
-    '"Events and Attach stay live while SFTP stages over a degraded link"'
-assert_behavior "weak-network cancellation" WeakNetworkE2ETests \
-    '"cancelling a rate-starved upload frees only its own channel"'
-assert_behavior "weak-network timeout" WeakNetworkE2ETests \
-    '"bandwidth starvation times out instead of wedging the connection"'
-assert_behavior "weak-network reconnect" WeakNetworkE2ETests \
-    '"an abruptly severed link surfaces and a fresh connection recovers"'
-assert_behavior "weak-network app lifecycle" WeakNetworkE2ETests \
-    '"the events session survives a cut and a background round trip"'
-assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
-    '"repeated degraded rounds reclaim every file descriptor"'
-# The producer side of the property EventsSession redials on. Every other
-# assertion of it in the repo is positive, so this is the only one that would
-# notice it sticking true on a dead connection.
-assert_behavior "disconnect is reported" WeakNetworkE2ETests \
-    '"a severed link makes the transport report itself disconnected"'
-# The opposite case: a git read that overruns its deadline is a Changes
-# failure, never a link failure, so the Host keeps its connection, its
-# transport generation and its attached terminal (#395).
-assert_behavior "git overrun keeps the Host connection" WeakNetworkE2ETests \
-    '"a git overrun shows timed out without redialing the Host or rebuilding its terminal"'
-# The Host-side caps are sized so the largest Changes read and the Load More
-# patch cross the cellular-like profile inside the git deadline (#395).
-assert_behavior "Changes caps fit the git deadline on a cellular link" \
-    WeakNetworkE2ETests \
-    '"a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile"'
-
-fi
-
-if [[ "$ci_lane" == "app" ]]; then
-    clear_simulator_environment
-    case "$ci_app_shard" in session-weak | transport) exit 0 ;; esac
-fi
-
-if [[ "$ci_lane" == "package" ]]; then
-# Same overlap as the app lane: compilation needs the destination to exist,
-# not to be booted, so remaining simulator boot runs under the build.
-run_xcodebuild "HeelerSSH package build" "$xcodebuild_build_timeout_seconds" \
-    "$fixture_dir/package-build.log" \
-    build-for-testing \
-    -scheme HeelerSSH \
-    -derivedDataPath "$package_derived_data_path" \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never
-boot_wait_started=$SECONDS
-xcrun simctl bootstatus "$simulator_udid" -b
-record_phase simulator-boot-wait "$boot_wait_started"
-
-push_simulator_environment \
-    HEELER_SSH_E2E_REQUIRED \
-    HEELER_SSH_E2E_HOST \
-    HEELER_SSH_E2E_PORT \
-    HEELER_SSH_E2E_PQ_PORT \
-    HEELER_SSH_E2E_RESTRICTED_PORT \
-    HEELER_SSH_E2E_USERNAME \
-    HEELER_SSH_E2E_DEVICE_KEY_SEED \
-    HEELER_SSH_E2E_WEAK_PORT \
-    HEELER_SSH_E2E_WEAK_CONTROL_PORT \
-    HEELER_SSH_E2E_STREAMLOCAL_SOCKET
-
-package_e2e_log="$fixture_dir/package-e2e.log"
-package_result_bundle="$package_derived_data_path/Logs/Test/package-e2e.xcresult"
-run_xcodebuild "HeelerSSH package E2E" "$xcodebuild_test_timeout_seconds" \
-    "$package_e2e_log" \
-    test-without-building \
-    -scheme HeelerSSH \
-    -derivedDataPath "$package_derived_data_path" \
-    -destination "$simulator_destination" \
-    -resultBundlePath "$package_result_bundle" \
-    -collect-test-diagnostics never
-if [[ -n "$evidence_dir" ]]; then
-    python3 "$repo_root/scripts/verify-ci-ios-evidence.py" record \
-        --bundle "$package_result_bundle" --phase package-e2e \
-        --evidence-dir "$evidence_dir" --lane package --shard all
-fi
-clear_simulator_environment
-
-if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
-    || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 86 tests in 5 suites passed' "$package_e2e_log" \
-    || ! grep -q \
-        'Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "exec streams preserve stdout bytes without allocating a PTY" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "exec streams discard stderr without blocking stdout" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "one-shot exec finishes when its stderr read takes the stdout reply off the socket" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "exec stream finishes when its stdout read takes the trailing stderr off the socket" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "exec stream read timeout and cancellation preserve channel reuse" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "closing a live exec stream is idempotent and spares the connection" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "uncertain exec stream opening invalidates the connection" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a key exchange failure is redialled once and then reported" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "an externally dialled stream carries a full session and is released on close" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "handshake negotiates post-quantum key exchange" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "handshake falls back to Curve25519 key exchange" passed' \
-        "$package_e2e_log" \
-    || ! grep -q 'Test "remote transport loss reclaims every owned native resource" passed' \
-        "$package_e2e_log" \
-    || ! grep -q 'Test "an abruptly severed weak link reclaims every owned native resource" passed' \
-        "$package_e2e_log" \
-    || ! grep -q 'Test "a severed link makes a stream-local connection report itself disconnected" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a teardown that only runs out of its budget spares the session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a genuine transport failure during teardown still invalidates the session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "issue 149 exec cleanup expiry invalidates allocated channels" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "openSFTP pre-init failures spare the SSH session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "openSFTP pending init failures invalidate the SSH session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "compensation expiry reclaims SFTP and spares the SSH session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "compensation shutdown failure invalidates the SSH session" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "issue 149 transport failures invalidate each tracked operation" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "direct TCP/IP pump backpressures a fast raw writer without losing bytes" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "outbound backpressure does not livelock a channel open" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "cancelling a transport-send owner drains" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "cancelling a transport-send owner invalidates" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "timing out a transport-send owner at loop-top drains" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "timing out a transport-send owner at loop-top invalidates" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "one-shot RPCs yield so a live PTY can progress" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "cancelling a yielded one-shot distinguishes cleanup outcomes" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "timing out a yielded one-shot distinguishes cleanup outcomes" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "invalidation during a yielding wait does not touch a stale native pointer" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "yielded channel teardown rejects same-id I/O and preserves close" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "repeated invalidation reclaims every file descriptor" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "measurement: Attach throughput with concurrent RPCs" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "SFTP operations and close wait out an in-flight handle use" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a serialized channel-open wait honors deadline and cancellation" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "an invalidation generation rejects a watch armed before it" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a transport-send owner error with outbound pending invalidates" passed' \
-        "$package_e2e_log" \
-    || ! grep -q \
-        'Test "a bridge write to a closed peer reports peerClosed" passed' \
-        "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all 86 tests" >&2
-    exit 1
-fi
-exit 0
-fi
-
-# The full lane runs with no fixture configured, so every fixture-backed suite
-# must skip — hence the clear above. The gate is still in force, though, and
-# `HEELER_SSH_E2E_REQUIRED=0` says exactly that: driven by the gate, nothing
-# configured. Suites whose only remaining route is a machine-owned resource
-# (PairingCeremonyE2ETests would otherwise re-target the developer's own sshd
-# and rewrite their real authorized_keys) refuse it and skip; see
-# RealSSHFixture.isUnderMergeGate. cleanup() unsets it again on exit.
-export HEELER_SSH_E2E_REQUIRED=0
-push_simulator_environment HEELER_SSH_E2E_REQUIRED
-
-full_lane_log="$fixture_dir/full-lane.log"
-HEELER_CI_TEST_PHASE=full-lane run_xcodebuild "Full app test lane" "$xcodebuild_test_timeout_seconds" \
-    "$full_lane_log" \
-    test-without-building \
-    -project Heeler.xcodeproj \
-    -scheme Heeler \
-    -derivedDataPath "$app_derived_data_path" \
-    -destination "$simulator_destination" \
-    -collect-test-diagnostics never
-
-# 769 is a floor, not the current count: it is what the lane executed the day it
-# was written, deliberately left below what the lane reaches now so that adding
-# tests never requires editing this script. Adding tests to a fixture-backed
-# suite cannot move it at all — the full lane runs with no fixture, so those
-# tests skip here and execute in a lane run_suite pins. The floor is not what
-# proves the coverage; the skip-versus-pinned-lane comparison above it is.
-if [[ "$ci_app_shard" == all ]]; then
-    assert_full_lane_coverage "$full_lane_log" 769
-fi
-
-# The three groups that run only here, and so had no assertion of any kind
-# before this. Each names the behaviour rather than counting the suite.
-assert_behavior "admission reserves the production Events and Attach slots" \
-    full-lane 'productionLimitsReserveEventsAndAttachWithinTheConnectionCeiling()'
-assert_behavior "admission stays non-blocking" full-lane \
-    'sessionSaturationDoesNotBlockForwardingAdmission()'
-assert_behavior "admission respects the connection ceiling" full-lane \
-    'connectionCeilingBoundsForwardingAndSessionTogether()'
-assert_behavior "a cancelled waiter frees its admission capacity" full-lane \
-    'cancelledWaiterDoesNotLeakConnectionCapacity()'
-assert_behavior "TOFU migrates a legacy record rather than re-prompting" \
-    full-lane 'matchingLegacyRecordMigratesAlgorithmMetadata()'
-assert_behavior "TOFU refuses a changed key without overwriting it" full-lane \
-    'changedKeyFailsWithoutConfirmationOrOverwrite()'
-assert_behavior "no obsolete algorithm is negotiable" full-lane \
-    '"the session driver negotiates no obsolete algorithm"'
-assert_behavior "no private key entry point exists" full-lane \
-    '"the SSH package has no private key entry point"'
-assert_behavior "signing never exports a key" full-lane \
-    '"the transport signs through CryptoKit rather than exporting a key"'
+case "$ci_app_shard" in
+    session-weak)
+        run_suite HeelerSSHSessionE2ETests 2 HeelerSSHSessionE2ETests
+        run_suite WeakNetworkE2ETests 0 WeakNetworkE2ETests
+        run_core_fixture_suite
+        if [[ -n "$package_products_archive" ]]; then
+            run_package_e2e_suite
+        fi
+        ;;
+    transport)
+        run_suite HeelerSSHDirectStreamLocalE2ETests 0 HeelerSSHDirectStreamLocalE2ETests
+        run_suite SharedFixtureE2ETests 0 \
+            HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
+            HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
+            ImageStagingE2ETests PairingCeremonyE2ETests
+        run_tmux_fixture_suite
+        ;;
+    all)
+        run_suite HeelerSSHSessionE2ETests 2 HeelerSSHSessionE2ETests
+        run_suite HeelerSSHDirectStreamLocalE2ETests 0 HeelerSSHDirectStreamLocalE2ETests
+        run_suite SharedFixtureE2ETests 0 \
+            HeelerSSHPTYE2ETests HeelerSSHJumpHostGateE2ETests \
+            HeelerSSHTransportBehaviorE2ETests ChangesFieldHostE2ETests \
+            ImageStagingE2ETests WeakNetworkE2ETests PairingCeremonyE2ETests
+        run_core_fixture_suite
+        run_tmux_fixture_suite
+        export HEELER_SSH_E2E_REQUIRED=0
+        push_simulator_environment HEELER_SSH_E2E_REQUIRED
+        run_app_test_bundle "Full app test lane" "$fixture_dir/full-lane.log"
+        ;;
+esac

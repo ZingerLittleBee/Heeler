@@ -11,7 +11,6 @@ and selector identities from xcresulttool's test-results summary/tests reports.
 from __future__ import annotations
 
 import json
-import importlib.util
 import os
 import plistlib
 import shlex
@@ -176,49 +175,26 @@ def selector_matches(selector: str, identifier: str) -> bool:
             or identifier.removesuffix("()") == selector.removesuffix("()"))
 
 
-def verify_test_result(bundle: Path, selectors: list[str], arguments: list[str] | None = None) -> None:
+def verify_test_result(bundle: Path, selectors: list[str]) -> None:
     summary_report = xcresult_report(bundle, "summary")
     summary = TestRunSummary.parse(summary_report)
     if summary.executed <= 0:
         raise ValueError(f"App test run executed no tests ({summary.total} registered, {summary.skipped} skipped)")
     if summary.expected_failures or summary.result == "Expected Failure":
-        # CI evidence records only passed and skipped tests, so a known issue
-        # would pass here and fail that shard's recorder much later.
         raise ValueError(f"App test result reports {summary.expected_failures} expected failures; "
                          "fix or disable the known issue instead (docs/agents/testing.md)")
     if summary.failed or summary.result != "Passed":
         raise ValueError(f"App test result reports {summary.result} with {summary.failed} failed tests")
-    tests_report = xcresult_report(bundle, "tests")
-    identifiers = executed_test_identifiers(tests_report)
-    if not identifiers:
-        raise ValueError("App test result contains no executed test identifiers")
-    for selector in selectors:
-        if not any(selector_matches(selector, identifier) for identifier in identifiers):
-            raise ValueError(f"Requested selector executed no matching tests: {selector}")
+    if selectors:
+        tests_report = xcresult_report(bundle, "tests")
+        identifiers = executed_test_identifiers(tests_report)
+        if not identifiers:
+            raise ValueError("App test result contains no executed test identifiers")
+        for selector in selectors:
+            if not any(selector_matches(selector, identifier) for identifier in identifiers):
+                raise ValueError(f"Requested selector executed no matching tests: {selector}")
     print(f"==> App tests executed {summary.executed} of {summary.total} tests "
           f"({summary.skipped} skipped); {len(selectors)} selectors verified", flush=True)
-    evidence_directory = os.environ.get("HEELER_CI_EVIDENCE_DIR")
-    if evidence_directory:
-        # Export only after the existing result and selector checks succeed.
-        # The shell/workflow marks completion after its own guards and cleanup.
-        evidence_path = Path(__file__).with_name("verify-ci-ios-evidence.py")
-        spec = importlib.util.spec_from_file_location("heeler_ci_evidence", evidence_path)
-        if spec is None or spec.loader is None:
-            raise ValueError("Cannot load the CI evidence recorder")
-        evidence = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(evidence)
-        flags = arguments or []
-        exclusions = []
-        for index, flag in enumerate(flags):
-            if flag.startswith("-skip-testing:"):
-                exclusions.append(flag.removeprefix("-skip-testing:"))
-            elif flag == "-skip-testing":
-                if index + 1 == len(flags) or flags[index + 1].startswith("-"):
-                    raise ValueError("-skip-testing requires a selector")
-                exclusions.append(flags[index + 1])
-        evidence.record(Path(evidence_directory), os.environ.get("HEELER_CI_TEST_PHASE", ""),
-                        "app", os.environ.get("HEELER_CI_APP_SHARD", "all"),
-                        summary_report, tests_report, selectors, exclusions)
 
 
 def simctl(*arguments: str) -> bytes:
@@ -273,26 +249,7 @@ def write_preference(udid: str, key: str, value: bool | int | None) -> None:
         simctl("spawn", udid, "defaults", "write", DOMAIN, key, kind, str(value).lower())
 
 
-def run(arguments: list[str]) -> int:
-    result_bundle, selectors = prepare_test_arguments(arguments)
-    udid = pin_destination(arguments)
-    if udid is None:
-        status = subprocess.call(["xcodebuild", *arguments])
-        status = 128 - status if status < 0 else status
-        if status == 0 and result_bundle is not None:
-            verify_test_result(result_bundle, selectors, arguments)
-        return status
-
-    # -b boots a shut-down device and waits for its services before defaults or
-    # the test host can start. CI already overlaps this boot with compilation.
-    subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], check=True)
-    preferences = plistlib.loads(simctl("spawn", udid, "defaults", "export", DOMAIN, "-"))
-    original = {key: preferences.get(key) for key in PREFERENCES}
-    for key, value in original.items():
-        if value is not None and type(value) not in (bool, int):
-            raise ValueError(f"Cannot safely restore {DOMAIN}/{key}: unexpected preference type")
-
-    changed = []
+def run_child_with_signals(arguments: list[str]) -> int:
     child = None
     interrupted = 0
 
@@ -310,6 +267,36 @@ def run(arguments: list[str]) -> int:
     previous_handlers = {
         signum: signal.signal(signum, interrupt) for signum in (signal.SIGINT, signal.SIGTERM)
     }
+    try:
+        child = subprocess.Popen(["xcodebuild", *arguments])
+        status = child.wait()
+        return 128 + interrupted if interrupted else (128 - status if status < 0 else status)
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+
+
+def run(arguments: list[str]) -> int:
+    result_bundle, selectors = prepare_test_arguments(arguments)
+    udid = pin_destination(arguments)
+    if udid is None or os.environ.get("HEELER_SIMULATOR_ACCESSIBILITY_MANAGED") == "1":
+        if result_bundle is not None:
+            print(f"==> App test result bundle: {result_bundle}", flush=True)
+        status = run_child_with_signals(arguments)
+        if status == 0 and result_bundle is not None:
+            verify_test_result(result_bundle, selectors)
+        return status
+
+    # -b boots a shut-down device and waits for its services before defaults or
+    # the test host can start.
+    subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], check=True)
+    preferences = plistlib.loads(simctl("spawn", udid, "defaults", "export", DOMAIN, "-"))
+    original = {key: preferences.get(key) for key in PREFERENCES}
+    for key, value in original.items():
+        if value is not None and type(value) not in (bool, int):
+            raise ValueError(f"Cannot safely restore {DOMAIN}/{key}: unexpected preference type")
+
+    changed = []
     status = 1
     if result_bundle is not None:
         print(f"==> App test result bundle: {result_bundle}", flush=True)
@@ -319,13 +306,12 @@ def run(arguments: list[str]) -> int:
             changed.append(key)
             write_preference(udid, key, value)
         print(f"==> Simulator {udid}: accessibility enabled for app tests", flush=True)
-        child = subprocess.Popen(["xcodebuild", *arguments])
-        status = child.wait()
-        status = 128 + interrupted if interrupted else (128 - status if status < 0 else status)
+        status = run_child_with_signals(arguments)
     finally:
         # Let cleanup finish if the watchdog signals the whole process group.
-        for signum in previous_handlers:
-            signal.signal(signum, signal.SIG_IGN)
+        previous_handlers = {
+            signum: signal.signal(signum, signal.SIG_IGN) for signum in (signal.SIGINT, signal.SIGTERM)
+        }
         restore_failed = False
         for key in reversed(changed):
             try:
@@ -343,7 +329,7 @@ def run(arguments: list[str]) -> int:
         if restore_failed and status == 0:
             status = 1
     if status == 0 and result_bundle is not None:
-        verify_test_result(result_bundle, selectors, arguments)
+        verify_test_result(result_bundle, selectors)
     return status
 
 

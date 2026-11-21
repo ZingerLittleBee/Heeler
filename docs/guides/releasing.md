@@ -98,7 +98,6 @@ when a change needs full coverage.
 | Push ordinary `main` or a historical `v*` tag | No distribution workflow |
 | `make release-check VERSION=X.Y.Z` | Manual dispatch from `main`, explicit version, next unreserved build as an override; archive and validate, never upload or reserve a number |
 | `make testflight-retry TAG=...` | Re-run failed jobs of the original tag's run after reporting the recovery action |
-| A tag's run fails because GitHub gave a job no runner | [release-retry.yml](../../.github/workflows/release-retry.yml) re-runs its failed jobs as `make testflight-retry` would, until the run's third attempt |
 | Select a build in App Store Connect | No GitHub Action or new tag |
 
 `meta` validates the immutable source and creates a draft prerelease checkpoint.
