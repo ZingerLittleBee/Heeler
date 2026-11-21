@@ -150,25 +150,30 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(presentation.rows.map(\.caption) == ["Audit", "Workflow"])
     }
 
-    @Test func theSummaryNamesARunningWorkflowFirst() {
+    @Test func theSummaryCountsTheRowsByState() {
         let running = Self.present([
             Self.row("Find old steps", subtitle: "Explore"),
             Self.row("docs-audit", kind: .workflow, progress: Self.auditProgress),
             Self.row("Check screenshots", state: .completed, endedAgo: 10),
         ])
-        #expect(
-            running.summary
-                == .init(
-                    status: .running, text: "2 running · docs-audit 2/3",
-                    accessibilityValue: "2 running, docs-audit, 2 of 3 agents done"))
+        #expect(running.summary?.status == .running)
+        #expect(running.summary?.text == "2 running · 1 done")
+        #expect(running.summary?.accessibilityValue == "2 running, 1 done")
 
-        let subagents = Self.present([Self.row("Find old steps"), Self.row("quiet", isStale: true)])
-        #expect(subagents.summary?.text == "1 running · Find old steps")
+        // What wants a look comes before what ended well.
+        let mixed = Self.present([
+            Self.row("Find old steps"), Self.row("quiet", isStale: true),
+            Self.row("a", state: .completed), Self.row("b", state: .failed),
+        ])
+        #expect(mixed.summary?.counts.map(\.status) == [.running, .unconfirmed, .failed, .completed])
+        #expect(mixed.summary?.text == "1 running · 1 not updating · 1 failed · 1 done")
 
         let finished = Self.present([
             Self.row("a", state: .completed), Self.row("b", state: .completed), Self.row("c", state: .stopped),
         ])
-        #expect(finished.summary == .init(status: .completed, text: "2 done · 1 stopped", accessibilityValue: "2 done, 1 stopped"))
+        #expect(finished.summary?.status == .completed)
+        #expect(finished.summary?.text == "2 done · 1 stopped")
+        #expect(finished.summary?.accessibilityValue == "2 done, 1 stopped")
         #expect(Self.present([Self.row("a", state: .completed), Self.row("b", state: .failed)]).summary?.status == .failed)
         #expect(Self.present([]).summary == nil)
     }
@@ -194,7 +199,7 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(presentation.rows.map(\.fullTerminalText) == ["$ python3 -c '\nimport os'", "$ make lint"])
         #expect(presentation.rows[0].accessibilityLabel == "python3 -c '\nimport os', Command, running, 42 seconds")
         #expect(presentation.rows[1].accessibilityLabel == "make lint, Command, stopped, 1 minute")
-        #expect(presentation.summary?.text == "1 running · python3 -c '\nimport os'")
+        #expect(presentation.summary?.text == "1 running · 1 stopped")
     }
 
     @Test(arguments: [(0.0, "0s"), (38.9, "38s"), (138, "2m 18s"), (3_900, "1h 5m"), (-5, "0s")])
