@@ -9,7 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
-- Choose **ElevenLabs** in Settings › Voice Input to transcribe Composer recordings with Scribe v3 and your own API key. ([PR](https://github.com/ZingerLittleBee/Heeler/pulls?q=is%3Apr+head%3Afeat%2Felevenlabs-voice-input))
+- Choose **ElevenLabs** in Settings › Voice Input to transcribe Composer recordings with Scribe v3 and your own API key. (PR #810)
 
 - Fold Chat's Background Work strip into one line. With two or more items, the strip over the Composer gains a line that counts them by state, such as `2 running · 1 failed · 1 done`: tap it to fold the rows away, and tap it again to bring them back. The choice holds for every Agent and across launches, and a failure turns its count red without unfolding the rows. While the keyboard is up or a Blocked card shows, the one line the strip condenses to counts the same way, where it used to name the first running item. (PR #802)
 - Reach a Host through [tailcat](https://github.com/tailscale/tailcat), a tunnel to one machine with no account and no network to manage. Run `tailcat serve 22` on the machine, add a tailcat network in Settings › Overlay Networks by pasting the address it prints, and choose that network on the Host's route: Heeler fills in the address, and the port is the one you served. The network's screen shows whether the machine is reached directly or through a relay. The address is kept in the Keychain, because anyone who has it can reach that port. Add Network now lists its four types in one row and describes the chosen one below. (PR #744)
