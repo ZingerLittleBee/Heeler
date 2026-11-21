@@ -16,6 +16,106 @@ struct PhotosPickerImageSelection: ImageSelection {
     }
 }
 
+/// Classifies `PhotosPickerItem` content types so videos route through file
+/// staging while photos and Live Photos stay on the image pipeline.
+enum PhotosPickerMedia {
+    /// Returns the video `UTType` if `supportedContentTypes` represents a video
+    /// asset. Live Photos stay images even if a companion movie type is listed.
+    static func videoType(in supportedContentTypes: [UTType]) -> UTType? {
+        if supportedContentTypes.contains(where: { $0.conforms(to: .livePhoto) }) {
+            return nil
+        }
+        return ClipboardAttachment.preferredVideoType(
+            in: supportedContentTypes.map(\.identifier))
+    }
+}
+
+/// File-backed `Transferable` for `PhotosPickerItem` videos so Photos exports
+/// directly to disk rather than loading the entire video into memory.
+struct PhotosPickerVideoTransfer: Transferable, Sendable {
+    enum Result: Sendable, Equatable {
+        case materialized(MaterializedFile)
+        case oversized
+        case unavailable
+    }
+
+    let result: Result
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            PhotosPickerVideoTransfer(
+                result: Self.importReceivedFile(received.file, fallbackType: .movie))
+        }
+        FileRepresentation(importedContentType: .video) { received in
+            PhotosPickerVideoTransfer(
+                result: Self.importReceivedFile(received.file, fallbackType: .video))
+        }
+    }
+
+    static func importReceivedFile(
+        _ sourceURL: URL,
+        fallbackType: UTType,
+        maximumByteCount: Int64 = Int64(FilePreparer.maximumByteCount),
+        inboxRoot: URL = FilePreparer.defaultDirectory
+    ) -> Result {
+        do {
+            let materialized = try FileInbox.copyToInbox(
+                from: sourceURL,
+                fallbackType: fallbackType,
+                defaultStem: "video",
+                maximumByteCount: maximumByteCount,
+                inboxRoot: inboxRoot)
+            return .materialized(materialized)
+        } catch FilePreparationError.sourceTooLarge {
+            return .oversized
+        } catch {
+            return .unavailable
+        }
+    }
+}
+
+/// Loads a video chosen in `PhotosPicker` via a file-backed `Transferable`
+/// copy into a temporary inbox that `ComposerStagingStore` cleans up once
+/// `FilePreparer` finishes.
+struct PhotosPickerVideoSelection: FileSelection {
+    let item: PhotosPickerItem
+
+    func materialize() async throws -> MaterializedFile {
+        try Task.checkCancellation()
+        guard let transfer = try await item.loadTransferable(type: PhotosPickerVideoTransfer.self) else {
+            throw FilePreparationError.selectionUnavailable
+        }
+        if Task.isCancelled {
+            if case .materialized(let file) = transfer.result {
+                file.cleanup()
+            }
+            throw CancellationError()
+        }
+        switch transfer.result {
+        case .materialized(let file):
+            return file
+        case .oversized:
+            throw FilePreparationError.sourceTooLarge
+        case .unavailable:
+            throw FilePreparationError.selectionUnavailable
+        }
+    }
+}
+
+/// One item chosen in `PhotosPicker`, split between image pills and video file
+/// uploads.
+enum PickedMedia: Sendable {
+    case image(any ImageSelection)
+    case file(any FileSelection)
+
+    static func from(_ item: PhotosPickerItem) -> PickedMedia {
+        if PhotosPickerMedia.videoType(in: item.supportedContentTypes) != nil {
+            return .file(PhotosPickerVideoSelection(item: item))
+        }
+        return .image(PhotosPickerImageSelection(item: item))
+    }
+}
+
 /// Routes clipboard media to the right staging pipeline: videos go through file
 /// staging so a video copied from iOS Photos (which also places a poster
 /// thumbnail on the pasteboard) is uploaded as the original video file instead
