@@ -16,21 +16,6 @@ extension WeakNetworkE2ETests {
     /// that deadline and held only to ``hostRunLimit``.
     @Test("a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile")
     func largeChangesReadsFitTheGitDeadlineOverACellularLink() async throws {
-        let rawIterations = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"] ?? "1"
-        guard let iterations = Int(rawIterations), (1...100).contains(iterations) else {
-            Issue.record("HEELER_WEAK_CHANGES_ITERATIONS must be an integer between 1 and 100")
-            return
-        }
-        for iteration in 1...iterations {
-            print("[changes-field] iteration=\(iteration)/\(iterations)")
-            try await calibrateLargeChangesRead()
-        }
-        print("[weak-changes-test] completed \(iterations) iterations")
-    }
-
-    /// Diagnostic repetition uses a fresh Checkout and closed transports each
-    /// time. Ordinary merge CI runs the original single calibration.
-    private func calibrateLargeChangesRead() async throws {
         let fixture = try #require(WeakNetworkFixture.current)
         try await fixture.control.reset()
         let environment = fixture.environment
