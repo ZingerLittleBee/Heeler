@@ -92,7 +92,15 @@ make test-app \
 
 The app wrapper resolves a Simulator name once, enables the accessibility tree,
 then restores only the preferences it changed. Direct `xcodebuild` skips that
-preparation and can miss SwiftUI labels on a clean Simulator (#339).
+preparation, so a live suite that reads labels from a window it hosts can miss
+SwiftUI labels on a clean Simulator (#339).
+
+`HeelerTests` hosts no real UI. A test there creates no view, view controller
+or window, whether directly, through a helper, or through an app view factory
+such as `TerminalScreenView.makeConfiguredTerminal`. Test the store, parser or
+presentation value behind a screen, and check the screen itself in the
+Simulator with [the UI runbook](simulator-ui.md). The hosted suites were
+removed to simplify CI; add one back only when the maintainer asks for it.
 
 ## Opt-in live suites
 

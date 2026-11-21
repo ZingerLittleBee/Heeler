@@ -402,8 +402,9 @@ run_xcodebuild() {
     if [[ "$ci_lane" == "app" ]]; then
         mkdir -p "$source_packages_dir"
         set -- "$@" -clonedSourcePackagesDirPath "$source_packages_dir"
-        # App suites need the simulator accessibility tree (#339); the runner
-        # prepares it and restores the preferences afterwards.
+        # The app wrapper checks the result bundle for executed tests. It
+        # also enables the simulator accessibility tree (#339), which only
+        # the opt-in live suites read, and restores it afterwards.
         if [[ "${1:-}" == "test-without-building" ]]; then
             runner=(python3 "$repo_root/scripts/run-app-simulator-tests.py")
         fi
