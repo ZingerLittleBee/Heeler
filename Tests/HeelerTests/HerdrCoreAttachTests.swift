@@ -206,6 +206,55 @@ struct HerdrCoreAttachTests {
         await other.end()
     }
 
+    // MARK: A program's reprint
+
+    private static let paint = Data("\u{1B}[!p\u{1B}[H\u{1B}[2Jscreen\u{1B}[?9001l".utf8)
+    private static let erase = Data("\u{1B}[2J\u{1B}[3J\u{1B}[H".utf8)
+
+    private static func block(_ body: String) -> Data {
+        Data("\u{1B}[?2026h\(body)\u{1B}[?2026l".utf8)
+    }
+
+    @Test func aReprintThatComesInFramesReachesTheTerminalInOneWrite() async throws {
+        let harness = try await Harness()
+        let (session, _) = try await harness.attach()
+        var output = session.output.makeAsyncIterator()
+        let history = Self.block("line one\r\nline two\r\n")
+
+        for payload in [Self.paint, Self.erase, Data(history.prefix(12)), Data(history.dropFirst(12))] {
+            try await harness.socket.deliver(HerdrCoreFrame(channel: 2, kind: .data, payload: payload))
+        }
+
+        #expect(try await output.next() == Self.paint)
+        #expect(try await output.next() == Self.erase)
+        #expect(try await output.next() == history)
+        // A held frame's credit goes back as it arrives, before the view has it.
+        await harness.socket.waitForCredit(channel: 2, total: 12)
+        await session.end()
+    }
+
+    @Test func afterAReprintAResizeKeepsBackWhatItBringsUntilItsReprintIsWhole() async throws {
+        let harness = try await Harness()
+        let (session, _) = try await harness.attach()
+        var output = session.output.makeAsyncIterator()
+        let socket = harness.socket
+        for payload in [Self.paint, Self.erase + Self.block("history\r\n")] {
+            try await socket.deliver(HerdrCoreFrame(channel: 2, kind: .data, payload: payload))
+        }
+        for _ in 0..<3 { _ = try await output.next() }
+
+        session.resize(cols: 48, rows: 22)
+        _ = await socket.waitForFrame(channel: 2, kind: .resize)
+        let cleared = Self.block("\r\u{1B}[20A\u{1B}[Jstatus")
+        let reprint = Self.erase + Self.block("history\r\n")
+        for payload in [cleared, reprint] {
+            try await socket.deliver(HerdrCoreFrame(channel: 2, kind: .data, payload: payload))
+        }
+
+        #expect(try await output.next() == cleared + reprint)
+        await session.end()
+    }
+
     // MARK: Size, focus and facts
 
     @Test func aResizeCarriesTheGrid() async throws {
