@@ -47,6 +47,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Open Changes from an Agent's status line only when you tap the branch or the changes totals. The blank stretch between them opened it too, and with nothing changed that stretch runs from the branch to the latency, right above the message box and under the keyboard grabber, so a stray touch landed in Changes. (PR #818)
 - Upload the original video file when you paste a video copied from iOS Photos into the Composer (through the text box's Paste action or **Paste Image**) or drag a video onto the Composer, instead of uploading its preview thumbnail as a static `image.jpg`. (PR #814)
 - Keep the bottom of Chat covered while the Background Work strip folds. The fade under the Composer kept its old height for the first frames of the fold, so the conversation showed at full strength along the screen's bottom edge for a moment. The fade now belongs to the Composer and moves with it, through the fold, the keyboard, and a growing draft. (PR #813)
 - Show Antigravity CLI (`agy`) subagents in Chat's Background Work strip, mark their `invoke_subagent` tool rows as running until they reply or stop, and keep the Agent in **Working** while a subagent runs. Antigravity CLI appends a note after the closing brace of `invoke_subagent`'s JSON block, which caused Heeler to drop the subagent id from real transcripts. (PR #811)
