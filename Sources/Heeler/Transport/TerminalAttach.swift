@@ -56,6 +56,18 @@ enum TerminalViewerPresence: Sendable, Equatable {
     case factsChanged(TerminalDisplayFacts)
 }
 
+/// What is known, before any of its output, of how a Terminal's program
+/// answers a resize (`HerdrCoreReprintHold`).
+enum TerminalReprint: Sendable, Equatable {
+    /// Nothing: an attach finds out from the output.
+    case unknown
+    /// The program prints its whole history again after every resize.
+    case afterResize
+    /// It does, and this attach resizes its Terminal, so a reprint follows the
+    /// first paint.
+    case afterAttach
+}
+
 /// One interactive terminal request: its typed remote target, how it joins
 /// (herdr's takeover flag, a core's viewer role and display facts), and the
 /// initial geometry.
@@ -75,6 +87,8 @@ struct TerminalAttachRequest: Sendable, Equatable {
     /// The core this attach means, on a herdr-core Host. It goes to no other,
     /// since an address means another Terminal there.
     var coreID: String?
+    /// What a herdr-core Host knows of the program's reprints.
+    var reprint = TerminalReprint.unknown
 
     init(
         target: TerminalAttachTarget,
