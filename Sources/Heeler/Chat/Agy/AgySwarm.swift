@@ -92,6 +92,8 @@ struct AgySwarmSnapshot: Equatable, Sendable {
         let isMarkedDone: Bool
         let isMarkedStall: Bool
         let shouldCollapseBrief: Bool
+        let lineCount: Int
+        let isLongPost: Bool
         let displayTime: String?
         let recipientSummary: String?
         let rawCitedSeqs: [Int]
@@ -112,6 +114,8 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             mentionsAll: Bool,
             rawCitedSeqs: [Int]? = nil,
             shouldCollapseBrief: Bool? = nil,
+            lineCount: Int? = nil,
+            isLongPost: Bool? = nil,
             isMarkedDone: Bool? = nil,
             isMarkedStall: Bool? = nil,
             displayTime: String?? = nil
@@ -132,6 +136,9 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             self.shouldCollapseBrief =
                 shouldCollapseBrief
                 ?? (isBrief && Self.exceedsBriefPreviewLimits(text))
+            let computedLines = lineCount ?? Self.countLines(in: text)
+            self.lineCount = computedLines
+            self.isLongPost = isLongPost ?? Self.exceedsCompactPreviewLimits(text, lineCount: computedLines)
             if let explicitTime = displayTime {
                 self.displayTime = explicitTime
             } else {
@@ -188,6 +195,29 @@ struct AgySwarmSnapshot: Equatable, Sendable {
                 newlines += 1
                 if newlines >= 6 { return true }
             }
+            return false
+        }
+
+        /// Logical lines in a board post, ignoring trailing blank newlines.
+        static func countLines(in text: String) -> Int {
+            let trimmed = text.trimmingCharacters(in: .newlines)
+            guard !trimmed.isEmpty else { return 0 }
+            var count = 1
+            for byte in trimmed.utf8 where byte == UInt8(ascii: "\n") {
+                count += 1
+            }
+            return count
+        }
+
+        /// Whether a post exceeds the 2-line compact directory preview and should
+        /// advertise opening the dedicated Post Detail reader.
+        static func exceedsCompactPreviewLimits(_ text: String, lineCount: Int? = nil) -> Bool {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            let lines = lineCount ?? countLines(in: trimmed)
+            if lines >= 3 { return true }
+            if trimmed.utf8.count > 130 || trimmed.count > 100 { return true }
+            if trimmed.contains("```") { return true }
             return false
         }
 
@@ -472,6 +502,8 @@ enum AgySwarmParser {
         var isMarkedDone: Bool
         var isMarkedStall: Bool
         var shouldCollapseBrief: Bool
+        var lineCount: Int
+        var isLongPost: Bool
         var displayTime: String?
 
         init(
@@ -497,6 +529,9 @@ enum AgySwarmParser {
             self.isMarkedDone = !isControl && !isBrief && AgySwarmSnapshot.BoardMessage.hasLeadingTag("[done]", in: text)
             self.isMarkedStall = !isControl && !isBrief && AgySwarmSnapshot.BoardMessage.hasLeadingTag("[stall]", in: text)
             self.shouldCollapseBrief = isBrief && AgySwarmSnapshot.BoardMessage.exceedsBriefPreviewLimits(text)
+            let computedLines = isControl ? 0 : AgySwarmSnapshot.BoardMessage.countLines(in: text)
+            self.lineCount = computedLines
+            self.isLongPost = !isControl && AgySwarmSnapshot.BoardMessage.exceedsCompactPreviewLimits(text, lineCount: computedLines)
             self.displayTime = AgySwarmSnapshot.BoardMessage.formatClockTime(time)
         }
     }
@@ -854,7 +889,8 @@ enum AgySwarmParser {
                 seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: raw.parsedTimestamp,
                 channel: raw.channel, isBrief: false, isControl: true, mentions: [],
                 channelMentions: [], mentionsAll: false, rawCitedSeqs: [],
-                shouldCollapseBrief: false, isMarkedDone: false, isMarkedStall: false,
+                shouldCollapseBrief: false, lineCount: 0, isLongPost: false,
+                isMarkedDone: false, isMarkedStall: false,
                 displayTime: raw.displayTime)
         }
         let parsedMentions = resolveMentions(
@@ -869,7 +905,8 @@ enum AgySwarmParser {
             channel: raw.channel, isBrief: raw.kind == "brief", isControl: false,
             mentions: parsedMentions.mentions, channelMentions: chanMentions,
             mentionsAll: parsedMentions.all, rawCitedSeqs: raw.tokens.citedSeqs,
-            shouldCollapseBrief: raw.shouldCollapseBrief, isMarkedDone: raw.isMarkedDone,
+            shouldCollapseBrief: raw.shouldCollapseBrief, lineCount: raw.lineCount,
+            isLongPost: raw.isLongPost, isMarkedDone: raw.isMarkedDone,
             isMarkedStall: raw.isMarkedStall, displayTime: raw.displayTime)
     }
 
