@@ -19,8 +19,14 @@ struct HerdrCoreReprintTests {
     /// status line.
     private static let cleared = block("\r\u{1B}[20A\u{1B}[Jstatus")
 
+    /// Its status line, which it at times repaints between the erase and the
+    /// reprint: a block with no line feed in it.
+    private static let statusLine = block("\u{1B}[J? for shortcuts\r")
+
     private static func bytes(_ text: String) -> Data { Data(text.utf8) }
     private static func block(_ body: String) -> Data { open + bytes(body) + close }
+    /// A reprint: a block of lines.
+    private static func history(_ name: String) -> Data { block("\(name)\r\n") }
 
     private let start = ContinuousClock.now
 
@@ -28,14 +34,16 @@ struct HerdrCoreReprintTests {
         start + .milliseconds(Int((seconds * 1000).rounded()))
     }
 
-    private static func reprint(limit: Int = HerdrCoreFrame.maximumPayload) -> HerdrCoreReprint {
-        HerdrCoreReprint(limit: limit, quiet: .seconds(2), resizeWait: .seconds(1))
+    private static func reprint(
+        limit: Int = HerdrCoreFrame.maximumPayload, expecting reprint: TerminalReprint = .unknown
+    ) -> HerdrCoreReprint {
+        HerdrCoreReprint(limit: limit, quiet: .seconds(2), resizeWait: .seconds(1), expecting: reprint)
     }
 
     /// A machine whose attach has shown a reprint.
     private func reprinted() -> HerdrCoreReprint {
         var reprint = Self.reprint()
-        _ = reprint.receive(Self.erase + Self.block("all"), at: at(0))
+        _ = reprint.receive(Self.erase + Self.history("all"), at: at(0))
         return reprint
     }
 
@@ -81,14 +89,16 @@ struct HerdrCoreReprintTests {
 
         #expect(reprint.receive(frame, at: at(0)) == Step(passed: [frame]))
         #expect(reprint.receive(Self.erase, at: at(0)) == Step(passed: [Self.erase]))
-        #expect(reprint.receive(Self.bytes("$ ") + Self.open, at: at(0)) == Step(passed: [Self.bytes("$ ") + Self.open]))
+        #expect(
+            reprint.receive(Self.bytes("$ ") + Self.open, at: at(0))
+                == Step(passed: [Self.bytes("$ ") + Self.open]))
         #expect(!reprint.isHolding)
     }
 
     /// On the resize that follows an attach, Antigravity CLI at times repaints
     /// its status line in a block of its own between the erase and the reprint.
     @Test func aBlockRightBehindAHeldOneIsHeldAsWell() {
-        let status = Self.block("\u{1B}[J? for shortcuts\r")
+        let status = Self.statusLine
         let history = Self.block(String(repeating: "line\r\n", count: 1500))
         var reprint = Self.reprint()
 
@@ -106,7 +116,7 @@ struct HerdrCoreReprintTests {
 
         #expect(reprint.receive(Self.erase + Self.open + big, at: at(0)) == Step(passed: [Self.erase, Self.open + big]))
         #expect(reprint.receive(big, at: at(0)) == Step(passed: [big]))
-        _ = reprint.receive(Self.erase + Self.block("all"), at: at(1))
+        _ = reprint.receive(Self.erase + Self.history("all"), at: at(1))
         reprint.resized(at: at(2))
         #expect(reprint.receive(big, at: at(2.1)) == Step(passed: [big]))
     }
@@ -130,8 +140,8 @@ struct HerdrCoreReprintTests {
         #expect(reprint.receive(Self.erase, at: at(10.2)) == Step(passed: [], held: Self.erase.count))
         #expect(reprint.receive(Self.open + Self.bytes("two"), at: at(10.3)) == Step(passed: [], held: 11))
         #expect(
-            reprint.receive(Self.bytes("more") + Self.close + Self.bytes("tail"), at: at(10.4))
-                == Step(passed: [Self.cleared + Self.erase + Self.block("twomore"), Self.bytes("tail")]))
+            reprint.receive(Self.bytes("\r\n") + Self.close + Self.bytes("tail"), at: at(10.4))
+                == Step(passed: [Self.cleared + Self.erase + Self.history("two"), Self.bytes("tail")]))
     }
 
     /// The link sets how long a reprint takes, so each step is waited for on
@@ -147,10 +157,11 @@ struct HerdrCoreReprintTests {
         #expect(reprint.patience(at: at(12.4)) == .seconds(2))
         // The erase's wait running out lets nothing go.
         #expect(reprint.release(at: at(12.6)) == nil)
-        _ = reprint.receive(Self.open + Self.bytes("two"), at: at(14))
+        _ = reprint.receive(Self.open + Self.bytes("two\r\n"), at: at(14))
         #expect(reprint.patience(at: at(14)) == .seconds(2))
         #expect(
-            reprint.receive(Self.close, at: at(15.9)) == Step(passed: [Self.cleared + Self.erase + Self.block("two")]))
+            reprint.receive(Self.close, at: at(15.9))
+                == Step(passed: [Self.cleared + Self.erase + Self.history("two")]))
     }
 
     @Test func anotherResizeGivesWhatIsHeldMoreTime() {
@@ -161,21 +172,21 @@ struct HerdrCoreReprintTests {
         reprint.resized(at: at(20.8))
 
         #expect(reprint.release(at: at(21.5)) == nil)
-        let rest = Self.erase + Self.block("three")
+        let rest = Self.erase + Self.history("three")
         #expect(reprint.receive(rest, at: at(21.6)) == Step(passed: [Self.cleared + rest]))
     }
 
     @Test func aResizeSentWhileAReprintIsHeldHoldsFromThatReprintsClose() {
         var reprint = reprinted()
         reprint.resized(at: at(30))
-        _ = reprint.receive(Self.cleared + Self.erase + Self.open + Self.bytes("four"), at: at(30.2))
+        _ = reprint.receive(Self.cleared + Self.erase + Self.open + Self.bytes("four\r\n"), at: at(30.2))
 
         reprint.resized(at: at(31))
 
         #expect(
             reprint.receive(Self.close + Self.cleared, at: at(33))
-                == Step(passed: [Self.cleared + Self.erase + Self.block("four")], held: Self.cleared.count))
-        let rest = Self.erase + Self.block("five")
+                == Step(passed: [Self.cleared + Self.erase + Self.history("four")], held: Self.cleared.count))
+        let rest = Self.erase + Self.history("five")
         #expect(reprint.receive(rest, at: at(33.3)) == Step(passed: [Self.cleared + rest]))
     }
 
@@ -212,6 +223,88 @@ struct HerdrCoreReprintTests {
 
         #expect(reprint.release(at: at(80.2), ended: true) == Self.cleared)
         #expect(!reprint.isHolding)
+    }
+
+    /// Behind a resize the status line would otherwise end the hold with the
+    /// screen erased and the reprint still to come.
+    @Test func behindAResizeABlockWithNoLineInItWaitsForTheReprintRightBehindIt() {
+        let history = Self.history("six")
+        var reprint = reprinted()
+        reprint.resized(at: at(10))
+        _ = reprint.receive(Self.cleared, at: at(10.02))
+
+        #expect(
+            reprint.receive(Self.erase + Self.statusLine, at: at(10.2))
+                == Step(passed: [], held: Self.erase.count + Self.statusLine.count))
+        // The block's first frame has a frame's wait.
+        #expect(reprint.patience(at: at(10.2)) == .seconds(2))
+        #expect(reprint.receive(Data(history.prefix(3)), at: at(11.5)) == Step(passed: [], held: 3))
+        #expect(
+            reprint.receive(Data(history.dropFirst(3)), at: at(11.6))
+                == Step(passed: [Self.cleared + Self.erase + Self.statusLine + history]))
+    }
+
+    @Test func aBlockWithNoLineInItThatNoBlockFollowsIsLetGoWithTheRest() {
+        var reprint = reprinted()
+        reprint.resized(at: at(10))
+        _ = reprint.receive(Self.cleared + Self.erase + Self.statusLine, at: at(10.2))
+
+        #expect(reprint.receive(Self.bytes("$ "), at: at(10.3)) == Step(passed: [], held: 2))
+        #expect(
+            reprint.release(at: at(12.2)) == Self.cleared + Self.erase + Self.statusLine + Self.bytes("$ "))
+    }
+
+    // MARK: A program known to reprint
+
+    private static let paint = Data("\u{1B}[!p\u{1B}[H\u{1B}[2Jscreen\u{1B}[?9001l".utf8)
+    /// The status report a core sends behind every first paint.
+    private static let report = Data("\u{1B}]7501;state=idle:app=antigravity\u{1B}\\".utf8)
+
+    /// The attach resizes the Terminal, so the program erases the screen the
+    /// first paint drew before its reprint is here.
+    @Test func anAttachThatResizesAReprintingProgramHoldsAllThatFollowsItsFirstPaint() {
+        var reprint = Self.reprint(expecting: .afterAttach)
+
+        #expect(reprint.receive(Self.paint, at: at(0)) == Step(passed: [Self.paint]))
+        #expect(reprint.receive(Self.report, at: at(0)) == Step(passed: [], held: Self.report.count))
+        #expect(reprint.receive(Self.cleared, at: at(0.02)) == Step(passed: [], held: Self.cleared.count))
+        let rest = Self.erase + Self.history("all")
+        #expect(reprint.receive(rest, at: at(0.2)) == Step(passed: [Self.report + Self.cleared + rest]))
+    }
+
+    @Test func anAttachAtTheTerminalsSizeHoldsNothingUntilAResize() {
+        var reprint = Self.reprint(expecting: .afterResize)
+        _ = reprint.receive(Self.paint, at: at(0))
+        #expect(reprint.receive(Self.report, at: at(0)) == Step(passed: [Self.report]))
+
+        reprint.resized(at: at(5))
+
+        #expect(reprint.receive(Self.cleared, at: at(5.02)) == Step(passed: [], held: Self.cleared.count))
+    }
+
+    @Test func aResizeSentAheadOfTheFirstPaintLetsThePaintPassAndHoldsWhatFollows() {
+        var reprint = Self.reprint(expecting: .afterResize)
+
+        reprint.resized(at: at(0))
+
+        #expect(reprint.receive(Self.paint, at: at(1)) == Step(passed: [Self.paint]))
+        #expect(reprint.receive(Self.cleared, at: at(1.02)) == Step(passed: [], held: Self.cleared.count))
+    }
+
+    /// The Terminal already had the size, which says nothing about the
+    /// program. A resize that goes out and brings no reprint does.
+    @Test func anAttachThatResizedNothingLetsGoAndStillHoldsItsFirstResize() {
+        var reprint = Self.reprint(expecting: .afterAttach)
+        _ = reprint.receive(Self.paint, at: at(0))
+        _ = reprint.receive(Self.report, at: at(0))
+
+        #expect(reprint.release(at: at(1)) == Self.report)
+
+        reprint.resized(at: at(5))
+        #expect(reprint.receive(Self.cleared, at: at(5.02)) == Step(passed: [], held: Self.cleared.count))
+        #expect(reprint.release(at: at(6.02)) == Self.cleared)
+        reprint.resized(at: at(7))
+        #expect(reprint.receive(Self.cleared, at: at(7.02)) == Step(passed: [Self.cleared]))
     }
 
     // MARK: The hold
@@ -288,23 +381,24 @@ struct HerdrCoreReprintTests {
         let reads = Reads()
         let credits = Credits()
         let hold = Self.hold(reading: reads, crediting: credits)
-        reads.answer(Self.erase + Self.block("all"))
+        reads.answer(Self.erase + Self.history("all"))
         #expect(try await hold.next() == Self.erase)
-        #expect(try await hold.next() == Self.block("all"))
+        #expect(try await hold.next() == Self.history("all"))
 
         hold.resized()
-        for read in [Self.cleared, Self.erase, Self.open + Self.bytes("a"), Self.bytes("b"), Self.bytes("c") + Self.close] {
+        let frames = [Self.open + Self.bytes("a"), Self.bytes("b\r\n"), Self.bytes("c") + Self.close]
+        for read in [Self.cleared, Self.erase] + frames {
             reads.answer(read)
         }
         reads.answer(nil)
 
-        let whole = Self.cleared + Self.erase + Self.block("abc")
+        let whole = Self.cleared + Self.erase + Self.block("ab\r\nc")
         #expect(try await hold.next() == whole)
         #expect(try await hold.next() == nil)
         // Held reads return their credit on arrival, or the core would stop at
         // the end of its window; what the surface takes is not credited again.
-        #expect(credits.all == [Self.cleared.count, Self.erase.count, Self.open.count + 1, 1])
-        let consumed = Self.erase.count + Self.block("all").count + whole.count
+        #expect(credits.all == [Self.cleared.count, Self.erase.count, Self.open.count + 1, 3])
+        let consumed = Self.erase.count + Self.history("all").count + whole.count
         #expect(hold.consumed(consumed) + credits.all.reduce(0, +) == consumed)
     }
 
@@ -329,9 +423,9 @@ struct HerdrCoreReprintTests {
     @Test func whatAResizeHoldsIsLetGoWhenNoReprintBeginsInTime() async throws {
         let reads = Reads()
         let hold = Self.hold(reading: reads, resizeWait: .milliseconds(50))
-        reads.answer(Self.erase + Self.block("all"))
+        reads.answer(Self.erase + Self.history("all"))
         #expect(try await hold.next() == Self.erase)
-        #expect(try await hold.next() == Self.block("all"))
+        #expect(try await hold.next() == Self.history("all"))
 
         hold.resized()
         reads.answer(Self.bytes("$ "))

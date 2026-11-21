@@ -1370,7 +1370,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             let address = request.target.identifier
             let program = try await self?.programToAttach(at: address, handler: handler)
             do {
-                try await session.withTerminalTransport { transport, generation, coreID in
+                try await session.withTerminalTransport { [weak self] transport, generation, coreID in
                     // Another core at this socket has its own Terminal at this
                     // address. This one is as good as ended (ADR 0031).
                     guard await handler.admitsCore(coreID) else { throw TerminalProgramEnd.finished }
@@ -1380,6 +1380,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                     #endif
                     var request = request
                     request.coreID = coreID
+                    request.reprint =
+                        await self?.reprint(at: address, columns: request.cols, rows: request.rows) ?? .unknown
                     let terminal = try await transport.attachTerminal(request)
                     #if DEBUG
                     await handler.attachChannelDidOpen()
@@ -1396,6 +1398,26 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             try await self?.followProgram(
                 at: address, attachedTo: program ?? .unknown, handler: handler)
         }
+    }
+
+    /// What an attach at `columns` by `rows` can know of the program at
+    /// `address` before its output. Antigravity CLI prints its whole history
+    /// again after every resize, and the core sizes a Terminal to its viewer,
+    /// so an attach at another size than the Terminal has brings a reprint
+    /// (`docs/agents/herdr-compatibility.md`).
+    ///
+    /// A reattach goes out while its link's snapshot is still settling. Until
+    /// it has, the Agents are the ones the last link listed, and a Terminal
+    /// with no record yet has its own size: the viewer that left with the old
+    /// link gave it back.
+    func reprint(at address: String, columns: Int, rows: Int) -> TerminalReprint {
+        let listed = isAwaitingSnapshot ? lastKnownAgentsByPane[address] : agentsByPane[address]
+        guard listed.flatMap({ SupportedAgentKind(rawValue: $0.agent.kind) }) == .antigravity else {
+            return .unknown
+        }
+        guard hasInventory else { return .afterAttach }
+        guard let record = terminalRecord(at: address) else { return .unknown }
+        return record.columns == columns && record.rows == rows ? .afterResize : .afterAttach
     }
 
     // MARK: What Composer Send checks (ADR 0035)
