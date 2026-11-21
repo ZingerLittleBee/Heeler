@@ -56,16 +56,23 @@ build: generate ## Build Debug for a physical device without installing
 		-destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) \
 		-allowProvisioningUpdates build
 
+# What both CI app builds pass after their xcodebuild action.
+CI_APP_BUILD = -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
+	-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
+	-derivedDataPath '$(CURDIR)/.ci/app-derived' \
+	-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
+	COMPILATION_CACHE_ENABLE_CACHING=YES \
+	'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
+	COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
+	GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+
+.PHONY: build-ci-app-only
+build-ci-app-only: ## Compile the committed app and extensions, without the test bundle or a Simulator
+	xcodebuild build $(CI_APP_BUILD)
+
 .PHONY: build-ci-app
 build-ci-app: ## Compile the committed app, extensions and test bundle without running tests or booting a Simulator
-	xcodebuild build-for-testing -project $(PROJECT) -scheme $(SCHEME) -configuration Debug \
-		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
-		-derivedDataPath '$(CURDIR)/.ci/app-derived' \
-		-clonedSourcePackagesDirPath '$(CURDIR)/.ci/source-packages' \
-		COMPILATION_CACHE_ENABLE_CACHING=YES \
-		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
-		COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
-		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
+	xcodebuild build-for-testing $(CI_APP_BUILD)
 
 .PHONY: pack-ci-app-products
 pack-ci-app-products: ## Archive build-ci-app's products for full verification's app workers

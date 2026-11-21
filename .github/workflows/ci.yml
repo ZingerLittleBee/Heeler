@@ -1,17 +1,19 @@
 # Fast feedback on PRs and pushes to main that change build inputs (refs #23).
-# Full Swift/UI/SSH verification lives in ci-full.yml, which runs daily and
+# Full Swift and SSH verification lives in ci-full.yml, which runs daily and
 # manually; releases do not wait for it (ADR 0039). ci-package.yml compiles
 # HeelerSSH's own tests, which this app build compiles only as a library.
 #
-# app-build compiles the committed app, extensions and HeelerTests bundle with
-# build-for-testing against the generic Simulator SDK. It never boots a
-# Simulator or executes a test, so a green build establishes compilation
-# (including test sources broken by an app change), not behavior.
+# app-build compiles the committed app and extensions with `xcodebuild build`
+# against the generic Simulator SDK. It never compiles the HeelerTests
+# bundle, boots a Simulator or executes a test, so a green build establishes
+# that the app compiles, not behavior. Test sources an app change breaks fail
+# in the focused tests its author runs, and in ci-full.yml's app-build.
 #
 # Positive `paths` (not paths-ignore): one matching path is enough, so a
-# commit that also edits markdown still runs. Only build inputs start it:
-# tests and shared vectors are compiled here, and the two scripts listed are
-# the ones this job executes. Other script and ci-full.yml changes start only
+# commit that also edits markdown still runs. Only build inputs start it, and
+# the two scripts listed are the ones this job executes. Tests/** and
+# plugin/test-vectors/** belong to the test bundle, so a change to them alone
+# builds nothing here. Other script and ci-full.yml changes start only
 # ci-scripts.yml, never an app build. landing/**, LICENSE, prose, plugin/src,
 # plugin/package.json, and relay/** never spend a macOS runner.
 name: iOS build
@@ -21,27 +23,23 @@ on:
   pull_request:
     paths:
       - Sources/**
-      - Tests/**
       - Packages/**
       - Heeler.xcodeproj/**
       - project.yml
       - Makefile
       - scripts/run-ci-background-build.py
       - scripts/ci-compilation-cache-prefix.sh
-      - plugin/test-vectors/**
       - .github/workflows/ci.yml
   push:
     branches: [main]
     paths:
       - Sources/**
-      - Tests/**
       - Packages/**
       - Heeler.xcodeproj/**
       - project.yml
       - Makefile
       - scripts/run-ci-background-build.py
       - scripts/ci-compilation-cache-prefix.sh
-      - plugin/test-vectors/**
       - .github/workflows/ci.yml
 
 permissions:
@@ -57,7 +55,7 @@ concurrency:
 
 jobs:
   app-build:
-    name: Build app and tests (not run)
+    name: Build app (tests not compiled)
     runs-on: xcode-27
     timeout-minutes: 25
     env:
@@ -82,11 +80,11 @@ jobs:
         id: cache-key
         run: |
           mkdir -p .ci/build-evidence
-          scripts/ci-compilation-cache-prefix.sh ios-fast-cas-v1 .ci/build-evidence/toolchain.txt
-          printf 'checkout_sha=%s\nimage_version=%s\ntests_executed=0\n' \
+          scripts/ci-compilation-cache-prefix.sh ios-fast-cas-v2 .ci/build-evidence/toolchain.txt
+          printf 'checkout_sha=%s\nimage_version=%s\ntests_compiled=0\ntests_executed=0\n' \
             "$(git rev-parse HEAD)" "${ImageVersion:-unknown}" > .ci/build-evidence/run-settings.txt
       # Cache compiler objects, never DerivedData, products or test results.
-      # Full verification's shared build runs the same command and keeps a
+      # Full verification's shared build also compiles the tests and keeps a
       # namespace of its own, so its cold and warm measurements never read
       # what this build saved.
       - name: Restore compilation cache
@@ -97,11 +95,11 @@ jobs:
           key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
           restore-keys: |
             ${{ steps.cache-key.outputs.cache-prefix }}
-      - name: Build app, extensions and tests without launching a Simulator
+      - name: Build app and extensions without launching a Simulator
         timeout-minutes: 20
         run: |
           python3 scripts/run-ci-background-build.py --timing-path .ci/build-evidence/build.json -- \
-            make build-ci-app 2>&1 | tee .ci/build-evidence/build.log
+            make build-ci-app-only 2>&1 | tee .ci/build-evidence/build.log
       - name: Save compilation cache
         if: ${{ success() && steps.compilation-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4

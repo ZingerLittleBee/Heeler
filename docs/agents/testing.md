@@ -9,12 +9,15 @@ compilation, not behavior or test coverage.
 ## Fast build and full verification
 
 The [fast iOS build](../../.github/workflows/ci.yml) runs on PRs and pushes to
-`main` that change app, test, package, project or shared-vector paths, the
-Makefile, or the two scripts it executes. It compiles the committed app,
-extensions and HeelerTests bundle once with `make build-ci-app`
-(`build-for-testing` against the generic Simulator SDK, stable paths and
-compiler caching), so an app change that breaks test sources fails before
-merge. It never boots a Simulator or runs a test. That build compiles
+`main` that change app, package or project paths, the Makefile, or the two
+scripts it executes. It compiles the committed app and extensions with
+`make build-ci-app-only` (`xcodebuild build` against the generic Simulator
+SDK, stable paths and compiler caching). It never compiles the HeelerTests
+bundle, boots a Simulator or runs a test, and a change under `Tests/` or
+`plugin/test-vectors/` alone does not start it. Before merge, test sources
+compile only in the focused tests you run, so run them after an app change
+that renames or removes what tests call; full verification compiles the
+whole bundle daily. That build compiles
 HeelerSSH only as a library, so [the HeelerSSH build](../../.github/workflows/ci-package.yml)
 runs `make build-ci-package` (the package and its tests, not run) when
 `Packages/HeelerSSH` changes. Other script and `ci-full.yml` changes skip both
@@ -36,7 +39,7 @@ takes any available iPhone 17; pin one with `SIMULATOR_UDID=<UDID>`.
 
 Run focused behavior tests for the feature being changed. The
 [full native workflow](../../.github/workflows/ci-full.yml) retains all app,
-UI, real-SSH and weak-network tests, package E2E and coverage checks. It runs
+real-SSH and weak-network tests, package E2E and coverage checks. It runs
 daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
 layout and warm caches. Its `app-build` job compiles the app and tests once
 with `make build-ci-app` and `make pack-ci-app-products`; the app workers
@@ -153,6 +156,7 @@ so with that sync on the path reaches the Mac's clipboard too.
 
 | Change | Entry point | What it establishes |
 | --- | --- | --- |
+| App compilation | `make build-ci-app-only` | Committed app and extensions compile; the test bundle is not compiled |
 | App and test compilation | `make build-ci-app` | Committed app, extensions and test bundle compile; no tests executed |
 | HeelerSSH and test compilation | `make build-ci-package` | HeelerSSH and its tests compile for the Simulator SDK; no tests executed |
 | App stores and parsers | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
