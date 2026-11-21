@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 enum ComposerDropItem: Equatable, Sendable {
     case text(String)
     case image(Data, suggestedName: String?)
+    case file(URL, cleanupURL: URL?)
+    case oversizedFile
     case unsupported
 
     static func textDrop(_ text: String) -> ComposerDropItem {
@@ -17,6 +19,30 @@ enum ComposerDropItem: Equatable, Sendable {
 
     static func imageDrop(_ data: Data, suggestedName: String?) -> ComposerDropItem {
         data.isEmpty ? .unsupported : .image(data, suggestedName: suggestedName)
+    }
+
+    /// Copies an ephemeral dropped video/file URL into an app-owned inbox
+    /// before `FileRepresentation`'s callback ends, rejecting oversized items
+    /// without copying them.
+    static func fileDrop(
+        from sourceURL: URL,
+        fallbackType: UTType,
+        maximumByteCount: Int64 = Int64(FilePreparer.maximumByteCount),
+        inboxRoot: URL = FilePreparer.defaultDirectory
+    ) -> ComposerDropItem {
+        do {
+            let materialized = try FileInbox.copyToInbox(
+                from: sourceURL,
+                fallbackType: fallbackType,
+                defaultStem: "video",
+                maximumByteCount: maximumByteCount,
+                inboxRoot: inboxRoot)
+            return .file(materialized.url, cleanupURL: materialized.cleanupURL)
+        } catch FilePreparationError.sourceTooLarge {
+            return .oversizedFile
+        } catch {
+            return .unsupported
+        }
     }
 }
 
@@ -40,7 +66,8 @@ struct ComposerDropHighlight: Equatable, Sendable {
 }
 
 /// Import-only `Transferable` adapter for Notes/Files text and Photos/Files
-/// images. Mapping stays here so `AgentComposerView` only forwards items.
+/// videos and images. Video representations precede images so dragging a video
+/// from Photos receives the video file rather than its poster thumbnail.
 struct ComposerDropTransfer: Transferable, Equatable, Sendable {
     let item: ComposerDropItem
 
@@ -49,6 +76,12 @@ struct ComposerDropTransfer: Transferable, Equatable, Sendable {
     }
 
     static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            ComposerDropTransfer(.fileDrop(from: received.file, fallbackType: .movie))
+        }
+        FileRepresentation(importedContentType: .video) { received in
+            ComposerDropTransfer(.fileDrop(from: received.file, fallbackType: .video))
+        }
         FileRepresentation(importedContentType: .image) { received in
             let url = received.file
             let accessed = url.startAccessingSecurityScopedResource()

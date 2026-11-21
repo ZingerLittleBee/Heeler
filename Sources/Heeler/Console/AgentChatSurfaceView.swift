@@ -1881,7 +1881,7 @@ struct AgentChatSurfaceView: View {
             attachLinkCount: 0,
             addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
             pasteImage: offers.attachments
-                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
+                ? { session.pasteClipboard() } : nil,
             addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal

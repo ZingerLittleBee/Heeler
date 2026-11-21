@@ -1570,21 +1570,25 @@ final class AgentComposerUITextView: UITextView {
     private var laidOutHeight: CGFloat = 0
     /// Sends the draft for a hardware Return, the way the Send button does.
     var onHardwareReturn: (() -> Void)?
-    /// Stages the clipboard's image. A text view takes only text, so without it a
-    /// paste of an image, from the edit menu or the keyboard, does nothing.
+    /// Stages the clipboard's image or video. A text view takes only text, so
+    /// without it a paste of media from the edit menu or keyboard does nothing.
     var onPasteImage: (() -> Void)?
 
-    private var pastesImage: Bool {
+    private var pastesAttachment: Bool {
         let board = UIPasteboard.general
-        return onPasteImage != nil && board.hasImages && !board.hasStrings
+        return onPasteImage != nil
+            && ClipboardAttachment.canPasteInTextView(
+                types: board.types,
+                hasImages: board.hasImages,
+                hasStrings: board.hasStrings)
     }
 
     /// The keyboard's clipboard suggestion, the edit menu and ⌘V all send this.
     /// `paste(itemProviders:)` stays UITextView's: UIKit calls it only after
     /// `canPaste(_:)`, which UITextView grants to text alone, so taking the
-    /// clipboard's image there would replace the text it was handed.
+    /// clipboard's media there would replace the text it was handed.
     override func paste(_ sender: Any?) {
-        if pastesImage, let onPasteImage {
+        if pastesAttachment, let onPasteImage {
             onPasteImage()
         } else {
             super.paste(sender)
@@ -1592,7 +1596,7 @@ final class AgentComposerUITextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(UIResponderStandardEditActions.paste(_:)), pastesImage { return true }
+        if action == #selector(UIResponderStandardEditActions.paste(_:)), pastesAttachment { return true }
         return super.canPerformAction(action, withSender: sender)
     }
     /// Return presses taken for sending. Their releases stay here too, and

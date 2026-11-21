@@ -174,6 +174,8 @@ final class AgentComposerStore: ComposerDraftOperations {
     @ObservationIgnored private weak var staging: ComposerStagingStore?
     /// Queued image selections waiting for `ComposerStagingStore.begin(_:)`.
     @ObservationIgnored private var queuedImageSelections: [UUID: any ImageSelection] = [:]
+    /// Queued file selections (dropped or pasted videos) waiting for `ComposerStagingStore.begin(_:)`.
+    @ObservationIgnored private var queuedFileSelections: [any FileSelection] = []
     /// Maps active `ComposerStagingStore` operation ids to attachment ids.
     @ObservationIgnored private var activeImageOperations: [UInt64: UUID] = [:]
     /// Identifies the queued attachment currently entering `staging.begin(_:)`.
@@ -184,6 +186,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Tracks local `PreparedImage` files owned by this store so `deinit`
     /// removes any uncollected temporary copies safely across isolation.
     @ObservationIgnored private let retainedPreviewURLs = OSAllocatedUnfairLock(initialState: Set<URL>())
+    /// Tracks temporary inbox directories for queued file selections so `deinit`
+    /// removes unstarted drop copies safely across isolation.
+    @ObservationIgnored private let retainedInboxURLs = OSAllocatedUnfairLock(initialState: Set<URL>())
     /// The editor holds marked text. Writing the draft then would destroy
     /// it, so Voice Input's text waits until the composition ends.
     @ObservationIgnored private var isEditorComposing = false
@@ -226,7 +231,12 @@ final class AgentComposerStore: ComposerDraftOperations {
             urls.removeAll()
             return copy
         }
-        for url in urls {
+        let inboxURLs = retainedInboxURLs.withLock { urls -> Set<URL> in
+            let copy = urls
+            urls.removeAll()
+            return copy
+        }
+        for url in urls.union(inboxURLs) {
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -391,9 +401,16 @@ final class AgentComposerStore: ComposerDraftOperations {
         startNextQueuedImageIfNeeded()
     }
 
-    /// Maps a drop onto draft text insertion and/or queued image attachments.
-    /// Empty and unsupported items are skipped without touching the draft or
-    /// submitting it.
+    /// Queues one file selection (e.g., a pasted or dropped video) for staging
+    /// through `FilePreparer` / `stageFile`.
+    func enqueueFile(_ selection: any FileSelection) {
+        enqueueQueuedFile(selection)
+        startNextQueuedImageIfNeeded()
+    }
+
+    /// Maps a drop onto draft text insertion, queued image attachments, and/or
+    /// queued video/file uploads. Empty and unsupported items are skipped
+    /// without touching the draft or submitting it.
     func acceptDrop(_ items: [ComposerDropItem]) {
         for item in items {
             switch item {
@@ -403,6 +420,10 @@ final class AgentComposerStore: ComposerDraftOperations {
             case .image(let data, _):
                 guard !data.isEmpty else { continue }
                 enqueueQueuedSelection(DataImageSelection(data: data))
+            case let .file(url, cleanupURL):
+                enqueueQueuedFile(URLFileSelection(url: url, cleanupURL: cleanupURL))
+            case .oversizedFile:
+                enqueueQueuedFile(FailingFileSelection(error: .sourceTooLarge))
             case .unsupported:
                 continue
             }
@@ -456,11 +477,19 @@ final class AgentComposerStore: ComposerDraftOperations {
         staging?.perform(.retry)
     }
 
-    /// Clears pending/queued image uploads before staging teardown while
-    /// preserving any attachments that have already finished staging.
+    /// Clears pending/queued image and file uploads before staging teardown
+    /// while preserving any image attachments that have already finished staging.
     func abandonDroppedImagesForTeardown() {
         isTearingDownImages = true
         queuedImageSelections.removeAll()
+        let abandonedFiles = queuedFileSelections
+        queuedFileSelections.removeAll()
+        for file in abandonedFiles {
+            if let cleanupURL = file.cleanupURL {
+                _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+            }
+            file.discard()
+        }
         activeImageOperations.removeAll()
         startingQueuedAttachmentID = nil
         imageAttachments.removeAll { $0.phase.isPending }
@@ -1001,6 +1030,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         imageAttachments.append(ComposerImageAttachment(id: id, preview: nil, phase: .queued))
     }
 
+    private func enqueueQueuedFile(_ selection: any FileSelection) {
+        if let cleanupURL = selection.cleanupURL {
+            _ = retainedInboxURLs.withLock { $0.insert(cleanupURL) }
+        }
+        queuedFileSelections.append(selection)
+    }
+
     private func startNextQueuedImageIfNeeded() {
         guard let staging, !isTearingDownImages else { return }
         guard activeImageOperations.isEmpty else { return }
@@ -1010,12 +1046,23 @@ final class AgentComposerStore: ComposerDraftOperations {
         case .failed, .backgroundInterrupted, .preparing, .uploading:
             return
         }
-        guard let next = imageAttachments.first(where: { $0.phase == .queued }),
+        if let next = imageAttachments.first(where: { $0.phase == .queued }),
             let selection = queuedImageSelections[next.id]
-        else { return }
-        startingQueuedAttachmentID = next.id
-        if staging.begin(.photo(selection), insertPathIntoComposer: false) == nil {
-            startingQueuedAttachmentID = nil
+        {
+            startingQueuedAttachmentID = next.id
+            if staging.begin(.photo(selection), insertPathIntoComposer: false) == nil {
+                startingQueuedAttachmentID = nil
+            }
+            return
+        }
+        if !queuedFileSelections.isEmpty {
+            let nextFile = queuedFileSelections.removeFirst()
+            if let cleanupURL = nextFile.cleanupURL {
+                _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+            }
+            if staging.begin(.fileSelection(nextFile)) == nil {
+                nextFile.discard()
+            }
         }
     }
 

@@ -9,11 +9,12 @@ final class ComposerStagingStore {
     enum Source: Sendable {
         case photo(any ImageSelection)
         case file(URL)
+        case fileSelection(any FileSelection)
 
         fileprivate var medium: Medium {
             switch self {
             case .photo: .image
-            case .file: .file
+            case .file, .fileSelection: .file
             }
         }
     }
@@ -470,9 +471,13 @@ final class ComposerStagingStore {
     private func prepare(_ source: Source) async throws -> PreparedSource {
         switch source {
         case .photo(let selection):
-            try await imageAdapter.prepare(selection)
+            return try await imageAdapter.prepare(selection)
         case .file(let sourceURL):
-            try await fileAdapter.prepare(sourceURL)
+            return try await fileAdapter.prepare(sourceURL)
+        case .fileSelection(let selection):
+            let materialized = try await selection.materialize()
+            defer { materialized.cleanup() }
+            return try await fileAdapter.prepare(materialized.url)
         }
     }
 
@@ -714,6 +719,12 @@ final class ComposerStagingStore {
             Failure(
                 medium: medium,
                 message: String(localized: "The selected file is no longer available."),
+                isRetryable: false)
+        case FilePreparationError.clipboardUnreadable:
+            Failure(
+                medium: medium,
+                message:
+                    String(localized: "Heeler couldn't read the clipboard. Tap Allow Paste when asked, or check Paste from Other Apps in Settings."),
                 isRetryable: false)
         case FilePreparationError.sourceTooLarge:
             Failure(
