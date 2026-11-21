@@ -59,7 +59,7 @@ struct AgentUsageDetailTests {
         #expect(both.hasPrefix("Recorded on these 2 Hosts since"), "Actual: \(both)")
         #expect(both.contains("Build Box: 3 compressed archives skipped."), "Actual: \(both)")
         #expect(!both.contains("Studio Mac:"), "Actual: \(both)")
-        #expect(both.hasSuffix("Price table: 2026-11-15."), "Actual: \(both)")
+        #expect(both.hasSuffix("Price table: 2026-11-21."), "Actual: \(both)")
     }
 
     @Test func calendarDaysAreLocalizedWithoutShiftingTheirDay() {

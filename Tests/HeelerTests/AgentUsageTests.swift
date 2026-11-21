@@ -18,7 +18,7 @@ struct AgentUsageStoreTests {
             #expect(today["unpricedTokens"] is Int)
         }
         let report = try AgentUsageFixture.report()
-        #expect(report.pricingVersion == "2026-11-15")
+        #expect(report.pricingVersion == "2026-11-21")
         for program in report.programs ?? [] {
             #expect(program.tokenUsage.totals?.today.estimatedCostUSD != nil)
             #expect(program.tokenUsage.totals?.today.unpricedTokens == 0)
