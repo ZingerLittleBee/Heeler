@@ -98,12 +98,6 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("#expect(await transport.snapshotFetchCount == count)", method)
         self.assertIn('store.terminals.first?.cwd == "/work/19"', method)
 
-    def test_package_log_gate_requires_the_new_method_and_both_cases(self):
-        source = read("scripts/run-ci-ios-tests.sh")
-        self.assertIn("Test run with 86 tests in 5 suites passed", source)
-        self.assertIn('Test "one-shot exec resumes owned reads before other exchange operations" with 2 test cases passed', source)
-        self.assertNotIn("Test run with 70 tests in 5 suites passed", source)
-
     def test_one_shot_exchange_resumes_its_own_reads_before_foreign_admission(self):
         source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "exchange")
         self.assertIn("if !resumingRead, inputOffset < input.count", source)

@@ -30,7 +30,7 @@ IOS_WATCH_DEBOUNCE ?= 1s
 DEVICE ?= $(shell python3 scripts/find-ios-device.py iPhone)
 DEVICE_IPAD ?= $(shell python3 scripts/find-ios-device.py iPad)
 
-.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-ci-evidence test-ci-background-build test-tools test-ci-guards test-ci-watchdog test-ci-recovery verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin pair-cli clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts testflight-notes testflight-beta
+.PHONY: help generate resolve build test test-app test-ipad test-ci-app test-ci-package test-tools test-weak-network-proxy verify-core-linux-host check-agent-docs check-test-membership simulator-ui build-device install install-ipad watch-ios-device sim sim-ipad build-sim sim-id archive upload testflight testflight-retry release-status release-check bump publish plugin pair-cli clean check-device check-device-ipad ssh-artifacts verify-ssh-artifacts testflight-notes testflight-beta
 
 # Command-line DERIVED overrides remain supported for either platform.
 test-app test-directory-browser-ui sim build-sim sim-id: DERIVED = $(DERIVED_SIMULATOR)
@@ -74,16 +74,20 @@ build-ci-app-only: ## Compile the committed app and extensions, without the test
 build-ci-app: ## Compile the committed app, extensions and test bundle without running tests or booting a Simulator
 	xcodebuild build-for-testing $(CI_APP_BUILD)
 
-.PHONY: pack-ci-app-products
+.PHONY: pack-ci-app-products pack-ci-package-products
 pack-ci-app-products: ## Archive build-ci-app's products for full verification's app workers
-	tar -czf '$(CURDIR)/.ci/app-products.tar.gz' -C '$(CURDIR)/.ci/app-derived' Build/Products
+	tar -cf '$(CURDIR)/.ci/app-products.tar' -C '$(CURDIR)/.ci/app-derived' Build/Products
+
+pack-ci-package-products: ## Archive build-ci-package's products for full verification
+	tar -cf '$(CURDIR)/.ci/package-products.tar' -C '$(CURDIR)/.ci/package-derived' Build/Products
 
 .PHONY: build-ci-package
 build-ci-package: ## Compile HeelerSSH and its tests without running tests or booting a Simulator
 	cd Packages/HeelerSSH && xcodebuild build-for-testing -scheme HeelerSSH \
 		-destination 'generic/platform=iOS Simulator' ARCHS="$$(uname -m)" \
 		-derivedDataPath '$(CURDIR)/.ci/package-derived' \
-		COMPILATION_CACHE_ENABLE_CACHING=NO \
+		COMPILATION_CACHE_ENABLE_CACHING=YES \
+		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
 		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
 
 test-app: generate ## Run app tests and verify execution (SIM_DESTINATION, TEST_SELECTOR, TEST_FLAGS)
@@ -113,12 +117,8 @@ test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDI
 	HEELER_CI_LANE=package HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
 
-.PHONY: test-ci-workflow-contracts test-weak-network-proxy
 test-weak-network-proxy: ## Test real TCP impairment, buffering, and proxy cleanup
 	python3 scripts/test-weak-network-proxy.py
-
-test-ci-workflow-contracts: ## Verify workflow triggers, commands and toolchain pins without Xcode
-	bash scripts/test-ci-workflow-contracts.sh
 
 check-agent-docs: ## Check navigation links and unique ADR numbers
 	python3 scripts/check-agent-docs.py
@@ -126,54 +126,8 @@ check-agent-docs: ## Check navigation links and unique ADR numbers
 check-test-membership: ## Check that the committed project compiles every app test source
 	python3 scripts/check-test-target-membership.py
 
-test-tools: check-agent-docs check-test-membership ## Test agent tooling without Xcode or a simulator
-	$(MAKE) test-adhoc
-	python3 scripts/test-format-release-notes.py
-	python3 scripts/test-testflight.py
-	python3 scripts/test-native-test-lifecycle.py
-	python3 scripts/test-check-agent-docs.py
-	python3 scripts/test-check-test-target-membership.py
-	python3 scripts/check-localizations.py
-	python3 scripts/test-check-localizations.py
-	python3 scripts/test-run-app-simulator-tests.py
-	python3 scripts/test-simulator-ui.py
-	python3 scripts/test-isolated-herdr-backend.py
-	python3 scripts/test-herdr-core-capture.py
-	python3 scripts/test-herdr-core-locator.py
-	python3 scripts/test-herdr-core-shell-launch.py
-	python3 scripts/test-herdr-app-control.py
-	python3 scripts/test-herdr-core-start.py
-	python3 scripts/test-server-kind-detection.py
-	python3 scripts/test-tmux-probe.py
-	python3 scripts/test-tmux-inventory-loop.py
-	python3 scripts/test-tmux-ssh-fixture.py
-	python3 scripts/test-herdr-core-lab-check.py
-	python3 scripts/test-store-shots.py
-	python3 scripts/test-node-toolchain-probe.py
-	python3 scripts/test-host-process-reader.py
-	python3 scripts/test-herdr-core-environment-check.py
-	python3 scripts/test-host-helper-manifest.py
-	python3 scripts/test-host-helper-scripts.py
-	sh scripts/test-source-revision.sh
-	bash scripts/test-publish-plugin.sh
-	$(MAKE) test-ci-evidence
-	$(MAKE) test-weak-network-proxy
-	$(MAKE) test-ci-workflow-contracts
-
-test-ci-evidence: ## Test shard evidence, parameter cases, and skip provenance
-	python3 scripts/test-verify-ci-ios-evidence.py
-
-test-ci-guards: ## Test CI gate assertions without building the app (macOS)
-	scripts/test-run-ci-ios-tests-guards.sh
-
-test-ci-background-build: ## Test owned background build failure and cancellation
-	python3 scripts/test-run-ci-background-build.py
-
-test-ci-watchdog: test-ci-background-build ## Test the CI watchdog and simulator recovery (macOS)
-	scripts/test-run-with-timeout.sh
-
-test-ci-recovery: ## Test simulator recovery with fake Xcode processes (macOS)
-	scripts/test-ci-simulator-recovery.sh
+test-tools: check-agent-docs check-test-membership ## Test agent tooling concurrently without Xcode or a simulator
+	python3 scripts/run-tool-tests.py
 
 # An owner's check on a real box: see docs/guides/herdr-core-testing.md.
 verify-core-linux-host: ## Run the herdr-core end-to-end methods on hc-lab (SIMULATOR_UDID=<udid> [LAB=hc-lab] [LAB_PORT=47430])

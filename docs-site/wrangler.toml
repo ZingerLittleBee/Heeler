@@ -2,7 +2,7 @@
 #
 # Assets-only Worker: there is no `main` handler, Cloudflare just serves the
 # static build output. Deploy with `pnpm run build && pnpm run deploy` (or let
-# .github/workflows/docs-site.yml do it on a push to main).
+# .github/workflows/cloudflare.yml do it on a push to main).
 
 name = "heeler-docs"
 compatibility_date = "2026-07-01"

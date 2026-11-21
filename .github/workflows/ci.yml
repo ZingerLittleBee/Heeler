@@ -1,35 +1,12 @@
-# Fast feedback on PRs and pushes to main that change build inputs (refs #23).
-# Full Swift and SSH verification lives in ci-full.yml, which runs daily and
-# manually; releases do not wait for it (ADR 0039). ci-package.yml compiles
-# HeelerSSH's own tests, which this app build compiles only as a library.
-#
-# app-build compiles the committed app and extensions with `xcodebuild build`
-# against the generic Simulator SDK. It never compiles the HeelerTests
-# bundle, boots a Simulator or executes a test, so a green build establishes
-# that the app compiles, not behavior. Test sources an app change breaks fail
-# in the focused tests its author runs, and in ci-full.yml's app-build.
-#
-# Positive `paths` (not paths-ignore): one matching path is enough, so a
-# commit that also edits markdown still runs. Only build inputs start it, and
-# the two scripts listed are the ones this job executes. Tests/** and
-# plugin/test-vectors/** belong to the test bundle, so a change to them alone
-# builds nothing here. Other script and ci-full.yml changes start only
-# ci-scripts.yml, never an app build. landing/**, LICENSE, prose, plugin/src,
-# plugin/package.json, and relay/** never spend a macOS runner.
-name: iOS build
+# Pull-request checks and fast iOS Simulator SDK build.
+# Full Simulator test execution runs on schedule and manual dispatch in ci-full.yml.
+
+name: CI
 
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - Sources/**
-      - Packages/**
-      - Heeler.xcodeproj/**
-      - project.yml
-      - Makefile
-      - scripts/run-ci-background-build.py
-      - scripts/ci-compilation-cache-prefix.sh
-      - .github/workflows/ci.yml
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
     paths:
@@ -38,8 +15,6 @@ on:
       - Heeler.xcodeproj/**
       - project.yml
       - Makefile
-      - scripts/run-ci-background-build.py
-      - scripts/ci-compilation-cache-prefix.sh
       - .github/workflows/ci.yml
 
 permissions:
@@ -50,22 +25,119 @@ defaults:
     shell: bash
 
 concurrency:
-  group: ci-ios-build-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event_name }}-${{ github.event.action == 'edited' && 'edit' || 'code' }}
   cancel-in-progress: true
 
 jobs:
-  app-build:
-    name: Build app (tests not compiled)
+  check-commit-attribution:
+    name: Check commit attribution
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        run: |
+          bash .github/scripts/check-co-authors.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
+
+      - name: Check PR title and description
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash .github/scripts/check-pr-attribution.sh
+
+  checks:
+    name: Checks
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'edited')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Check docs, test membership, localizations, and wire-type codegen
+        run: |
+          make check-agent-docs
+          make check-test-membership
+          python3 scripts/check-localizations.py
+          python3 scripts/generate-wire-types.py --check --schema scripts/herdr-schema.json
+
+      - name: Detect changed Node packages
+        id: scope
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            printf 'plugin=true\nrelay=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          plugin=false
+          relay=false
+          git diff --quiet "$base...HEAD" -- plugin .github/workflows/ci.yml || plugin=true
+          git diff --quiet "$base...HEAD" -- relay .github/workflows/ci.yml || relay=true
+          printf 'plugin=%s\nrelay=%s\n' "$plugin" "$relay" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v5
+        if: steps.scope.outputs.plugin == 'true' || steps.scope.outputs.relay == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+
+      - name: Run push relay tests
+        if: steps.scope.outputs.relay == 'true'
+        run: npm --prefix relay test
+
+      - name: Run pairing plugin tests
+        if: steps.scope.outputs.plugin == 'true'
+        run: |
+          command -v tmux >/dev/null || (sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux)
+          npm --prefix plugin ci
+          npm --prefix plugin test
+
+  ios-build:
+    name: Build iOS app
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: xcode-27
     timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          fetch-depth: 0
+
+      - name: Detect changed iOS inputs
+        id: scope
+        run: |
+          app=true
+          pkg=false
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            pkg=true
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            if git diff --quiet "$base...HEAD" -- Sources Packages Heeler.xcodeproj project.yml Makefile .github/workflows/ci.yml; then
+              app=false
+            fi
+            git diff --quiet "$base...HEAD" -- Packages/HeelerSSH .github/workflows/ci.yml || pkg=true
+          elif [[ "${{ github.event.before }}" =~ ^0+$ ]]; then
+            pkg=true
+          else
+            git diff --quiet "${{ github.event.before }}...${{ github.sha }}" -- Packages/HeelerSSH .github/workflows/ci.yml || pkg=true
+          fi
+          printf 'app=%s\npkg=%s\n' "$app" "$pkg" >> "$GITHUB_OUTPUT"
+
       - name: Cache SwiftPM checkouts
+        if: steps.scope.outputs.app == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -74,43 +146,33 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: |
             spm-${{ runner.os }}-
-      - name: Verify HeelerSSH native artifacts
-        run: make verify-ssh-artifacts
-      - name: Record build identity
-        id: cache-key
-        run: |
-          mkdir -p .ci/build-evidence
-          scripts/ci-compilation-cache-prefix.sh ios-fast-cas-v2 .ci/build-evidence/toolchain.txt
-          printf 'checkout_sha=%s\nimage_version=%s\ntests_compiled=0\ntests_executed=0\n' \
-            "$(git rev-parse HEAD)" "${ImageVersion:-unknown}" > .ci/build-evidence/run-settings.txt
-      # Cache compiler objects, never DerivedData, products or test results.
-      # Full verification's shared build also compiles the tests and keeps a
-      # namespace of its own, so its cold and warm measurements never read
-      # what this build saved.
+
       - name: Restore compilation cache
         id: compilation-cache
+        if: steps.scope.outputs.app == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .ci/app-compilation-cache
-          key: ${{ steps.cache-key.outputs.cache-prefix }}${{ github.sha }}
+          key: ios-fast-cas-v3-${{ runner.arch }}-${{ hashFiles('project.yml', 'Heeler.xcodeproj/project.pbxproj', 'Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/**/Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            ${{ steps.cache-key.outputs.cache-prefix }}
-      - name: Build app and extensions without launching a Simulator
+            ios-fast-cas-v3-${{ runner.arch }}-${{ hashFiles('project.yml', 'Heeler.xcodeproj/project.pbxproj', 'Heeler.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/**/Package.swift') }}-
+            ios-fast-cas-v3-${{ runner.arch }}-
+
+      - name: Build app and extensions
+        if: steps.scope.outputs.app == 'true'
         timeout-minutes: 20
         run: |
-          python3 scripts/run-ci-background-build.py --timing-path .ci/build-evidence/build.json -- \
-            make build-ci-app-only 2>&1 | tee .ci/build-evidence/build.log
+          make verify-ssh-artifacts
+          make build-ci-app-only
+
+      - name: Build HeelerSSH tests
+        if: steps.scope.outputs.pkg == 'true'
+        timeout-minutes: 15
+        run: make build-ci-package
+
       - name: Save compilation cache
-        if: ${{ success() && steps.compilation-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && steps.scope.outputs.app == 'true' && steps.compilation-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: .ci/app-compilation-cache
           key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
-      - name: Upload build logs and timing (not test evidence)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .ci/build-evidence
-          if-no-files-found: ignore
-          retention-days: 7

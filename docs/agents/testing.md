@@ -8,55 +8,29 @@ compilation, not behavior or test coverage.
 
 ## Fast build and full verification
 
-The [fast iOS build](../../.github/workflows/ci.yml) runs on PRs and pushes to
-`main` that change app, package or project paths, the Makefile, or the two
-scripts it executes. It compiles the committed app and extensions with
-`make build-ci-app-only` (`xcodebuild build` against the generic Simulator
-SDK, stable paths and compiler caching). It never compiles the HeelerTests
-bundle, boots a Simulator or runs a test, and a change under `Tests/` or
-`plugin/test-vectors/` alone does not start it. Before merge, test sources
-compile only in the focused tests you run, so run them after an app change
-that renames or removes what tests call; full verification compiles the
-whole bundle daily. That build compiles
-HeelerSSH only as a library, so [the HeelerSSH build](../../.github/workflows/ci-package.yml)
-runs `make build-ci-package` (the package and its tests, not run) when
-`Packages/HeelerSSH` changes. Other script and `ci-full.yml` changes skip both
-builds; [the script self-tests](../../.github/workflows/ci-scripts.yml) run
-`scripts/test-vps-ssh-access-scripts.sh`, `make test-ci-watchdog`,
-`make test-ci-guards` and `make test-ci-workflow-contracts` on macOS, under
-the `/bin/bash` 3.2 that full verification executes.
-`make test-ci-workflow-contracts`, which Agent tooling runs on Ubuntu for
-every PR, pins each fast workflow's trigger paths and commands.
-Documentation-only edits get the Ubuntu tooling checks; Node and site checks
-keep their own path filters.
+[CI](../../.github/workflows/ci.yml) runs on pull requests and on `main` pushes
+that change iOS build inputs:
+- On Ubuntu, every pull request checks commit/PR attribution, documentation
+  links (`make check-agent-docs`), test membership (`make check-test-membership`),
+  localizations (`scripts/check-localizations.py`), and wire-type codegen drift,
+  and runs `plugin` or `relay` Node tests when their directories change.
+- On `xcode-27` (Xcode 27.2), changes to iOS inputs compile the committed app
+  and extensions (`make build-ci-app-only` against the generic Simulator SDK with
+  compiler caching), and also compile `HeelerSSH` tests (`make build-ci-package`)
+  when `Packages/HeelerSSH` changes, without booting a Simulator. Before merge,
+  `HeelerTests` compiles only in the focused tests you run, so run them after an
+  app change that renames or removes what tests call.
 
-Every macOS job runs on the `xcode-27` runner with Xcode 27.2, the toolchain
-that archives releases, and `make test-ci-workflow-contracts` fails when one
-leaves it. Full verification tests an iPhone 17 on the iOS 27.2
-runtime, which `HEELER_CI_SIMULATOR_OS` pins because the image also has one
-on iOS 27.0. Without it, a local `make test-ci-app` or `make test-ci-package`
-takes any available iPhone 17; pin one with `SIMULATOR_UDID=<UDID>`.
-
-Run focused behavior tests for the feature being changed. The
-[full native workflow](../../.github/workflows/ci-full.yml) retains all app,
-real-SSH and weak-network tests, package E2E and coverage checks. It runs
-daily on the latest `main` commit at 20:17 UTC (04:17 UTC+8), using the sharded
-layout and warm caches. Its `app-build` job compiles the app and tests once
-with `make build-ci-app` and `make pack-ci-app-products`; the app workers
-download that archive, and `make test-ci-app` unpacks it instead of compiling
-when `HEELER_CI_APP_PRODUCTS_ARCHIVE` names it. Without the variable, as in a
-local run, a worker builds for itself.
-The schedule takes effect only after the workflow is
-merged into the default branch; GitHub may delay its start under load. PRs and
-pushes retain fast feedback without starting this full native workflow.
-A failed scheduled run opens or comments on the issue "Scheduled full iOS
-verification is failing" ([the alert workflow](../../.github/workflows/ci-full-alert.yml));
-the next passing scheduled run closes it. Run it manually for broader
-acceptance of a candidate branch; manual runs default to warm caches, and
-`cache_mode=cold` measures a first build. Releases neither run it nor wait
-for it ([ADR 0039](../adr/0039-release-builds-tag-main-without-tests.md)). A
-scheduled run or fast build cannot substitute for verifying a different
-candidate.
+The [full native workflow](../../.github/workflows/ci-full.yml) runs daily on
+`main` at 20:17 UTC (04:17 UTC+8) and on manual dispatch across four `xcode-27`
+runners: `app-build` compiles and packs the app/tests (`make build-ci-app`) and
+`HeelerSSH` tests (`make build-ci-package`) once, and three shards (`ordinary`,
+`session-weak`, and `transport`) unpack those products onto iOS 27.2 `iPhone 17`
+Simulators via [run-ci-ios-tests.sh](../../scripts/run-ci-ios-tests.sh) using
+unprivileged loopback `sshd`, `herdr-core`, `tmux`, and weak-network fixtures.
+Releases neither run it nor wait for it
+([ADR 0039](../adr/0039-release-builds-tag-main-without-tests.md)). A scheduled
+run or fast build cannot substitute for verifying a different candidate.
 
 ```sh
 gh workflow run ci-full.yml --ref <candidate-branch>
@@ -169,11 +143,10 @@ so with that sync on the path reaches the Mac's clipboard too.
 | HeelerSSH and test compilation | `make build-ci-package` | HeelerSSH and its tests compile for the Simulator SDK; no tests executed |
 | App stores and parsers | `make test-app TEST_SELECTOR='HeelerTests/<Suite>'` | Selected app behavior on the named candidate and Simulator |
 | Full local app and SSH package suites | `make test` or `make test-ipad` | App tests followed by the separate HeelerSSH test plan |
-| `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures and count gates |
+| `Packages/HeelerSSH` | `make test-ci-package` | Committed-project package CI lane with disposable SSH fixtures |
 | `Packages/HeelerOverlay` | `xcodebuild test -scheme HeelerOverlay` in that directory (see its README for the live suites) | Overlay nodes against the heeler-overlay-natives release it pins; not part of `make test` |
-| App transport/fixture integration | `make test-ci-app SIMULATOR_UDID=<UDID>` | Committed-project app CI lane, real-SSH fixture suites, required test counts |
-| Test/tool runners or agent-doc contracts | `make test-tools` | Local tool tests and document checks; no iOS build |
-| CI suite/count/skip guard changes | `make test-ci-guards` | Guard behavior through supplied log fixtures; no native SSH or iOS acceptance |
+| App transport/fixture integration | `make test-ci-app SIMULATOR_UDID=<UDID>` | Committed-project app CI lane and real-SSH fixture suites |
+| Test/tool runners or agent-doc contracts | `make test-tools` | Concurrent local tool tests and document checks; no iOS build |
 | Agent documentation | `make check-agent-docs` | Document pointers and repository navigation invariants |
 | Plugin or relay | `npm test` in its directory | Node behavior; no install step, Node >= 20 |
 | Docs site | `pnpm install --frozen-lockfile` and the other pnpm commands in [its README](../../docs-site/README.md#commands), from `docs-site/` | Markdown pipeline tests, Astro checks, static build, and internal links |
@@ -188,21 +161,12 @@ project is complete. `make check-test-membership`, which `make test-tools` and
 full verification run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
 
-## CI evidence constraints
+## Test result constraints
 
-Full verification records every registered method and parameterized argument case
-from each native result bundle, then requires the shards together to cover the
-whole target ([the recorder](../../scripts/verify-ci-ios-evidence.py)). Two
-test-writing rules follow:
-
-- Each argument of a parameterized test needs a distinct display value.
-  Result bundles group argument cases by the value Swift Testing displays, so
-  `Data([1, 2, 3])` and `Data([4, 5, 6])` run as one `3 bytes` case and fail
-  the shard as a duplicate execution. Use distinct values, such as byte arrays,
-  or a `CustomTestStringConvertible` description.
-- Evidence accepts only passed and skipped results. `withKnownIssue` and
-  `XCTExpectFailure` produce expected failures, which fail both `make test-app`
-  and the CI recorder; fix the test or disable it with a reason instead.
+`scripts/run-app-simulator-tests.py` verifies `xcresult` reports after every app
+test run: a run that executed zero tests fails, and `withKnownIssue` /
+`XCTExpectFailure` expected failures also fail the runner—fix the test or
+disable it with a reason instead.
 
 ## Intermittent CI diagnosis
 
@@ -297,7 +261,7 @@ The frame vectors are captured: with a fixture started, `scripts/fixtures/herdr-
 
 `HerdrCoreComposerSendTests` runs Composer Send from `AgentComposerStore` down through a real `ConsoleStore`, `AgentAttachStore`, Host session and link on `ScriptedCoreHost`, with `coreSendClock` set to a `ManualClock`, and asserts the DATA frames that reach the core. `terminal.get` waits until `answerTerminalReads`, and `untilParked(for:)` says which deadline is armed. `TerminalKeyEncoderTests` holds literal bytes.
 
-`HerdrCoreTransportE2ETests` runs nine methods against a real core and disposable SSH server in the transport CI shard (and the serial lane): `neverStartsACoreAndReadsNotRunning`, `helloFeaturesCoreIDAndNoHC` (which also checks the extension's `file.write`), `noLegacyFallback`, `coreRestartUnderOneConnection`, `passiveRecentRead`, `attachResizeCreditAndClose`, `launchThroughInteractiveShell`, `composerPasteThenSubmit` and `desktopPlacement`. CI restores the pinned 0.1.13 archive from a cache keyed by its SHA-256 and verifies it again before extraction. The evidence gate requires those passes before accepting their ordinary-lane skips.
+`HerdrCoreTransportE2ETests` runs nine methods against a real core and disposable SSH server in the `session-weak` CI shard (and the local `all` lane): `neverStartsACoreAndReadsNotRunning`, `helloFeaturesCoreIDAndNoHC` (which also checks the extension's `file.write`), `noLegacyFallback`, `coreRestartUnderOneConnection`, `passiveRecentRead`, `attachResizeCreditAndClose`, `launchThroughInteractiveShell`, `composerPasteThenSubmit` and `desktopPlacement`. CI restores the pinned 0.1.13 archive from a cache keyed by its SHA-256 and verifies it again before extraction.
 
 The fixture, `scripts/fixtures/herdr-core-ssh.py`, owns a separate home and session and never updates or stops a user's core. It installs `herdr-core` only at `~/.local/bin`, off the exec's PATH. A core starts only by absolute path in the fixture's explicit environment, and `scripts/fixtures/herdr-core-rpc.py` drives it instead of `hc`. `hc` and `herdr` there are tripwires that log every call. For a local focused run, its `--help` describes setup, the private Simulator configuration and cleanup, from an already installed core:
 
@@ -309,7 +273,7 @@ xcrun simctl spawn <UDID> launchctl unsetenv HEELER_SSH_E2E_CONFIG
 python3 scripts/fixtures/herdr-core-ssh.py stop --root /tmp/hc-heeler
 ```
 
-`TmuxTransportE2ETests` runs thirty-eight methods against a real tmux and disposable SSH server in the transport CI shard (and the serial lane), right after the herdr-core suite and on the port its fixture held: `neverStartsAServer`, `detectionOffersAnsweringSockets`, `resolvesPathsThroughTheLoginShell`, `resolvesAgainAfterTheExecutableMoved`, `readsConnectedAndNoServerRunning`, `readsUpdateRequired`, `readsNotInstalled`, `aHostSessionWaitsForAServer`, `theInventoryLoopPrintsOnceAndThenOnlyOnChange`, `aNewWindowAndARenameReachTheConsole`, `aRestartedServerReadsAsANewInstance`, `aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName`, `aNewAgentLeavesTheCurrentWindowAndEndsWhenItExits`, `aNewTerminalOpensTheUsersShell`, `aNewWorkspaceUsesTheTypedNameOrTmuxNumbering`, `linuxStartsAServerThroughTheLoginShell`, `macosSaysToStartTmuxOnTheMac`, `renameAndCloseEndWhatTheyName`, `aNamedBranchChecksOutUnderHeelerAndRemovalEndsOnlyThatSession`, `anAttachWatchesAPaneThroughASessionOfItsOwn`, `aPausedPaneIsPaintedAgain`, `aWindowOnlyHeelersSessionHoldsIsClosed`, `keysTypedIntoAnAttachReachTheProgramAsMeasured`, `textAndAPasteTypedIntoAnAttachArriveExactly`, `sizingAPaneLeavesOtherWindowsUntouched`, `hidingARetainedAttachHandsTheWindowBackAndShowingTakesItAgain`, `composerSendPastesExactBytesAndOneMegabyte`, `typedTextThenStopReachThePaneInOrder`, `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering`, `aDroppedAttachChannelLeavesTheServerAnswering`, `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`, `textAfterTheClientExitsIsNotRunByTheShell`, `aPartialControlLineInAnyQuoteStateIsNeverExecuted`, `aPreExistingSessionWithTheAttachNameSurvives`, `aFailedAttachSetupEndsOnlyTheSessionItCreated`, `connectingCleansUpUnattachedMarkedAttachSessionsOnly`, `chatActionsLeaveWindowSizeUnchangedAndCloseTheirAttach` and `chatBinderMatchesOnlyThePanesRealTmuxServerAndReadsBackHeelerChat`. `theInventoryLoopPrintsOnceAndThenOnlyOnChange` and the two after it follow the inventory loop (ADR 0045): the first counts what one loop prints on a connection whose session slots it reads, and the other two drive `ConsoleStore` over the fixture. `aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName` plants `CLAUDECODE` in the global environment and `CODEX_THREAD_ID` on the session, and checks the Console's leaked-environment notice finds those names and none of the values. The three after them watch a Pane through its own control client (ADR 0045, in `TmuxAttachE2ETests.swift`): the watched Pane is `tail -f` of a file the test appends to, and a pause is `refresh-client -A '<pane>:pause'` aimed at Heeler's client. The next two type into a Pane through an Attach: its program is a `/bin/sh` probe that reads its terminal raw into a file, and what it read must equal `plugin/test-vectors/tmux-input-v1.json`'s reads for the fixture's tmux (3.7b's for a version it does not hold), under `extended-keys off` and under `on` with modifyOtherKeys 2, then text and a bracketed paste byte for byte. `typedTextThenStopReachThePaneInOrder` types `ab` and then Stop's Escape into a capturing Claude stand-in and checks the program reads them in that order. `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering` and `aDroppedAttachChannelLeavesTheServerAnswering` attach to a Pane that is streaming, then close the Attach and drop its channel, and check the server still answers `list-sessions` with no `heeler-attach` client left. `textAfterTheClientExitsIsNotRunByTheShell` feeds the Attach script to `/bin/sh -s` and checks that text written after the client exits is not run; `aPartialControlLineInAnyQuoteStateIsNeverExecuted` drops the SSH channel after an unterminated single-quoted, double-quoted and unquoted control line and checks none of them run while `kill-session` still ends the Attach session; `aPreExistingSessionWithTheAttachNameSurvives` checks a pre-existing session with the generated `heeler-attach-*` name survives untouched when `new-session` rejects the duplicate; `aFailedAttachSetupEndsOnlyTheSessionItCreated` checks that when `new-session` succeeds and prints a `session_id` before a later `set-option` or `link-window` fails, that created `session_id` is ended by id (never by session name) so no unmarked or marked session leaks; `connectingCleansUpUnattachedMarkedAttachSessionsOnly` `SIGKILL`s an Attach's remote process tree so an unattached `@heeler-attach` session remains in `tmux ls`, then connects `ConsoleStore` and checks only that unattached marked leftover is ended while a live attached `@heeler-attach` session and an unattached user session named `heeler-attach-user-owned` survive. `chatActionsLeaveWindowSizeUnchangedAndCloseTheirAttach` runs Chat's `capture-pane -e -p` screen read, Send, tools key press and Stop while a desktop client holds the window under `window-size latest`, checking that the window's dimensions never change and no `heeler-attach` session remains after each action. `chatBinderMatchesOnlyThePanesRealTmuxServerAndReadsBackHeelerChat` checks that Chat's binder matches a stand-in `claude` process's real `TMUX` (`<socket>,<pid>,<session index>`) and `TMUX_PANE` only against the Pane's stored socket path and server instance, and round-trips `@heeler-chat` JSON holding quotes, braces, `;`, `#{` and a backslash through the inventory loop before `ConsoleStore` binds the Transcript and clears the superseded pick. `sizingAPaneLeavesOtherWindowsUntouched` and `hidingARetainedAttachHandsTheWindowBackAndShowingTakesItAgain` attach a stand-in desktop terminal over a real PTY to check per-window sizing (`refresh-client -C @<window>:<cols>x<rows>`), the untouched windows across `window-size` and `aggressive-resize` modes and with no desktop client, and the `ignore-size` hand-back and take-back while retained. A window they start is given as two words, which tmux runs itself, so the account's shell is not what holds the pane's foreground, and an agent there is `cat` under a link named for it. CI links Homebrew's tmux, which the workflow installs for those shards, and the test script stops before the build on a machine with none (`HEELER_CI_TMUX` names one elsewhere). The evidence gate requires those passes before accepting their ordinary-lane skips. An old tmux is a stand-in script that prints `tmux 3.2a`: no CI machine has a real one. The six launch methods drive New Agent, New Terminal, New Workspace, rename and close through `ConsoleStore`. `aNamedBranchChecksOutUnderHeelerAndRemovalEndsOnlyThatSession` checks a repository whose path contains a space out at `~/.heeler` on the branch `feature/login`, into a session numbered because that name is already taken, with `@heeler-worktree` set to the checkout on the session id. Removal ends that session's panes and the checkout, and leaves the session that only shared the name. The scripted cases, including a dirty checkout, a submodule and changes left while the panes ended, are `TmuxWorktreesTests`. New Agent's stand-in is a shell script named `claude` that stays in the foreground, since `cat` exits on `--session-id`, and the Console's workspace order is the order `list-panes` prints. `aNewAgentLeavesTheCurrentWindowAndEndsWhenItExits` also checks that the launch passes `--settings`, that Heeler's Claude Code hook script and the stored tmux paths sit where the Helper's `locate` script puts the fixture's data home, and that Host detail's flow adds the hooks to the fixture HOME's default root and removes them again byte for byte. `linuxStartsAServerThroughTheLoginShell` puts a `uname` that prints `Linux` in the fixture root's `bin`, and the server it starts reports the login shell's `TMUX_TMPDIR`.
+`TmuxTransportE2ETests` runs thirty-eight methods against a real tmux and disposable SSH server in the transport CI shard (and the serial lane), right after the herdr-core suite and on the port its fixture held: `neverStartsAServer`, `detectionOffersAnsweringSockets`, `resolvesPathsThroughTheLoginShell`, `resolvesAgainAfterTheExecutableMoved`, `readsConnectedAndNoServerRunning`, `readsUpdateRequired`, `readsNotInstalled`, `aHostSessionWaitsForAServer`, `theInventoryLoopPrintsOnceAndThenOnlyOnChange`, `aNewWindowAndARenameReachTheConsole`, `aRestartedServerReadsAsANewInstance`, `aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName`, `aNewAgentLeavesTheCurrentWindowAndEndsWhenItExits`, `aNewTerminalOpensTheUsersShell`, `aNewWorkspaceUsesTheTypedNameOrTmuxNumbering`, `linuxStartsAServerThroughTheLoginShell`, `macosSaysToStartTmuxOnTheMac`, `renameAndCloseEndWhatTheyName`, `aNamedBranchChecksOutUnderHeelerAndRemovalEndsOnlyThatSession`, `anAttachWatchesAPaneThroughASessionOfItsOwn`, `aPausedPaneIsPaintedAgain`, `aWindowOnlyHeelersSessionHoldsIsClosed`, `keysTypedIntoAnAttachReachTheProgramAsMeasured`, `textAndAPasteTypedIntoAnAttachArriveExactly`, `sizingAPaneLeavesOtherWindowsUntouched`, `hidingARetainedAttachHandsTheWindowBackAndShowingTakesItAgain`, `composerSendPastesExactBytesAndOneMegabyte`, `typedTextThenStopReachThePaneInOrder`, `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering`, `aDroppedAttachChannelLeavesTheServerAnswering`, `closingOrDroppingStreamingAttachesUnderConcurrentReadsKeepsTheServerAlive`, `textAfterTheClientExitsIsNotRunByTheShell`, `aPartialControlLineInAnyQuoteStateIsNeverExecuted`, `aPreExistingSessionWithTheAttachNameSurvives`, `aFailedAttachSetupEndsOnlyTheSessionItCreated`, `connectingCleansUpUnattachedMarkedAttachSessionsOnly`, `chatActionsLeaveWindowSizeUnchangedAndCloseTheirAttach` and `chatBinderMatchesOnlyThePanesRealTmuxServerAndReadsBackHeelerChat`. `theInventoryLoopPrintsOnceAndThenOnlyOnChange` and the two after it follow the inventory loop (ADR 0045): the first counts what one loop prints on a connection whose session slots it reads, and the other two drive `ConsoleStore` over the fixture. `aVariableSetInTheGlobalAndSessionEnvironmentIsFoundByName` plants `CLAUDECODE` in the global environment and `CODEX_THREAD_ID` on the session, and checks the Console's leaked-environment notice finds those names and none of the values. The three after them watch a Pane through its own control client (ADR 0045, in `TmuxAttachE2ETests.swift`): the watched Pane is `tail -f` of a file the test appends to, and a pause is `refresh-client -A '<pane>:pause'` aimed at Heeler's client. The next two type into a Pane through an Attach: its program is a `/bin/sh` probe that reads its terminal raw into a file, and what it read must equal `plugin/test-vectors/tmux-input-v1.json`'s reads for the fixture's tmux (3.7b's for a version it does not hold), under `extended-keys off` and under `on` with modifyOtherKeys 2, then text and a bracketed paste byte for byte. `typedTextThenStopReachThePaneInOrder` types `ab` and then Stop's Escape into a capturing Claude stand-in and checks the program reads them in that order. `closingAnAttachWhileItsPaneStreamsLeavesTheServerAnswering` and `aDroppedAttachChannelLeavesTheServerAnswering` attach to a Pane that is streaming, then close the Attach and drop its channel, and check the server still answers `list-sessions` with no `heeler-attach` client left. `textAfterTheClientExitsIsNotRunByTheShell` feeds the Attach script to `/bin/sh -s` and checks that text written after the client exits is not run; `aPartialControlLineInAnyQuoteStateIsNeverExecuted` drops the SSH channel after an unterminated single-quoted, double-quoted and unquoted control line and checks none of them run while `kill-session` still ends the Attach session; `aPreExistingSessionWithTheAttachNameSurvives` checks a pre-existing session with the generated `heeler-attach-*` name survives untouched when `new-session` rejects the duplicate; `aFailedAttachSetupEndsOnlyTheSessionItCreated` checks that when `new-session` succeeds and prints a `session_id` before a later `set-option` or `link-window` fails, that created `session_id` is ended by id (never by session name) so no unmarked or marked session leaks; `connectingCleansUpUnattachedMarkedAttachSessionsOnly` `SIGKILL`s an Attach's remote process tree so an unattached `@heeler-attach` session remains in `tmux ls`, then connects `ConsoleStore` and checks only that unattached marked leftover is ended while a live attached `@heeler-attach` session and an unattached user session named `heeler-attach-user-owned` survive. `chatActionsLeaveWindowSizeUnchangedAndCloseTheirAttach` runs Chat's `capture-pane -e -p` screen read, Send, tools key press and Stop while a desktop client holds the window under `window-size latest`, checking that the window's dimensions never change and no `heeler-attach` session remains after each action. `chatBinderMatchesOnlyThePanesRealTmuxServerAndReadsBackHeelerChat` checks that Chat's binder matches a stand-in `claude` process's real `TMUX` (`<socket>,<pid>,<session index>`) and `TMUX_PANE` only against the Pane's stored socket path and server instance, and round-trips `@heeler-chat` JSON holding quotes, braces, `;`, `#{` and a backslash through the inventory loop before `ConsoleStore` binds the Transcript and clears the superseded pick. `sizingAPaneLeavesOtherWindowsUntouched` and `hidingARetainedAttachHandsTheWindowBackAndShowingTakesItAgain` attach a stand-in desktop terminal over a real PTY to check per-window sizing (`refresh-client -C @<window>:<cols>x<rows>`), the untouched windows across `window-size` and `aggressive-resize` modes and with no desktop client, and the `ignore-size` hand-back and take-back while retained. A window they start is given as two words, which tmux runs itself, so the account's shell is not what holds the pane's foreground, and an agent there is `cat` under a link named for it. CI links Homebrew's tmux, which the workflow installs for the transport shard, and the test script stops before the build on a machine with none (`HEELER_CI_TMUX` names one elsewhere). An old tmux is a stand-in script that prints `tmux 3.2a`: no CI machine has a real one. The six launch methods drive New Agent, New Terminal, New Workspace, rename and close through `ConsoleStore`. `aNamedBranchChecksOutUnderHeelerAndRemovalEndsOnlyThatSession` checks a repository whose path contains a space out at `~/.heeler` on the branch `feature/login`, into a session numbered because that name is already taken, with `@heeler-worktree` set to the checkout on the session id. Removal ends that session's panes and the checkout, and leaves the session that only shared the name. The scripted cases, including a dirty checkout, a submodule and changes left while the panes ended, are `TmuxWorktreesTests`. New Agent's stand-in is a shell script named `claude` that stays in the foreground, since `cat` exits on `--session-id`, and the Console's workspace order is the order `list-panes` prints. `aNewAgentLeavesTheCurrentWindowAndEndsWhenItExits` also checks that the launch passes `--settings`, that Heeler's Claude Code hook script and the stored tmux paths sit where the Helper's `locate` script puts the fixture's data home, and that Host detail's flow adds the hooks to the fixture HOME's default root and removes them again byte for byte. `linuxStartsAServerThroughTheLoginShell` puts a `uname` that prints `Linux` in the fixture root's `bin`, and the server it starts reports the login shell's `TMUX_TMPDIR`.
 
 `TmuxInventoryLoopTests` covers the loop's script and its reader, with `TmuxLoopText` writing what a loop prints, and `scripts/test-tmux-inventory-loop.py` (in `make test-tools`) runs the script through each POSIX shell on the machine against a real tmux on a private `-S` socket (`HEELER_TEST_TMUX` names another tmux; it skips where there is none). `TmuxAgentRuleTests` and `TmuxOrganizationTests` cover the pure Agent rule and the rows. `plugin/test/claude-code-hook-tmux.test.js` runs Heeler's Claude Code hook script as Claude Code would, under a temporary `HOME`, against a real tmux on a private `-S` socket: the `@heeler-status` vector's writes in every POSIX shell on the machine, the blocked hold, `@heeler-session`, the foreground and `TMUX` gates, and parallel hooks. Its tmux suite skips only outside CI, on a machine with no tmux. `ClaudeCodeHooksTests` covers the settings edit over exact bytes, and `ClaudeCodeHooksFlowTests` Host detail's flow over `InMemoryHostFiles`; `TmuxClaudeCodeHooksTests` runs the placement script through a real `/bin/sh` into a temporary folder. `ScriptedTmuxHost` is the scripted tmux transport: it answers the probe and prints a loop's text from the panes a test sets (`startServer`, `stopServer`, `setPanes`, `changePanes`, `failNextLoop`, `breakLoops`, `setGlobalEnvironment`, `setSessionEnvironment`, `failShowEnvironment`), under the real `TmuxSSHTransport`, so `TmuxSSHTransportTests` reads the stream, `TmuxEnvironmentTests` keeps names only, `TmuxEnvironmentConsoleTests` drives the leaked-environment notice, and `TmuxInventoryConsoleTests` drives `ConsoleStore` on defaults that outlive a launch: rows and order, shared windows, Heeler's own sessions, the Agent rule, and Pins across a new server instance.
 
@@ -334,9 +298,8 @@ The Helper's core connection is tested in Node against `plugin/test/support/fake
 ## Host and platform acceptance
 
 Local real-SSH tests may skip without a configured sshd/key. The CI runner
-provisions disposable sshd instances and pins counts for mandatory suites.
-Read `scripts/run-ci-ios-tests.sh` when changing fixture membership or skip gates;
-do not copy old counts from a research note.
+provisions disposable sshd instances and rejects skips in mandatory suites.
+Read `scripts/run-ci-ios-tests.sh` when changing fixture membership.
 
 For Simulator or plugin acceptance against a throwaway herdr instead of the
 live server, run isolated herdr sessions, a loopback sshd, the repository

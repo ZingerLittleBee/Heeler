@@ -98,7 +98,7 @@ and no email addresses.
   `Generated with`, `🤖 Generated`, `Assisted-by`, and any email address on
   `git commit`. Install it once with `brew install lefthook && lefthook
   install` (the repo root has no `package.json` on purpose).
-- CI (`.github/workflows/check-commit-attribution.yml`) scans every commit
+- CI (`.github/workflows/ci.yml`) scans every commit
   on the PR and the PR title/description with the same matchers.
 - `git commit --no-verify` or `LEFTHOOK=0` skips only the local hook; CI
   still fails.
