@@ -21,6 +21,7 @@ struct NewHostWizardView: View {
     @State private var savedMember: Host.ID?
     @FocusState private var isUserFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     init(
         catalog: HostStore,
@@ -198,16 +199,25 @@ struct NewHostWizardView: View {
         .disabled(wizard.isConnecting)
     }
 
-    /// What More Options holds, naming the port the route uses now.
+    /// What More Options holds, naming the port the route uses now and the
+    /// Overlay Network or Jump Host it already goes through.
     private var moreOptionsHint: String {
         let route = wizard.draft.primaryRoute
         var parts = [String(localized: "Port \(route.port).")]
+        if let networkID = route.overlayNetworkID {
+            if let network = overlayNetworks?.network(id: networkID) {
+                parts.append(String(localized: "Over overlay network “\(network.displayName)”."))
+            } else {
+                parts.append(String(localized: "Over an overlay network that no longer exists."))
+            }
+        }
         if route.usesJumpHost {
             parts.append(String(localized: "Through the Jump Host \(route.jumpAddress)."))
-        } else {
+        }
+        if parts.count == 1 {
             parts.append(String(localized: "Add a Jump Host or an overlay network under More Options."))
         }
-        return parts.joined(separator: " ")
+        return parts.joinedAsSentences()
     }
 
     // MARK: Trust
@@ -393,27 +403,27 @@ struct NewHostWizardView: View {
             switch wizard.step {
             case .connect:
                 if wizard.failure != nil, !wizard.isConnecting {
-                    primary("Try Again", isEnabled: wizard.canConnect) { connect() }
+                    primary(String(localized: "Try Again"), isEnabled: wizard.canConnect) { connect() }
                     // A Host that is in the catalog is saved already.
                     if wizard.existing == nil {
-                        secondary("Save Without Connecting", isEnabled: wizard.canConnect) { finish() }
+                        secondary(String(localized: "Save Without Connecting"), isEnabled: wizard.canConnect) { finish() }
                     }
                 } else {
                     primary(
-                        wizard.isConnecting ? "Connecting…" : "Connect", isBusy: wizard.isConnecting,
-                        isEnabled: wizard.canConnect
+                        wizard.isConnecting ? String(localized: "Connecting…") : String(localized: "Connect"),
+                        isBusy: wizard.isConnecting, isEnabled: wizard.canConnect
                     ) { connect() }
                 }
             case .trust:
                 if wizard.isLookingAfterTrust {
-                    primary("Looking for servers…", isBusy: true, isEnabled: false) {}
+                    primary(String(localized: "Looking for servers…"), isBusy: true, isEnabled: false) {}
                 } else {
-                    primary("Trust and Continue") {
+                    primary(String(localized: "Trust and Continue")) {
                         // The next key, a Jump Host's then the Host's, has its own command.
                         didCopyCommand = false
                         wizard.trust()
                     }
-                    secondary("Don't Trust") {
+                    secondary(String(localized: "Don't Trust")) {
                         wizard.declineTrust()
                         dismiss()
                     }
@@ -421,7 +431,8 @@ struct NewHostWizardView: View {
             case .servers:
                 if wizard.scan?.servers.isEmpty == true {
                     primary(
-                        wizard.isScanningAgain ? "Looking for servers…" : "Scan Again",
+                        wizard.isScanningAgain
+                            ? String(localized: "Looking for servers…") : String(localized: "Scan Again"),
                         isBusy: wizard.isScanningAgain, isEnabled: !wizard.isScanningAgain && !wizard.isSaving
                     ) {
                         Task { await wizard.scanAgain() }

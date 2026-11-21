@@ -25,10 +25,11 @@ struct TransportErrorPresentation: Equatable, Sendable {
         return summary.asSentence
     }
 
-    /// `explanation` [+ " " + `recoverySuggestion`] — the whole presentation.
+    /// `explanation` [+ `recoverySuggestion`, as the next sentence] — the
+    /// whole presentation.
     var message: String {
         if let recoverySuggestion {
-            return "\(explanation) \(recoverySuggestion)"
+            return [explanation, recoverySuggestion].joinedAsSentences()
         }
         return explanation
     }
@@ -473,7 +474,8 @@ extension TransportError {
     }
 
     /// Overlay failures name the network, not the Host: the Host was never
-    /// contacted, and the fix lives in Settings › Overlay Networks.
+    /// contacted, and the fix lives in Settings › Overlay Networks. An address
+    /// the network never reaches is the exception: its fix is the Host's route.
     private static func overlayPresentation(
         network: String, reason: OverlayFailure
     ) -> TransportErrorPresentation {
@@ -500,6 +502,11 @@ extension TransportError {
                 summary: String(localized: "Overlay network “\(network)” is misconfigured"),
                 detail: detail,
                 recoverySuggestion: String(localized: "Fix it in Settings › Overlay Networks."))
+        case .invalidDestination(let detail):
+            TransportErrorPresentation(
+                summary: String(localized: "Overlay network “\(network)” cannot reach this address"),
+                detail: detail,
+                recoverySuggestion: String(localized: "Change the address in the Host's route."))
         case .loginRequired:
             TransportErrorPresentation(
                 summary: String(localized: "Overlay network “\(network)” needs sign-in"),

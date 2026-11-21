@@ -649,7 +649,7 @@ enum OverlayStatusCopy {
             case .signedOut: return String(localized: "Signed out")
             case .notReady: return String(localized: "Not ready")
             case .startFailed: return String(localized: "Failed")
-            case .unreachable: return String(localized: "Unreachable")
+            case .unreachable, .invalidDestination: return String(localized: "Unreachable")
             case .timedOut: return String(localized: "Timed out")
             }
         }
@@ -690,7 +690,7 @@ enum OverlayStatusCopy {
                 return String(localized: "\(detail.asSentence) Edit the network to fix it.")
             case .startFailed(let detail):
                 return String(localized: "\(detail.asSentence) Check the network's settings.")
-            case .unreachable(let detail):
+            case .unreachable(let detail), .invalidDestination(let detail):
                 return detail
             case .timedOut:
                 return String(localized: "The network did not answer in time.")
