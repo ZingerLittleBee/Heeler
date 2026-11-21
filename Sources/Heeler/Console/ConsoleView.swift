@@ -350,21 +350,21 @@ struct ConsoleView: View {
         }
         .sheet(item: $connectionDetailRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
-                if let host = hosts.consoleHosts.first(where: { $0.id == request.id }),
-                    let detail = connectionDetail(for: request)
+                if let detail = connectionDetail(for: request),
+                    let host = hosts.consoleHosts.first(where: { $0.id == detail.hostID })
                 {
                     HostConnectionDetailView(
                         presentation: detail,
                         host: host,
                         catalog: hosts,
                         sheetPresentation: presentation,
-                        isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id),
-                        onStop: { Task { await console.cancelHostConnection(host.id) } }
+                        isRetryInFlight: isRetryingConnection(ofHostContaining: request.id),
+                        onStop: { Task { await stopConnecting(hostContaining: request.id) } }
                     ) {
                         // Holds the sheet open through the retry's dial, which a
                         // reconnecting Host makes without a standing failure.
                         connectionDetailRequest?.lastFailure = detail.failure
-                        Task { await reconnectHost(host.id) }
+                        Task { await retryConnection(ofHostContaining: request.id) }
                     }
                 }
             }
@@ -2649,8 +2649,9 @@ struct ConsoleView: View {
             .issues(filteredHostIDs: hostFilter)
     }
 
-    /// Every Host problem under the Host filter, as the flat lists show
-    /// them outside a search, and as their summary's sheet lists them.
+    /// Every Host problem under the Host filter, one for each Host, as the
+    /// lists' status tile shows them outside a search, and as its sheet
+    /// lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
         Self.filteredHostIssues(hosts: hosts, console: console, hostFilter: hostFilter)
     }
@@ -2658,9 +2659,11 @@ struct ConsoleView: View {
     static func filteredHostIssues(
         hosts: HostStore, console: ConsoleStore, hostFilter: Set<Host.ID>
     ) -> [ConsoleHostStatusPresentation] {
-        let issues = console.hostIssues(for: hosts.consoleHosts)
-        guard !hostFilter.isEmpty else { return issues }
-        return issues.filter { hostFilter.contains($0.hostID) }
+        let listed = hosts.consoleHosts
+        // The filter holds records, as the lists read it: a Host speaks for
+        // the Servers it leaves in.
+        return console.machineIssues(
+            for: hostFilter.isEmpty ? listed : listed.filter { hostFilter.contains($0.id) })
     }
 
     /// The Hosts the lists' filter offers: each Host once, in the Hosts tab's
@@ -2735,20 +2738,20 @@ struct ConsoleView: View {
                 presentHosts(id)
             }
         ) { id in
-            if let host = hosts.consoleHosts.first(where: { $0.id == id }),
-                let detail = hostIssuesSheetDetail(for: id)
+            if let detail = hostIssuesSheetDetail(for: id),
+                let host = hosts.consoleHosts.first(where: { $0.id == detail.hostID })
             {
                 HostConnectionDetailContent(
                     presentation: detail,
                     host: host,
                     catalog: hosts,
                     sheetPresentation: sheetPresentation,
-                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(id),
-                    onStop: { Task { await console.cancelHostConnection(id) } }
+                    isRetryInFlight: isRetryingConnection(ofHostContaining: id),
+                    onStop: { Task { await stopConnecting(hostContaining: id) } }
                 ) {
                     // As in the single Host's sheet: stays through the dial.
                     hostIssuesLastFailures[id] = detail.failure
-                    Task { await reconnectHost(id) }
+                    Task { await retryConnection(ofHostContaining: id) }
                 }
             }
         }
@@ -2779,19 +2782,40 @@ struct ConsoleView: View {
         Self.connectionDetail(for: request, hosts: hosts, console: console)
     }
 
+    /// Why the Host that `request` names by one of its records cannot
+    /// connect: the connection is the Host's, whichever of its Servers the
+    /// record is (ADR 0058).
     fileprivate static func connectionDetail(
         for request: ConnectionDetailRequest, hosts: HostStore, console: ConsoleStore
     ) -> HostConnectionDetailPresentation? {
-        guard let host = hosts.consoleHosts.first(where: { $0.id == request.id }) else { return nil }
+        guard let group = hostGroup(containing: request.id, in: hosts) else { return nil }
         return HostConnectionDetailPresentation(
-            host: host,
-            status: console.hostStatuses[request.id],
-            standingFailure: console.hostStandingFailures[request.id],
+            group: group,
+            statuses: console.hostStatuses,
+            standingFailures: console.hostStandingFailures,
             lastFailure: request.lastFailure)
     }
 
-    /// A Host that cannot connect explains itself in a sheet; any other Host
-    /// condition opens the Host in the Hosts tab.
+    /// The Host one record belongs to, with the Servers it has on.
+    private static func hostGroup(
+        containing id: Host.ID, in hosts: HostStore
+    ) -> ConsoleHostSectionGroup? {
+        ConsoleHostSectionGroup.grouping(hosts.consoleHosts).first { group in
+            group.servers.contains { $0.id == id }
+        }
+    }
+
+    /// The records of the Servers that are on, of the Host `id` is one of.
+    private func serverIDs(ofHostContaining id: Host.ID) -> [Host.ID] {
+        Self.hostGroup(containing: id, in: hosts)?.servers.map(\.id) ?? [id]
+    }
+
+    private func isRetryingConnection(ofHostContaining id: Host.ID) -> Bool {
+        !manualReconnectInFlightHostIDs.isDisjoint(with: serverIDs(ofHostContaining: id))
+    }
+
+    /// A Host that cannot connect explains itself in a sheet; any other
+    /// condition opens the Server it is of, `id`, in the Hosts tab.
     private func openHostIssue(_ id: Host.ID) {
         if connectionDetail(for: id) != nil {
             connectionDetailRequest = ConnectionDetailRequest(id: id)
@@ -2825,6 +2849,29 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
+    }
+
+    /// Retry Now on a connection sheet, which speaks for a Host: each of its
+    /// Servers that is not connected dials again, so none waits out a
+    /// backoff of its own. A second press while one is being served does
+    /// nothing.
+    private func retryConnection(ofHostContaining id: Host.ID) async {
+        let servers = serverIDs(ofHostContaining: id).filter { console.hostStatuses[$0] != .connected }
+        guard !servers.isEmpty, manualReconnectInFlightHostIDs.isDisjoint(with: servers) else { return }
+        manualReconnectInFlightHostIDs.formUnion(servers)
+        for server in servers {
+            await console.retryHost(server)
+        }
+        try? await Task.sleep(for: .milliseconds(1_200))
+        manualReconnectInFlightHostIDs.subtract(servers)
+    }
+
+    /// Stop Connecting on a connection sheet: every Server of the Host that
+    /// is still dialing stops. A connected one is left alone.
+    private func stopConnecting(hostContaining id: Host.ID) async {
+        for server in serverIDs(ofHostContaining: id) {
+            await console.cancelHostConnection(server)
+        }
     }
 
     /// Host detail's Reconnect: the Host's Servers dial again together, on

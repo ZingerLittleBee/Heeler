@@ -26,6 +26,15 @@ its contract.
   which actions it offers. Focused coverage: `ConsoleListPresentationStoreTests`,
   `TerminalListProjectionTests`, `ConsoleHostSectionHeaderPresentationTests`,
   `ConsoleHostIssueSummaryTests`.
+  The corner status tile and its sheet
+  ([ConsoleHostIssueRow](../../Sources/Heeler/Console/ConsoleHostIssueRow.swift))
+  take one condition for each Host, not for each Server:
+  `ConsoleHostStatusPresentation.perHost` in
+  [ConsoleHostStatusPresentation](../../Sources/Heeler/Console/ConsoleHostStatusPresentation.swift),
+  held as `ConsoleStore.machineIssues`, and the connection sheet they open
+  speaks for the Host (`HostConnectionDetailPresentation(group:)`), its Retry
+  Now and Stop Connecting reaching every Server the Host has on. Coverage:
+  `ConsoleHostConditionsPerHostTests`.
   [HerdrCoreConsoleProjection](../../Sources/Heeler/Console/HerdrCoreConsoleProjection.swift)
   owns a herdr-core Host's; rows start in
   [HerdrCoreOrganization](../../Sources/Heeler/Console/HerdrCoreOrganization.swift),

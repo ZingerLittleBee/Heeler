@@ -278,10 +278,16 @@ struct TerminalListProjection {
         }
     }
 
-    /// Host problems, one per Server, in the order of the cards, for the By
-    /// Workspace presentation, which has no Host headers to carry them.
+    /// Host problems, one for each Host (ADR 0058), in the order of the
+    /// cards, for the status tile that floats over both presentations.
     func issues(filteredHostIDs: Set<Host.ID> = []) -> [ConsoleHostStatusPresentation] {
-        visibleGroups(filteredHostIDs).flatMap(\.servers).compactMap(issue(for:))
+        visibleGroups(filteredHostIDs).compactMap {
+            ConsoleHostStatusPresentation.ranked(
+                $0, statuses: hostStatuses, standingFailures: hostStandingFailures,
+                awaitingSnapshot: hostsAwaitingSnapshot, syncErrors: hostSyncErrors,
+                inventoryNoun: "Terminals"
+            ).first
+        }
     }
 
     private func visibleGroups(_ filteredHostIDs: Set<Host.ID>) -> [ConsoleHostSectionGroup] {

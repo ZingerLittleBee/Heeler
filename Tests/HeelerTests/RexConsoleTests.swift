@@ -932,8 +932,8 @@ struct RexConsoleTests {
 
     /// A Rex Server's problem reads as any Server's (ADR 0047): beside the
     /// Host's tmux Server, each problem names its own record, By Host lists
-    /// both under the one Host's heading, and the flat lists' corner tile
-    /// opens a lone Rex problem's connection details.
+    /// both under the one Host's heading, and the lists' corner tile takes
+    /// the Host once, by its name alone (ADR 0058).
     @Test func aRexServersProblemReadsAsAnyServersBesideTheHostsOthers() async throws {
         let rexServer = Host(
             name: "m3", address: "m3.example", username: "dev", serverKind: .rex,
@@ -960,9 +960,12 @@ struct RexConsoleTests {
         #expect(byHost.map(\.hostName) == ["m3"])
         #expect(byHost.first?.issues.map(\.hostID) == [tmux.id, rexServer.id])
 
-        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: [issues[1]]))
-        #expect(corner.expandedTitle == "m3 · Rex")
-        #expect(corner.action == .openHost(rexServer.id))
+        let tile = console.machineIssues(for: records)
+        #expect(tile.map(\.hostName) == ["m3"])
+        #expect(tile.map(\.hostID) == [tmux.id])
+        let corner = try #require(ConsoleHostIssueCornerPresentation(issues: tile))
+        #expect(corner.expandedTitle == "m3")
+        #expect(corner.action == .openHost(try #require(tile.first).serverID))
     }
 }
 
