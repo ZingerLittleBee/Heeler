@@ -1,7 +1,7 @@
 {
-  "pricingVersion": "2026-11-15",
+  "pricingVersion": "2026-11-21",
   "source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
-  "sourceSHA256": "3b5829b9df6a8d32f5ad44f8ec09001b0c31ac8553734a160d0fb0ba95573889",
+  "sourceSHA256": "c436a6e5121c438a20b0c014d46129acfe41d2d1b23725bfda733dd901141210",
   "license": "MIT",
   "models": {
     "claude-fable-5": {
@@ -593,6 +593,23 @@
         "input": 7.5e-7,
         "output": 0.00000375,
         "cacheRead": 3.75e-8
+      }
+    },
+    "gemini-4-neon": {
+      "base": {
+        "input": 0.000003,
+        "output": 0.000015,
+        "cacheRead": 1.5e-7
+      },
+      "fast": {
+        "input": 0.0000054,
+        "output": 0.000027,
+        "cacheRead": 2.7e-7
+      },
+      "flex": {
+        "input": 0.0000015,
+        "output": 0.0000075,
+        "cacheRead": 7.5e-8
       }
     },
     "gemini-exp-1114": {
@@ -1751,6 +1768,14 @@
         "input": 0.00001,
         "output": 0.00005,
         "cacheRead": 0.000001
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.00002,
+          "output": 0.000075,
+          "cacheRead": 0.000002
+        }
       }
     },
     "gpt-6-cyber": {
@@ -1812,18 +1837,18 @@
     },
     "gpt-6-rosalind": {
       "base": {
-        "input": 0.000015,
-        "output": 0.000075,
-        "cacheRead": 0.0000015,
-        "cacheWrite": 0.00001875
+        "input": 0.00001,
+        "output": 0.00005,
+        "cacheRead": 0.000001,
+        "cacheWrite": 0.0000125
       },
       "longContext": {
         "threshold": 272000,
         "base": {
-          "input": 0.00003,
-          "output": 0.0001125,
-          "cacheRead": 0.000003,
-          "cacheWrite": 0.0000375
+          "input": 0.00002,
+          "output": 0.000075,
+          "cacheRead": 0.000002,
+          "cacheWrite": 0.000025
         }
       }
     },
@@ -1947,6 +1972,81 @@
           "output": 0.00000375,
           "cacheRead": 5e-8,
           "cacheWrite": 0.00000125
+        }
+      }
+    },
+    "gpt-6.2-astra": {
+      "base": {
+        "input": 0.000008,
+        "output": 0.00004,
+        "cacheRead": 4e-7,
+        "cacheWrite": 0.00001
+      },
+      "fast": {
+        "input": 0.000016,
+        "output": 0.00008,
+        "cacheRead": 8e-7,
+        "cacheWrite": 0.00002
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.000016,
+          "output": 0.00006,
+          "cacheRead": 8e-7,
+          "cacheWrite": 0.00002
+        },
+        "fast": {
+          "input": 0.000032,
+          "output": 0.00012,
+          "cacheRead": 0.0000016,
+          "cacheWrite": 0.00004
+        }
+      }
+    },
+    "gpt-6.2-astra-law": {
+      "base": {
+        "input": 0.000008,
+        "output": 0.00004,
+        "cacheRead": 4e-7,
+        "cacheWrite": 0.00001
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.000016,
+          "output": 0.00006,
+          "cacheRead": 8e-7,
+          "cacheWrite": 0.00002
+        }
+      }
+    },
+    "gpt-6.2-sol": {
+      "base": {
+        "input": 0.000002,
+        "output": 0.00001,
+        "cacheRead": 1e-7,
+        "cacheWrite": 0.0000025
+      },
+      "fast": {
+        "input": 0.000004,
+        "output": 0.00002,
+        "cacheRead": 2e-7,
+        "cacheWrite": 0.000005
+      },
+      "longContext": {
+        "threshold": 272000,
+        "base": {
+          "input": 0.000004,
+          "output": 0.000015,
+          "cacheRead": 2e-7,
+          "cacheWrite": 0.000005
+        },
+        "fast": {
+          "input": 0.000008,
+          "output": 0.00003,
+          "cacheRead": 4e-7,
+          "cacheWrite": 0.00001
         }
       }
     },
