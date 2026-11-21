@@ -1116,19 +1116,6 @@ struct AgentCardChangesTotalsTests {
         workspaceLabel: "proj",
         repositoryCheckout: nil)
 
-    private static func store(added: Int, removed: Int) async throws -> ChangesStore {
-        let read = try ChangesBadgeTests.read(added: added, removed: removed)
-        let store = ChangesStore(directory: { "/home/dev/src/tracking" }) { _ in read }
-        await store.refresh()
-        return store
-    }
-
-    static func identifier(of node: NSObject) -> String? {
-        let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
-        guard node.responds(to: getter) else { return nil }
-        return node.value(forKey: "accessibilityIdentifier") as? String
-    }
-
     /// A layout that leaves its right side unsaved uses `defaultTrailing`:
     /// the Host ends Row 1 (the title, or Row 1's line under a heading) and
     /// the totals end Row 2.

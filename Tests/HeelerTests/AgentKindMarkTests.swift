@@ -108,18 +108,6 @@ struct AgentKindMarkTests {
 @MainActor
 @Suite("Agent card status ring", .timeLimit(.minutes(1)))
 struct AgentCardStatusRingTests {
-    private static func agent(kind: String = "claude", status: AgentStatus = .working) -> ConsoleAgent {
-        ConsoleAgent(
-            hostID: UUID(),
-            hostName: "devbox",
-            agent: Agent(
-                terminalID: "term_a", kind: kind, title: "Fix the flaky test",
-                status: status, workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1",
-                cwd: "/work/proj", revision: 3, terminalTitleStripped: "Fix the flaky test"),
-            workspaceLabel: "proj",
-            repositoryCheckout: nil)
-    }
-
     /// Done and Blocked share a closed ring told apart by color, so Blocked
     /// breaks into dashes where color must not carry it alone.
     @Test func blockedDashesItsRingWhereColorCannotCarryIt() {

@@ -86,14 +86,6 @@ struct TerminalMouseReportingTests {
         #expect(mapper.cell(at: CGPoint(x: 10, y: 10)) == nil)
     }
 
-    /// Ghostty needs a few render passes before its grid metrics settle.
-    private func settle() async throws {
-        for _ in 0..<10 {
-            try await Task.sleep(for: .milliseconds(50))
-            await Task.yield()
-        }
-    }
-
     /// Tuple results are not `Equatable`; this keeps the expectations readable.
     private struct Pair: Equatable {
         let column: Int

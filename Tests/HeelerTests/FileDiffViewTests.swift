@@ -87,33 +87,4 @@ struct FileDiffViewTests {
         }
         return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
     }
-
-    static func store(transport: ScriptedTransport) -> ChangesStore {
-        ChangesStore(
-            directory: { "/home/dev/src/app" },
-            read: { try await transport.readChanges($0) },
-            readPatch: { try await transport.readFilePatch($0) })
-    }
-
-    static let file = ChangedFile(
-        path: Data("untracked.txt".utf8), originalPath: nil, kind: .untracked, staging: nil)
-
-    static func patch(isTruncated: Bool = false) -> FilePatch {
-        FilePatch(
-            files: [
-                DiffFile(
-                    id: 0, oldPath: nil, newPath: "untracked.txt", summary: nil,
-                    isBinary: false,
-                    hunks: [
-                        DiffHunk(
-                            id: 0, oldStart: 0, oldCount: 0, newStart: 1, newCount: 1,
-                            section: "new section",
-                            lines: [
-                                DiffLine(
-                                    id: 0, kind: .added, oldNumber: nil, newNumber: 1,
-                                    text: "new content", missingNewline: false)
-                            ])
-                    ])
-            ], isTruncated: isTruncated)
-    }
 }
