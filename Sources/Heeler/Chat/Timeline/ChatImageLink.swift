@@ -24,9 +24,22 @@ enum ChatImageLink {
         static let name = "HeelerChatImageTitle"
     }
 
+    enum MediaKind: String, Equatable, Sendable {
+        case image
+        case video
+    }
+
+    static func mediaKind(for path: String) -> MediaKind {
+        ChatImagePath.hasVideoExtension(path) ? .video : .image
+    }
+
     struct Reference: Equatable, Sendable {
         let path: String
         let title: String?
+
+        var mediaKind: MediaKind {
+            ChatImageLink.mediaKind(for: path)
+        }
 
         init(path: String, title: String? = nil) {
             self.path = path
@@ -39,6 +52,13 @@ enum ChatImageLink {
         return String(
             localized: "Image #\(formatted)",
             comment: "Short label shown in a sent Chat message bubble in place of a staged image's temporary Host path, numbered in order within the message (e.g. Image #1).")
+    }
+
+    static func stagedVideoLabel(number: Int) -> String {
+        let formatted = number.formatted()
+        return String(
+            localized: "Video #\(formatted)",
+            comment: "Short label shown in a sent Chat message bubble in place of a staged video's temporary Host path, numbered in order within the message (e.g. Video #1).")
     }
 
     /// Whether `path` is a temporary Host path created when Heeler stages an
@@ -58,6 +78,33 @@ enum ChatImageLink {
             return true
         }
         guard namesImageFile(path) else { return false }
+        return hasPOSIXStageHierarchy(path)
+    }
+
+    /// Whether `path` is a temporary Host path created when Heeler stages a
+    /// video (POSIX `.../heeler.../stage-.../*.{mp4,m4v,mov}` or native
+    /// Windows `herdr-core` `...\herdr-core\...\files\<terminal>\*.{mp4,m4v,mov}`).
+    static func isStagedVideoPath(_ path: String) -> Bool {
+        if RemoteHostPath.isWindowsAbsolute(path) {
+            let parts = path.split { $0 == "\\" || $0 == "/" }.map { $0.lowercased() }
+            guard parts.count >= 5,
+                let filename = parts.last,
+                namesVideoFile(filename),
+                let coreIndex = parts.firstIndex(of: "herdr-core"),
+                let filesIndex = parts[coreIndex...].firstIndex(of: "files"),
+                filesIndex + 2 == parts.count - 1
+            else { return false }
+            return true
+        }
+        guard namesVideoFile(path) else { return false }
+        return hasPOSIXStageHierarchy(path)
+    }
+
+    static func isStagedMediaPath(_ path: String) -> Bool {
+        isStagedImagePath(path) || isStagedVideoPath(path)
+    }
+
+    private static func hasPOSIXStageHierarchy(_ path: String) -> Bool {
         let components = path.split(separator: "/", omittingEmptySubsequences: true)
         guard components.count >= 3 else { return false }
         let stage = components[components.count - 2]
@@ -78,7 +125,7 @@ enum ChatImageLink {
             path.rangeOfCharacter(from: .newlines) == nil
         else { return nil }
         if path.lowercased().hasPrefix("file:") {
-            guard let resolved = ChatImagePath.resolve(path, cwd: nil), namesImageFile(resolved) else { return nil }
+            guard let resolved = ChatImagePath.resolve(path, cwd: nil), namesMediaFile(resolved) else { return nil }
             return path
         }
         let isRooted = path.hasPrefix("/") || path.hasPrefix("~/")
@@ -86,7 +133,7 @@ enum ChatImageLink {
             guard path.first != "-", path.first != "~", path.rangeOfCharacter(from: relativeExclusions) == nil
             else { return nil }
         }
-        guard path.rangeOfCharacter(from: rootedExclusions) == nil, namesImageFile(path) else { return nil }
+        guard path.rangeOfCharacter(from: rootedExclusions) == nil, namesMediaFile(path) else { return nil }
         return path
     }
 
@@ -285,27 +332,39 @@ enum ChatImageLink {
     // MARK: Staged Numbering
 
     private struct StagedNumbering {
-        private var nextNumber: Int
-        private var assigned: [String: Int] = [:]
+        private var nextImageNumber: Int
+        private var nextVideoNumber = 1
+        private var assigned: [String: (kind: MediaKind, number: Int)] = [:]
         let knownStagedPaths: Set<String>
 
         init(startingAfter highestPlaceholder: Int = 0, knownStagedPaths: Set<String> = []) {
-            self.nextNumber = max(1, highestPlaceholder + 1)
+            self.nextImageNumber = max(1, highestPlaceholder + 1)
             self.knownStagedPaths = knownStagedPaths
         }
 
         func isStaged(_ path: String) -> Bool {
-            knownStagedPaths.contains(path) || ChatImageLink.isStagedImagePath(path)
+            knownStagedPaths.contains(path) || ChatImageLink.isStagedMediaPath(path)
         }
 
         mutating func label(for path: String) -> String {
             if let existing = assigned[path] {
-                return ChatImageLink.stagedImageLabel(number: existing)
+                return existing.kind == .video
+                    ? ChatImageLink.stagedVideoLabel(number: existing.number)
+                    : ChatImageLink.stagedImageLabel(number: existing.number)
             }
-            let number = nextNumber
-            nextNumber += 1
-            assigned[path] = number
-            return ChatImageLink.stagedImageLabel(number: number)
+            let kind = ChatImageLink.mediaKind(for: path)
+            switch kind {
+            case .image:
+                let number = nextImageNumber
+                nextImageNumber += 1
+                assigned[path] = (.image, number)
+                return ChatImageLink.stagedImageLabel(number: number)
+            case .video:
+                let number = nextVideoNumber
+                nextVideoNumber += 1
+                assigned[path] = (.video, number)
+                return ChatImageLink.stagedVideoLabel(number: number)
+            }
         }
     }
 
@@ -374,11 +433,15 @@ enum ChatImageLink {
             }
         }
         if text.contains(":\\") {
-            let windowsPattern =
+            let windowsImagePattern =
                 #/[A-Za-z]:\\(?:[^\\\r\n"'<>|*?]+\\)*herdr-core\\(?:[^\\\r\n"'<>|*?]+\\)*files\\[^\\\r\n\s"'<>|*?]+\\image[^\\\r\n\s"'<>|*?]*\.(?:avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)/#
                 .ignoresCase()
-            for match in text.matches(of: windowsPattern) {
-                let range = match.range
+            let windowsVideoPattern =
+                #/[A-Za-z]:\\(?:[^\\\r\n"'<>|*?]+\\)*herdr-core\\(?:[^\\\r\n"'<>|*?]+\\)*files\\[^\\\r\n\s"'<>|*?]+\\[^\\\r\n\s"'<>|*?]+\.(?:mp4|m4v|mov)/#
+                .ignoresCase()
+            for range in text.matches(of: windowsImagePattern).map(\.range)
+                + text.matches(of: windowsVideoPattern).map(\.range)
+            {
                 let validStart =
                     range.lowerBound == text.startIndex
                     || mayPrecedePath(text[text.index(before: range.lowerBound)])
@@ -404,10 +467,22 @@ enum ChatImageLink {
     /// An image extension ends a name with something before its dot.
     private static func namesImageFile(_ path: String) -> Bool {
         guard ChatImagePath.hasImageExtension(path),
-            let name = path.split(separator: "/", omittingEmptySubsequences: false).last,
+            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last,
             let dot = name.lastIndex(of: ".")
         else { return false }
         return dot != name.startIndex
+    }
+
+    private static func namesVideoFile(_ path: String) -> Bool {
+        guard ChatImagePath.hasVideoExtension(path),
+            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last,
+            let dot = name.lastIndex(of: ".")
+        else { return false }
+        return dot != name.startIndex
+    }
+
+    private static func namesMediaFile(_ path: String) -> Bool {
+        namesImageFile(path) || namesVideoFile(path)
     }
 
     /// A path in prose follows anything but a letter or digit of a word in
@@ -429,11 +504,13 @@ enum ChatImageLink {
         var index = candidate.startIndex
         while let dot = candidate[index...].firstIndex(of: ".") {
             var end = candidate.index(after: dot)
-            while end < candidate.endIndex, candidate[end].isASCII, candidate[end].isLetter {
+            while end < candidate.endIndex, candidate[end].isASCII,
+                candidate[end].isLetter || candidate[end].isNumber
+            {
                 end = candidate.index(after: end)
             }
             let prefix = String(candidate[..<end])
-            if end > candidate.index(after: dot), namesImageFile(prefix), endsName(candidate[end...]) {
+            if end > candidate.index(after: dot), namesMediaFile(prefix), endsName(candidate[end...]) {
                 return end
             }
             index = candidate.index(after: dot)

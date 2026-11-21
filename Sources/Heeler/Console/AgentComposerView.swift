@@ -392,11 +392,19 @@ struct AgentComposerView: View {
             }
         }
         .sheet(item: $previewedImage) { item in
-            ComposerImagePreviewSheet(item: item) {
-                previewedImage = nil
+            switch item.kind {
+            case .image:
+                ComposerImagePreviewSheet(item: item) {
+                    previewedImage = nil
+                }
+                .presentationDetents([.large])
+                .ignoresSafeArea()
+            case .video:
+                ComposerVideoPreviewSheet(item: item) {
+                    previewedImage = nil
+                }
+                .presentationDetents([.large])
             }
-            .presentationDetents([.large])
-            .ignoresSafeArea()
         }
         .onChange(of: store.imageAttachments.map(\.id)) { _, ids in
             if let current = previewedImage, !ids.contains(current.id) {

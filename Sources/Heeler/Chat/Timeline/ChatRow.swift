@@ -179,13 +179,17 @@ struct ChatRow: Identifiable, Sendable {
                 : ChatImageLink.references(
                     in: ChatImageLink.marking(sourceText, imagePaths: message.imagePaths))
             var seen = Set(linked.map(\.path))
-            var nextNumber = linked.count + 1
+            var nextImageNumber = linked.filter { $0.mediaKind == .image }.count + 1
+            var nextVideoNumber = linked.filter { $0.mediaKind == .video }.count + 1
             var extras: [ChatImageLink.Reference] = []
             for path in message.imagePaths where seen.insert(path).inserted {
                 let title: String?
-                if ChatImageLink.isStagedImagePath(path) {
-                    title = ChatImageLink.stagedImageLabel(number: nextNumber)
-                    nextNumber += 1
+                if ChatImageLink.isStagedVideoPath(path) {
+                    title = ChatImageLink.stagedVideoLabel(number: nextVideoNumber)
+                    nextVideoNumber += 1
+                } else if ChatImageLink.isStagedImagePath(path) {
+                    title = ChatImageLink.stagedImageLabel(number: nextImageNumber)
+                    nextImageNumber += 1
                 } else {
                     title = nil
                 }

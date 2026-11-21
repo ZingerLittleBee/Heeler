@@ -17,6 +17,16 @@ final class ComposerStagingStore {
             case .file, .fileSelection: .file
             }
         }
+
+        /// Media pill kind when this source renders as a Composer attachment
+        /// pill above the input (images and videos).
+        fileprivate var pillKind: ComposerImageAttachment.MediaKind? {
+            switch self {
+            case .photo: .image
+            case .file(let url): HostFileKind(name: url.lastPathComponent) == .video ? .video : nil
+            case .fileSelection(let selection): selection.isVideo ? .video : nil
+            }
+        }
     }
 
     enum Command: Sendable, Hashable {
@@ -184,8 +194,13 @@ final class ComposerStagingStore {
         let preparer: any FilePreparing
         let stage: FileStager
 
-        func prepare(_ sourceURL: URL) async throws -> PreparedSource {
-            .file(try await preparer.prepare(sourceURL))
+        func prepare(_ sourceURL: URL, generatesVideoPreview: Bool) async throws -> PreparedSource {
+            let prepared = try await preparer.prepare(sourceURL)
+            let preview: ComposerImageAttachment.Preview? =
+                generatesVideoPreview && prepared.isVideo
+                ? await ComposerImageAttachment.makeVideoPreview(from: prepared)
+                : nil
+            return .file(prepared, preview)
         }
 
         func upload(
@@ -198,7 +213,7 @@ final class ComposerStagingStore {
 
     private enum PreparedSource: Sendable {
         case image(PreparedImage, ComposerImageAttachment.Preview)
-        case file(PreparedFile)
+        case file(PreparedFile, ComposerImageAttachment.Preview?)
 
         var medium: Medium {
             switch self {
@@ -210,21 +225,21 @@ final class ComposerStagingStore {
         var byteCount: Int64 {
             switch self {
             case .image(let image, _): image.byteCount
-            case .file(let file): file.byteCount
+            case .file(let file, _): file.byteCount
             }
         }
 
         var imagePreview: ComposerImageAttachment.Preview? {
             switch self {
             case .image(_, let preview): preview
-            case .file: nil
+            case .file(_, let preview): preview
             }
         }
 
         func remove() throws {
             switch self {
             case .image(let image, _): try image.remove()
-            case .file(let file): try file.remove()
+            case .file(let file, _): try file.remove()
             }
         }
     }
@@ -249,6 +264,9 @@ final class ComposerStagingStore {
     }
 
     private(set) var state: State = .idle
+    /// True while the current or most recently settled operation is represented
+    /// in the Composer's media pill strip (images and videos).
+    private(set) var activeOperationIsPill = false
 
     var canBegin: Bool { !state.isBusy }
 
@@ -294,8 +312,8 @@ final class ComposerStagingStore {
     func begin(_ source: Source, insertPathIntoComposer: Bool = true) -> UInt64? {
         guard !state.isBusy, operationTask == nil else { return nil }
         switch state {
-        case .failed(let failure), .backgroundInterrupted(let failure):
-            if failure.medium == .image {
+        case .failed, .backgroundInterrupted:
+            if activeOperationIsPill {
                 composer.imageStagingDidDismiss(operationID: operationID)
             }
             publish(.dismissed(id: operationID), advancesQueue: false)
@@ -307,9 +325,11 @@ final class ComposerStagingStore {
         insertsPathIntoComposer = insertPathIntoComposer
         operationID &+= 1
         let currentID = operationID
+        let pillKind = composer.retainsImageAttachments ? source.pillKind : nil
+        activeOperationIsPill = pillKind != nil
         state = .preparing(source.medium)
-        if source.medium == .image {
-            composer.imageStagingDidBegin(operationID: currentID)
+        if let pillKind {
+            composer.imageStagingDidBegin(operationID: currentID, kind: pillKind)
         }
         operationTask = Task { [weak self] in
             guard let self else { return }
@@ -357,15 +377,17 @@ final class ComposerStagingStore {
         task?.cancel()
         await task?.value
         discardRetainedPreparedSource()
+        let wasPill = activeOperationIsPill
+        activeOperationIsPill = false
         state = .idle
         switch previous {
-        case .preparing(let medium), .uploading(let medium, _):
-            if medium == .image {
+        case .preparing, .uploading:
+            if wasPill {
                 composer.imageStagingDidCancel(operationID: abandonedID)
             }
             publish(.cancelled(id: abandonedID))
-        case .failed(let failure), .backgroundInterrupted(let failure):
-            if failure.medium == .image {
+        case .failed, .backgroundInterrupted:
+            if wasPill {
                 composer.imageStagingDidDismiss(operationID: abandonedID)
             }
             publish(.dismissed(id: abandonedID), advancesQueue: false)
@@ -425,12 +447,14 @@ final class ComposerStagingStore {
     private func dismiss() {
         guard !state.isBusy else { return }
         let previous = state
+        let wasPill = activeOperationIsPill
         let id = operationID
         discardRetainedPreparedSource()
+        activeOperationIsPill = false
         state = .idle
         switch previous {
-        case .failed(let failure), .backgroundInterrupted(let failure):
-            if failure.medium == .image {
+        case .failed, .backgroundInterrupted:
+            if wasPill {
                 composer.imageStagingDidDismiss(operationID: id)
             }
             publish(.dismissed(id: id))
@@ -469,15 +493,16 @@ final class ComposerStagingStore {
     }
 
     private func prepare(_ source: Source) async throws -> PreparedSource {
+        let generatesVideoPreview = activeOperationIsPill
         switch source {
         case .photo(let selection):
             return try await imageAdapter.prepare(selection)
         case .file(let sourceURL):
-            return try await fileAdapter.prepare(sourceURL)
+            return try await fileAdapter.prepare(sourceURL, generatesVideoPreview: generatesVideoPreview)
         case .fileSelection(let selection):
             let materialized = try await selection.materialize()
             defer { materialized.cleanup() }
-            return try await fileAdapter.prepare(materialized.url)
+            return try await fileAdapter.prepare(materialized.url, generatesVideoPreview: generatesVideoPreview)
         }
     }
 
@@ -494,7 +519,7 @@ final class ComposerStagingStore {
             switch source {
             case .image(let image, _):
                 staged = try await imageAdapter.upload(image, reporter: reporter)
-            case .file(let file):
+            case .file(let file, _):
                 staged = try await fileAdapter.upload(file, reporter: reporter)
             }
             try Task.checkCancellation()
@@ -509,7 +534,7 @@ final class ComposerStagingStore {
             case .uploading(let medium, _) = state
         else { return }
         state = .uploading(medium, progress)
-        if medium == .image {
+        if activeOperationIsPill {
             composer.imageStagingDidProgress(operationID: operationID, progress: progress)
         }
     }
@@ -522,8 +547,9 @@ final class ComposerStagingStore {
         }
         operationTask = nil
         cancellationDisposition = nil
+        let isPill = activeOperationIsPill && composer.retainsImageAttachments
         let retainedPreview: ComposerImageAttachment.Preview?
-        if staged.medium == .image, composer.retainsImageAttachments {
+        if isPill {
             retainedPreview = preparedSource?.imagePreview
             preparedSource = nil
         } else {
@@ -538,7 +564,7 @@ final class ComposerStagingStore {
         } catch {}
         state = .completed(
             Outcome(medium: staged.medium, path: staged.path, copied: copied))
-        if staged.medium == .image, composer.retainsImageAttachments {
+        if isPill {
             composer.imageStagingDidComplete(
                 operationID: operationID,
                 path: staged.path,
@@ -576,7 +602,7 @@ final class ComposerStagingStore {
                     isRetryable: preparedSource != nil)
                 let preview = preparedSource?.imagePreview
                 state = .backgroundInterrupted(failure)
-                if medium == .image {
+                if activeOperationIsPill {
                     composer.imageStagingDidFail(
                         operationID: operationID,
                         failure: failure,
@@ -585,8 +611,10 @@ final class ComposerStagingStore {
                 publish(.failed(id: operationID, retryable: failure.isRetryable))
             case .user, .none:
                 discardRetainedPreparedSource()
+                let wasPill = activeOperationIsPill
+                activeOperationIsPill = false
                 state = .idle
-                if medium == .image {
+                if wasPill {
                     composer.imageStagingDidCancel(operationID: operationID)
                 }
                 publish(.cancelled(id: operationID))
@@ -604,7 +632,7 @@ final class ComposerStagingStore {
             discardRetainedPreparedSource()
         }
         state = .failed(failure)
-        if medium == .image {
+        if activeOperationIsPill {
             composer.imageStagingDidFail(
                 operationID: operationID,
                 failure: failure,

@@ -21,7 +21,7 @@ struct HostFilePreviewView: View {
                             .accessibilityIdentifier("host-files-preview-done")
                     }
                     ToolbarItem(placement: .principal) {
-                        HostFilePreviewTitle(name: preview.name, detail: preview.detail)
+                        HostFilePreviewTitle(name: preview.displayTitle ?? preview.name, detail: preview.detail)
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button("Share", systemImage: "square.and.arrow.up") {

@@ -22,6 +22,10 @@ struct PreparedFile: Sendable, Equatable {
         return fileExtension.isEmpty ? stem : "\(stem).\(fileExtension)"
     }
 
+    var isVideo: Bool {
+        HostFileKind(name: remoteFilename) == .video
+    }
+
     private static let maximumStemLength = 64
 
     /// Device names Windows opens in any folder, whatever extension follows.
@@ -88,11 +92,14 @@ protocol FileSelection: Sendable {
     /// Optional app-owned inbox path created ahead of staging, so teardown or
     /// cancellation can remove it even if ``materialize()`` never runs.
     var cleanupURL: URL? { get }
+    /// Whether this selection is a video that stages as a Composer media pill.
+    var isVideo: Bool { get }
     func materialize() async throws -> MaterializedFile
 }
 
 extension FileSelection {
     var cleanupURL: URL? { nil }
+    var isVideo: Bool { false }
 
     func discard(fileManager: FileManager = .default) {
         guard let cleanupURL else { return }
@@ -103,10 +110,12 @@ extension FileSelection {
 struct URLFileSelection: FileSelection {
     let url: URL
     let cleanupURL: URL?
+    let isVideo: Bool
 
-    init(url: URL, cleanupURL: URL? = nil) {
+    init(url: URL, cleanupURL: URL? = nil, isVideo: Bool? = nil) {
         self.url = url
         self.cleanupURL = cleanupURL
+        self.isVideo = isVideo ?? (HostFileKind(name: url.lastPathComponent) == .video)
     }
 
     func materialize() async throws -> MaterializedFile {
@@ -116,6 +125,12 @@ struct URLFileSelection: FileSelection {
 
 struct FailingFileSelection: FileSelection {
     let error: FilePreparationError
+    let isVideo: Bool
+
+    init(error: FilePreparationError, isVideo: Bool = false) {
+        self.error = error
+        self.isVideo = isVideo
+    }
 
     func materialize() async throws -> MaterializedFile {
         throw error
