@@ -725,6 +725,22 @@ the app's update notice installs from that branch. See
   report their own Token Usage while reporting Usage Limits on the Default
   Account (`singleSignIn`).
 
+### Updating to 0.10.1
+
+- Plugin 0.10.1 knows the `backend` Agent List Field, which is `tui` on a
+  herdr TUI Host. Older plugins take a row layout that holds it for malformed
+  and push Live Activity updates without rows, so the Live Activity shows
+  each Agent's default lines. The registration keeps the layout: the rows
+  return with the next update, and nothing is registered again.
+- It accepts a `live_activity.token` of 16 to 1024 lowercase hex characters.
+  Older plugins skip a device whose token is longer than 200 characters, so
+  its Live Activity gets no updates from the Host.
+- The pairing popup no longer shows a Pairing Code its pane would cut, which
+  looked whole and never scanned. It says how many rows and columns the code
+  needs, paints the code once the pane is large enough, and repaints it when
+  the pane is resized.
+- The bundled price table is dated 2026-11-21 (also in Host Helper 0.5.12).
+
 ## Usage
 
 Plugin 0.7.0 adds Usage for Claude Code and Codex on Linux and macOS Hosts, and
