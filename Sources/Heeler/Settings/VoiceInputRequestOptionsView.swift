@@ -6,9 +6,10 @@ struct VoiceInputLanguagesSection: View {
 
     var body: some View {
         Section {
-            if preset == .siliconFlowCN {
+            switch preset.languageField {
+            case .none:
                 LabeledContent("Languages", value: String(localized: "Automatic"))
-            } else if preset == .deepInfra {
+            case .primary:
                 Picker("Language", selection: Binding(
                     get: { languages.first ?? "" },
                     set: { languages = $0.isEmpty ? [] : [$0] }
@@ -18,7 +19,7 @@ struct VoiceInputLanguagesSection: View {
                         Text(VoiceInputLanguage.name(code)).tag(code)
                     }
                 }
-            } else {
+            case .candidates:
                 NavigationLink {
                     List {
                         Button {
@@ -45,6 +46,8 @@ struct VoiceInputLanguagesSection: View {
             }
         } footer: {
             switch preset {
+            case .elevenLabs:
+                Text("Choose the main language first, then any other languages in the recording. Automatic lets ElevenLabs detect them.")
             case .openAI:
                 Text("Automatic detects what you speak. Choose languages to help recognize mixed speech.")
             case .deepInfra:

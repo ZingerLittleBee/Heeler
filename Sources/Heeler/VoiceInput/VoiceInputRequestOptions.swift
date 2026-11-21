@@ -83,10 +83,23 @@ enum VoiceInputLanguage {
         "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa", "el", "hu", "mk", "ro",
     ]
 
+    // ISO 639-3 codes in ElevenLabs' published Scribe language list.
+    private static let scribeCodes = [
+        "afr", "amh", "ara", "hye", "asm", "ast", "aze", "bel", "ben", "bos", "bul", "mya", "yue", "cat",
+        "ceb", "nya", "hrv", "ces", "dan", "nld", "eng", "est", "fil", "fin", "fra", "ful", "glg", "lug",
+        "kat", "deu", "ell", "guj", "hau", "heb", "hin", "hun", "isl", "ibo", "ind", "gle", "ita", "jpn",
+        "jav", "kea", "kan", "kaz", "khm", "kor", "kur", "kir", "lao", "lav", "lin", "lit", "luo", "ltz",
+        "mkd", "msa", "mal", "mlt", "zho", "mri", "mar", "mon", "nep", "nso", "nor", "oci", "ori", "pus",
+        "fas", "pol", "por", "pan", "ron", "rus", "srp", "sna", "snd", "sin", "slk", "slv", "som", "spa",
+        "swa", "swe", "tam", "tgk", "tel", "tha", "tur", "ukr", "umb", "urd", "uzb", "vie", "cym", "wol",
+        "xho", "zul",
+    ]
+
     static func choices(for preset: VoiceInputPreset) -> [String] {
         switch preset {
         case .openAI: commonCodes + ["zh-cn", "zh-tw", "zh-hk"]
         case .deepInfra: commonCodes
+        case .elevenLabs: scribeCodes
         case .siliconFlowCN: []
         }
     }

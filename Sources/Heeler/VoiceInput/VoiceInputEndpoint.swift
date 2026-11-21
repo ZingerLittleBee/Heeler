@@ -1,11 +1,11 @@
 import CryptoKit
 import Foundation
 
-/// A built-in speech service. Each speaks the OpenAI `/audio/transcriptions`
-/// shape, so one client serves all of them and Custom (ADR 0036).
+/// A built-in speech service, including its upload format and language hints.
 enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
     case openAI = "openai"
     case deepInfra = "deepinfra"
+    case elevenLabs = "elevenlabs"
     case siliconFlowCN = "siliconflow-cn"
 
     var id: String { rawValue }
@@ -14,6 +14,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .openAI: "OpenAI"
         case .deepInfra: "DeepInfra"
+        case .elevenLabs: "ElevenLabs"
         case .siliconFlowCN: String(localized: "SiliconFlow (China)")
         }
     }
@@ -23,6 +24,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .openAI: "OpenAI"
         case .deepInfra: "DeepInfra"
+        case .elevenLabs: "ElevenLabs"
         case .siliconFlowCN: "SiliconFlow"
         }
     }
@@ -30,6 +32,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
     var model: String {
         switch self {
         case .openAI: "gpt-transcribe"
+        case .elevenLabs: "scribe_v3"
         case .deepInfra, .siliconFlowCN: "Qwen/Qwen3-ASR-1.7B"
         }
     }
@@ -37,20 +40,26 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
     fileprivate var baseURLString: String {
         switch self {
         case .openAI: "https://api.openai.com/v1"
+        case .elevenLabs: "https://api.elevenlabs.io/v1"
         case .deepInfra: "https://api.deepinfra.com/v1/openai"
         case .siliconFlowCN: "https://api.siliconflow.cn/v1"
         }
     }
 
-    /// OpenAI documents language hints; DeepInfra's API accepts one language,
+    /// OpenAI and ElevenLabs accept several hints. DeepInfra accepts one language,
     /// whose effect on hosted Qwen3-ASR still needs a real-key smoke test.
     /// SiliconFlow documents neither field, so nothing is sent.
-    fileprivate var languageField: VoiceInputLanguageField {
+    var languageField: VoiceInputLanguageField {
         switch self {
-        case .openAI: .candidates
+        case .openAI: .candidates(first: "languages[]", additional: "languages[]")
         case .deepInfra: .primary
+        case .elevenLabs: .candidates(first: "language_code", additional: "secondary_language_codes")
         case .siliconFlowCN: .none
         }
+    }
+
+    var uploadFormat: VoiceInputUploadFormat {
+        self == .elevenLabs ? .scribe : .openAI
     }
 
     /// Only `gpt-transcribe` reads `keywords`; it spelled listed terms from
@@ -65,8 +74,25 @@ enum VoiceInputLanguageField: Equatable, Sendable {
     case none
     /// `language`: one explicitly selected language.
     case primary
-    /// `languages[]`: the explicitly selected languages.
-    case candidates
+    /// Field names for the first selected language and each additional hint.
+    case candidates(first: String, additional: String)
+}
+
+/// The service owns these wire names. Custom always uses the OpenAI format.
+struct VoiceInputUploadFormat: Sendable {
+    let path: String
+    let keyHeader: String
+    let keyPrefix: String
+    let modelField: String
+    let acceptsPrompt: Bool
+    let fixedFields: [(name: String, value: String)]
+
+    static let openAI = Self(
+        path: "audio/transcriptions", keyHeader: "Authorization", keyPrefix: "Bearer ",
+        modelField: "model", acceptsPrompt: true, fixedFields: [])
+    static let scribe = Self(
+        path: "speech-to-text", keyHeader: "xi-api-key", keyPrefix: "",
+        modelField: "model_id", acceptsPrompt: false, fixedFields: [("tag_audio_events", "false")])
 }
 
 /// Where one recording goes and how the request is shaped.
@@ -81,7 +107,7 @@ struct VoiceInputEndpoint: Equatable, Sendable {
     let baseURL: URL
     let model: String
     let languageField: VoiceInputLanguageField
-    /// Whether Keywords go in `keywords[]`; elsewhere the Prompt carries them.
+    /// Whether Keywords go in `keywords[]`.
     let takesKeywords: Bool
     /// Custom servers get an explicit `response_format=json`; some require it.
     let sendsResponseFormat: Bool
@@ -103,8 +129,15 @@ struct VoiceInputEndpoint: Equatable, Sendable {
             sendsResponseFormat: true)
     }
 
+    var uploadFormat: VoiceInputUploadFormat {
+        switch source {
+        case .preset(let preset): preset.uploadFormat
+        case .custom: .openAI
+        }
+    }
+
     var transcriptionURL: URL {
-        baseURL.appending(path: "audio/transcriptions")
+        baseURL.appending(path: uploadFormat.path)
     }
 
     var host: String {

@@ -14644,6 +14644,28 @@
         }
       }
     },
+    "Choose the main language first, then any other languages in the recording. Automatic lets ElevenLabs detect them." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音の主な言語を最初に選び、続けて他の言語を選びます。「自動」では ElevenLabs が言語を検出します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先选录音的主要语言，再选其他语言。选择“自动”可让 ElevenLabs 识别语言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先選錄音的主要語言，再選其他語言。選擇「自動」可讓 ElevenLabs 辨識語言。"
+          }
+        }
+      }
+    },
     "Claude Code" : {
       "localizations" : {
         "ja" : {

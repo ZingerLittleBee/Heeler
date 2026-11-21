@@ -58,10 +58,11 @@ struct VoiceInputSettingsView: View {
             case nil:
                 EmptyView()
             }
-            if connection.service != nil {
-                keywordsSection
-                // The device's model takes Keywords and no Prompt.
-                if connection.service != .onDevice {
+            if let service = connection.service {
+                if service.takesKeywords || service.acceptsPrompt {
+                    keywordsSection
+                }
+                if service.acceptsPrompt {
                     promptSection
                 }
                 if connection.service == .custom, connection.endpoint != nil {
