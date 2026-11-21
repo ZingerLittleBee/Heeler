@@ -15,6 +15,13 @@ enum HerdrCoreAttach {
         let (_, stream) = try await link.openStream(
             "terminal.attach", params: try params(for: request), deadline: deadline,
             creditsWhenConsumed: true)
+        let firstPaint = HerdrCoreFirstPaintHold()
+        let reprint = HerdrCoreReprintHold(
+            read: {
+                try await firstPaint.next(
+                    read: { try await stream.read() }, credit: { await stream.consumed($0) })
+            },
+            credit: { await stream.consumed($0) })
         let input = TerminalAttachInputQueue()
         let pump = Task {
             // A write fails only once the channel or the link has ended, which
@@ -23,6 +30,8 @@ enum HerdrCoreAttach {
                 write: { try await stream.write($0) },
                 resize: { columns, rows in
                     guard Self.isValidGeometry(columns: columns, rows: rows) else { return }
+                    // Ahead of the resize, so what it brings finds the hold ready.
+                    reprint.resized()
                     try await stream.resize(columns: columns, rows: rows)
                 })
         }
@@ -32,13 +41,6 @@ enum HerdrCoreAttach {
                 do { try await Self.send(change, on: stream) } catch { return }
             }
         }
-        let firstPaint = HerdrCoreFirstPaintHold()
-        let reprint = HerdrCoreReprintHold(
-            read: {
-                try await firstPaint.next(
-                    read: { try await stream.read() }, credit: { await stream.consumed($0) })
-            },
-            credit: { await stream.consumed($0) })
         return TerminalAttachSession(
             output: { Self.output(holding: reprint) },
             input: input,
