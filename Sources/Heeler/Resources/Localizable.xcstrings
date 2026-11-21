@@ -3663,6 +3663,46 @@
         }
       }
     },
+    "%lld lines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld lines"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        }
+      }
+    },
     "%lld lines, %lld characters" : {
       "localizations" : {
         "ja" : {
@@ -17808,6 +17848,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "複製路徑"
+          }
+        }
+      }
+    },
+    "Copy Post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製訊息"
           }
         }
       }
@@ -36298,6 +36360,28 @@
         }
       }
     },
+    "Next post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一則訊息"
+          }
+        }
+      }
+    },
     "Night Owl" : {
       "shouldTranslate" : false
     },
@@ -36651,6 +36735,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有符合的項目"
+          }
+        }
+      }
+    },
+    "No Matching Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致する投稿がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有符合的訊息"
           }
         }
       }
@@ -37648,6 +37754,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚無節點"
+          }
+        }
+      }
+    },
+    "No posts match the current filter." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のフィルタに一致する投稿はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有消息符合当前筛选条件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有訊息符合目前的篩選條件。"
           }
         }
       }
@@ -43986,6 +44114,50 @@
         }
       }
     },
+    "Post #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿 #%lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息 #%lld"
+          }
+        }
+      }
+    },
+    "Post Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法顯示訊息"
+          }
+        }
+      }
+    },
     "Post to #%@" : {
       "localizations" : {
         "ja" : {
@@ -44449,6 +44621,28 @@
         }
       }
     },
+    "Previous" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前へ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一条"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一則"
+          }
+        }
+      }
+    },
     "Previous Agent" : {
       "localizations" : {
         "ja" : {
@@ -44511,6 +44705,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上一次嘗試"
+          }
+        }
+      }
+    },
+    "Previous post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一則訊息"
           }
         }
       }
@@ -51480,6 +51696,28 @@
         }
       }
     },
+    "Show All Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべての投稿を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示全部消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示全部訊息"
+          }
+        }
+      }
+    },
     "Show All Statuses" : {
       "comment" : "Button that clears the status filter.",
       "localizations" : {
@@ -51767,28 +52005,6 @@
         }
       }
     },
-    "Show full brief" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "指示の全文を表示"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展开完整简报"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展開完整簡報"
-          }
-        }
-      }
-    },
     "Show iOS keyboard" : {
       "localizations" : {
         "ja" : {
@@ -51829,28 +52045,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示鍵盤"
-          }
-        }
-      }
-    },
-    "Show less" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "折りたたむ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起"
           }
         }
       }
@@ -68285,6 +68479,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這會永久刪除主機設定、其信任的主機金鑰，以及鑰匙圈中任何已儲存的密碼和通知金鑰。"
+          }
+        }
+      }
+    },
+    "This post is no longer on the board." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この投稿はボード上に存在しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息已不在公告板上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這則訊息已不在公告板上。"
           }
         }
       }
