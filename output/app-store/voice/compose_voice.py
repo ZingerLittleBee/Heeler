@@ -103,9 +103,11 @@ def card(canvas: Image.Image, image: Image.Image, xy: tuple[int, int], radius: i
 def context(canvas: Image.Image, image: Image.Image, xy: tuple[int, int], sides: int = 0) -> None:
     """The Agent's last reply, fading in from the top, for a sense of place.
 
-    It is screened onto the field, so the app's black background adds nothing
-    and no band shows where the piece ends.
+    The Chat background is subtracted and the rest screened onto the field, so
+    only the text adds light and no band shows where the piece ends.
     """
+    ground = tuple(low for low, _ in image.getextrema())
+    image = ImageChops.subtract(image, Image.new("RGB", image.size, ground))
     under = canvas.crop((xy[0], xy[1], xy[0] + image.width, xy[1] + image.height)).convert("RGB")
     layer = ImageChops.screen(under, image).convert("RGBA")
     layer.putalpha(edges(image.size, left=sides, right=sides, top=image.height * 4 // 5, bottom=14))
@@ -138,14 +140,16 @@ def iphone() -> Image.Image:
     draw.multiline_text((96, 350), SUBHEAD.replace(" ready", "\nready"), font=font(SF, 37, "Regular"),
                         fill=(214, 218, 232, 255), spacing=10)
 
-    bar_y = 1480
-    context(canvas, recording.crop((0, 1660, 1320, 2446)), (0, bar_y - 820))
-    canvas = glow(canvas, (880, bar_y - 150, 1330, bar_y + 360), ACCENT, 100, 160)
-    canvas = glow(canvas, (60, bar_y - 60, 960, bar_y + 260), WHITE, 120, 36)
+    # Each piece is the Composer's card above its Agent strip, cut just inside
+    # the card's own edge.
+    bar_y = 1420
+    context(canvas, recording.crop((0, 1598, 1320, 2384)), (0, bar_y - 820))
+    canvas = glow(canvas, (880, bar_y - 110, 1330, bar_y + 400), ACCENT, 100, 160)
+    canvas = glow(canvas, (60, bar_y - 20, 960, bar_y + 300), WHITE, 120, 36)
     # The bar is wider than the canvas on purpose: both ends bleed off.
-    canvas = card(canvas, piece(recording, (36, 2452, 1284, 2622), 1.22), (-34, bar_y), 88)
-    connector(canvas, size[0] // 2, bar_y + 300, 30, 50)
-    canvas = card(canvas, piece(draft, (36, 1219, 1284, 1684), 1.0), (36, bar_y + 500), 72)
+    canvas = card(canvas, piece(recording, (38, 2392, 1282, 2622), 1.22), (-22, bar_y), 114)
+    connector(canvas, size[0] // 2, bar_y + 374, 30, 50)
+    canvas = card(canvas, piece(draft, (38, 1159, 1282, 1683), 1.0), (38, bar_y + 574), 93)
     footnote(canvas, size[0] // 2, 2690, 36)
     return canvas
 
@@ -160,14 +164,15 @@ def ipad() -> Image.Image:
     draw.text((106, 144), HEADLINE, font=font(SF, 112, "Bold"), fill=(250, 250, 253, 255), anchor="lt")
     draw.text((110, 290), SUBHEAD, font=font(SF, 41, "Regular"), fill=(211, 214, 225, 255), anchor="lt")
 
-    bar_y = 850
-    context(canvas, recording.crop((660, 1512, 2732, 1812)), (340, bar_y - 334), sides=90)
-    canvas = glow(canvas, (2060, bar_y - 220, 2760, bar_y + 420), ACCENT, 130, 170)
-    canvas = glow(canvas, (500, bar_y - 80, 2000, bar_y + 300), WHITE, 150, 30)
-    # The wide iPad bar keeps its waveform at the right; its idle start fades out.
-    canvas = card(canvas, piece(recording, (1240, 1816, 2632, 1929), 1.9), (167, bar_y), 104, fade_left=620)
-    connector(canvas, size[0] // 2, bar_y + 360, 32, 54)
-    canvas = card(canvas, piece(draft, (760, 752, 2632, 973), 1.25), (206, bar_y + 580), 72)
+    bar_y = 800
+    context(canvas, recording.crop((660, 1466, 2732, 1766)), (340, bar_y - 334), sides=90)
+    canvas = glow(canvas, (2060, bar_y - 180, 2760, bar_y + 460), ACCENT, 130, 170)
+    canvas = glow(canvas, (500, bar_y - 40, 2000, bar_y + 340), WHITE, 150, 30)
+    # The wide iPad bar keeps its waveform at the right, in line with the draft
+    # below; its idle start fades out.
+    canvas = card(canvas, piece(recording, (1240, 1775, 2631, 1928), 1.8), (39, bar_y), 112, fade_left=620)
+    connector(canvas, size[0] // 2, bar_y + 436, 32, 54)
+    canvas = card(canvas, piece(draft, (763, 711, 2631, 972), 1.25), (208, bar_y + 656), 78)
     footnote(canvas, size[0] // 2, 1930, 38)
     return canvas
 
@@ -184,13 +189,13 @@ def duo() -> Image.Image:
     draw.text((112, 233), HEADLINE, font=font(SF, 103, "Bold"), fill=(250, 250, 253, 255), anchor="ls")
     draw.text((112, 322), SUBHEAD, font=font(SF, 41, "Regular"), fill=(211, 214, 225, 255), anchor="ls")
 
-    bar_y = 800
-    context(canvas, recording.crop((962, 1180, 2598, 1588)), (608, bar_y - 442), sides=36)
-    canvas = glow(canvas, (1980, bar_y - 220, 2700, bar_y + 520), ACCENT, 140, 170)
-    canvas = glow(canvas, (300, bar_y - 80, 1900, bar_y + 360), WHITE, 160, 30)
-    canvas = card(canvas, piece(recording, (997, 1593, 2564, 1762), 1.7), (94, bar_y), 120)
-    connector(canvas, size[0] // 2, bar_y + 395, 32, 54)
-    canvas = card(canvas, piece(draft, (997, 663, 2564, 1060), 1.0), (643, bar_y + 590), 84)
+    bar_y = 710
+    context(canvas, recording.crop((962, 1160, 2598, 1500)), (608, bar_y - 374), sides=36)
+    canvas = glow(canvas, (1920, bar_y - 140, 2640, bar_y + 600), ACCENT, 140, 170)
+    canvas = glow(canvas, (300, bar_y - 20, 1900, bar_y + 420), WHITE, 160, 30)
+    canvas = card(canvas, piece(recording, (1002, 1533, 2562, 1761), 1.6), (178, bar_y), 149)
+    connector(canvas, size[0] // 2, bar_y + 455, 32, 54)
+    canvas = card(canvas, piece(draft, (1002, 615, 2562, 1071), 1.0), (646, bar_y + 640), 93)
     footnote(canvas, size[0] // 2, 1925, 38)
     return canvas
 
