@@ -1027,6 +1027,7 @@
 		C783E750C9EBBD811D16D150 /* NotificationKeyMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91F0473741A92D7EFA40CBA /* NotificationKeyMirror.swift */; };
 		C7F260A5DECFF4E5F3C5C92F /* TmuxHeelerStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA5C32ED1E388E613273820 /* TmuxHeelerStatusTests.swift */; };
 		C83A50EEE2D253794CB4F4E9 /* AgyInputBoxDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD5FFC61FCFABE53F589116B /* AgyInputBoxDetectorTests.swift */; };
+		C83BD7EC6D027E15C592A797 /* HerdrCoreReprintHold.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF70B0323F8D5F4C002CB92 /* HerdrCoreReprintHold.swift */; };
 		C873DEA2FF1FD67967F533B8 /* AgentUsageSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD05A999942E6271D9EA5F86 /* AgentUsageSettings.swift */; };
 		C87A7CFEA0CF7A6632F6018A /* ChatBackgroundWorkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFC5340F002BEC8FA2D363 /* ChatBackgroundWorkSheet.swift */; };
 		C895B6AEC9BC2E9F8626B04C /* ChatTextSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 866CBB6E58F431BF10EA101C /* ChatTextSettingsTests.swift */; };
@@ -1689,6 +1690,7 @@
 		3AD370B497667F5284DC86E1 /* ChatToolOutputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolOutputTests.swift; sourceTree = "<group>"; };
 		3AFC66608797BD01F467A33D /* TmuxKeyReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxKeyReader.swift; sourceTree = "<group>"; };
 		3B1F7871A8F56A78CF79BD7F /* HostSFTPRefusalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSFTPRefusalTests.swift; sourceTree = "<group>"; };
+		3BF70B0323F8D5F4C002CB92 /* HerdrCoreReprintHold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreReprintHold.swift; sourceTree = "<group>"; };
 		3BF75A37A647ADF8132633D1 /* ConversationReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReferenceTests.swift; sourceTree = "<group>"; };
 		3C41D50DA424B38BB4ADD64E /* TmuxStatusWrite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxStatusWrite.swift; sourceTree = "<group>"; };
 		3C4EC4891D805C617F78CF27 /* HerdrCoreConsolePlacementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreConsolePlacementTests.swift; sourceTree = "<group>"; };
@@ -4285,6 +4287,7 @@
 				8A5133D53C01C516C97A3C61 /* HerdrCoreLaunch.swift */,
 				AD9ABABB1CA63F2B23539DD6 /* HerdrCoreLink.swift */,
 				12CA1B0DD1F015E459C614B5 /* HerdrCoreLocator.swift */,
+				3BF70B0323F8D5F4C002CB92 /* HerdrCoreReprintHold.swift */,
 				935245D1EA74FD36925F3112 /* HerdrCoreServerInfo.swift */,
 				50B9DBCBE2FF859F3E206CFD /* HerdrCoreSessionName.swift */,
 				583DFD604FC9AD516E2B3300 /* HerdrCoreShellLaunch.swift */,
@@ -5129,6 +5132,7 @@
 				F92D6A26CCE9D13E254929AC /* HerdrCoreLink.swift in Sources */,
 				1F328C88A1931DBF6AD675DB /* HerdrCoreLocator.swift in Sources */,
 				1268A8553B7E8383D523BAB5 /* HerdrCoreOrganization.swift in Sources */,
+				C83BD7EC6D027E15C592A797 /* HerdrCoreReprintHold.swift in Sources */,
 				9CAC2F486862665EAA95ECCA /* HerdrCoreSeenMarkFile.swift in Sources */,
 				82C898608F013DDC02E22E9D /* HerdrCoreServerInfo.swift in Sources */,
 				0B67963B8E6E4310DE06476D /* HerdrCoreSessionBinder+Candidates.swift in Sources */,

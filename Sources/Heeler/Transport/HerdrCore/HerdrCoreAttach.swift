@@ -33,11 +33,17 @@ enum HerdrCoreAttach {
             }
         }
         let firstPaint = HerdrCoreFirstPaintHold()
+        let reprint = HerdrCoreReprintHold(
+            read: {
+                try await firstPaint.next(
+                    read: { try await stream.read() }, credit: { await stream.consumed($0) })
+            },
+            credit: { await stream.consumed($0) })
         return TerminalAttachSession(
-            output: { Self.output(of: stream, holding: firstPaint) },
+            output: { Self.output(holding: reprint) },
             input: input,
             onConsumed: { count in
-                let owed = firstPaint.consumed(count)
+                let owed = reprint.consumed(firstPaint.consumed(count))
                 guard owed > 0 else { return }
                 Task { await stream.consumed(owed) }
             },
@@ -115,14 +121,12 @@ enum HerdrCoreAttach {
 
     /// A store reattaches after a lost connection, which any failure of the
     /// link comes to: a core restart reopens it on the same SSH connection.
-    /// The first paint comes out whole (`HerdrCoreFirstPaintHold`).
-    private static func output(
-        of stream: HerdrCoreLinkStream, holding firstPaint: HerdrCoreFirstPaintHold
-    ) -> AsyncThrowingStream<Data, any Error> {
+    /// The first paint comes out whole (`HerdrCoreFirstPaintHold`), and so does
+    /// a program's reprint of its history after it (`HerdrCoreReprintHold`).
+    private static func output(holding reprint: HerdrCoreReprintHold) -> AsyncThrowingStream<Data, any Error> {
         AsyncThrowingStream {
             do {
-                return try await firstPaint.next(
-                    read: { try await stream.read() }, credit: { await stream.consumed($0) })
+                return try await reprint.next()
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
