@@ -121,6 +121,7 @@ struct AgentChatSurfaceView: View {
     /// Shared with the terminal: one reading preference across surfaces.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     @AppStorage(ChatFoldSettings.defaultsKey) private var foldsFinishedTurns = true
+    @AppStorage(ChatBackgroundWorkStyle.foldedDefaultsKey) private var foldsBackgroundWork = false
     @AppStorage(ChatTextSettings.sizeOffsetKey) private var textSizeOffset = ChatTextSettings.defaultSizeOffset
     @AppStorage(ChatTextSettings.fontKey) private var chatFont = ChatFontOption.system
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -527,6 +528,11 @@ struct AgentChatSurfaceView: View {
         .animation(
             reduceMotion ? nil : .spring(response: 0.266, dampingFraction: 1),
             value: condensesBackgroundWork)
+        // Folding the background work by hand gives the conversation the
+        // same room, the same way.
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.266, dampingFraction: 1),
+            value: foldsBackgroundWork)
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
@@ -1834,6 +1840,8 @@ struct AgentChatSurfaceView: View {
                     chat: chat,
                     isHostConnected: isHostConnected,
                     isCondensed: condensesBackgroundWork,
+                    isFolded: foldsBackgroundWork,
+                    toggleFold: { foldsBackgroundWork.toggle() },
                     openSwarm: { isShowingSwarm = true }
                 ) { focus in
                     backgroundWorkFocus = focus
@@ -2121,6 +2129,8 @@ private struct BackgroundWorkInset: View {
     let chat: AgentChatStore
     let isHostConnected: Bool
     let isCondensed: Bool
+    let isFolded: Bool
+    let toggleFold: () -> Void
     let openSwarm: () -> Void
     let open: (String?) -> Void
 
@@ -2135,6 +2145,8 @@ private struct BackgroundWorkInset: View {
             isHostConnected: isHostConnected,
             isCondensed: isCondensed,
             showsFinishedWork: showsFinished,
+            isFolded: isFolded,
+            toggleFold: toggleFold,
             open: open,
             swarm: chat.agySwarm,
             openSwarm: openSwarm)

@@ -1,8 +1,8 @@
 import Foundation
 
 /// How Chat shows its Background Work (ADR 0024): the rows over the
-/// Composer, the line they condense to while the Composer is open, and the
-/// sheet that lists everything. Work a read can't vouch for stops claiming
+/// Composer, the line that counts them, which they fold to, and the sheet
+/// that lists everything. Work a read can't vouch for stops claiming
 /// to run: with the Host away or the read failing its row freezes, and work
 /// silent for longer than it runs says when it was last seen.
 struct ChatBackgroundWorkPresentation: Equatable, Sendable {
@@ -190,11 +190,22 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
         }
     }
 
-    /// The one line the rows condense to.
+    /// The line that stands over the rows, or for them: how many are in
+    /// each state.
     struct Summary: Equatable, Sendable {
+        /// The rows in one state, as "2 running".
+        struct Count: Equatable, Sendable {
+            /// `unconfirmed` counts every row no read vouches for.
+            let status: Status
+            let text: String
+        }
+
+        /// The first state there is, which the line's glyph shows.
         let status: Status
-        let text: String
-        let accessibilityValue: String
+        let counts: [Count]
+
+        var text: String { counts.map(\.text).joined(separator: " · ") }
+        var accessibilityValue: String { counts.map(\.text).joinedAsPhrases() }
     }
 
     let rows: [Row]
@@ -219,41 +230,29 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
     /// Only running rows show a moving time.
     var ticks: Bool { hasRunning }
 
+    /// What still runs first, then what wants a look, then what ended well.
     var summary: Summary? {
-        guard !rows.isEmpty else { return nil }
-        let running = rows.filter { $0.status == .running }
-        // A Workflow's fraction says the most in one line.
-        if let first = running.first(where: { $0.kind == .workflow }) ?? running.first {
-            let count = running.count
-            let title = first.title
-            // One whole line with and without the fraction, so each
-            // language orders the count, name and fraction itself.
-            if let fraction = first.fraction {
-                return Summary(
-                    status: .running,
-                    text: String(localized: "\(count) running · \(title) \(fraction.done)/\(fraction.total)"),
-                    accessibilityValue: String(
-                        localized: "\(count) running, \(title), \(fraction.done) of \(fraction.total) agents done"))
-            }
-            return Summary(
-                status: .running, text: String(localized: "\(count) running · \(title)"),
-                accessibilityValue: String(localized: "\(count) running, \(title)"))
-        }
+        let running = rows.count { $0.status == .running }
         let notUpdating = rows.count { $0.status == .unconfirmed || $0.status == .quiet }
-        let completed = rows.count { $0.status == .completed }
         let failed = rows.count { $0.status == .failed }
+        let completed = rows.count { $0.status == .completed }
         let stopped = rows.count { $0.status == .stopped }
         // Each count with its own word, whole, as "2 failed".
-        var parts: [String] = []
-        if notUpdating > 0 { parts.append(String(localized: "\(notUpdating) not updating")) }
-        if completed > 0 { parts.append(String(localized: "\(completed) done")) }
-        if failed > 0 { parts.append(String(localized: "\(failed) failed")) }
-        if stopped > 0 { parts.append(String(localized: "\(stopped) stopped")) }
-        let status: Status =
-            notUpdating > 0 ? .unconfirmed : failed > 0 ? .failed : completed > 0 ? .completed : .stopped
-        return Summary(
-            status: status, text: parts.joined(separator: " · "),
-            accessibilityValue: parts.joined(separator: ", "))
+        var counts: [Summary.Count] = []
+        if running > 0 {
+            counts.append(
+                .init(
+                    status: .running,
+                    text: String(localized: "\(running) running", comment: "Background Work bar: items that are running")))
+        }
+        if notUpdating > 0 {
+            counts.append(.init(status: .unconfirmed, text: String(localized: "\(notUpdating) not updating")))
+        }
+        if failed > 0 { counts.append(.init(status: .failed, text: String(localized: "\(failed) failed"))) }
+        if completed > 0 { counts.append(.init(status: .completed, text: String(localized: "\(completed) done"))) }
+        if stopped > 0 { counts.append(.init(status: .stopped, text: String(localized: "\(stopped) stopped"))) }
+        guard let first = counts.first else { return nil }
+        return Summary(status: first.status, counts: counts)
     }
 
     /// "38s", "2m 18s", "1h 5m": as "Thought for" reads, with hours.
