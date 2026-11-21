@@ -309,6 +309,17 @@ struct ConsoleHostConditionsPerHostTests {
             HostConnectionDetailPresentation(group: m3, statuses: stopped, standingFailures: [:]))
         #expect(detail.hostName == "m3")
         #expect(detail.failure == .timedOut)
+        #expect(!detail.canStop)
+
+        // Stop Connecting reaches every Server, so it is offered while one
+        // still tries, though a stopped one explains the Host.
+        let trying: [Host.ID: EventsSessionStatus] = [
+            tmux.id: .failed(.tmuxServerNotRunning(socketName: "default")), rex.id: reconnecting,
+        ]
+        let stoppable = try #require(
+            HostConnectionDetailPresentation(group: m3, statuses: trying, standingFailures: [:]))
+        #expect(stoppable.failure == .tmuxServerNotRunning(socketName: "default"))
+        #expect(stoppable.canStop)
 
         // One connected Server proves the Host connected.
         let partly: [Host.ID: EventsSessionStatus] = [
