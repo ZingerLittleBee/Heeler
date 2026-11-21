@@ -90,8 +90,8 @@ awk '
     END { exit (watchdog && raw) ? 0 : 1 }
 ' "$gate_script" || { echo "background build bypasses its watchdog" >&2; exit 1; }
 wrapped_calls=$(grep -cE '^[[:space:]]*(HEELER_CI_TEST_PHASE=[^ ]+ )?run_xcodebuild "' "$gate_script")
-[[ "$wrapped_calls" == 6 ]] || {
-    echo "expected 6 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
+[[ "$wrapped_calls" == 5 ]] || {
+    echo "expected 5 watchdog-wrapped xcodebuild call sites, found $wrapped_calls" >&2
     exit 1
 }
 # The app workers compile nothing: one shared build owns the build deadline,
@@ -232,7 +232,7 @@ fi
     exit 1
 }
 
-# Trigger paths of the fast workflows are pinned by test-ci-ios-diagnostics.sh,
+# Trigger paths of the fast workflows are pinned by test-ci-workflow-contracts.sh,
 # which Agent tooling runs on every PR.
 if grep -qE '^  (plugin-test|relay-test|codegen-drift):' "$build_workflow"; then
     echo "plugin, relay, and codegen jobs belong in ci-node.yml" >&2

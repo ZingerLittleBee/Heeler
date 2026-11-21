@@ -23,16 +23,16 @@ runs `make build-ci-package` (the package and its tests, not run) when
 `Packages/HeelerSSH` changes. Other script and `ci-full.yml` changes skip both
 builds; [the script self-tests](../../.github/workflows/ci-scripts.yml) run
 `scripts/test-vps-ssh-access-scripts.sh`, `make test-ci-watchdog`,
-`make test-ci-guards` and `make test-ci-diagnostic-controls` on macOS, under
+`make test-ci-guards` and `make test-ci-workflow-contracts` on macOS, under
 the `/bin/bash` 3.2 that full verification executes.
-`make test-ci-diagnostic-controls`, which Agent tooling runs on Ubuntu for
+`make test-ci-workflow-contracts`, which Agent tooling runs on Ubuntu for
 every PR, pins each fast workflow's trigger paths and commands.
 Documentation-only edits get the Ubuntu tooling checks; Node and site checks
 keep their own path filters.
 
 Every macOS job runs on the `xcode-27` runner with Xcode 27.2, the toolchain
-that archives releases, and `make test-ci-diagnostic-controls` fails when one
-leaves it. The full and diagnostic lanes test an iPhone 17 on the iOS 27.2
+that archives releases, and `make test-ci-workflow-contracts` fails when one
+leaves it. Full verification tests an iPhone 17 on the iOS 27.2
 runtime, which `HEELER_CI_SIMULATOR_OS` pins because the image also has one
 on iOS 27.0. Without it, a local `make test-ci-app` or `make test-ci-package`
 takes any available iPhone 17; pin one with `SIMULATOR_UDID=<UDID>`.
@@ -45,7 +45,7 @@ layout and warm caches. Its `app-build` job compiles the app and tests once
 with `make build-ci-app` and `make pack-ci-app-products`; the app workers
 download that archive, and `make test-ci-app` unpacks it instead of compiling
 when `HEELER_CI_APP_PRODUCTS_ARCHIVE` names it. Without the variable, as in a
-local run or the diagnostics workflow, a worker builds for itself.
+local run, a worker builds for itself.
 The schedule takes effect only after the workflow is
 merged into the default branch; GitHub may delay its start under load. PRs and
 pushes retain fast feedback without starting this full native workflow.
@@ -206,16 +206,9 @@ test-writing rules follow:
 
 ## Intermittent CI diagnosis
 
-The manual [iOS CI diagnostics workflow](../../.github/workflows/ci-diagnostics.yml) builds once and repeats the original TOFU or weak-network Changes assertions with fresh per-round state. Defaults are 50 SSH and 10 weak rounds, and `all` selects both.
+No workflow repeats a single test. To chase an intermittent failure, read the failed run's diagnostics artifact, then repeat the test locally with `make test-app TEST_SELECTOR=...`. A suite that needs the SSH fixtures runs with its whole shard: `make test-ci-app CI_APP_SHARD=transport` (or `session-weak`).
 
-Repeated weak diagnostics have a 30-minute outer deadlock limit. Full verification retains the weak suite's two-minute limit; every weak read still asserts its original 10-second deadline (the large Changes reads on the time the link and transport add, excluding the Host's own run of the script, which has a loose 30-second limit). Diagnostic artifacts capture the selected test counts, completion markers and fixture logs; they never establish complete coverage or replace full verification.
-
-```sh
-gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=all
-gh workflow run ci-diagnostics.yml --ref <candidate-branch> -f target=weak -f iterations=20
-```
-
-The committed-project entrypoint is `make test-ci-diagnostics` with `HEELER_CI_DIAGNOSTIC_TARGET` and optional `HEELER_CI_DIAGNOSTIC_ITERATIONS` environment variables. Counts must be integers from 1 through 100. Every selected test and requested round must pass; a missing or mismatched completion marker or any skip fails the diagnostic command. Fixture and iteration variables follow a replacement Simulator during destination recovery and are cleared from the shell and current Simulator during runner cleanup. `make test-ci-diagnostic-controls` verifies the workflow isolation and fake native-boundary execution guards without Xcode; it does not prove native behavior. `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
+The weak-network suite has a two-minute deadlock limit, and every weak read asserts a 10-second deadline (the large Changes reads on the time the link and transport add, excluding the Host's own run of the script, which has a loose 30-second limit). `make test-weak-network-proxy` exercises propagation, bandwidth, bounded buffering and cleanup over real local TCP.
 
 ### Keyboard inset timers
 
