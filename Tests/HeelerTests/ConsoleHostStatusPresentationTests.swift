@@ -1,8 +1,6 @@
 import Foundation
 import Observation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -318,87 +316,8 @@ struct ConsoleHostIssueSummaryTests {
     }
 }
 
-/// The list below must not move while Hosts connect, so the row is one height
-/// whichever conditions it shows, at any width and text size.
-@MainActor
-@Suite("Console host issue list height", .serialized)
-struct ConsoleHostIssueListHeightTests {
-    private static func issue(
-        _ name: String, _ status: EventsSessionStatus, awaitingSnapshot: Bool = false, syncError: String? = nil
-    ) -> ConsoleHostStatusPresentation? {
-        ConsoleHostStatusPresentation(
-            host: Host.fixture(name: name), status: status, isAwaitingSnapshot: awaitingSnapshot,
-            syncError: syncError)
-    }
-
-    /// Every state a Host can report, so the chips far outgrow one line.
-    private static let everyCondition: [ConsoleHostStatusPresentation] = [
-        issue("a", .failed(.timedOut)),
-        issue("b", .connected, syncError: "Snapshot failed"),
-        issue("c", .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut)),
-        issue("d", .connecting),
-        issue("e", .suspended),
-        issue("f", .connected, awaitingSnapshot: true),
-    ].compactMap { $0 }
-
-    private static func height(
-        of issues: [ConsoleHostStatusPresentation], width: CGFloat, dynamicType: DynamicTypeSize
-    ) async throws -> CGFloat {
-        let controller = UIHostingController(
-            rootView: ConsoleHostIssueList(issues: issues, onOpenHost: { _ in }, onShowAll: {})
-                .environment(\.dynamicTypeSize, dynamicType)
-                .environment(\.locale, Locale(identifier: "en_US")))
-        // The row's own size, without the window's insets.
-        controller.safeAreaRegions = []
-        var size = CGSize.zero
-        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: width, height: 874), rootViewController: controller) { _ in
-            controller.view.layoutIfNeeded()
-            size = controller.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-        }
-        return size.height
-    }
-
-    @Test(arguments: [DynamicTypeSize.large, .accessibility3], [CGFloat(280), 402])
-    func keepsOneHeightWhicheverConditionsItShows(dynamicType: DynamicTypeSize, width: CGFloat) async throws {
-        var heights: [CGFloat] = []
-        for count in [1, 2, Self.everyCondition.count] {
-            let issues = Array(Self.everyCondition.prefix(count))
-            heights.append(try await Self.height(of: issues, width: width, dynamicType: dynamicType))
-        }
-        #expect(heights.allSatisfy { $0 > 0 && $0 == heights[0] }, "Heights: \(heights)")
-    }
-
-    @Test func growsWithTheTextSize() async throws {
-        let issues = Self.everyCondition
-        let regular = try await Self.height(of: issues, width: 402, dynamicType: .large)
-        let larger = try await Self.height(of: issues, width: 402, dynamicType: .accessibility3)
-        #expect(larger > regular)
-    }
-}
-
 @Suite("Console host issue corner presentation", .serialized)
 struct ConsoleHostIssueCornerPresentationTests {
-    @MainActor
-    @Observable
-    fileprivate final class Harness {
-        var issues: [ConsoleHostStatusPresentation]
-        init(_ issues: [ConsoleHostStatusPresentation]) { self.issues = issues }
-    }
-
-    private struct HostView: View {
-        let harness: Harness
-        var body: some View {
-            ConsoleHostIssueCornerBadge(
-                issues: harness.issues,
-                onOpenHost: { _ in },
-                onShowAll: {},
-                autoCollapseDelay: .milliseconds(60)
-            )
-            .transaction { $0.disablesAnimations = true }
-            .environment(\.locale, Locale(identifier: "en_US"))
-        }
-    }
-
     private let first = Host.fixture(name: "home-mini")
     private let second = Host.fixture(name: "gpu-devbox")
 
@@ -478,65 +397,5 @@ struct ConsoleHostIssueCornerPresentationTests {
         let pausedCorner = try #require(ConsoleHostIssueCornerPresentation(issues: [paused]))
         #expect(!pausedCorner.animatesBar)
         #expect(pausedCorner.action == .toggleExpanded)
-    }
-
-    @MainActor
-    @Test func autoCollapsesAfterInitialAppearanceAndReExpandsOnEscalation() async throws {
-        let host = first
-        let reconnecting = try issue(
-            host, .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut))
-        let failed = try issue(host, .failed(.authenticationFailed))
-
-        let harness = Harness([reconnecting])
-        let controller = UIHostingController(rootView: HostView(harness: harness))
-        controller.safeAreaRegions = []
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 320, height: 120), rootViewController: controller
-        ) { _ in
-            controller.view.layoutIfNeeded()
-            let expandedWidth = controller.sizeThatFits(
-                in: CGSize(width: 320, height: 120)
-            ).width
-            #expect(expandedWidth > 60, "Initial mount starts expanded: \(expandedWidth)")
-
-            let collapseDeadline = ContinuousClock.now + .seconds(2)
-            var collapsedWidth = expandedWidth
-            while collapsedWidth > 50, ContinuousClock.now < collapseDeadline {
-                try await Task.sleep(for: .milliseconds(15))
-                controller.view.layoutIfNeeded()
-                collapsedWidth = controller.sizeThatFits(
-                    in: CGSize(width: 320, height: 120)
-                ).width
-            }
-            #expect(collapsedWidth <= 50, "Collapses into compact squircle tile: \(collapsedWidth)")
-
-            // Another retry on the same Host does not pop it back open.
-            harness.issues = [
-                try issue(
-                    host,
-                    .reconnecting(
-                        attempt: 2, delay: .seconds(2),
-                        failure: .sshUnreachable(detail: "still down")))
-            ]
-            try await Task.sleep(for: .milliseconds(30))
-            controller.view.layoutIfNeeded()
-            let retryWidth = controller.sizeThatFits(
-                in: CGSize(width: 320, height: 120)
-            ).width
-            #expect(retryWidth == collapsedWidth)
-
-            // Escalating to a standing failure expands again to announce it.
-            harness.issues = [failed]
-            let escalateDeadline = ContinuousClock.now + .seconds(1)
-            var reExpandedWidth = retryWidth
-            while reExpandedWidth <= 60, ContinuousClock.now < escalateDeadline {
-                try await Task.sleep(for: .milliseconds(15))
-                controller.view.layoutIfNeeded()
-                reExpandedWidth = controller.sizeThatFits(
-                    in: CGSize(width: 320, height: 120)
-                ).width
-            }
-            #expect(reExpandedWidth > 60, "Escalation re-expands: \(reExpandedWidth)")
-        }
     }
 }

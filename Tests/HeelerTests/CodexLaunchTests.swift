@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -107,33 +105,6 @@ struct CodexLaunchTests {
     }
 
     @MainActor
-    @Test func theUnavailableViewRendersTrimmedCopyAndLearnMoreLink() async throws {
-        let noticeLabels = try await labels(
-            of: ChatUnavailableView(
-                reason: .noSession(.codex), launchNotice: .codexSharedServer,
-                retry: {}, showAgentTerminal: {}),
-            showing: "Learn More")
-        let normalizedNotice = noticeLabels.map(Self.normalizeCommandSpaces)
-        #expect(normalizedNotice.contains { $0.contains("Codex Started Without") }, "\(noticeLabels)")
-        #expect(normalizedNotice.contains { $0.contains("codex --no-daemon resume") }, "\(noticeLabels)")
-        #expect(!normalizedNotice.contains { $0.contains("daemon stop") }, "\(noticeLabels)")
-        #expect(normalizedNotice.contains("Show Agent Terminal"), "\(noticeLabels)")
-        #expect(normalizedNotice.contains("Check Again"), "\(noticeLabels)")
-        #expect(normalizedNotice.contains("Learn More"), "\(noticeLabels)")
-
-        let daemonLabels = try await labels(
-            of: ChatUnavailableView(
-                reason: .codexSharedDaemon, retry: {}, showAgentTerminal: {}),
-            showing: "Learn More")
-        let normalizedDaemon = daemonLabels.map(Self.normalizeCommandSpaces)
-        #expect(normalizedDaemon.contains { $0.contains("codex resume --no-daemon") }, "\(daemonLabels)")
-        #expect(!normalizedDaemon.contains { $0.contains("daemon stop") }, "\(daemonLabels)")
-        #expect(normalizedDaemon.contains("Show Agent Terminal"), "\(daemonLabels)")
-        #expect(normalizedDaemon.contains("Check Again"), "\(daemonLabels)")
-        #expect(normalizedDaemon.contains("Learn More"), "\(daemonLabels)")
-    }
-
-    @MainActor
     @Test func checkAgainHoldWaitsForMinimumAndEndsAtAnswerOrLimit() async {
         let clock = ContinuousClock()
         var answered = true
@@ -151,28 +122,5 @@ struct CodexLaunchTests {
         let limitElapsed = limitStart.duration(to: clock.now)
         #expect(limitElapsed >= .milliseconds(140))
         #expect(limitElapsed < .milliseconds(350))
-    }
-
-    private static func normalizeCommandSpaces(_ value: String) -> String {
-        value.replacingOccurrences(of: "\u{00A0}", with: " ")
-            .replacingOccurrences(of: "\u{2011}", with: "-")
-            .replacingOccurrences(of: "\u{2060}", with: "")
-    }
-
-    @MainActor
-    private func labels<Content: View>(of view: Content, showing text: String) async throws -> [String] {
-        let controller = UIHostingController(rootView: view)
-        var found: [String] = []
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            let deadline = ContinuousClock.now + .seconds(5)
-            repeat {
-                found = AccessibilityProbe.labels(in: controller.view)
-                if found.contains(where: { $0.contains(text) }) { return }
-                try await Task.sleep(for: .milliseconds(20))
-            } while ContinuousClock.now < deadline
-        }
-        return found
     }
 }

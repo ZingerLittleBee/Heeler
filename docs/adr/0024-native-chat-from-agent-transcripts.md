@@ -898,8 +898,12 @@ the sheet rather than under `Running`. Finished work stays in the list, with its
 time and the counts its notification reported, until the user's next prompt,
 while the strip over the Composer hides once both the foreground turn and all
 Background Work have ended. The strip
-shows three rows and "+N more", and condenses to one line while the Composer is
-open or a Blocked card stands in its place, so the conversation keeps its room.
+shows three rows and "+N more". Two rows or more stand under a line that counts
+them by state ("2 running · 1 failed · 1 done") and folds them into itself: the
+user's choice, kept for every Agent's Chat, and a failure only turns its count
+red rather than unfolding them. Whatever that choice, the strip condenses to
+that one line while the Composer is open or a Blocked card stands in its place,
+where the line opens the sheet, so the conversation keeps its room.
 Every row opens a sheet listing all of it as structured activity cards in
 `AgentStatusPalette` colors (leading with the human summary alongside status
 and kind badges, placing commands in a recessed two-line terminal box that

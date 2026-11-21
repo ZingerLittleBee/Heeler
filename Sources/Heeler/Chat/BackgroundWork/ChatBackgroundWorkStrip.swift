@@ -3,10 +3,12 @@ import UIKit
 
 /// What runs beside the conversation, over the Composer: an Antigravity CLI
 /// Swarm's row when the Agent runs one, then Chat's Background Work
-/// (ADR 0024), up to three rows, running work first, then "+N more". Each
-/// is one line while the Composer is open or a Blocked card stands in its
-/// place. Every row opens its sheet; nothing here stops work. Empty when
-/// there is nothing to list, so its height drops to zero.
+/// (ADR 0024), up to three rows, running work first, then "+N more". Two
+/// rows or more stand under a line that counts them by state and folds
+/// them into itself, which the user's choice keeps. Each is one line while
+/// the Composer is open or a Blocked card stands in its place, whatever
+/// that choice. Every row opens its sheet; nothing here stops work. Empty
+/// when there is nothing to list, so its height drops to zero.
 struct ChatBackgroundWorkStrip: View {
     let work: ChatBackgroundWork
     let isHostConnected: Bool
@@ -14,6 +16,9 @@ struct ChatBackgroundWorkStrip: View {
     /// Whether finished rows still show once no unfinished Background Work
     /// remains (for example while the foreground turn is still running).
     var showsFinishedWork = true
+    /// Whether the user folded the rows into the line that counts them.
+    var isFolded = false
+    var toggleFold: () -> Void = {}
     /// Opens the sheet at a row's id, or at no row.
     let open: (String?) -> Void
     /// The Agent's Swarm, which leads the strip.
@@ -28,12 +33,17 @@ struct ChatBackgroundWorkStrip: View {
         !work.rows.isEmpty && (showsFinishedWork || work.hasUnfinished)
     }
 
+    /// A lone row has no line to fold into.
+    private var isFoldable: Bool { showsWork && work.rows.count > 1 }
+
     var body: some View {
         if swarm != nil || showsWork {
             let shape = RoundedRectangle(cornerRadius: isCondensed ? 14 : 16, style: .continuous)
             VStack(spacing: 0) {
                 if let swarm {
-                    ChatSwarmLiveBar(swarm: swarm, isCondensed: isCondensed, open: openSwarm)
+                    // Folded work takes the Swarm to its one line with it.
+                    ChatSwarmLiveBar(
+                        swarm: swarm, isCondensed: isCondensed || (isFoldable && isFolded), open: openSwarm)
                 }
                 if showsWork {
                     // Only a running row's time moves, so only then does it tick.
@@ -54,6 +64,10 @@ struct ChatBackgroundWorkStrip: View {
                     .overlay { shape.fill(ThemeVeil.strip) }
             }
             .clipShape(shape)
+            // The strip grows up from the Composer, so what it holds keeps
+            // to its top edge: a row that comes or goes rides under the
+            // line over it, not across it.
+            .geometryGroup()
             // A row is a finger tall at least, and never squeezed to that.
             .fixedSize(horizontal: false, vertical: true)
             // The Composer card's inset, so the edges line up.
@@ -67,17 +81,31 @@ struct ChatBackgroundWorkStrip: View {
             work: work, isHostConnected: isHostConnected, now: now, locale: locale, calendar: calendar)
     }
 
-    @ViewBuilder
+    /// The counting line in whichever part it plays, then the rows unless
+    /// it stands for them. The line keeps its place across the fold, so
+    /// folding moves the rows and not the line.
     private func content(_ presentation: ChatBackgroundWorkPresentation) -> some View {
-        if isCondensed, let summary = presentation.summary {
-            ChatBackgroundWorkSummaryLine(summary: summary, isLed: swarm != nil, open: { open(nil) })
-        } else {
-            ChatBackgroundWorkRows(presentation: presentation, isLed: swarm != nil, open: open)
+        let isLed = swarm != nil
+        let role: ChatBackgroundWorkSummaryLine.Role? =
+            isCondensed ? .opensSheet : !isFoldable ? nil : isFolded ? .unfolds : .folds
+        return VStack(spacing: 0) {
+            if let role, let summary = presentation.summary {
+                ChatBackgroundWorkSummaryLine(summary: summary, role: role, isLed: isLed) {
+                    if role == .opensSheet { open(nil) } else { toggleFold() }
+                }
+            }
+            if role == nil || role == .folds {
+                ChatBackgroundWorkRows(presentation: presentation, isLed: isLed || role != nil, open: open)
+                    .transition(.opacity)
+            }
         }
     }
 }
 
 enum ChatBackgroundWorkStyle {
+    /// Where the user's choice to fold the strip's rows is kept, for every
+    /// Agent's Chat.
+    static let foldedDefaultsKey = "chat.background-work-folded"
     static let hint = String(localized: "Shows all background work.")
     /// How far a strip row stands in from the strip's edge.
     static let rowInset: CGFloat = 14
@@ -117,11 +145,12 @@ enum ChatBackgroundWorkPalette {
 struct ChatStripRow: ViewModifier {
     let glyphColumn: CGFloat
     let isDivided: Bool
+    var minHeight: CGFloat = 44
 
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, ChatBackgroundWorkStyle.rowInset)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
             .contentShape(.rect)
             .chatRowDivider(
                 isDivided,
@@ -273,37 +302,92 @@ private struct ChatBackgroundWorkRowLabel: View {
     }
 }
 
-/// The rows condensed to one line, which opens the sheet.
+/// The line that counts the rows by state. Over them it is their heading
+/// and folds them; in their place it shows their state as one glyph, and
+/// either brings them back or, with no room for them, opens the sheet.
 private struct ChatBackgroundWorkSummaryLine: View {
+    enum Role {
+        /// Over the rows, which it folds.
+        case folds
+        /// In the rows' place by the user's choice, which it undoes.
+        case unfolds
+        /// In the rows' place while the Composer is open or a Blocked card
+        /// stands in its place.
+        case opensSheet
+    }
+
     let summary: ChatBackgroundWorkPresentation.Summary
+    let role: Role
     /// Whether the Swarm's line stands over this one.
     let isLed: Bool
-    let open: () -> Void
+    let action: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .subheadline) private var glyphColumn = ChatBackgroundWorkStyle.glyphColumn
 
     var body: some View {
-        Button(action: open) {
-            HStack(spacing: ChatBackgroundWorkStyle.glyphSpacing) {
-                ChatBackgroundWorkGlyph(status: summary.status, size: .regular)
-                    .frame(width: glyphColumn)
-                Text(verbatim: ChatBackgroundWorkPresentation.Row.singleLine(summary.text))
+        Button(action: action) {
+            HStack(spacing: 0) {
+                // The rows under a heading each show their own. It shrinks
+                // into the line's edge as the counts take its place, so
+                // the two never cross.
+                if role != .folds {
+                    ChatBackgroundWorkGlyph(status: summary.status, size: .regular)
+                        .frame(width: glyphColumn)
+                        .padding(.trailing, ChatBackgroundWorkStyle.glyphSpacing)
+                        .transition(.scale(scale: 0.01, anchor: .leading).combined(with: .opacity))
+                }
+                Text(counts)
                     .font(.footnote.monospacedDigit())
-                    .foregroundStyle(summary.status == .running ? .primary : .secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                // Down where it unfolds, up where it folds, as every
+                // disclosure here; right where it leaves for the sheet.
                 ChatStripChevron()
+                    .rotationEffect(.degrees(role == .unfolds ? 90 : role == .folds ? -90 : 0))
+                    .padding(.leading, ChatBackgroundWorkStyle.glyphSpacing)
             }
-            .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: isLed))
+            .modifier(ChatStripRow(glyphColumn: glyphColumn, isDivided: isLed, minHeight: role == .folds ? 36 : 44))
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Background work")
-        .accessibilityValue(summary.accessibilityValue)
-        .accessibilityHint(ChatBackgroundWorkStyle.hint)
-        .accessibilityAddTraits(summary.status == .running ? [.isButton, .updatesFrequently] : .isButton)
-        .accessibilityIdentifier("chat.background-work.summary")
+        .accessibilityValue(spokenValue)
+        .accessibilityHint(role == .opensSheet ? ChatBackgroundWorkStyle.hint : "")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier(role == .opensSheet ? "chat.background-work.summary" : "chat.background-work.fold")
+    }
+
+    /// Each count in its state's ink: a failure red wherever the line
+    /// stands, what runs read first while the line stands alone.
+    private var counts: AttributedString {
+        var line = AttributedString()
+        for count in summary.counts {
+            if !line.characters.isEmpty {
+                var separator = AttributedString(" · ")
+                separator.swiftUI.foregroundColor = .secondary
+                line += separator
+            }
+            var part = AttributedString(count.text)
+            part.swiftUI.foregroundColor =
+                switch count.status {
+                case .failed: ChatBackgroundWorkPalette.statusInk(.failed)
+                case .running where role != .folds: .primary
+                default: .secondary
+                }
+            line += part
+        }
+        return line
+    }
+
+    private var spokenValue: String {
+        switch role {
+        case .folds: [summary.accessibilityValue, String(localized: "Expanded")].joinedAsPhrases()
+        case .unfolds: [summary.accessibilityValue, String(localized: "Collapsed")].joinedAsPhrases()
+        case .opensSheet: summary.accessibilityValue
+        }
     }
 }
 

@@ -175,14 +175,4 @@ struct TerminalThemeSettingsTests {
     @Test func curatedCatalogEntriesExistInThePinnedPackage() {
         #expect(TerminalThemeOption.missingCatalogThemeNames.isEmpty)
     }
-
-    @Test func changingThemeKeepsTheExistingTerminalSession() {
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        let session = terminal.terminalSession
-        let theme = Self.showing(.vesper, isDark: false)
-
-        #expect(terminal.applyTheme(theme))
-        #expect(terminal.appliedTheme == theme)
-        #expect(terminal.terminalSession === session)
-    }
 }

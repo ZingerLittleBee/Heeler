@@ -16,8 +16,8 @@
 #   is the source of truth for CI. project.yml/xcodegen is a local convenience
 #   only; CI never regenerates the project.
 # - The app and its tests compile once, in app-build: alone on a runner and
-#   with no Simulator, the way the fast build compiles them. The app workers
-#   unpack that build's products and compile nothing (refs #704).
+#   with no Simulator. No other workflow compiles the app's test bundle. The
+#   app workers unpack that build's products and compile nothing (refs #704).
 # - The real-SSH suites are mandatory in this workflow. The test script provisions
 #   disposable high-port sshd instances that run unprivileged as the runner
 #   account, plus a Unix-socket fake herdr server, and asserts both the executed
@@ -25,12 +25,11 @@
 #   real-password fixture needs sudo, because macOS cannot verify an account
 #   password without root.
 #
-# The fast builds (ci.yml, ci-package.yml) compile the app, HeelerSSH and
-# their tests on PRs that change them without running them, ci-scripts.yml
-# self-tests these scripts on macOS, and isolated repetitions live in
-# ci-diagnostics.yml. None of them claims the complete coverage produced
-# here. ci-full-alert.yml tracks failed scheduled runs, because this workflow
-# stays read-only.
+# The fast builds run nothing on PRs: ci.yml compiles the app without its
+# tests, and ci-package.yml compiles HeelerSSH with its tests. ci-scripts.yml
+# self-tests these scripts on macOS. None of them claims the complete
+# coverage produced here. ci-full-alert.yml tracks failed scheduled runs,
+# because this workflow stays read-only.
 
 name: iOS full verification
 run-name: ${{ format('iOS full verification ({0}, {1})', inputs.layout || 'sharded', inputs.cache_mode || 'warm') }}
@@ -435,8 +434,8 @@ jobs:
       - name: Test CI gate guards
         run: make test-ci-guards
 
-      - name: Test CI diagnostic controls
-        run: make test-ci-diagnostic-controls
+      - name: Test CI workflow contracts
+        run: make test-ci-workflow-contracts
 
       # Nests the package budget like the app step: simulator discovery, the
       # 15-minute build deadline, and a hung suite's 10-minute watchdog with

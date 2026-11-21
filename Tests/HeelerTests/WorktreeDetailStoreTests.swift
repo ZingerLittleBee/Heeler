@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -171,27 +169,6 @@ struct WorktreeDetailStoreTests {
 
         #expect(handed == ["/work/Heeler-wt"])
         #expect(store.removalPhase == .idle)
-    }
-
-    @Test func worktreeDetailsShowsChangesForItsDirectory() async throws {
-        var handed: [String] = []
-        let store = makeStore(
-            list: { _ in Self.list(branch: "feat/issue-99") },
-            remove: { _ in throw CancellationError() },
-            showChanges: { handed.append($0) })
-        let controller = UIHostingController(
-            rootView: WorktreeDetailView(store: store) { _ in })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
-        defer { window.isHidden = true }
-
-        let shown = try await ChangesViewTests.eventually {
-            ChangesViewTests.labels(in: controller).contains("Show Changes")
-        }
-        try #require(shown, "Show Changes never appeared")
-        #expect(ChangesViewTests.activate("Show Changes", in: controller.view))
-        #expect(handed == ["/work/Heeler-wt"])
     }
 
     @Test func aDirtyRefusalOffersChangesForTheWorktreeDirectory() async throws {

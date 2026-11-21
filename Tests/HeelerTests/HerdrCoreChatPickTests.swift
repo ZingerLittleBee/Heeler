@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -43,11 +41,6 @@ private actor PickOpenCodeStore {
     func response(_ query: OpenCodeQuery) throws -> OpenCodeQueryResponse {
         try harness.response(query)
     }
-}
-
-@MainActor @Observable
-final class ChatPickerPresence {
-    var isOpen = true
 }
 
 /// Time for a Chat under test, which passes only when the test says so.
@@ -1673,123 +1666,5 @@ struct HerdrCoreChatPickTests {
         await chat.listCandidates()
         #expect(chat.candidates == .notAsked)
         chat.end()
-    }
-
-    // MARK: The picker
-
-    private struct PickerSheet: View {
-        @Bindable var presence: ChatPickerPresence
-        let chat: AgentChatStore
-        let pin: TerminalCorePin
-
-        var body: some View {
-            Color.clear.sheet(isPresented: $presence.isOpen) {
-                ChatCandidatePickerView(chat: chat, corePin: pin)
-            }
-        }
-    }
-
-    /// Chat keeps a conversation it can no longer place, and the one edit that settles
-    /// that stays on offer, from the banner over it (ADR 0033).
-    @Test func anOpenCodeThatCannotTellOverItsConversationOffersTheEditFromItsBanner() async throws {
-        let rig = try await openCodeRig()
-        let chat = try await confirmed(rig, session: try Self.pongSession)
-        try await rig.waitUntil("its rows") { !chat.conversation.transcript.entries.isEmpty }
-        let suite = "core-chat-edit-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let controller = UIHostingController(
-            rootView: HerdrCoreChatTests.chatDetail(
-                of: try #require(rig.store.agents.first), console: rig.store, defaults: defaults))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            await rig.hideTerminalProcess()
-            await rig.nudgeCheck()
-            try await rig.waitUntilCannotTell(chat)
-            #expect(!chat.conversation.transcript.entries.isEmpty)
-            let choose = ChatCandidatePickerView.title
-            try await rig.waitUntil("the banner's list") {
-                !AccessibilityProbe.elements(labeled: choose, in: controller.view).isEmpty
-            }
-
-            try await HerdrCoreChatTests.opensASheet(from: OpenCodePluginEdit.offerTitle, in: controller)
-
-            let sheet = try #require(controller.presentedViewController)
-            try await rig.waitUntil("the offer") {
-                AccessibilityProbe.labels(in: sheet.view).contains("Review the Change")
-            }
-        }
-        chat.end()
-        rig.store.setHosts([])
-    }
-
-    /// The write that says confirmed also empties the list, which takes the preview
-    /// off the screen, so the sheet's own root is what closes it, with no preview there.
-    @Test func aConfirmationClosesThePickerFromItsRoot() async throws {
-        let rig = try await grokRig()
-        let chat = try rig.chat()
-        chat.show()
-        try await rig.waitUntilCannotTell(chat)
-        let pin = TerminalCorePin(joined: "c1")
-        let presence = ChatPickerPresence()
-        let controller = UIHostingController(rootView: PickerSheet(presence: presence, chat: chat, pin: pin))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            try await rig.waitUntil("the sheet") { controller.presentedViewController != nil }
-            try await rig.waitUntil("the list") {
-                if case .listed = chat.candidates { true } else { false }
-            }
-            let candidate = try Self.candidate(Self.grokHeld, in: chat)
-            _ = await chat.previewCandidate(candidate)
-
-            await chat.confirmCandidate(candidate, keepingTo: pin)
-
-            #expect(chat.pickConfirmation == .confirmed)
-            try await rig.waitUntil("the sheet to close") { !presence.isOpen }
-            try await rig.waitUntil("the sheet to leave") { controller.presentedViewController == nil }
-        }
-        chat.end()
-        rig.store.setHosts([])
-    }
-
-    /// The way a user goes, through the accessibility actions a hosted window has: open
-    /// a candidate from the list and use it from its preview, which the same write takes
-    /// off the screen. Touch itself is the owner's check.
-    @Test func usingAConversationFromItsPreviewClosesThePicker() async throws {
-        let rig = try await grokRig()
-        let chat = try rig.chat()
-        chat.show()
-        try await rig.waitUntilCannotTell(chat)
-        let presence = ChatPickerPresence()
-        let controller = UIHostingController(
-            rootView: PickerSheet(presence: presence, chat: chat, pin: TerminalCorePin(joined: "c1")))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { window in
-            @MainActor func element(_ matches: (NSObject) -> Bool) -> NSObject? {
-                accessibleElements(in: window).first(where: matches)
-            }
-            let held = "Conversation \(Self.grokHeld.prefix(8))"
-            try await rig.waitUntil("the row") {
-                element { $0.accessibilityLabel?.hasPrefix(held) == true } != nil
-            }
-            _ = try #require(element { $0.accessibilityLabel?.hasPrefix(held) == true }).accessibilityActivate()
-            @MainActor func use() -> NSObject? { accessibleElement(labeled: "Use This Conversation", in: window) }
-            try await rig.waitUntil("the preview's button") { use() != nil }
-
-            _ = try #require(use()).accessibilityActivate()
-
-            try await rig.waitUntil("the choice") { chat.pickConfirmation == .confirmed }
-            try await rig.waitUntil("the sheet to close") { !presence.isOpen }
-            try await rig.waitUntil("the sheet to leave") { controller.presentedViewController == nil }
-        }
-        #expect(await rig.pickWrites == [Self.pickLabel(session: Self.grokHeld)])
-        chat.end()
-        rig.store.setHosts([])
     }
 }

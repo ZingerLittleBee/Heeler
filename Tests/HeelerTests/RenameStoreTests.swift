@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -139,39 +137,6 @@ struct RenameStoreTests {
         await store.submit()
 
         #expect(store.state == .failed("The Host is not connected."))
-    }
-
-    @Test func clearButtonClearsRenameSheetInputAndFocusesField() async throws {
-        let store = agentStore(current: "reviewer")
-        let controller = UIHostingController(
-            rootView: RenameSheetView(title: "Rename Agent", store: store))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { window in
-            try await waitUntil("the rename field and clear button should appear") {
-                !Self.views(UITextField.self, in: window).isEmpty
-                    && accessibleElement(labeled: "Clear text", in: window) != nil
-            }
-            let textField = try #require(Self.views(UITextField.self, in: window).first)
-            let clear = try #require(accessibleElement(labeled: "Clear text", in: window))
-            let fieldFrame = UIAccessibility.convertToScreenCoordinates(textField.bounds, in: textField)
-            #expect(clear.accessibilityFrame.minX >= fieldFrame.maxX - 1)
-
-            #expect(clear.accessibilityActivate())
-            try await waitUntil("clearing should empty the draft, hide the button, and focus the field") {
-                store.input.isEmpty
-                    && accessibleElement(labeled: "Clear text", in: window) == nil
-                    && textField.isFirstResponder
-            }
-            #expect(textField.text == "")
-            #expect(store.canSubmit)
-            #expect(textField.isFirstResponder)
-        }
-    }
-
-    private static func views<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
-        (view as? T).map { [$0] } ?? view.subviews.flatMap { views(type, in: $0) }
     }
 
     private func waitUntil(

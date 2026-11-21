@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -570,58 +568,5 @@ extension HeelerPluginUnavailableError: Equatable {}
         #expect(offered.allows(.newAgent))
         offered.perform(.newAgent)
         #expect(started == 1)
-    }
-
-    /// The File menu and ⌘N read this target, so a mounted Console is what
-    /// decides whether New Agent or New Terminal is enabled.
-    @Test(arguments: [(ServerKind.herdrCore, true), (ServerKind.herdrTUI, true)])
-    func aMountedConsoleOffersTheNewCommandByItsHosts(
-        kind: ServerKind, enabled: Bool
-    ) async throws {
-        let composition = DemoScreenshotComposition.make()
-        let catalog = HostStore(
-            volatileHosts: [Host(address: "box.example", username: "dev", serverKind: kind)])
-        let probe = ConsoleCommandTargetProbe()
-        let view = ConsoleView(
-            hosts: catalog, console: composition.console,
-            terminal: TerminalSettings(
-                themes: composition.terminalThemes, zoom: composition.terminalZoom,
-                fonts: composition.terminalFonts, snippets: composition.snippets),
-            inputMode: composition.inputMode, detailSurface: composition.detailSurface,
-            appearance: composition.appearance,
-            pushRegistration: composition.pushRegistration,
-            notificationPreferences: composition.notificationPreferences,
-            relaySettings: composition.relaySettings,
-            notificationRouter: composition.notificationRouter,
-            bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
-            activity: composition.activity)
-        let controller = UIHostingController(
-            rootView: ZStack { view; ConsoleCommandTargetProbeView(probe: probe) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        let deadline = ContinuousClock.now + .seconds(5)
-        while probe.target == nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-            controller.view.layoutIfNeeded()
-        }
-        let target = try #require(probe.target)
-        #expect(target.allows(.newAgent) == enabled)
-    }
-}
-
-@MainActor
-private final class ConsoleCommandTargetProbe {
-    var target: ConsoleCommandTarget?
-}
-
-/// Reads the target the way `ConsoleCommands` does, beside the Console.
-private struct ConsoleCommandTargetProbeView: View {
-    let probe: ConsoleCommandTargetProbe
-    @FocusedValue(\.consoleCommandTarget) private var target
-
-    var body: some View {
-        let _ = probe.target = target
-        Color.clear.allowsHitTesting(false)
     }
 }

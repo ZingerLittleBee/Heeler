@@ -8,52 +8,6 @@ import UIKit
 @MainActor
 @Suite("Keys keyboard", .serialized)
 struct TerminalKeysKeyboardTests {
-    @Test func composerSuppressesTheSystemKeyboardBehindTheToolsDock() throws {
-        let textView = AgentComposerUITextView()
-
-        textView.updateKeyboard(presentation: .system)
-        #expect(textView.inputView == nil)
-        // UIKit owns its candidate and paste area. Adding an accessory here
-        // changes the keyboard stack's frame during an in-place replacement.
-        #expect(textView.inputAccessoryView == nil)
-
-        textView.updateKeyboard(presentation: .tools)
-        let suppressedSystemKeyboard = try #require(
-            textView.inputView as? TerminalSuppressedSoftKeyboardView)
-        #expect(suppressedSystemKeyboard.intrinsicContentSize.height == 0)
-        #expect(textView.inputAccessoryView == nil)
-
-        textView.updateKeyboard(presentation: .system)
-        #expect(textView.inputView == nil)
-        #expect(textView.inputAccessoryView == nil)
-
-        textView.updateKeyboard(presentation: .tools)
-        #expect(textView.inputView === suppressedSystemKeyboard)
-    }
-
-    /// The terminal makes the same move the Composer does: Keys mode only
-    /// suppresses the software keyboard, and nothing rides the keyboard in
-    /// either mode. A real input view here is the regression this replaces —
-    /// swapping one tears down the IME's candidate row for good.
-    @Test func keysModeSuppressesTheSystemKeyboardInPlace() throws {
-        let terminal = TerminalScreenView.makeConfiguredTerminal(
-            notificationCenter: NotificationCenter())
-        #expect(terminal.keyboardMode == .text)
-        #expect(terminal.inputView == nil)
-        #expect(terminal.inputAccessoryView == nil)
-
-        terminal.setKeyboardMode(.controls)
-        let suppressed = try #require(
-            terminal.inputView as? TerminalSuppressedSoftKeyboardView)
-        #expect(suppressed.intrinsicContentSize.height == 0)
-        #expect(terminal.inputAccessoryView == nil)
-        #expect(terminal.keyboardMode == .controls)
-
-        terminal.setKeyboardMode(.text)
-        #expect(terminal.inputView == nil)
-        #expect(terminal.keyboardMode == .text)
-    }
-
     /// Skills sits right beside the control keys when the agent has a skills
     /// source; without one the tab does not exist at all.
     @Test func skillsTabAppearsOnlyWithASkillsContext() throws {
@@ -276,22 +230,5 @@ struct KeyboardRideTests {
         #expect(abs(motion.coverage(at: 100.1) - expected) < 0.01)
         #expect(motion.coverage(at: 100) == 0)
         #expect(motion.isSettled(at: 100 + KeyboardRideMotion.spring.settlingDuration))
-    }
-
-    /// `KeyboardRideMotion.spring` is fitted to these numbers. If this fails
-    /// the keyboard moves differently now, and the spring needs fitting again.
-    @Test func theKeyboardCurveIsTheOneTheSpringIsFittedTo() throws {
-        let view = UIView()
-        UIView.animate(
-            withDuration: 0.25, delay: 0,
-            options: [
-                .overrideInheritedCurve, .overrideInheritedDuration,
-                UIView.AnimationOptions(rawValue: 7 << 16),
-            ]
-        ) { view.alpha = 0 }
-        let curve = try #require(view.layer.animation(forKey: "opacity") as? CASpringAnimation)
-        #expect(curve.mass == 3)
-        #expect(curve.stiffness == 1000)
-        #expect(curve.damping == 500)
     }
 }

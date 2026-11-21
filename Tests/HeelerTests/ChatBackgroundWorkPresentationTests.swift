@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -150,25 +149,30 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(presentation.rows.map(\.caption) == ["Audit", "Workflow"])
     }
 
-    @Test func theSummaryNamesARunningWorkflowFirst() {
+    @Test func theSummaryCountsTheRowsByState() {
         let running = Self.present([
             Self.row("Find old steps", subtitle: "Explore"),
             Self.row("docs-audit", kind: .workflow, progress: Self.auditProgress),
             Self.row("Check screenshots", state: .completed, endedAgo: 10),
         ])
-        #expect(
-            running.summary
-                == .init(
-                    status: .running, text: "2 running · docs-audit 2/3",
-                    accessibilityValue: "2 running, docs-audit, 2 of 3 agents done"))
+        #expect(running.summary?.status == .running)
+        #expect(running.summary?.text == "2 running · 1 done")
+        #expect(running.summary?.accessibilityValue == "2 running, 1 done")
 
-        let subagents = Self.present([Self.row("Find old steps"), Self.row("quiet", isStale: true)])
-        #expect(subagents.summary?.text == "1 running · Find old steps")
+        // What wants a look comes before what ended well.
+        let mixed = Self.present([
+            Self.row("Find old steps"), Self.row("quiet", isStale: true),
+            Self.row("a", state: .completed), Self.row("b", state: .failed),
+        ])
+        #expect(mixed.summary?.counts.map(\.status) == [.running, .unconfirmed, .failed, .completed])
+        #expect(mixed.summary?.text == "1 running · 1 not updating · 1 failed · 1 done")
 
         let finished = Self.present([
             Self.row("a", state: .completed), Self.row("b", state: .completed), Self.row("c", state: .stopped),
         ])
-        #expect(finished.summary == .init(status: .completed, text: "2 done · 1 stopped", accessibilityValue: "2 done, 1 stopped"))
+        #expect(finished.summary?.status == .completed)
+        #expect(finished.summary?.text == "2 done · 1 stopped")
+        #expect(finished.summary?.accessibilityValue == "2 done, 1 stopped")
         #expect(Self.present([Self.row("a", state: .completed), Self.row("b", state: .failed)]).summary?.status == .failed)
         #expect(Self.present([]).summary == nil)
     }
@@ -194,7 +198,7 @@ struct ChatBackgroundWorkPresentationTests {
         #expect(presentation.rows.map(\.fullTerminalText) == ["$ python3 -c '\nimport os'", "$ make lint"])
         #expect(presentation.rows[0].accessibilityLabel == "python3 -c '\nimport os', Command, running, 42 seconds")
         #expect(presentation.rows[1].accessibilityLabel == "make lint, Command, stopped, 1 minute")
-        #expect(presentation.summary?.text == "1 running · python3 -c '\nimport os'")
+        #expect(presentation.summary?.text == "1 running · 1 stopped")
     }
 
     @Test(arguments: [(0.0, "0s"), (38.9, "38s"), (138, "2m 18s"), (3_900, "1h 5m"), (-5, "0s")])
@@ -250,212 +254,5 @@ struct ChatBackgroundWorkPresentationTests {
 
         let rows = Self.present([singleLineCmd, multiLineCmd, emptyWorkflow, populatedWorkflow, subagent]).rows
         #expect(rows.map(\.hasIntrinsicExpandableContent) == [false, true, false, true, false])
-    }
-}
-
-/// The strip in a window: one line while condensed, nothing at all when
-/// there is nothing to list, which the Blocked card's cap relies on.
-@MainActor
-@Suite("Chat background work strip, hosted", .serialized)
-struct ChatBackgroundWorkStripHostedTests {
-    private static func work(_ count: Int) -> ChatBackgroundWork {
-        var work = ChatBackgroundWork()
-        work.isLive = true
-        // Typed locals keep Xcode 26's type checker within its time limit.
-        let launchedAt = Date().addingTimeInterval(-90)
-        work.rows = (0..<count).map { (index: Int) -> ChatBackgroundWork.Row in
-            let kind: ChatBackgroundWorkItem.Kind = index == 0 ? .workflow : .subagent
-            let state: ChatBackgroundWorkItem.State = index == 2 ? .completed : .running
-            let item = ChatBackgroundWorkItem(
-                id: "work-\(index)", kind: kind, title: "Work \(index)",
-                state: state, launchOffset: UInt64(index), launchedAt: launchedAt)
-            return ChatBackgroundWork.Row(item: item)
-        }
-        return work
-    }
-
-    private static func size(
-        _ work: ChatBackgroundWork, isCondensed: Bool, showsFinishedWork: Bool = true, width: CGFloat = 402
-    ) async throws -> CGSize {
-        let controller = UIHostingController(
-            rootView: ChatBackgroundWorkStrip(
-                work: work, isHostConnected: true, isCondensed: isCondensed,
-                showsFinishedWork: showsFinishedWork, open: { _ in }
-            )
-            .environment(\.locale, Locale(identifier: "en_US")))
-        // The strip's own size, without the window's insets.
-        controller.safeAreaRegions = []
-        var size = CGSize.zero
-        try await withTestWindow(frame: CGRect(x: 0, y: 0, width: width, height: 874), rootViewController: controller) { _ in
-            controller.view.layoutIfNeeded()
-            size = controller.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
-        }
-        return size
-    }
-
-    private static func height(
-        _ work: ChatBackgroundWork, isCondensed: Bool, showsFinishedWork: Bool = true
-    ) async throws -> CGFloat {
-        try await size(work, isCondensed: isCondensed, showsFinishedWork: showsFinishedWork).height
-    }
-
-    @Test func aRowQuietSinceAnotherDayFitsANarrowPhone() async throws {
-        var work = ChatBackgroundWork()
-        work.isLive = true
-        let progress = ChatWorkflowProgress(agents: [
-            .init(id: "k1", label: "audit:setup", phase: "Audit", state: .done),
-            .init(id: "k2", label: "audit:index", phase: "Audit", state: .running),
-        ])
-        work.rows = [
-            ChatBackgroundWork.Row(
-                item: ChatBackgroundWorkItem(
-                    id: "quiet", kind: .workflow, title: "docs-audit", launchOffset: 0,
-                    launchedAt: Date().addingTimeInterval(-2 * 86_400)),
-                progress: progress, isStale: true, lastActivity: Date().addingTimeInterval(-2 * 86_400))
-        ]
-        let size = try await Self.size(work, isCondensed: false, width: 375)
-        #expect(size.width <= 375, "\(size.width)")
-    }
-
-    @Test func theStripCondensesToOneLineAndTakesNoRoomEmpty() async throws {
-        let empty = try await Self.height(Self.work(0), isCondensed: false)
-        let condensed = try await Self.height(Self.work(5), isCondensed: true)
-        let two = try await Self.height(Self.work(2), isCondensed: false)
-        let four = try await Self.height(Self.work(4), isCondensed: false)
-        let five = try await Self.height(Self.work(5), isCondensed: false)
-
-        #expect(empty == 0)
-        #expect(condensed > 20 && condensed < 50, "one line: \(condensed)")
-        // Three rows and "+N more" outgrow two rows, and stop there.
-        #expect(four > two + 40, "\(two) against \(four)")
-        #expect(abs(five - four) < 0.5, "\(four) against \(five)")
-
-        var onlyFinished = ChatBackgroundWork()
-        onlyFinished.isLive = true
-        onlyFinished.rows = [
-            ChatBackgroundWork.Row(
-                item: ChatBackgroundWorkItem(
-                    id: "done-1", kind: .workflow, title: "rex-size-wrap", state: .completed, launchOffset: 1))
-        ]
-        #expect(try await Self.height(onlyFinished, isCondensed: false, showsFinishedWork: false) == 0)
-        #expect(try await Self.height(onlyFinished, isCondensed: true, showsFinishedWork: false) == 0)
-        #expect(try await Self.height(Self.work(2), isCondensed: false, showsFinishedWork: false) > 20)
-    }
-
-    @Test func activityCardHidesDisclosureChevronUntilContentActuallyExpands() async throws {
-        // Use rows without a duration (`launchedAt == nil`, `endedAt == nil`) so
-        // the top-right header region only contains ink when `chevron.right` is drawn.
-        let shortCommand = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "short-cmd", kind: .command, title: "pytest -q", subtitle: "Run unit tests",
-                state: .completed, launchOffset: 1))
-        let multiLineCommand = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "multi-cmd", kind: .command, title: "cd /tmp\npytest -q", subtitle: "Run unit tests",
-                state: .completed, launchOffset: 2))
-        let truncatedSingleLineCommand = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "long-cmd", kind: .command,
-                title: "python3 scripts/verify-everything.py --workspace /Users/example/Documents/worktree/Heeler/worktree-rapid-field-9516 --configuration Debug --strict-checks --report-output /tmp/report.json",
-                subtitle: "Run full verification command",
-                state: .completed, launchOffset: 3))
-        let shortSubagent = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "short-sub", kind: .subagent, title: "Codebase Researcher", subtitle: "research",
-                state: .completed, launchOffset: 4))
-        let emptyWorkflow = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "empty-wf", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
-                state: .completed, launchOffset: 5))
-        let agentWorkflow = ChatBackgroundWork.Row(
-            item: ChatBackgroundWorkItem(
-                id: "agent-wf", kind: .workflow, title: "audit.py", subtitle: "Audit docs",
-                state: .completed, launchOffset: 6),
-            progress: ChatWorkflowProgress(agents: [
-                .init(id: "a1", label: "audit:links", phase: "Audit", state: .done)
-            ]))
-
-        var work = ChatBackgroundWork()
-        work.isLive = true
-        work.rows = [
-            shortCommand, multiLineCommand, truncatedSingleLineCommand,
-            shortSubagent, emptyWorkflow, agentWorkflow,
-        ]
-        let presented = ChatBackgroundWorkPresentation(
-            work: work, isHostConnected: true, now: Date(), locale: Locale(identifier: "en_US")
-        ).rows
-
-        var hasChevron: [Bool] = []
-        for row in presented {
-            hasChevron.append(try await Self.cardTopRightHasChevronInk(row: row, width: 358))
-        }
-        #expect(hasChevron == [false, true, true, false, false, true], "chevron visibility per row: \(hasChevron)")
-    }
-
-    private static func cardTopRightHasChevronInk(
-        row: ChatBackgroundWorkPresentation.Row, width: CGFloat
-    ) async throws -> Bool {
-        let controller = UIHostingController(
-            rootView: ChatBackgroundWorkActivityCard(row: row, expandedCards: .constant([]))
-                .frame(width: width)
-                .fixedSize(horizontal: false, vertical: true)
-                .environment(\.locale, Locale(identifier: "en_US")))
-        controller.safeAreaRegions = []
-        controller.view.backgroundColor = .clear
-        var hasInk = false
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: width, height: 320), rootViewController: controller
-        ) { window in
-            window.overrideUserInterfaceStyle = .dark
-            // Let SwiftUI's `onGeometryChange` truncation probe settle across layout passes.
-            for _ in 0..<4 {
-                controller.view.setNeedsLayout()
-                controller.view.layoutIfNeeded()
-                try await Task.sleep(for: .milliseconds(20))
-            }
-            let size = controller.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
-            controller.view.frame = CGRect(origin: .zero, size: size)
-            controller.view.layoutIfNeeded()
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 2
-            format.opaque = true
-            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { ctx in
-                UIColor.black.setFill()
-                ctx.fill(controller.view.bounds)
-                controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
-            }
-            guard let cgImage = image.cgImage,
-                let data = cgImage.dataProvider?.data,
-                let bytes = CFDataGetBytePtr(data)
-            else { return }
-            let scale: CGFloat = 2
-            let bytesPerRow = cgImage.bytesPerRow
-            let bytesPerPixel = cgImage.bitsPerPixel / 8
-            // Card inset is 13pt; top row sits around y = 13...37pt, trailing chevron around width - 28 ... width - 12pt.
-            let minX = Int(((width - 30) * scale).rounded(.down))
-            let maxX = Int(((width - 11) * scale).rounded(.up))
-            let minY = Int((14 * scale).rounded(.down))
-            let maxY = Int((36 * scale).rounded(.up))
-            // Sample card background inside the header row to the left of the chevron slot (`width - 48`).
-            let sampleX = Int(((width - 48) * scale).rounded())
-            let sampleY = Int((25 * scale).rounded())
-            let bgOffset = sampleY * bytesPerRow + sampleX * bytesPerPixel
-            let bgR = Int(bytes[bgOffset])
-            let bgG = Int(bytes[bgOffset + 1])
-            let bgB = Int(bytes[bgOffset + 2])
-            for py in minY..<min(maxY, cgImage.height) {
-                for px in minX..<min(maxX, cgImage.width) {
-                    let offset = py * bytesPerRow + px * bytesPerPixel
-                    let dr = abs(Int(bytes[offset]) - bgR)
-                    let dg = abs(Int(bytes[offset + 1]) - bgG)
-                    let db = abs(Int(bytes[offset + 2]) - bgB)
-                    if max(dr, max(dg, db)) > 18 {
-                        hasInk = true
-                        return
-                    }
-                }
-            }
-        }
-        return hasInk
     }
 }

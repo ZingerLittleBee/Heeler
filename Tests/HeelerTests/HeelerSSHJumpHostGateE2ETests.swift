@@ -36,32 +36,9 @@ struct HeelerSSHJumpHostGateE2ETests {
     @Test("TOFU records both endpoints once and identifies either mismatch")
     func trustIsIndependentAtBothHops() async throws {
         let environment = try #require(HeelerSSHJumpHostTestEnvironment.current)
-        let iterations: Int
-        if let configured = ProcessInfo.processInfo.environment["HEELER_SSH_JUMP_TOFU_ITERATIONS"] {
-            iterations = try #require(Int(configured), "TOFU iterations must be an integer")
-            try #require((1...100).contains(iterations), "TOFU iterations must be between 1 and 100")
-        } else {
-            iterations = 1
-        }
-        // Each iteration repeats the original assertions with new trust state;
-        // an unexpected mismatch stops the diagnostic run instead of retrying it.
-        for iteration in 1...iterations {
-            guard try await verifyTrustAtBothHops(
-                environment: environment,
-                iteration: iteration,
-                iterations: iterations)
-            else { return }
-        }
-    }
-
-    private func verifyTrustAtBothHops(
-        environment: HeelerSSHJumpHostTestEnvironment,
-        iteration: Int,
-        iterations: Int
-    ) async throws -> Bool {
         let started = ContinuousClock.now
         func note(_ step: String) {
-            print("[jump-tofu] iteration=\(iteration)/\(iterations) step=\(step) elapsed=\(started.duration(to: ContinuousClock.now))")
+            print("[jump-tofu] step=\(step) elapsed=\(started.duration(to: ContinuousClock.now))")
         }
         let knownHosts = InMemoryKnownHostsStore()
         let confirmations = HostKeyConfirmationRecorder()
@@ -101,7 +78,7 @@ struct HeelerSSHJumpHostGateE2ETests {
         }
         guard case .jumpHostFailed(.hostKeyMismatch) = jumpError else {
             Issue.record("expected the mismatch to identify the Jump Host, got \(String(describing: jumpError))")
-            return false
+            return
         }
 
         await knownHosts.setFingerprint(
@@ -125,10 +102,9 @@ struct HeelerSSHJumpHostGateE2ETests {
         }
         guard case .hostKeyMismatch = targetError else {
             Issue.record("expected the unwrapped mismatch to identify the Host, got \(String(describing: targetError))")
-            return false
+            return
         }
         note("complete")
-        return true
     }
 
     @Test("outer and target authentication failures retain wrapping and retryability")

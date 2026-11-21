@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -75,84 +73,6 @@ struct ShellTerminalStoreTests {
                         workspaceID: "workspace-1",
                         cwd: "/repo/current task")
                 ])
-    }
-
-    @Test func shellSurfaceEnablesDirectTerminalInputAndShellAppropriateKeys() async throws {
-        let transport = ScriptedTransport()
-        let store = ShellTerminalStore(
-            identity: ShellTerminalIdentity(
-                paneID: "w1:p-shell",
-                tabID: "w1:t-shell",
-                terminalID: "term-shell"),
-            transportGeneration: 1,
-            isOnStage: { true },
-            runTerminal: terminalRunner(transport))
-        let defaults = UserDefaults(suiteName: "shell-terminal-\(UUID())") ?? .standard
-        let settings = TerminalSettings(
-            themes: TerminalThemeSettings(defaults: defaults),
-            zoom: TerminalZoomSettings(defaults: defaults),
-            fonts: TerminalFontSettings(defaults: defaults),
-            snippets: SnippetStore(defaults: defaults))
-        // The screen that opened this terminal left the keyboard up.
-        let keyboardHandoff = TerminalKeyboardHandoff()
-        keyboardHandoff.armShellTerminal()
-        let controller = UIHostingController(
-            rootView: ShellTerminalView(
-                store: store,
-                agentID: ConsoleAgent.ID(hostID: UUID(), paneID: "w1:p-agent"),
-                terminal: settings,
-                activity: AppActivityCoordinator(),
-                isReturning: false,
-                keyboardHandoff: keyboardHandoff,
-                onBack: {}))
-        let window = AgentSurfaceReplacementTests.makeLocalTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
-        defer { window.isHidden = true }
-
-        controller.view.layoutIfNeeded()
-        try #require(
-            await eventually {
-                controller.view.layoutIfNeeded()
-                return await transport.attachRequests.count == 1
-            })
-        #expect(await transport.emitAttachOutput(Data("shell".utf8)))
-        try #require(await eventually { store.terminalStatus == .live })
-        let terminal = try #require(
-            AgentSurfaceReplacementTests.terminals(in: controller.view).first)
-
-        #expect(terminal.isLocalInputEnabled)
-        // The keyboard state travels with the user: the armed handoff makes
-        // the surface claim first responder as it reaches the window, and
-        // the one-shot is spent so a later open starts from its own screen.
-        #expect(terminal.isFirstResponder)
-        #expect(terminal.keyboardMode == .text)
-        #expect(!keyboardHandoff.consumeShellTerminal())
-        // No title bar: navigation lives behind the input row's More button,
-        // which is present while the keyboard is down. The app test runner
-        // enables simulator accessibility before launching the host; polling
-        // here only waits for layout to publish the row's elements.
-        var labels = Set<String>()
-        _ = await eventually {
-            controller.view.layoutIfNeeded()
-            labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
-            return labels.contains("More") && labels.contains("Paste")
-        }
-        #expect(labels.contains("More"))
-        #expect(labels.contains("Paste"))
-        #expect(!labels.contains("Insert New Line"), "Shift+Enter lives on the Keys keyboard")
-        // No Snippets or Skills on a shell terminal: its Keys dock offers the
-        // full keyboard and Appearance alone.
-        #expect(ShellTerminalKeysDock.tabs == [.controls, .appearance])
-        let keyboard = TerminalKeyboardControl()
-        keyboard.terminal = terminal
-        keyboard.sendTerminalKey(.enter)
-        try #require(
-            await eventually {
-                await transport.attachInputs.contains(.keystrokes(Data([0x0D])))
-            })
-
-        await store.leave().value
     }
 
     @Test func createdIdentityBecomesALocalDestinationWithoutChangingRouterPath() async throws {

@@ -3,15 +3,6 @@ import Testing
 
 @testable import Heeler
 
-/// Repeated diagnostics need a larger outer budget. Invalid input retains the
-/// normal deadlock limit and fails the iteration guard inside the test.
-private func hasRepeatedWeakChangesDiagnostic() -> Bool {
-    guard let configured = ProcessInfo.processInfo.environment["HEELER_WEAK_CHANGES_ITERATIONS"],
-          let iterations = Int(configured), (2...100).contains(iterations)
-    else { return false }
-    return true
-}
-
 /// The product driven over a link the test degrades on purpose.
 ///
 /// The merge gate runs unprivileged, which rules out `pfctl`/`dummynet` and the
@@ -33,7 +24,7 @@ private func hasRepeatedWeakChangesDiagnostic() -> Bool {
         if: RealSSHFixture.gate(HeelerSSHTransportBehaviorEnvironment.current != nil),
         "requires the disposable impairment proxy fixture"),
     .serialized,
-    .timeLimit(hasRepeatedWeakChangesDiagnostic() ? .minutes(30) : .minutes(2)))
+    .timeLimit(.minutes(2)))
 struct WeakNetworkE2ETests {
     @Test("concurrent RPCs survive latency, a bandwidth cap, and fragmentation")
     func concurrentRPCsSurviveADegradedLink() async throws {

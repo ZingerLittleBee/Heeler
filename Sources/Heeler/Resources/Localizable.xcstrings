@@ -4487,94 +4487,25 @@
         }
       }
     },
-    "%lld running · %@" : {
-      "comment" : "Background Work bar: running count, then the first one's name",
+    "%lld running" : {
+      "comment" : "Background Work bar: items that are running",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "実行中 %1$lld · %2$@"
+            "value" : "実行中 %lld"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld 项运行中 · %@"
+            "value" : "%lld 项运行中"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld 個執行中 · %@"
-          }
-        }
-      }
-    },
-    "%lld running · %@ %lld/%lld" : {
-      "comment" : "Background Work bar: running count, the Workflow's name, then its agents done out of all",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "実行中 %1$lld · %2$@ %3$lld/%4$lld"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 项运行中 · %@ %lld/%lld"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 個執行中 · %@ %lld/%lld"
-          }
-        }
-      }
-    },
-    "%lld running, %@" : {
-      "comment" : "Background Work bar, spoken: running count, then the first one's name",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "実行中 %1$lld、%2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 项运行中，%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 個執行中，%@"
-          }
-        }
-      }
-    },
-    "%lld running, %@, %lld of %lld agents done" : {
-      "comment" : "Background Work bar, spoken: running count, the Workflow's name, then its agents done out of all",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "実行中 %1$lld、%2$@、エージェント %4$lld 件中 %3$lld 件が完了"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 项运行中，%@，已完成 %lld/%lld 个 Agent"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 個執行中，%@，%lld / %lld 個 Agent 已完成"
+            "value" : "%lld 個執行中"
           }
         }
       }

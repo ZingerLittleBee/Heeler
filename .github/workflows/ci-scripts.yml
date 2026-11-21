@@ -52,5 +52,5 @@ jobs:
         run: make test-ci-watchdog
       - name: Test CI gate guards
         run: make test-ci-guards
-      - name: Test CI diagnostic controls
-        run: make test-ci-diagnostic-controls
+      - name: Test CI workflow contracts
+        run: make test-ci-workflow-contracts
