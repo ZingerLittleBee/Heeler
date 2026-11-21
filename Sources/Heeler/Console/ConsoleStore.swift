@@ -97,6 +97,10 @@ final class ConsoleStore {
     /// Actionable Host status rows for `catalog`, published only when a presentation
     /// changes so list passes reuse the built copy.
     private(set) var hostIssues: [ConsoleHostStatusPresentation] = []
+    /// `catalog`'s conditions with one for each Host (ADR 0047), as the
+    /// lists' status tile and its sheet show them: the connection is the
+    /// Host's, whichever of its Servers the records are (ADR 0058).
+    private(set) var machineIssues: [ConsoleHostStatusPresentation] = []
     /// Live rows plus saved Chat entry points while a Host is unproven. The
     /// separate `agents` property remains the only realtime inventory.
     private(set) var chatDisplayAgents: [ConsoleAgent] = []
@@ -2894,6 +2898,24 @@ final class ConsoleStore {
         }
         if hostIssues != next {
             hostIssues = next
+        }
+        let nextMachines = perHostIssues(for: catalog)
+        if machineIssues != nextMachines {
+            machineIssues = nextMachines
+        }
+    }
+
+    /// One condition for each Host among `hosts`, reusing `machineIssues`
+    /// when `hosts` matches the synced `catalog`.
+    func machineIssues(for hosts: [Host]) -> [ConsoleHostStatusPresentation] {
+        hosts == catalog ? machineIssues : perHostIssues(for: hosts)
+    }
+
+    private func perHostIssues(for hosts: [Host]) -> [ConsoleHostStatusPresentation] {
+        PerfTrace.span("console.machine-issues") {
+            ConsoleHostStatusPresentation.perHost(
+                hosts, statuses: hostStatuses, standingFailures: hostStandingFailures,
+                awaitingSnapshot: hostsAwaitingSnapshot, syncErrors: hostSyncErrors)
         }
     }
 

@@ -162,12 +162,14 @@ private struct ConsoleHostIssueCountLine: View {
     }
 }
 
-/// The Hosts behind the flat lists' summary, in a sheet. A Host that cannot
-/// connect pushes the connection detail its own row would open; any other
-/// navigable condition opens the Host in the Hosts tab.
+/// The Hosts behind the flat lists' summary, in a sheet, each once whatever
+/// Servers it has on (ADR 0058). A Host that cannot connect pushes the
+/// connection detail its own row would open; any other navigable condition
+/// opens the Server it is of in the Hosts tab.
 struct ConsoleHostIssuesSheet<Detail: View & SendableMetatype>: View {
     let issues: [ConsoleHostStatusPresentation]
-    /// Hosts the connection detail explains, which push it.
+    /// Hosts the connection detail explains, which push it, by the record
+    /// their conditions are keyed by.
     let explained: Set<Host.ID>
     /// The presenting Console's: inside the sheet, the size class describes
     /// the sheet, not the screen.
@@ -185,7 +187,7 @@ struct ConsoleHostIssuesSheet<Detail: View & SendableMetatype>: View {
                     if explained.contains(issue.hostID) {
                         NavigationLink(value: issue.hostID) { row(issue) }
                     } else if issue.navigates {
-                        Button { onOpenHost(issue.hostID) } label: {
+                        Button { onOpenHost(issue.serverID) } label: {
                             HStack {
                                 row(issue)
                                 // Drawn as the list draws the pushing rows' own,

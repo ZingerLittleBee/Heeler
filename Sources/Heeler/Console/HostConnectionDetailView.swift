@@ -5,6 +5,7 @@ import SwiftUI
 /// retry after one; its inventory is empty then, so the sheet replaces
 /// expanding the Host.
 struct HostConnectionDetailPresentation: Equatable {
+    /// The Server whose failure is shown, by its catalog record.
     let hostID: Host.ID
     let hostName: String
     let address: String
@@ -25,14 +26,49 @@ struct HostConnectionDetailPresentation: Equatable {
     let isDialing: Bool
     /// The Host is still trying (dialing, or reconnecting on its own), so
     /// the user can stop it instead of waiting for a timeout.
-    let canStop: Bool
+    private(set) var canStop: Bool
+
+    /// Why a Host cannot connect, from the Servers it has on: the connection
+    /// is the Host's (ADR 0058). Nil while any Server is connected, since
+    /// the Host then is. Otherwise the Server the Host's condition reads as
+    /// (`ConsoleHostStatusPresentation.ranked`) explains it, or the next one
+    /// with a failure to show, under the Host's name alone. Stop Connecting
+    /// reaches every Server, so it is offered while any of them is still
+    /// trying, whichever one explains the Host.
+    init?(
+        group: ConsoleHostSectionGroup,
+        statuses: [Host.ID: EventsSessionStatus],
+        standingFailures: [Host.ID: TransportError],
+        lastFailure: TransportError? = nil
+    ) {
+        guard !group.servers.contains(where: { statuses[$0.id] == .connected }) else { return nil }
+        let explained = ConsoleHostStatusPresentation.ranked(
+            group, statuses: statuses, standingFailures: standingFailures
+        ).lazy.compactMap { condition -> Self? in
+            guard let server = group.servers.first(where: { $0.id == condition.serverID }) else {
+                return nil
+            }
+            return Self(
+                host: server, named: group.name, status: statuses[server.id],
+                standingFailure: standingFailures[server.id], lastFailure: lastFailure)
+        }.first
+        guard var explained else { return nil }
+        explained.canStop = group.servers.contains { server in
+            switch statuses[server.id] {
+            case .connecting, .reconnecting: true
+            default: false
+            }
+        }
+        self = explained
+    }
 
     /// `lastFailure` is what the sheet saw before its own Retry Now: a
     /// reconnecting Host's retry dials without a standing failure, and the
-    /// sheet must stay to show it.
+    /// sheet must stay to show it. `name` is the Host's, where the sheet
+    /// speaks for the Host and not this one Server of it.
     init?(
-        host: Host, status: EventsSessionStatus?, standingFailure: TransportError?,
-        lastFailure: TransportError? = nil
+        host: Host, named name: String? = nil, status: EventsSessionStatus?,
+        standingFailure: TransportError?, lastFailure: TransportError? = nil
     ) {
         let failure: TransportError
         switch status {
@@ -62,7 +98,7 @@ struct HostConnectionDetailPresentation: Equatable {
             return nil
         }
         hostID = host.id
-        hostName = host.displayName
+        hostName = name ?? host.displayName
         address = host.connectionSummary
         self.failure = failure
         let presentation = failure.presentation(usesHerdrEndpoint: host.herdrEndpoint != nil)

@@ -271,6 +271,65 @@ struct ConsoleHostStatusPresentationTests {
     }
 }
 
+@Suite("Console host conditions per Host")
+struct ConsoleHostConditionsPerHostTests {
+    private let tmux = Host(
+        name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
+    private let rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
+    private let win = Host(name: "win", address: "win.example", username: "dev")
+    private let reconnecting = EventsSessionStatus.reconnecting(
+        attempt: 1, delay: .seconds(1), failure: .timedOut)
+
+    private func conditions(
+        _ statuses: [Host.ID: EventsSessionStatus]
+    ) -> [ConsoleHostStatusPresentation] {
+        ConsoleHostStatusPresentation.perHost(
+            [tmux, rex, win], statuses: statuses, standingFailures: [:], awaitingSnapshot: [],
+            syncErrors: [:])
+    }
+
+    /// The connection is the Host's (ADR 0058): its Servers take one
+    /// condition between them, under the Host's name alone.
+    @Test func aHostTakesOneConditionWhateverServersItHasOn() throws {
+        let down = conditions([tmux.id: reconnecting, rex.id: reconnecting, win.id: reconnecting])
+        #expect(down.map(\.hostName) == ["m3", "win"])
+        #expect(down.map(\.hostID) == [tmux.id, win.id])
+        #expect(down.first?.message == "Reconnecting to m3: Connection timed out")
+        #expect(ConsoleHostIssueSummary(issues: down)?.title == "2 Hosts not connected")
+
+        // A failure of the connection leads one Server's own, and the
+        // sheet it opens explains that one under the Host's name.
+        let stopped: [Host.ID: EventsSessionStatus] = [
+            tmux.id: .failed(.tmuxServerNotRunning(socketName: "default")), rex.id: .failed(.timedOut),
+        ]
+        #expect(conditions(stopped).map(\.serverID) == [rex.id])
+        #expect(conditions(stopped).map(\.hostID) == [tmux.id])
+        let m3 = try #require(ConsoleHostSectionGroup.grouping([tmux, rex]).first)
+        let detail = try #require(
+            HostConnectionDetailPresentation(group: m3, statuses: stopped, standingFailures: [:]))
+        #expect(detail.hostName == "m3")
+        #expect(detail.failure == .timedOut)
+        #expect(!detail.canStop)
+
+        // Stop Connecting reaches every Server, so it is offered while one
+        // still tries, though a stopped one explains the Host.
+        let trying: [Host.ID: EventsSessionStatus] = [
+            tmux.id: .failed(.tmuxServerNotRunning(socketName: "default")), rex.id: reconnecting,
+        ]
+        let stoppable = try #require(
+            HostConnectionDetailPresentation(group: m3, statuses: trying, standingFailures: [:]))
+        #expect(stoppable.failure == .tmuxServerNotRunning(socketName: "default"))
+        #expect(stoppable.canStop)
+
+        // One connected Server proves the Host connected.
+        let partly: [Host.ID: EventsSessionStatus] = [
+            tmux.id: .connected, rex.id: reconnecting, win.id: .connected,
+        ]
+        #expect(conditions(partly).isEmpty)
+        #expect(HostConnectionDetailPresentation(group: m3, statuses: partly, standingFailures: [:]) == nil)
+    }
+}
+
 @Suite("Console host issue summary")
 struct ConsoleHostIssueSummaryTests {
     private func issue(_ name: String, _ status: EventsSessionStatus)

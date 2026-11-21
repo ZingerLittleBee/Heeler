@@ -51,7 +51,12 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         }
     }
 
+    /// The catalog record the condition is keyed by: the Server's own, or
+    /// its Host's first where it speaks for the Host (`perHost`), so the
+    /// Host keeps one identity whichever Server leads.
     let hostID: Host.ID
+    /// The Server whose condition this is, by its catalog record.
+    let serverID: Host.ID
     let hostName: String
     let message: String
     /// `message` for a row under the Host's own section header, which
@@ -72,21 +77,25 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     /// A few words for a compact row: "Reconnecting…", "Can't connect".
     var status: String { condition.title }
 
+    /// `group` is the Host the condition speaks for, when it does
+    /// (`perHost`): it then names the Host alone, not this Server of it.
     init?(
         host: Host,
+        speakingFor group: ConsoleHostSectionGroup? = nil,
         status: EventsSessionStatus?,
         standingFailure: TransportError? = nil,
         isAwaitingSnapshot: Bool = false,
         syncError: String?,
         inventoryNoun: String = "Agents"
     ) {
-        hostID = host.id
-        hostName = host.displayName
+        hostID = group?.servers.first?.id ?? host.id
+        serverID = host.id
+        let name = group?.name ?? host.displayName
+        hostName = name
         isConnected = if case .connected = status { true } else { false }
         let usesHerdrEndpoint = host.herdrEndpoint != nil
         // What follows a "studio: " prefix, where the message has one.
         var unprefixed: String?
-        let name = host.displayName
         switch status {
         case .suspended:
             message = String(localized: "Connection to \(name) is paused.")
@@ -179,6 +188,85 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     }
 }
 
+extension ConsoleHostStatusPresentation {
+    /// One condition for each Host among `hosts`, the records of the Servers
+    /// that are on, in the Hosts tab's order: the connection is the Host's
+    /// (ADR 0058), so the Servers of one Host never each take a row. A Host
+    /// with nothing to say has none.
+    static func perHost(
+        _ hosts: [Host],
+        statuses: [Host.ID: EventsSessionStatus],
+        standingFailures: [Host.ID: TransportError],
+        awaitingSnapshot: Set<Host.ID>,
+        syncErrors: [Host.ID: String],
+        inventoryNoun: String = "Agents"
+    ) -> [ConsoleHostStatusPresentation] {
+        ConsoleHostSectionGroup.grouping(hosts).compactMap {
+            ranked(
+                $0, statuses: statuses, standingFailures: standingFailures,
+                awaitingSnapshot: awaitingSnapshot, syncErrors: syncErrors,
+                inventoryNoun: inventoryNoun
+            ).first
+        }
+    }
+
+    /// The conditions that speak for one Host, the one it reads as first, as
+    /// the Hosts tab reads a Host (`HostMachineRowPresentation`). While a
+    /// Server is connected the Host is, so only a connected Server still
+    /// loading or out of sync is a condition. With none connected, the
+    /// Server that most needs the user leads, a failure of the connection
+    /// ahead of one Server's own, the first among equals.
+    static func ranked(
+        _ group: ConsoleHostSectionGroup,
+        statuses: [Host.ID: EventsSessionStatus],
+        standingFailures: [Host.ID: TransportError],
+        awaitingSnapshot: Set<Host.ID> = [],
+        syncErrors: [Host.ID: String] = [:],
+        inventoryNoun: String = "Agents"
+    ) -> [ConsoleHostStatusPresentation] {
+        let connected = group.servers.filter { statuses[$0.id] == .connected }
+        let relevant = connected.isEmpty ? group.servers : connected
+        let conditions = relevant.enumerated().compactMap { offset, server -> RankedCondition? in
+            let status = statuses[server.id]
+            let standingFailure = standingFailures[server.id]
+            guard
+                let condition = ConsoleHostStatusPresentation(
+                    host: server, speakingFor: group, status: status,
+                    standingFailure: standingFailure,
+                    isAwaitingSnapshot: awaitingSnapshot.contains(server.id),
+                    syncError: syncErrors[server.id], inventoryNoun: inventoryNoun)
+            else { return nil }
+            let isServerFailure = (status?.failure ?? standingFailure)?.isServerFailure == true
+            return RankedCondition(
+                condition: condition,
+                rank: (-condition.tone.seriousness, isServerFailure ? 1 : 0, offset))
+        }
+        return conditions.sorted { $0.rank < $1.rank }.map(\.condition)
+    }
+
+    /// A Server's condition and where it stands among its Host's: the most
+    /// serious first, the connection's ahead of the Server's own, then
+    /// catalog order.
+    private struct RankedCondition {
+        let condition: ConsoleHostStatusPresentation
+        let rank: (Int, Int, Int)
+    }
+}
+
+extension HostConnectionTone {
+    /// How much a condition of this tone needs the user.
+    fileprivate var seriousness: Int {
+        switch self {
+        case .unavailable: 5
+        case .warning: 4
+        case .reconnecting: 3
+        case .pending: 2
+        case .paused: 1
+        case .connected: 0
+        }
+    }
+}
+
 /// Several Host conditions folded into one row for the flat lists, so a
 /// handful of unreachable Hosts cannot push the inventory off screen.
 /// Absent for fewer than two: one condition shows as its own row.
@@ -205,7 +293,7 @@ struct ConsoleHostIssueSummary: Equatable {
             issues.contains(where: \.isConnected)
             ? String(localized: "\(issues.count) Hosts not ready") : String(localized: "\(issues.count) Hosts not connected")
         // One count per condition, in the order the worst first appears.
-        let ranked = issues.sorted { Self.rank($0.tone) > Self.rank($1.tone) }
+        let ranked = issues.sorted { $0.tone.seriousness > $1.tone.seriousness }
         var grouped: [(tone: HostConnectionTone, condition: ConsoleHostStatusPresentation.Condition, count: Int)] = []
         for issue in ranked {
             if let index = grouped.firstIndex(where: { $0.condition == issue.condition }) {
@@ -217,17 +305,6 @@ struct ConsoleHostIssueSummary: Equatable {
         // "Reconnecting…" counts as "3 reconnecting".
         counts = grouped.map { Count(tone: $0.tone, text: $0.condition.countText($0.count)) }
         tone = ranked.first?.tone ?? .pending
-    }
-
-    private static func rank(_ tone: HostConnectionTone) -> Int {
-        switch tone {
-        case .unavailable: 5
-        case .warning: 4
-        case .reconnecting: 3
-        case .pending: 2
-        case .paused: 1
-        case .connected: 0
-        }
     }
 }
 
@@ -305,7 +382,8 @@ struct ConsoleHostIssueCornerPresentation: Equatable, Sendable {
     enum Action: Equatable, Sendable {
         /// Several Hosts have conditions; opens `ConsoleHostIssuesSheet`.
         case showAll
-        /// One Host has a navigable condition; opens its connection sheet or Host page.
+        /// One Host has a navigable condition; opens the Host's connection
+        /// sheet, or the page of the Server whose condition it is.
         case openHost(Host.ID)
         /// One Host has a quiet informational condition; toggles the expanded label.
         case toggleExpanded
@@ -366,7 +444,7 @@ struct ConsoleHostIssueCornerPresentation: Equatable, Sendable {
             tone = first.tone
             accessibilityLabel = first.message
             if first.navigates {
-                action = .openHost(first.hostID)
+                action = .openHost(first.serverID)
                 accessibilityHint =
                     first.condition == .syncIssue
                     ? String(localized: "Opens this Host's settings.")
