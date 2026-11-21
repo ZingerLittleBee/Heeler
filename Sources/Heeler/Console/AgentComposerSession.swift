@@ -80,6 +80,19 @@ final class AgentComposerSession {
         return policy
     }
 
+    /// Routes clipboard media to file staging (when a video is present) or
+    /// image staging, so copied videos never degrade into their poster frame.
+    func pasteClipboard(_ attachment: ClipboardAttachment = .current()) {
+        switch attachment {
+        case .file(let selection):
+            if staging.begin(.fileSelection(selection)) == nil {
+                composer.enqueueFile(selection)
+            }
+        case .image(let selection):
+            composer.enqueueImages([selection])
+        }
+    }
+
     func detailDidAppear(_ key: UUID) {
         presence.insert(key)
     }
