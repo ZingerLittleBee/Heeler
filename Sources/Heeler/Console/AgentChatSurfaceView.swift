@@ -246,7 +246,7 @@ struct AgentChatSurfaceView: View {
             selection: $selectedPhotos,
             maxSelectionCount: 10,
             selectionBehavior: .ordered,
-            matching: .images)
+            matching: .any(of: [.images, .videos]))
         .fileImporter(
             isPresented: $isSelectingFile,
             allowedContentTypes: [.data]
@@ -449,7 +449,7 @@ struct AgentChatSurfaceView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
+            session.enqueuePickedMedia(items.map(PickedMedia.from))
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }

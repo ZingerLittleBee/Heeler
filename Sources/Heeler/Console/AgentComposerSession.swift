@@ -93,6 +93,29 @@ final class AgentComposerSession {
         }
     }
 
+    /// Enqueues photos and videos picked from the Photos library: photos stage
+    /// as visual image pills and videos stage through the file pipeline.
+    func enqueuePickedMedia(_ items: [PickedMedia]) {
+        guard !items.isEmpty else { return }
+        var images: [any ImageSelection] = []
+        var files: [any FileSelection] = []
+        for item in items {
+            switch item {
+            case .image(let selection): images.append(selection)
+            case .file(let selection): files.append(selection)
+            }
+        }
+        if !images.isEmpty {
+            composer.enqueueImages(images)
+        }
+        for file in files {
+            if images.isEmpty, staging.begin(.fileSelection(file)) != nil {
+                continue
+            }
+            composer.enqueueFile(file)
+        }
+    }
+
     func detailDidAppear(_ key: UUID) {
         presence.insert(key)
     }

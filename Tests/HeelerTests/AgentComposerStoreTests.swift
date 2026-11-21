@@ -1415,6 +1415,57 @@ struct AgentComposerStoreTests {
         #expect(store.composedDraft == "/tmp/heeler-stage/clip.mp4 /tmp/heeler-stage/image.jpg ")
     }
 
+    @Test func pickingVideosAndPhotosFromPhotosPickerStagesVideosAsFilesAndPhotosAsPills() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-picked-media-\(UUID().uuidString)", isDirectory: true)
+        let sourceDir = root.appendingPathComponent("source", isDirectory: true)
+        let preparedDir = root.appendingPathComponent("prepared", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstVideo = sourceDir.appendingPathComponent("first_clip.mov")
+        let secondVideo = sourceDir.appendingPathComponent("second_clip.mp4")
+        try Data([0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70]).write(to: firstVideo)
+        try Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]).write(to: secondVideo)
+        let jpeg = try Self.tinyJPEGData()
+
+        let recordedFiles = LockedArray<String>()
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-stage/image.jpg") },
+            stageFile: { file, _ in
+                recordedFiles.append(file.remoteFilename)
+                return try StagedFile(path: "/tmp/heeler-stage/\(file.remoteFilename)")
+            },
+            filePreparer: FilePreparer(directory: preparedDir))
+
+        // First: pick two videos in one Photos selection.
+        session.enqueuePickedMedia([
+            .file(URLFileSelection(url: firstVideo)),
+            .file(URLFileSelection(url: secondVideo)),
+        ])
+
+        try await waitUntil("both picked videos should stage in order", timeout: .seconds(5)) {
+            recordedFiles.values == ["first_clip.mov", "second_clip.mp4"]
+        }
+        #expect(store.imageAttachments.isEmpty)
+        #expect(store.draft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/second_clip.mp4 ")
+
+        // Next: mixed selection of one photo and one video.
+        store.replaceDraft(with: "")
+        session.enqueuePickedMedia([
+            .image(DataImageSelection(data: jpeg)),
+            .file(URLFileSelection(url: firstVideo)),
+        ])
+
+        try await waitUntil("mixed photo and video selection should stage both", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg"]
+                && store.draft == "/tmp/heeler-stage/first_clip.mov "
+        }
+        #expect(store.composedDraft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/image.jpg ")
+    }
+
     @Test func targetedHighlightIsStrongerThanIdle() {
         let idle = ComposerDropHighlight(isTargeted: false)
         let targeted = ComposerDropHighlight(isTargeted: true)

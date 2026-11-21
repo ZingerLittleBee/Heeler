@@ -637,7 +637,7 @@ struct AgentTerminalView: View {
             selection: $selectedPhotos,
             maxSelectionCount: 10,
             selectionBehavior: .ordered,
-            matching: .images)
+            matching: .any(of: [.images, .videos]))
         .fileImporter(
             isPresented: $isSelectingFile,
             allowedContentTypes: [.data]
@@ -813,7 +813,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
+            session.enqueuePickedMedia(items.map(PickedMedia.from))
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the

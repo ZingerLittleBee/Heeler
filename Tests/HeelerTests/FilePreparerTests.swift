@@ -231,4 +231,57 @@ struct FilePreparerTests {
         #expect(materialized.url.lastPathComponent == "IMG_0042.mov")
         #expect(try Data(contentsOf: materialized.url) == movBytes)
     }
+
+    @Test func photosPickerMediaClassifiesVideosWhileKeepingLivePhotosAndImagesAsImages() {
+        #expect(PhotosPickerMedia.videoType(in: [.mpeg4Movie]) == .mpeg4Movie)
+        #expect(PhotosPickerMedia.videoType(in: [.quickTimeMovie, .movie]) == .quickTimeMovie)
+        #expect(PhotosPickerMedia.videoType(in: [.movie]) == .movie)
+        #expect(PhotosPickerMedia.videoType(in: [.heic, .jpeg]) == nil)
+        #expect(PhotosPickerMedia.videoType(in: [.gif]) == nil)
+        #expect(PhotosPickerMedia.videoType(in: [.livePhoto, .heic]) == nil)
+        #expect(PhotosPickerMedia.videoType(in: [.livePhoto, .quickTimeMovie]) == nil)
+    }
+
+    @Test func photosPickerVideoTransferImportsCopiesAndRejectsOversizedOrEmptyFiles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("photos-video-transfer-\(UUID().uuidString)", isDirectory: true)
+        let sourceDir = root.appendingPathComponent("source", isDirectory: true)
+        let inboxRoot = root.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let clipURL = sourceDir.appendingPathComponent("screen_capture.mp4")
+        let bytes = Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70])
+        try bytes.write(to: clipURL)
+
+        let imported = PhotosPickerVideoTransfer.importReceivedFile(
+            clipURL,
+            fallbackType: .movie,
+            maximumByteCount: 64,
+            inboxRoot: inboxRoot)
+        guard case .materialized(let materialized) = imported else {
+            Issue.record("Expected materialized video file, got \(imported)")
+            return
+        }
+        #expect(materialized.url.lastPathComponent == "screen_capture.mp4")
+        #expect(try Data(contentsOf: materialized.url) == bytes)
+        materialized.cleanup()
+        #expect(!FileManager.default.fileExists(atPath: materialized.url.path))
+
+        let oversized = PhotosPickerVideoTransfer.importReceivedFile(
+            clipURL,
+            fallbackType: .movie,
+            maximumByteCount: 4,
+            inboxRoot: inboxRoot)
+        #expect(oversized == .oversized)
+
+        let emptyURL = sourceDir.appendingPathComponent("empty.mov")
+        try Data().write(to: emptyURL)
+        let empty = PhotosPickerVideoTransfer.importReceivedFile(
+            emptyURL,
+            fallbackType: .movie,
+            maximumByteCount: 64,
+            inboxRoot: inboxRoot)
+        #expect(empty == .unavailable)
+    }
 }
