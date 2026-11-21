@@ -27,10 +27,9 @@
 #
 # The fast builds run nothing on PRs: ci.yml compiles the app without its
 # tests, and ci-package.yml compiles HeelerSSH with its tests. ci-scripts.yml
-# self-tests these scripts on macOS, and isolated repetitions live in
-# ci-diagnostics.yml. None of them claims the complete coverage produced
-# here. ci-full-alert.yml tracks failed scheduled runs, because this workflow
-# stays read-only.
+# self-tests these scripts on macOS. None of them claims the complete
+# coverage produced here. ci-full-alert.yml tracks failed scheduled runs,
+# because this workflow stays read-only.
 
 name: iOS full verification
 run-name: ${{ format('iOS full verification ({0}, {1})', inputs.layout || 'sharded', inputs.cache_mode || 'warm') }}
@@ -435,8 +434,8 @@ jobs:
       - name: Test CI gate guards
         run: make test-ci-guards
 
-      - name: Test CI diagnostic controls
-        run: make test-ci-diagnostic-controls
+      - name: Test CI workflow contracts
+        run: make test-ci-workflow-contracts
 
       # Nests the package budget like the app step: simulator discovery, the
       # 15-minute build deadline, and a hung suite's 10-minute watchdog with

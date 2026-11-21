@@ -5,7 +5,7 @@
 # stays read-only, so this listener owns the only write permission and reads
 # nothing from the repository.
 #
-# `workflows` must match ci-full.yml's `name`; test-ci-ios-diagnostics.sh
+# `workflows` must match ci-full.yml's `name`; test-ci-workflow-contracts.sh
 # checks that. Manual and cancelled runs are ignored.
 
 name: iOS full verification alert

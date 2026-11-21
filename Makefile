@@ -113,16 +113,12 @@ test-ci-package: ## Run the committed-project CI SSH package lane (SIMULATOR_UDI
 	HEELER_CI_LANE=package HEELER_CI_SIMULATOR_UDID='$(or $(SIMULATOR_UDID),$(HEELER_CI_SIMULATOR_UDID))' \
 		scripts/run-ci-ios-tests.sh
 
-.PHONY: test-ci-diagnostics test-ci-diagnostic-controls test-weak-network-proxy
-test-ci-diagnostics: ## Diagnose one scenario (HEELER_CI_DIAGNOSTIC_TARGET, optional iterations)
-	@test -n "$$HEELER_CI_DIAGNOSTIC_TARGET" || { echo "HEELER_CI_DIAGNOSTIC_TARGET is required" >&2; exit 2; }
-	HEELER_CI_LANE=app scripts/run-ci-ios-tests.sh
-
+.PHONY: test-ci-workflow-contracts test-weak-network-proxy
 test-weak-network-proxy: ## Test real TCP impairment, buffering, and proxy cleanup
 	python3 scripts/test-weak-network-proxy.py
 
-test-ci-diagnostic-controls: ## Verify diagnostic isolation and execution guards without Xcode
-	bash scripts/test-ci-ios-diagnostics.sh
+test-ci-workflow-contracts: ## Verify workflow triggers, commands and toolchain pins without Xcode
+	bash scripts/test-ci-workflow-contracts.sh
 
 check-agent-docs: ## Check navigation links and unique ADR numbers
 	python3 scripts/check-agent-docs.py
@@ -162,7 +158,7 @@ test-tools: check-agent-docs check-test-membership ## Test agent tooling without
 	bash scripts/test-publish-plugin.sh
 	$(MAKE) test-ci-evidence
 	$(MAKE) test-weak-network-proxy
-	$(MAKE) test-ci-diagnostic-controls
+	$(MAKE) test-ci-workflow-contracts
 
 test-ci-evidence: ## Test shard evidence, parameter cases, and skip provenance
 	python3 scripts/test-verify-ci-ios-evidence.py

@@ -1,28 +1,23 @@
 #!/bin/bash
-# Exercise the shipped diagnostic controls with fake native boundaries.
-# The extracted function bodies use these variables and boundary functions.
-# shellcheck disable=SC2034,SC2154,SC2329
+# Pin what each workflow runs, what starts it and which toolchain it uses.
 set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-work="$(mktemp -d "${TMPDIR:-/tmp}/heeler-diagnostic-controls.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
 
-# Fast builds and manual diagnostics must not publish full-coverage check
-# names or artifacts, even as skipped jobs. Releases never wait for full CI
-# (ADR 0039).
-python3 - "$repo_root/.github/workflows/ci-full.yml" "$repo_root/.github/workflows/ci-diagnostics.yml" <<'PYWORKFLOW'
+# Fast builds must not publish full-coverage check names or artifacts, even
+# as skipped jobs. Releases never wait for full CI (ADR 0039).
+python3 - "$repo_root/.github/workflows/ci-full.yml" <<'PYWORKFLOW'
 from pathlib import Path
 import re
 import shlex
 import subprocess
 import sys
 
-workflow, diagnostics = (Path(path).read_text() for path in sys.argv[1:])
+workflow = Path(sys.argv[1]).read_text()
 workflows = Path(sys.argv[1]).parent
 
 def require_line(body, expected):
     if [line.strip() for line in body.splitlines()].count(expected) != 1:
-        raise SystemExit(f"Diagnostic workflow contract missing or duplicated: {expected}")
+        raise SystemExit(f"Workflow contract missing or duplicated: {expected}")
 
 def job(name, source=workflow):
     match = re.search(rf"(?m)^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:|\Z)",
@@ -137,19 +132,17 @@ for name, (job_id, display, expected) in fast_workflows.items():
         raise SystemExit("Only full verification may publish full coverage check names")
 fast = sources["ci.yml"]
 if ("ios-ci-evidence-" in fast or "verify-ci-ios-evidence" in fast or "simctl" in fast
-        or re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", fast)):
+        or re.search(r"\bmake test-ci-(?:app|package)\b", fast)):
     raise SystemExit("The fast build must not execute or claim native tests")
 # A PR waits for the app alone; the test bundle compiles in full verification.
 if re.findall(r"\bmake (build-[\w-]+)", fast) != ["build-ci-app-only"]:
     raise SystemExit("The fast build must compile the app without its test bundle")
 if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-scripts.yml"]) != [
         "scripts/test-vps-ssh-access-scripts.sh", "make test-ci-watchdog",
-        "make test-ci-guards", "make test-ci-diagnostic-controls"]:
+        "make test-ci-guards", "make test-ci-workflow-contracts"]:
     raise SystemExit("Script self-tests must not build the app or run native tests")
 if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-package.yml"]) != ["make build-ci-package"]:
     raise SystemExit("The HeelerSSH build must only compile the package and its tests")
-if any("name: " + full in diagnostics for full in names.values()):
-    raise SystemExit("Only full verification may publish full coverage check names")
 
 # Compare whole tokens: the checkout path may contain words such as `test`.
 actions = {"build", "build-for-testing", "test", "test-without-building", "analyze", "archive", "clean"}
@@ -186,19 +179,6 @@ pack = shlex.split(subprocess.check_output(
 if pack != ["tar", "-czf", f"{root}/.ci/app-products.tar.gz", "-C", f"{root}/.ci/app-derived", "Build/Products"]:
     raise SystemExit("pack-ci-app-products must archive build-ci-app's Build/Products for the app workers")
 
-require_line(diagnostics, "workflow_dispatch:")
-if events(diagnostics) != {"workflow_dispatch"}:
-    raise SystemExit("Repeated diagnostics must remain manual")
-require_line(diagnostics, "options: [all, ssh-jump, weak]")
-require_line(diagnostics, "default: all")
-require_line(diagnostics, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
-require_line(diagnostics, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
-require_line(diagnostics, "run: make test-ci-diagnostics")
-if "ios-ci-evidence-" in diagnostics or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", diagnostics):
-    raise SystemExit("Diagnostic workflow publishes or runs the complete merge gate")
-if not any(line.strip().startswith("name: ios-diagnostic-") for line in diagnostics.splitlines()):
-    raise SystemExit("Diagnostic workflow has no distinct artifact name")
-
 # Every macOS job builds with the release archive's runner and Xcode, so CI
 # never checks a toolchain that nothing ships with, and every Simulator lane
 # tests the same pinned iOS runtime (#634).
@@ -231,10 +211,9 @@ for path in sorted(workflows.glob("*.yml")):
             continue
         if (runner, settings(body, "DEVELOPER_DIR")) != toolchain:
             raise SystemExit(f"{name} must use the release archive's runner and Xcode")
-        if re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", body):
+        if re.search(r"\bmake test-ci-(?:app|package)\b", body):
             simulator_lanes[name] = settings(body, "HEELER_CI_SIMULATOR_OS")
-if set(simulator_lanes) != {"ci-diagnostics.yml diagnose", "ci-full.yml app-tests",
-                            "ci-full.yml heelerssh-package-e2e"}:
+if set(simulator_lanes) != {"ci-full.yml app-tests", "ci-full.yml heelerssh-package-e2e"}:
     raise SystemExit(f"Unexpected Simulator lanes: {sorted(simulator_lanes)}")
 runtimes = {tuple(values) for values in simulator_lanes.values()}
 if len(runtimes) != 1 or len(next(iter(runtimes))) != 1:
@@ -242,142 +221,5 @@ if len(runtimes) != 1 or len(next(iter(runtimes))) != 1:
 runner_script = (workflows.parent.parent / "scripts/run-ci-ios-tests.sh").read_text()
 if not re.search(r"(?m)^ci_simulator_os=\"\$\{HEELER_CI_SIMULATOR_OS:-\}\"$", runner_script):
     raise SystemExit("run-ci-ios-tests.sh must read the pinned runtime from HEELER_CI_SIMULATOR_OS")
-print("Passed fast build, full verification, scheduled alert, diagnostic isolation and toolchain contracts.")
+print("Passed fast build, full verification, scheduled alert and toolchain contracts.")
 PYWORKFLOW
-
-for function in configure_diagnostic_lane run_ci_diagnostic push_simulator_environment clear_simulator_environment; do
-    body=$(awk -v fn="$function" '
-        $0 == fn "() {" { inside = 1 }
-        inside { print }
-        inside && /^}$/ { exit }
-    ' "$repo_root/scripts/run-ci-ios-tests.sh")
-    [[ -n "$body" ]] || { echo "Missing shipped function: $function" >&2; exit 1; }
-    eval "$body"
-done
-
-# A literal command substitution must be rejected, never evaluated.
-# shellcheck disable=SC2016
-for target in ssh-jump weak; do
-    for value in 0 101 -1 '1;false' '$(false)' ' 2' 01; do
-        if (ci_lane=app; ci_app_shard=all; ci_diagnostic_target=$target;
-            ci_diagnostic_iterations=$value; configure_diagnostic_lane) >/dev/null 2>&1; then
-            echo "Invalid $target diagnostic count accepted: $value" >&2
-            exit 1
-        fi
-    done
-done
-if (ci_lane=package; ci_app_shard=all; ci_diagnostic_target=weak;
-    ci_diagnostic_iterations=1; configure_diagnostic_lane) >/dev/null 2>&1; then
-    echo "Package worker accepted app diagnosis" >&2
-    exit 1
-fi
-if (ci_lane=app; ci_app_shard=all; ci_diagnostic_target=unknown;
-    ci_diagnostic_iterations=1; configure_diagnostic_lane) >/dev/null 2>&1; then
-    echo "Unknown diagnostic target accepted" >&2
-    exit 1
-fi
-(ci_lane=app; ci_app_shard=all; ci_diagnostic_target='';
-    ci_diagnostic_iterations=''; configure_diagnostic_lane;
-    [[ "$ci_app_shard" == all ]])
-
-check_configuration() (
-    local target=$1 shard=$2 selector=$3 variable=$4 expected_tests=$5 default_iterations=$6 count
-    for count in '' 1 100; do
-        ci_lane=app
-        ci_app_shard=all
-        ci_diagnostic_target=$target
-        ci_diagnostic_iterations=$count
-        configure_diagnostic_lane
-        [[ "$ci_app_shard" == "$shard" && "$HEELER_CI_APP_SHARD" == "$shard" ]]
-        [[ "$diagnostic_selector" == "$selector" && "$diagnostic_iteration_variable" == "$variable" ]]
-        [[ "$diagnostic_expected_tests" == "$expected_tests" ]]
-        [[ "$ci_diagnostic_iterations" == "${count:-$default_iterations}" ]]
-    done
-)
-check_configuration ssh-jump transport 'HeelerSSHJumpHostGateE2ETests/trustIsIndependentAtBothHops()' HEELER_SSH_JUMP_TOFU_ITERATIONS 1 50
-check_configuration weak session-weak 'WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()' HEELER_WEAK_CHANGES_ITERATIONS 1 10
-
-run_case() (
-    local target=$1 scenario=$2 expected=$3 fixture_mode=$4 status=0 test_noun=tests variable
-    ci_lane=app
-    ci_app_shard=all
-    ci_diagnostic_target=$target
-    ci_diagnostic_iterations=2
-    configure_diagnostic_lane
-    fixture_dir="$work/$target-$scenario-$fixture_mode"
-    mkdir -p "$fixture_dir"
-    app_derived_data_path="$fixture_dir/derived"
-    simulator_destination='platform=iOS Simulator,id=fake'
-    simulator_udid=original-device
-    simulator_environment_variables=()
-    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS)
-    for variable in "${iteration_variables[@]}"; do
-        export "$variable=inherited-value"
-    done
-    if [[ "$fixture_mode" == configured ]]; then
-        simulator_environment_variables=(HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG)
-        export HEELER_SSH_E2E_CONFIG=ssh-config HEELER_SSH_JUMP_E2E_CONFIG=jump-config HEELER_PAIRING_E2E_CONFIG=pairing-config
-    fi
-    xcodebuild_test_timeout_seconds=1
-    [[ "$diagnostic_expected_tests" != 1 ]] || test_noun='test'
-    xcrun() {
-        [[ "$1" == simctl && "$2" == spawn && "$4" == launchctl ]]
-        case "$5" in
-            setenv) printf '%s %s %s\n' "$3" "$6" "$7" >> "$fixture_dir/environment" ;;
-            unsetenv) printf '%s %s\n' "$3" "$6" >> "$fixture_dir/cleared-environment" ;;
-            *) return 1 ;;
-        esac
-    }
-    run_xcodebuild() {
-        local log=$3
-        shift 3
-        # Model destination-70 recovery with the runner's saved environment.
-        simulator_udid=replacement-device
-        push_simulator_environment "${simulator_environment_variables[@]}"
-        printf '%s\n' "$@" > "$fixture_dir/arguments"
-        printf 'Test run with %s %s in 1 suite passed\n' "$diagnostic_expected_tests" "$test_noun" > "$log"
-        case "$scenario" in
-            native-failure) return 65 ;;
-            missing-completion) ;;
-            wrong-completion) printf '%s wrong-round\n' "${diagnostic_completion_marker%2*}" >> "$log" ;;
-            skipped) printf '%s\nTest "owned" skipped\n' "$diagnostic_completion_marker" >> "$log" ;;
-            wrong-count) printf '%s\n%s\n' 'Test run with 0 tests in 1 suite passed' "$diagnostic_completion_marker" > "$log" ;;
-            *) printf '%s\n' "$diagnostic_completion_marker" >> "$log" ;;
-        esac
-    }
-    run_ci_diagnostic >/dev/null 2>&1 || status=$?
-    [[ "$status" == "$expected" ]] || { echo "Unexpected $target/$scenario status: $status" >&2; exit 1; }
-    grep -qxF -- "-only-testing:HeelerTests/$diagnostic_selector" "$fixture_dir/arguments"
-    grep -qxF -- '-parallel-testing-enabled' "$fixture_dir/arguments"
-    grep -qxF -- 'NO' "$fixture_dir/arguments"
-    if grep -q -- '^-skip-testing:' "$fixture_dir/arguments"; then
-        echo "Diagnostic added a skip selector: $target/$scenario" >&2
-        exit 1
-    fi
-    for device in original-device replacement-device; do
-        grep -qxF "$device $diagnostic_iteration_variable 2" "$fixture_dir/environment"
-        if [[ "$fixture_mode" == configured ]]; then
-            grep -qxF "$device HEELER_SSH_E2E_CONFIG ssh-config" "$fixture_dir/environment"
-            grep -qxF "$device HEELER_SSH_JUMP_E2E_CONFIG jump-config" "$fixture_dir/environment"
-            grep -qxF "$device HEELER_PAIRING_E2E_CONFIG pairing-config" "$fixture_dir/environment"
-        fi
-    done
-    # Real runner exit uses this global cleanup after success or failure.
-    clear_simulator_environment
-    [[ ${#simulator_environment_variables[@]} == 0 ]]
-    for variable in "${iteration_variables[@]}" HEELER_SSH_E2E_CONFIG HEELER_SSH_JUMP_E2E_CONFIG HEELER_PAIRING_E2E_CONFIG; do
-        [[ -z "${!variable+x}" ]]
-        grep -qxF "replacement-device $variable" "$fixture_dir/cleared-environment"
-    done
-)
-for target in ssh-jump weak; do
-    for fixture_mode in empty configured; do
-        run_case "$target" passed 0 "$fixture_mode"
-        run_case "$target" missing-completion 1 "$fixture_mode"
-        run_case "$target" wrong-completion 1 "$fixture_mode"
-        run_case "$target" skipped 1 "$fixture_mode"
-        run_case "$target" wrong-count 1 "$fixture_mode"
-        run_case "$target" native-failure 65 "$fixture_mode"
-    done
-done
-echo 'Passed diagnostic isolation, input rejection and 24 native-boundary/replacement/cleanup scenarios.'
