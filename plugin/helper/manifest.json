@@ -1,5 +1,5 @@
 {
-  "version": "0.5.11",
+  "version": "0.5.12",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -187,7 +187,7 @@
     },
     {
       "path": "shared/usage/pricing.json",
-      "sha256": "132d33eb2a28919b7da995fcf1fbdd0799130cc9c09004f7eedac16855701b85"
+      "sha256": "0a5539718e0a529f859f26709330783f4cb38d81737af9ab8545a2f4eed2430e"
     },
     {
       "path": "shared/usage/process-environment.js",
@@ -279,7 +279,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "384c02a90b21f070974d977eaee5edfefd8c66c724b39fbbdf2ea2db822429ec"
+      "sha256": "ea71edc51f9955ddb9e2e56407f1680b32c253f79e84fba55a9e671d624a59dd"
     }
   ]
 }

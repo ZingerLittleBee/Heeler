@@ -38,6 +38,7 @@ Entries reference the pull request that made the change.
 - Sort the Agents list by Pin and Agent Status priority (`Blocked` / `Error`, `Done`, `Working`, `Idle`) across every Server Kind, ignoring Herdr TUI's `agent_panel_sort = "spaces"` plugin setting and keeping equal-status rows in stable Server and Workspace order across `All Agents`, `By Host`, `By Workspace`, and Host or Status filters. (PR #762)
 - Say what to do when Codex shows that its conversation is open in another app, instead of only that Chat can't find the input box. Chat holds a message there and says to close the conversation in the other app and press R in the terminal or, when no other app has it, to stop Codex's shared server with `codex app-server daemon stop`, which also ends any other Codex on that server. (#759)
 - Say that a machine can run herdr, tmux or Rex on the empty **Hosts** screen, in the empty Agents sidebar, and at the top of the **Setup Guide**, which named only herdr. (#786)
+- Price `gemini-4-neon`, `gpt-6.2-astra`, `gpt-6.2-astra-law`, and `gpt-6.2-sol` in Token Usage, and use the current rates for `gpt-6-rosalind` and for `gpt-6-astra-law` above 272,000 tokens of context (price table 2026-11-21, in plugin 0.10.1 and Host Helper 0.5.12). (PR #805)
 
 ### Fixed
 
