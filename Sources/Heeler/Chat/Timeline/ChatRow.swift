@@ -119,6 +119,16 @@ struct ChatRow: Identifiable, Sendable {
             ChatRowExtent(
                 textBytes: ChatImageLink.displayedByteCount(of: message.text, imagePaths: message.imagePaths),
                 blocks: 1, chrome: topSpacing + 20, inset: 76)
+        case .tool(let tool):
+            // A tool row wraps its own title: a todo list or a multi-line command
+            // is many lines tall, and the seed placed every one of them at one.
+            ChatRowExtent(
+                textBytes: tool.title.utf8.count,
+                blocks: max(1, tool.title.split(separator: "\n", omittingEmptySubsequences: false).count),
+                chrome: topSpacing)
+        case .toolGroup(let group):
+            // The group row is one summary line, capped at two.
+            ChatRowExtent(textBytes: group.summary.utf8.count, blocks: 1, chrome: topSpacing)
         default:
             nil
         }
