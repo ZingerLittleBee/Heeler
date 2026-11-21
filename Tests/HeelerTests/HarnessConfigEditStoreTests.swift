@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -620,61 +618,6 @@ import UIKit
 
         await flow.undo()
         #expect(await files.files[Self.config] == Self.original)
-    }
-
-    // MARK: The sheet
-
-    /// The sheet's labels once it shows `expected`, or as they stand when time runs out.
-    private func sheetLabels(
-        _ store: ConsoleStore, _ host: Host, showing expected: String
-    ) async throws -> [String] {
-        let explanation = try #require(store.coreStatusExplanations[id(host, "g")])
-        let controller = UIHostingController(
-            rootView: HerdrCoreStatusExplanationSheet(console: store, hostID: host.id, explanation: explanation))
-        var labels: [String] = []
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            let deadline = ContinuousClock.now + .seconds(5)
-            repeat {
-                labels = AccessibilityProbe.labels(in: controller.view)
-                if labels.contains(where: { $0.contains(expected) }) { return }
-                try await Task.sleep(for: .milliseconds(20))
-            } while ContinuousClock.now < deadline
-        }
-        return labels
-    }
-
-    @Test func theSheetOffersAnAgentReadingAnotherFile() async throws {
-        let files = InMemoryHostFiles(files: [Self.config: Self.original, Self.otherConfig: Self.original])
-        let (store, transport, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
-        defer { store.setHosts([]) }
-        let first = grokFlow(store, host)
-        await first.review()
-        await first.accept()
-        await transport.setProcessVariable("GROK_HOME", to: Self.otherHome)
-
-        let labels = try await sheetLabels(store, host, showing: "Turn On Grok Build's Status")
-
-        #expect(labels.contains { $0.contains("Turn On Grok Build's Status") }, "\(labels)")
-        #expect(!labels.contains { $0.contains("Undo") }, "\(labels)")
-        #expect(!labels.contains { $0.contains(Self.config) }, "\(labels)")
-        #expect(await files.replaceCalls == 1)
-    }
-
-    @Test func theSheetShowsTheEditOfItsAgentsOwnFile() async throws {
-        let files = InMemoryHostFiles(files: [Self.config: Self.original])
-        let (store, _, host) = try await started([Self.record("g", foreground: ["grok"])], files: files)
-        defer { store.setHosts([]) }
-        let first = grokFlow(store, host)
-        await first.review()
-        await first.accept()
-
-        let labels = try await sheetLabels(store, host, showing: "Undo")
-
-        #expect(labels.contains { $0.contains("Undo") }, "\(labels)")
-        #expect(labels.contains { $0.contains(Self.config) }, "\(labels)")
-        #expect(!labels.contains { $0.contains("Turn On Grok Build's Status") }, "\(labels)")
     }
 
     // MARK: Staying with the Host

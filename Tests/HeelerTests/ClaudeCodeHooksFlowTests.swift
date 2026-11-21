@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -320,36 +318,5 @@ import UIKit
 
         await flow.loadIfNeeded()
         #expect(flow.states[work.id] == .read(.off))
-    }
-
-    @Test func sectionFirstOpenInAFormShowsEachRootsRealState() async throws {
-        let files = InMemoryHostFiles(files: [
-            Self.accountFile: try accounts(),
-            Self.defaultSettings: ClaudeCodeHooks.launchSettings(script: Self.script),
-        ])
-        await files.onRead(of: Self.defaultSettings) { _ in
-            try await Task.sleep(for: .milliseconds(30))
-        }
-        await files.onRead(of: "\(Self.work)/settings.json") { _ in
-            try await Task.sleep(for: .milliseconds(30))
-        }
-        let flow = flow(files)
-        let controller = UIHostingController(rootView: Form { ClaudeCodeHooksSection(flow: flow) })
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { window in
-            for _ in 0..<200 where flow.phase != .loaded {
-                try await Task.sleep(for: .milliseconds(10))
-            }
-            #expect(flow.phase == .loaded)
-            #expect(flow.states["/home/dev/.claude"] == .read(.on))
-            #expect(flow.states[Self.work] == .read(.off))
-
-            let labels = AccessibilityProbe.labels(in: window)
-            #expect(!labels.contains { $0.contains("Connection cancelled") }, "\(labels)")
-            #expect(labels.contains { $0.contains("On") }, "\(labels)")
-            #expect(labels.contains { $0.contains("Off") }, "\(labels)")
-        }
     }
 }

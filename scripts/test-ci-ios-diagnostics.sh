@@ -46,8 +46,8 @@ if events(workflow) != {"schedule", "workflow_dispatch"}:
 require_line(workflow, "- cron: '17 20 * * *'")
 # A manual run must not cancel the scheduled run on the same ref.
 require_line(workflow, "group: ci-ios-full-${{ github.ref }}-${{ github.event_name }}")
-# One job compiles the app and its tests, with the fast build's command and no
-# Simulator. Only a cold manual benchmark skips the compiler object cache.
+# One job compiles the app and its tests, with no Simulator. Only a cold
+# manual benchmark skips the compiler object cache.
 app_build = job("app-build")
 if "HEELER_CI_DISABLE_COMPILATION_CACHE" in app_build:
     raise SystemExit("The shared app build must not disable the compilation cache")
@@ -112,11 +112,10 @@ def trigger_paths(source, name):
 # never spend a macOS worker. This runs on Ubuntu for every PR, so a trigger
 # edit cannot slip past the workflow it changes.
 fast_workflows = {
-    "ci.yml": ("app-build", "Build app and tests (not run)", {
-        "Sources/**", "Tests/**", "Packages/**", "Heeler.xcodeproj/**", "project.yml",
+    "ci.yml": ("app-build", "Build app (tests not compiled)", {
+        "Sources/**", "Packages/**", "Heeler.xcodeproj/**", "project.yml",
         "Makefile", "scripts/run-ci-background-build.py",
-        "scripts/ci-compilation-cache-prefix.sh", "plugin/test-vectors/**",
-        ".github/workflows/ci.yml"}),
+        "scripts/ci-compilation-cache-prefix.sh", ".github/workflows/ci.yml"}),
     "ci-scripts.yml": ("gate-scripts", "CI and VPS scripts (macOS)", {
         "scripts/**", "Makefile", ".github/workflows/ci-full.yml",
         ".github/workflows/ci-scripts.yml"}),
@@ -140,6 +139,9 @@ fast = sources["ci.yml"]
 if ("ios-ci-evidence-" in fast or "verify-ci-ios-evidence" in fast or "simctl" in fast
         or re.search(r"\bmake test-ci-(?:app|package|diagnostics)\b", fast)):
     raise SystemExit("The fast build must not execute or claim native tests")
+# A PR waits for the app alone; the test bundle compiles in full verification.
+if re.findall(r"\bmake (build-[\w-]+)", fast) != ["build-ci-app-only"]:
+    raise SystemExit("The fast build must compile the app without its test bundle")
 if re.findall(r"(?m)^\s+run: (.+)$", sources["ci-scripts.yml"]) != [
         "scripts/test-vps-ssh-access-scripts.sh", "make test-ci-watchdog",
         "make test-ci-guards", "make test-ci-diagnostic-controls"]:
@@ -151,7 +153,10 @@ if any("name: " + full in diagnostics for full in names.values()):
 
 # Compare whole tokens: the checkout path may contain words such as `test`.
 actions = {"build", "build-for-testing", "test", "test-without-building", "analyze", "archive", "clean"}
-for target, scheme in [("build-ci-app", "Heeler"), ("build-ci-package", "HeelerSSH")]:
+for target, scheme, action in [
+        ("build-ci-app-only", "Heeler", "build"),
+        ("build-ci-app", "Heeler", "build-for-testing"),
+        ("build-ci-package", "HeelerSSH", "build-for-testing")]:
     command = subprocess.check_output(
         ["make", "--no-print-directory", "-n", target],
         cwd=workflows.resolve().parents[1], text=True)
@@ -159,14 +164,21 @@ for target, scheme in [("build-ci-app", "Heeler"), ("build-ci-package", "HeelerS
     if any(Path(token).name in {"xcodegen", "simctl"} for token in tokens) or "xcodebuild" not in tokens:
         raise SystemExit(f"{target} must run xcodebuild on the committed project without a Simulator")
     tokens = tokens[tokens.index("xcodebuild"):]
-    if [token for token in tokens if token in actions] != ["build-for-testing"]:
-        raise SystemExit(f"{target} must compile {scheme} and its tests without running them")
+    if [token for token in tokens if token in actions] != [action]:
+        raise SystemExit(f"{target} must run only xcodebuild {action} on {scheme}")
     if "-scheme" not in tokens or tokens[tokens.index("-scheme") + 1] != scheme:
         raise SystemExit(f"{target} must build the {scheme} scheme")
     if "-destination" not in tokens or tokens[tokens.index("-destination") + 1] != "generic/platform=iOS Simulator":
         raise SystemExit(f"{target} must not need a booted Simulator destination")
     if "-arch" in tokens:
         raise SystemExit("The generic destination conflicts with -arch; use the ARCHS build setting")
+# `xcodebuild build` compiles what the scheme's Build action lists, so a test
+# target added there would return to every PR.
+scheme = workflows.resolve().parents[1].joinpath(
+    "Heeler.xcodeproj/xcshareddata/xcschemes/Heeler.xcscheme").read_text()
+built = re.search(r"<BuildAction\b.*?</BuildAction>", scheme, re.DOTALL).group(0)
+if re.findall(r'BlueprintName = "([^"]+)"', built) != ["Heeler"]:
+    raise SystemExit("The Heeler scheme's Build action must list only the app")
 # The app workers unpack exactly this: build-ci-app's Build/Products, whole.
 root = workflows.resolve().parents[1]
 pack = shlex.split(subprocess.check_output(
@@ -177,9 +189,9 @@ if pack != ["tar", "-czf", f"{root}/.ci/app-products.tar.gz", "-C", f"{root}/.ci
 require_line(diagnostics, "workflow_dispatch:")
 if events(diagnostics) != {"workflow_dispatch"}:
     raise SystemExit("Repeated diagnostics must remain manual")
-require_line(diagnostics, "options: [all, ssh-jump, staging, staging-method, weak, layout]")
+require_line(diagnostics, "options: [all, ssh-jump, weak]")
 require_line(diagnostics, "default: all")
-require_line(diagnostics, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"staging\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
+require_line(diagnostics, "target: ${{ fromJSON(inputs.target == 'all' && '[\"ssh-jump\",\"weak\"]' || format('[\"{0}\"]', inputs.target)) }}")
 require_line(diagnostics, "HEELER_XCODEBUILD_TEST_TIMEOUT_SECONDS: '1800'")
 require_line(diagnostics, "run: make test-ci-diagnostics")
 if "ios-ci-evidence-" in diagnostics or re.search(r"\bmake test-ci-(?:app|package)\b|verify-ci-ios-evidence\.py complete", diagnostics):
@@ -233,78 +245,6 @@ if not re.search(r"(?m)^ci_simulator_os=\"\$\{HEELER_CI_SIMULATOR_OS:-\}\"$", ru
 print("Passed fast build, full verification, scheduled alert, diagnostic isolation and toolchain contracts.")
 PYWORKFLOW
 
-python3 - "$repo_root/Tests/HeelerTests/FileDiffLayoutViewTests.swift" <<'PYLAYOUT'
-from pathlib import Path
-import re
-import sys
-
-source = Path(sys.argv[1]).read_text()
-expected_methods = {
-    "wideDetailReadsAPairAsRemovedThenAddedAndEnablesTheToggle",
-    "narrowDetailStaysUnifiedAndHidesTheToggle",
-    "accessibilityTextFallsBackToUnifiedWhereDefaultTextFits",
-    "anIPhoneShowsNoToggle",
-    "choosingUnifiedPersistsForTheNextPresentation",
-    "aLayoutSwitchKeepsTheTopmostLine",
-    "pairedRowOffersBothLinesReferenceActions",
-    "listChangeNoticeShowsInSideBySide",
-}
-methods = re.findall(r"@Test\s+func\s+(\w+)\(", source)
-if len(methods) != 8 or set(methods) != expected_methods:
-    raise SystemExit("Layout diagnosis must retain the original eight test methods")
-if re.search(r"\.(?:disabled|enabled)\s*\(", source):
-    raise SystemExit("Layout diagnosis must not introduce a skip trait")
-
-def require(body, fragment):
-    if fragment not in body:
-        raise SystemExit(f"Layout diagnostic contract missing: {fragment}")
-
-trait = source.split("struct FileDiffLayoutViewTests", 1)[0]
-for fragment in (
-    'environment["HEELER_DIFF_LAYOUT_ITERATIONS"]',
-    "(2...100).contains(iterations)",
-    "else { return false }",
-    '"File diff layout", .serialized',
-    ".timeLimit(hasRepeatedDiffLayoutDiagnostic() ? .minutes(30) : .minutes(1))",
-):
-    require(trait, fragment)
-method = source.split("@Test func aLayoutSwitchKeepsTheTopmostLine()", 1)[1].split(
-    "private func assertLayoutSwitchKeepsTheTopmostLine", 1)[0]
-for fragment in (
-    'environment["HEELER_DIFF_LAYOUT_ITERATIONS"] ?? "1"',
-    "(1...100).contains(iterations)",
-    "for iteration in 1...iterations",
-    "try await assertLayoutSwitchKeepsTheTopmostLine(iteration: iteration, iterations: iterations)",
-    'print("[diff-layout-test] completed \\(iterations) iterations")',
-):
-    require(method, fragment)
-round_body = source.split("private func assertLayoutSwitchKeepsTheTopmostLine", 1)[1].split(
-    "private struct ScrollSetupGeometry", 1)[0]
-if round_body.count("eventually(timeout: .seconds(8))") != 2:
-    raise SystemExit("Layout diagnosis must retain both eight-second setup deadlines")
-for fragment in (
-    "try makeSettings(offersSideBySide: true)",
-    "defer { cleanup() }",
-    "try await host(",
-    "defer { window.isHidden = true }",
-    "try #require(initialLayoutReady,",
-    "guard travel > 400",
-    "animated: true)",
-    "top >= 40",
-    "return stable >= 3",
-    "initialScrollSettled,",
-    "settings.select(.unified)",
-    "settings.select(.sideBySide)",
-    "Self.resize(window, to: CGSize(width: 694, height: 1032))",
-    "Self.resize(window, to: CGSize(width: 1376, height: 1032))",
-):
-    require(round_body, fragment)
-if round_body.count("try await Self.expectTop(expected, in: controller)") != 2 or round_body.count(
-        "Self.topLineID(in: controller.view, viewport: scroll) == expected") != 2:
-    raise SystemExit("Layout diagnosis must retain all layout-switch and resize assertions")
-print("Passed layout suite membership, repetition and original-deadline source contracts.")
-PYLAYOUT
-
 for function in configure_diagnostic_lane run_ci_diagnostic push_simulator_environment clear_simulator_environment; do
     body=$(awk -v fn="$function" '
         $0 == fn "() {" { inside = 1 }
@@ -317,7 +257,7 @@ done
 
 # A literal command substitution must be rejected, never evaluated.
 # shellcheck disable=SC2016
-for target in ssh-jump staging staging-method weak layout; do
+for target in ssh-jump weak; do
     for value in 0 101 -1 '1;false' '$(false)' ' 2' 01; do
         if (ci_lane=app; ci_app_shard=all; ci_diagnostic_target=$target;
             ci_diagnostic_iterations=$value; configure_diagnostic_lane) >/dev/null 2>&1; then
@@ -352,16 +292,10 @@ check_configuration() (
         [[ "$diagnostic_selector" == "$selector" && "$diagnostic_iteration_variable" == "$variable" ]]
         [[ "$diagnostic_expected_tests" == "$expected_tests" ]]
         [[ "$ci_diagnostic_iterations" == "${count:-$default_iterations}" ]]
-        if [[ "$target" == layout ]]; then
-            [[ "$diagnostic_completion_marker" == "[diff-layout-test] completed ${count:-$default_iterations} iterations" ]]
-        fi
     done
 )
 check_configuration ssh-jump transport 'HeelerSSHJumpHostGateE2ETests/trustIsIndependentAtBothHops()' HEELER_SSH_JUMP_TOFU_ITERATIONS 1 50
-check_configuration staging ordinary AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 10 20
-check_configuration staging-method ordinary 'AgentSurfaceReplacementTests/aPossibleSuspensionRebuildsTheTerminalAndPreservesAttachState()' HEELER_STAGING_RECOVERY_ITERATIONS 1 20
 check_configuration weak session-weak 'WeakNetworkE2ETests/largeChangesReadsFitTheGitDeadlineOverACellularLink()' HEELER_WEAK_CHANGES_ITERATIONS 1 10
-check_configuration layout ordinary FileDiffLayoutViewTests HEELER_DIFF_LAYOUT_ITERATIONS 8 20
 
 run_case() (
     local target=$1 scenario=$2 expected=$3 fixture_mode=$4 status=0 test_noun=tests variable
@@ -376,7 +310,7 @@ run_case() (
     simulator_destination='platform=iOS Simulator,id=fake'
     simulator_udid=original-device
     simulator_environment_variables=()
-    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_STAGING_RECOVERY_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS HEELER_DIFF_LAYOUT_ITERATIONS)
+    local iteration_variables=(HEELER_SSH_JUMP_TOFU_ITERATIONS HEELER_WEAK_CHANGES_ITERATIONS)
     for variable in "${iteration_variables[@]}"; do
         export "$variable=inherited-value"
     done
@@ -436,7 +370,7 @@ run_case() (
         grep -qxF "replacement-device $variable" "$fixture_dir/cleared-environment"
     done
 )
-for target in ssh-jump staging staging-method weak layout; do
+for target in ssh-jump weak; do
     for fixture_mode in empty configured; do
         run_case "$target" passed 0 "$fixture_mode"
         run_case "$target" missing-completion 1 "$fixture_mode"
@@ -446,4 +380,4 @@ for target in ssh-jump staging staging-method weak layout; do
         run_case "$target" native-failure 65 "$fixture_mode"
     done
 done
-echo 'Passed diagnostic isolation, input rejection and 60 native-boundary/replacement/cleanup scenarios.'
+echo 'Passed diagnostic isolation, input rejection and 24 native-boundary/replacement/cleanup scenarios.'

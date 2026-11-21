@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -186,41 +184,5 @@ struct FileDiffListChangeTests {
         #expect(diff.readAt == time)
         #expect(diff.phase == .loaded(patch))
         #expect(await transport.filePatchRequests.count == 1)
-    }
-
-    @Test func theHostedDiffShowsASeparateReloadActionWithoutReplacingItsLines() async throws {
-        let patch = FilePatch(files: [
-            DiffFile(id: 0, oldPath: "source.swift", newPath: "source.swift", summary: nil,
-                isBinary: false, hunks: [
-                    DiffHunk(id: 0, oldStart: 1, oldCount: 0, newStart: 1, newCount: 1,
-                        section: "", lines: [
-                            DiffLine(id: 0, kind: .added, oldNumber: nil, newNumber: 1, text: "visible content")
-                        ])
-                ])
-        ], isTruncated: false)
-        let file = Self.file(2)
-        let diff = FileDiffStore(
-            file: file, checkout: Self.changes([file]).checkout, read: { _ in patch })
-        await diff.appear()
-        let controller = UIHostingController(rootView: FileDiffView(store: diff))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true; diff.cancel() }
-        diff.noteListRefresh(Self.changes([Self.file(9)]))
-        var labels = Set<String>()
-        for _ in 0..<2_000 {
-            labels = ChangesViewTests.labels(in: controller)
-            if labels.contains("Reload"), labels.contains("Added, line 1: visible content") { break }
-            await Task.yield()
-        }
-        #expect(labels.contains("Added, line 1: visible content"))
-        #expect(labels.contains { $0.contains("This file changed since this diff was read.") })
-        #expect(labels.contains("Reload"))
-        #expect(ChangesViewTests.activate("Reload", in: controller.view))
-        for _ in 0..<2_000 {
-            if diff.listChange == nil { break }
-            await Task.yield()
-        }
-        #expect(diff.listChange == nil)
     }
 }

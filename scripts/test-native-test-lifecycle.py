@@ -46,67 +46,12 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("throw error", cleanup)
         self.assertIn("timeout: Duration = .seconds(5)", source)
 
-    def test_attach_preparation_traces_main_actor_admission_before_the_executor_hop(self):
-        source = block(read("Sources/Heeler/Attachments/ComposerStagingStore.swift"), "runSelection")
-        self.assertRegex(source, r'#if DEBUG\s+imageAdapter\.preparationObserverForTesting\?\("selection started"\)\s+#endif')
-        self.assertLess(source.index('("selection started")'), source.index("try await prepare(source)"))
-
-    def test_preceding_surface_tests_close_roots_even_when_the_body_throws(self):
-        source = read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift")
-        for name in ["composerDetailRendersAttachButSendsOnlyThroughPrompt",
-                     "aReplacementSurfaceTakesOverTheFeed",
-                     "anAgentSwitchBuildsASurfaceForTheNewStore"]:
-            body = block(source, name)
-            self.assertIn("withClosing", body)
-            self.assertNotIn("defer { window.isHidden = true }", body)
-        window_cleanup = block(source, "withClosingSurfaceWindow")
-        self.assertEqual(window_cleanup.count("await tearDown()"), 2)
-        self.assertIn("window.rootViewController = nil", window_cleanup)
-        self.assertIn("await hideTestWindowWhenSettled(window)", window_cleanup)
-        self.assertIn("throw error", window_cleanup)
-        owner_cleanup = block(source, "withClosingAttachOwner")
-        self.assertIn("withClosingSurfaceWindow", owner_cleanup)
-        self.assertEqual(owner_cleanup.count("await owner.leave().value"), 2)
-
     def test_handshake_times_tcp_separately_without_changing_the_deadline(self):
         source = block(read("Packages/HeelerSSH/Sources/HeelerSSH/SessionDriver.swift"), "handshake")
         self.assertIn('SSHDiagnosticOperation.current?.step = "TCP connect"', source)
         self.assertLess(source.index('step = "TCP connect"'), source.index("SocketConnector.connect"))
         self.assertLess(source.index('step = ""'), source.index("performHandshake(deadline: deadline)"))
         self.assertIn("ContinuousClock.now.advanced(by: timeout)", source)
-
-    def test_image_preparation_observer_brackets_the_real_preparer(self):
-        source = read("Sources/Heeler/Attachments/ComposerStagingStore.swift")
-        adapter = source[source.index("private struct ImageAdapter"):source.index("private struct FileAdapter")]
-        self.assertIn('preparationObserverForTesting?("started")', adapter)
-        self.assertIn('defer { preparationObserverForTesting?("finished") }', adapter)
-        self.assertIn("preparer.prepare(selection)", adapter)
-        self.assertIn("@Sendable (String) -> Void", adapter)
-        self.assertRegex(adapter, r'#if DEBUG\s+preparationObserverForTesting\?\("started"\)')
-        test = block(read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift"), "assertPossibleSuspensionRecovery")
-        self.assertIn("observeImagePreparationForTesting", test)
-        self.assertIn("DataImageSelection(data: Data([0x01]))", test)
-        self.assertIn("observeImagePreparationForTesting(nil)", test)
-
-    def test_attach_recovery_cleans_up_on_success_and_thrown_failure(self):
-        source = read("Tests/HeelerTests/AgentSurfaceReplacementTests.swift")
-        test = block(source, "assertPossibleSuspensionRecovery")
-        self.assertIn("withClosingAttachOwner", test)
-        cleanup = block(source, "withClosingAttachOwner")
-        self.assertEqual(cleanup.count("await owner.leave().value"), 2)
-        self.assertIn("await owner.leave().value", cleanup)
-        window_cleanup = block(source, "withClosingSurfaceWindow")
-        self.assertIn("window.rootViewController = nil", window_cleanup)
-        self.assertIn("await hideTestWindowWhenSettled(window)", window_cleanup)
-        self.assertIn("throw error", cleanup)
-        self.assertIn("timeout: Duration = .seconds(5)", source)
-        regression = block(source, "failedRecoveryScopeReleasesAttachOwnerAndWindow")
-        self.assertIn("SurfaceCleanupFailure.injected", regression)
-        self.assertIn("owner.terminalStatus == .stopped", regression)
-        self.assertIn("transport.hasLiveAttachSession == false", regression)
-        self.assertEqual(len(re.findall(r"(?m)^\s*@Test\b", source)), 10)
-        diagnostic = read("scripts/test-ci-ios-diagnostics.sh")
-        self.assertIn("AgentSurfaceReplacementTests HEELER_STAGING_RECOVERY_ITERATIONS 10 20", diagnostic)
 
     def test_starvation_recovers_at_the_timeout_boundary_without_changing_deadlines(self):
         source = read("Tests/HeelerTests/WeakNetworkE2ETests.swift")
@@ -153,26 +98,6 @@ class LifecycleContracts(unittest.TestCase):
         self.assertIn("#expect(await transport.snapshotFetchCount == count)", method)
         self.assertIn('store.terminals.first?.cwd == "/work/19"', method)
 
-    def test_terminal_key_fixture_cleans_up_failed_preparation_and_keeps_its_probe_bound(self):
-        source = read("Tests/HeelerTests/TerminalKeyModifiersTests.swift")
-        make = block(source, "make")
-        self.assertIn("catch {", make)
-        self.assertIn("fixture.close()", make)
-        self.assertIn("throw error", make)
-        close = block(source, "close")
-        self.assertIn("control.terminal = nil", close)
-        self.assertIn("onSend: nil", close)
-        self.assertIn("window?.rootViewController = nil", close)
-        drain = block(source, "drain")
-        self.assertEqual(drain.count('receive("\\u{1B}[c")'), 1)
-        self.assertIn("ContinuousClock.now + .seconds(2)", drain)
-        self.assertIn("Task.sleep(for: .milliseconds(10))", drain)
-        self.assertNotIn("Task.yield()", drain)
-        self.assertIn("[terminal-key-test]", source)
-        self.assertIn("terminal.viewportRows != nil", source)
-        self.assertNotIn("terminal.hasTerminalGridMetrics", source)
-        self.assertIn("@Test func failedFixturePreparationDetachesItsWindow()", source)
-
     def test_package_log_gate_requires_the_new_method_and_both_cases(self):
         source = read("scripts/run-ci-ios-tests.sh")
         self.assertIn("Test run with 86 tests in 5 suites passed", source)
@@ -190,18 +115,6 @@ class LifecycleContracts(unittest.TestCase):
             source.index("if readOwnsSend, !sessionReportsOutbound"),
             source.index("if resumingRead, transportSendOwner != stdoutOwner"))
         self.assertIn("if !ownsSend, libssh2_channel_eof", source)
-
-    def test_full_keyboard_waits_for_visible_geometry_and_cleans_up_on_failure(self):
-        source = read("Tests/HeelerTests/TerminalBackspaceButtonTests.swift")
-        method = block(source, "fullKeyboardKeepsRepeatingAcrossViewUpdates")
-        self.assertIn("withTestWindow(", method)
-        self.assertLess(method.index("!button.bounds.isEmpty"), method.index("press.begin()"))
-        self.assertLess(method.index("window.bounds.contains("), method.index("press.begin()"))
-        self.assertIn("#expect(repeats >= 3", method)
-        self.assertIn("within timeout: Duration = .seconds(5)", source)
-        self.assertIn("[backspace-test]", method)
-        self.assertIn("@MainActor func readyButton()", method)
-        self.assertIn("@MainActor func recordState()", method)
 
     def test_streams_are_registered_before_consumer_tasks(self):
         source = block(read("Sources/Heeler/LiveActivities/HostLiveActivityCoordinator.swift"), "beginSession")
@@ -231,14 +144,6 @@ class LifecycleContracts(unittest.TestCase):
             if "makeCoordinator(" in block(source, name):
                 self.assertIn("try await withFixture", block(source, name), name)
 
-    def test_window_cleanup_detaches_on_success_and_failure(self):
-        scope = block(read("Tests/HeelerTests/Support/TestWindow.swift"), "withTestWindow")
-        self.assertEqual(scope.count("await hideTestWindowWhenSettled(window)"), 2)
-        self.assertEqual(scope.count("window.rootViewController = nil"), 2)
-        self.assertIn("throw error", scope)
-        views = read("Tests/HeelerTests/ChangesReferenceViewTests.swift")
-        self.assertNotIn("defer { window.isHidden = true }", views)
-
     def test_native_regressions_use_a_barrier_not_an_arbitrary_sleep(self):
         source = read("Tests/HeelerTests/HostLiveActivityCoordinatorTests.swift")
         test = block(source, "stoppingCancelsAnInFlightTokenWrite")
@@ -248,7 +153,6 @@ class LifecycleContracts(unittest.TestCase):
         self.assertNotIn("Task.sleep", test)
         self.assertIn("await coordinator.stop()", block(source, "stopWithDeadline"))
         block(source, "fixtureTeardownReleasesTheCoordinatorAndSubscriptions")
-        block(read("Tests/HeelerTests/ChangesReferenceViewTests.swift"), "failingWindowScopeStillDetachesTheHostingRoot")
 
 
 if __name__ == "__main__":

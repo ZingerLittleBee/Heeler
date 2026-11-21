@@ -18,7 +18,7 @@ struct AgentReferenceInsertionTests {
             },
             closePane: {})
         attach.viewDidResize(cols: 80, rows: 24)
-        try #require(await ChangesViewTests.eventually { attach.input.liveGeneration != nil })
+        try #require(await Self.eventually { attach.input.liveGeneration != nil })
         #expect(attach.terminalStatus == .connecting)
         attach.insertReference("discard.swift:3 ")
 
@@ -31,12 +31,12 @@ struct AgentReferenceInsertionTests {
             attach.insertReference("also-discard.swift ")
             await attach.leave().value
             attach.rejoin()
-            try #require(await ChangesViewTests.eventually { attach.terminalStatus == .waitingForSize })
+            try #require(await Self.eventually { attach.terminalStatus == .waitingForSize })
             attach.viewDidResize(cols: 80, rows: 24)
-            try #require(await ChangesViewTests.eventually { attach.input.liveGeneration != nil })
+            try #require(await Self.eventually { attach.input.liveGeneration != nil })
         }
         #expect(await transport.emitAttachOutput(Data("live".utf8)))
-        try #require(await ChangesViewTests.eventually { attach.terminalStatus == .live })
+        try #require(await Self.eventually { attach.terminalStatus == .live })
         attach.insertReference("keep.swift:4 ")
         await attach.leave().value
         let writes = await transport.attachInputs.compactMap { input -> Data? in
@@ -44,5 +44,18 @@ struct AgentReferenceInsertionTests {
         }
         #expect(writes == [Data("keep.swift:4 ".utf8)])
         #expect(await transport.agentPromptParams.isEmpty)
+    }
+
+    private static func eventually(
+        timeout: Duration = .seconds(5),
+        _ condition: @escaping () async -> Bool
+    ) async throws -> Bool {
+        var budget = PollBudget(timeout)
+        while budget.hasTimeLeft {
+            if await condition() { return true }
+            try await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        return await condition()
     }
 }

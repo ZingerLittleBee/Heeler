@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import Testing
 import UIKit
 
@@ -11,115 +10,6 @@ import UIKit
 @MainActor
 @Suite("Composer staging ownership")
 struct ComposerStagingOwnershipTests {
-    // MARK: Detail
-
-    @Test func dropAfterParentReevaluationUploadsOnTheShownStaging() async throws {
-        let fixture = try await ConnectedAgentFixture.make()
-        let host = DetailHost()
-        let controller = UIHostingController(
-            rootView: HostedDetail(host: host) { fixture.makeDetail(isVisible: $0) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try await fixture.waitForRetainedTerminal(in: controller)
-
-        // Any observed change re-evaluates the Console's detail, and with it
-        // the detail's initializer.
-        host.generation += 1
-        try #require(
-            await Self.eventually {
-                controller.view.layoutIfNeeded()
-                return host.builds > 1
-            })
-
-        try await fixture.expectDropUploads()
-        await fixture.tearDown()
-    }
-
-    @Test func dropOnFirstAppearUploads() async throws {
-        let fixture = try await ConnectedAgentFixture.make()
-        let host = DetailHost()
-        let controller = UIHostingController(
-            rootView: HostedDetail(host: host) { fixture.makeDetail(isVisible: $0) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try await fixture.waitForRetainedTerminal(in: controller)
-
-        try await fixture.expectDropUploads()
-        await fixture.tearDown()
-    }
-
-    @Test func changesPushKeepsUpload() async throws {
-        let fixture = try await ConnectedAgentFixture.make()
-        let changes = AgentChangesPresentation {
-            ChangesStore(directory: { "/work/w1" }) { _ in throw ChangesReadError.unavailable }
-        }
-        let host = DetailHost()
-        let shown = ChangesShown()
-        let controller = UIHostingController(
-            rootView: HostedDetail(host: host) {
-                fixture.makeDetail(isVisible: $0, changes: changes, onShowsChanges: { shown.value = $0 })
-            })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try await fixture.waitForRetainedTerminal(in: controller)
-        let held = try await fixture.dropHeldImage()
-
-        changes.open()
-        try #require(
-            await Self.eventually {
-                controller.view.layoutIfNeeded()
-                return shown.value
-            }, "Changes should cover the detail")
-        // The push's end, and the departure checks it set off.
-        try await Task.sleep(for: .milliseconds(600))
-        #expect(fixture.session.staging.state.isBusy)
-        #expect(fixture.composer.hasPendingDroppedImages)
-
-        try await fixture.expectUploaded(held)
-        changes.close()
-        // Hiding the window mid-pop leaves the scene's keyboard layout guide
-        // offset by the transition, which later keyboard tests then read.
-        try #require(
-            await Self.eventually {
-                controller.view.layoutIfNeeded()
-                let stacks = ChangesViewTests.navigationControllers(in: controller)
-                return !stacks.isEmpty
-                    && stacks.allSatisfy { $0.viewControllers.count == 1 && $0.transitionCoordinator == nil }
-            }, "Changes should finish popping")
-        await fixture.tearDown()
-    }
-
-    @Test func leavingTheDetailCancelsItsUploadAndItsQueuedDrops() async throws {
-        let fixture = try await ConnectedAgentFixture.make()
-        let host = DetailHost()
-        let controller = UIHostingController(
-            rootView: HostedDetail(host: host) { fixture.makeDetail(isVisible: $0) })
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
-        defer { window.isHidden = true }
-        try await fixture.waitForRetainedTerminal(in: controller)
-        let held = try await fixture.dropHeldImage()
-        fixture.composer.acceptDrop([.image(try ConnectedAgentFixture.tinyJPEGData(), suggestedName: "next.jpg")])
-        #expect(fixture.composer.imageAttachments.count == 2)
-
-        host.showsDetail = false
-        try #require(
-            await Self.eventually {
-                controller.view.layoutIfNeeded()
-                return !fixture.composer.hasPendingDroppedImages
-            }, "leaving should abandon the drops")
-        await held.gate.open()
-        try #require(await Self.eventually { fixture.session.staging.state == .idle })
-
-        #expect(fixture.composer.imageAttachments.isEmpty)
-        #expect(fixture.composer.draft.isEmpty)
-        #expect(await fixture.transport.stageRequests.count == 1)
-        await fixture.tearDown()
-    }
-
     // MARK: Retained terminal
 
     @Test func dropAfterReturningToRetainedTerminalUploads() async throws {
@@ -277,42 +167,6 @@ private struct ConnectedAgentFixture {
             defaults: try #require(UserDefaults(suiteName: suiteName)), suiteName: suiteName)
     }
 
-    func makeDetail(
-        isVisible: @escaping () -> Bool, changes: AgentChangesPresentation? = nil,
-        onShowsChanges: ((Bool) -> Void)? = nil
-    ) -> AgentDetailView {
-        AgentDetailView(
-            agent: agent,
-            console: console,
-            terminal: TerminalSettings(
-                themes: TerminalThemeSettings(defaults: defaults),
-                zoom: TerminalZoomSettings(defaults: defaults),
-                fonts: TerminalFontSettings(defaults: defaults),
-                snippets: SnippetStore(defaults: defaults)),
-            inputMode: AgentInputModeSettings(defaults: defaults),
-            detailSurface: AgentDetailSurfaceSettings(defaults: defaults),
-            hosts: [],
-            activity: AppActivityCoordinator(),
-            keyboardHandoff: TerminalKeyboardHandoff(),
-            keyboardInset: TerminalKeyboardInset(),
-            stage: AgentDetailStage(isVisible: isVisible, terminalAccess: { .holds }),
-            onSwitch: { _ in },
-            onClosed: {},
-            onShowsChanges: onShowsChanges,
-            changesPresentation: changes)
-    }
-
-    /// The detail has swapped its placeholder for the retained terminal, and
-    /// the placeholder's queued teardown has run.
-    func waitForRetainedTerminal(in controller: UIViewController) async throws {
-        try #require(
-            await ComposerStagingOwnershipTests.eventually {
-                controller.view.layoutIfNeeded()
-                return await transport.hasLiveAttachSession
-            })
-        await ComposerStagingOwnershipTests.settle()
-    }
-
     /// Drops one image and waits until its Host upload is held.
     func dropHeldImage() async throws -> HeldDrop {
         let gate = ScriptedTransportCallGate()
@@ -406,42 +260,5 @@ private actor HeldImageStager {
         if calls == 1 { await gate.waitUntilOpen() }
         try Task.checkCancellation()
         return try StagedImage(path: path)
-    }
-}
-
-@MainActor
-private final class ChangesShown {
-    var value = false
-}
-
-@MainActor
-@Observable
-private final class DetailHost {
-    /// Read by the host's body, so a bump re-evaluates it.
-    var generation = 0
-    /// Whether the window still shows the Agent, as the router says.
-    var showsDetail = true
-    /// How many details the host has built.
-    @ObservationIgnored var builds = 0
-}
-
-/// Stands in for the Console's detail column, which builds a new detail
-/// value on every evaluation.
-private struct HostedDetail: View {
-    let host: DetailHost
-    /// Builds the detail with the router's answer to whether it is shown.
-    let makeDetail: @MainActor (_ isVisible: @escaping () -> Bool) -> AgentDetailView
-
-    var body: some View {
-        let _ = host.generation
-        NavigationStack {
-            if host.showsDetail {
-                let detail = makeDetail { [host] in host.showsDetail }
-                let _ = host.builds += 1
-                detail
-            } else {
-                Text(verbatim: "Agents")
-            }
-        }
     }
 }

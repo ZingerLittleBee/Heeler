@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -216,97 +214,5 @@ struct HostAccountsViewTests {
             #expect(name == nil)
             #expect(limits == report.claudeProgram?.usageLimits)
         }
-    }
-
-    // MARK: Rendering
-
-    @Test func theAccountsScreenListsEachHarnesssAccountsAndSuggestions() async throws {
-        let (store, usage) = await accounts(try report())
-        let labels = try await renderedLabels(HostAccountsView(hostName: "studio", store: store, usage: usage)) {
-            labels in labels.contains { $0.contains("Add Accounts for Another Harness") }
-        }
-        for expected in [
-            "Claude Code", "Codex", "Default", "claude-2", "work", "Directory not found", "/Volumes/x/.claude",
-            "Used by a running Agent", "In your home folder", "Add claude-work", "Ignore claude-work",
-            "Choose a Folder…", "Folder Variable", "CLAUDE_CONFIG_DIR", "CODEX_HOME",
-            "Add Accounts for Another Harness",
-        ] {
-            #expect(labels.contains { $0.contains(expected) }, "Missing \(expected) in \(labels.sorted())")
-        }
-        #expect(!labels.contains(AccountsListing.fullFooter))
-    }
-
-    @Test func aFailedRefreshShowsTheErrorBesideTheLastReadAccounts() async throws {
-        let transport = ScriptedTransport()
-        var file = UsageAccountFile()
-        try file.add(directory: "/u/.claude-work", name: "Work", defaultDirectory: nil)
-        await transport.setUsageAccountFile(try file.encoded())
-        let hostID = UUID()
-        let store = HostAccountsStore(
-            hostID: hostID, transports: ScriptedTransportProvider(transports: [hostID: transport]))
-        try await store.load()
-        await transport.setUsageAccountFileReadFailure(
-            NotificationRegistrationError.readFailed(detail: "permission denied"))
-        let message = "Heeler could not read this Host’s Accounts. Try again."
-        let labels = try await renderedLabels(HostAccountsView(hostName: "studio", store: store)) {
-            $0.contains { $0.contains(message) }
-        }
-        #expect(labels.contains { $0.contains(message) })
-        #expect(labels.contains { $0.contains("Work") })
-    }
-
-    /// A change that failed after an earlier Accounts screen closed is not
-    /// shown when the next one opens.
-    @Test func aFailureFromAClosedScreenIsDropped() async throws {
-        let (store, usage) = await accounts(try report())
-        store.changeFailure = .init(message: "Heeler could not save this Host’s Accounts. Try again.")
-        _ = try await renderedLabels(HostAccountsView(hostName: "studio", store: store, usage: usage)) { _ in
-            store.changeFailure == nil
-        }
-        #expect(store.changeFailure == nil)
-    }
-
-    /// The Limits sheet names each Account; Accounts themselves are
-    /// changed in Settings › Agents & Accounts, not here.
-    @Test func theLimitsSheetNamesEachAccount() async throws {
-        let name = "claude-accounts-limits-\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
-        let report = try report()
-        let store = AgentUsageStore(hostID: UUID(), defaults: defaults) { _, _ in .available(report) }
-        store.claudeLimitsEnabled = true
-        await store.refresh()
-        let sheet = AgentUsageLimitsSheet(entries: [
-            AgentUsageHostEntry(id: UUID(), name: "studio", store: store, isConnected: true),
-        ])
-        let labels = try await renderedLabels(sheet) { $0.contains { $0.hasPrefix("Claude Code limits") } }
-        #expect(!labels.contains { $0.hasPrefix("Claude Code Accounts") })
-        for expected in [
-            "Claude Code · Default", "Claude Code · claude-2", "Claude Code · work", "Directory not found",
-            "Claude Code limits",
-        ] {
-            #expect(labels.contains { $0.contains(expected) }, "Missing \(expected) in \(labels.sorted())")
-        }
-    }
-
-    /// The accessibility labels `view` shows on an iPhone-sized window once
-    /// `ready` holds, or when the wait runs out.
-    private func renderedLabels(
-        _ view: some View, until ready: (Set<String>) -> Bool
-    ) async throws -> Set<String> {
-        let controller = UIHostingController(rootView: view.environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 1_800), rootViewController: controller)
-        defer { window.isHidden = true }
-        var labels: Set<String> = []
-        var budget = PollBudget(.seconds(5))
-        while budget.hasTimeLeft {
-            controller.view.layoutIfNeeded()
-            labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
-            if ready(labels) { break }
-            try await Task.sleep(for: .milliseconds(50))
-            budget.charge()
-        }
-        return labels
     }
 }

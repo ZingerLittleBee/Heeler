@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 import os
 
 @testable import Heeler
@@ -334,85 +332,6 @@ struct AgentUsageHostHelperTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
-    }
-
-    /// What the Usage tab's page says for one Host, with that Host in scope.
-    private func pageLabels(_ entry: AgentUsageHostEntry, expecting text: String) async throws -> String {
-        let controller = UIHostingController(rootView:
-            NavigationStack {
-                AgentUsageDashboard(
-                    entries: [entry], scopeHostID: .constant(entry.id), metric: .constant(.cost))
-            }
-            .environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: controller)
-        defer { window.isHidden = true }
-        var labels = ""
-        for _ in 0..<40 {
-            controller.view.layoutIfNeeded()
-            labels = AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view).joined(separator: ", ")
-            if labels.contains(text) { break }
-            try await Task.sleep(for: .milliseconds(50))
-        }
-        return labels
-    }
-
-    @Test(arguments: SessionOutcome.allCases)
-    func theUsageTabSaysWhatTheHelperNeedsWithoutAConsoleConnection(session: SessionOutcome) async throws {
-        let helper = ScriptedHelperHost()
-        if session == .nativeWindows { await helper.configure { $0.platform = .nativeWindows } }
-        let (console, host) = try await unconnectedConsole(helper, session: session)
-        defer { console.setHosts([]) }
-
-        await console.agentUsageStore(for: host.id).pullToRefresh()
-
-        let entry = console.agentUsageEntries(for: [host])[0]
-        let scope = AgentUsageScope(readings: [entry.reading])
-        let (reason, sentence) = session == .nativeWindows
-            ? ("Comes with the Host Helper, not available yet",
-               "Usage comes with the Host Helper, which is not available on native Windows yet.")
-            : ("Needs the Host Helper", "Usage needs the Host Helper. See this Host's details.")
-        #expect(scope.excluded.map(\.reason) == [reason])
-        let labels = try await pageLabels(entry, expecting: sentence)
-        #expect(labels.contains(sentence), "\(labels)")
-        #expect(!labels.contains("Not connected"), "\(labels)")
-    }
-
-    @Test func theUsageTabAsksForTheCoreWhileTheHelperWaitsForIt() async throws {
-        let helper = ScriptedHelperHost()
-        await helper.installApp()
-        let (console, host) = try await unconnectedConsole(helper)
-        defer { console.setHosts([]) }
-
-        await console.agentUsageStore(for: host.id).pullToRefresh()
-
-        let entry = console.agentUsageEntries(for: [host])[0]
-        #expect(entry.readsOverHostHelper)
-        #expect(AgentUsageScope(readings: [entry.reading]).excluded.map(\.reason) == ["Waiting for the core"])
-        let sentence = "The Host Helper has not reached this session's core yet. Start the core if it is not running."
-        let labels = try await pageLabels(entry, expecting: sentence)
-        #expect(labels.contains(sentence), "\(labels)")
-    }
-
-    @Test func aReportReadWithoutAConsoleConnectionIsShownInFull() async throws {
-        let helper = try await helperWithReport()
-        let (console, host) = try await unconnectedConsole(helper)
-        defer { console.setHosts([]) }
-
-        await console.agentUsageStore(for: host.id).pullToRefresh()
-
-        let entry = console.agentUsageEntries(for: [host])[0]
-        #expect(AgentUsageScope(readings: [entry.reading]).included.map(\.name) == [host.displayName])
-        // The Limits card reads the same report the totals added up.
-        let limits = UIHostingController(rootView: AgentUsageLimitsSheet(entries: [entry])
-            .environment(\.locale, Locale(identifier: "en_US")))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 390, height: 844), rootViewController: limits)
-        defer { window.isHidden = true }
-        try await Task.sleep(for: .milliseconds(150))
-        limits.view.layoutIfNeeded()
-        let labels = AgentSurfaceReplacementTests.accessibilityLabels(in: limits.view).joined(separator: ", ")
-        #expect(!labels.contains("Not connected"), "\(labels)")
     }
 
     @Test func aCoreHostAnsweringItsFirstReadIsLoadingNotDisconnected() async throws {

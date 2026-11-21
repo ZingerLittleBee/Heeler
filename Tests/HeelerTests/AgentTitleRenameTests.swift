@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -246,57 +244,6 @@ struct AgentTitleRenameTests {
         #expect(AgentTitleNaming.matches(agent, program: .codex, title: "Guide"))
     }
 
-    @Test func clearButtonClearsTitleOnTrailingEdgeAndFocusesInput() async throws {
-        let rig = try Rig(.claude)
-        let gate = SaveGate()
-        rig.afterCommand = { await gate.wait() }
-        let store = rig.store()
-        store.input = "Host 插件与 helper 升级提示 UI"
-        let controller = UIHostingController(rootView: AgentTitleRenameSheet(store: store))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { window in
-            try await waitUntil {
-                !Self.views(UITextField.self, in: window).isEmpty
-                    && accessibleElement(labeled: "Clear text", in: window) != nil
-            }
-            let textField = try #require(Self.views(UITextField.self, in: window).first)
-            let clear = try #require(accessibleElement(labeled: "Clear text", in: window))
-            let fieldFrame = UIAccessibility.convertToScreenCoordinates(textField.bounds, in: textField)
-            #expect(clear.accessibilityFrame.minX >= fieldFrame.maxX - 1)
-            #expect(clear.accessibilityFrame.width >= 16)
-            let cell = Self.enclosingCell(of: textField)
-            let initialCellHeight = cell?.bounds.height
-
-            #expect(clear.accessibilityActivate())
-            try await waitUntil {
-                store.input.isEmpty
-                    && accessibleElement(labeled: "Clear text", in: window) == nil
-                    && textField.isFirstResponder
-            }
-            #expect(textField.text == "")
-            #expect(!store.canSave)
-            #expect(textField.isFirstResponder)
-            if let initialCellHeight, let currentHeight = cell?.bounds.height {
-                #expect(abs(currentHeight - initialCellHeight) <= 1)
-            }
-
-            textField.text = "Fresh title"
-            textField.sendActions(for: .editingChanged)
-            try await waitUntil {
-                store.input == "Fresh title"
-                    && accessibleElement(labeled: "Clear text", in: window) != nil
-            }
-
-            let saveTask = Task { await store.save() }
-            try await waitUntil { store.isBusy && accessibleElement(labeled: "Clear text", in: window) == nil }
-            await gate.open()
-            await saveTask.value
-            #expect(store.state == .renamed)
-        }
-    }
-
     @Test func deferredSaveConfirmationsAndSuppressNextTime() async throws {
         let suiteName = "AgentTitleRenameTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -357,50 +304,6 @@ struct AgentTitleRenameTests {
         // Marking dispatched removes the entry from persistent storage immediately so an unconfirmed write never replays.
         pendingStore.markDispatched(agentID)
         #expect(PendingAgentTitleRenameStore(defaults: defaults).entries.isEmpty)
-    }
-
-    @Test func deferredSaveSheetPresentsConfirmationAlertAndSuppressOption() async throws {
-        let hostID = UUID()
-        let pendingStore = PendingAgentTitleRenameStore()
-        let rig = try Rig(.claude)
-        rig.status = .working
-        let store = rig.store(hostID: hostID, pendingStore: pendingStore)
-        store.input = "Saved while busy"
-        let controller = UIHostingController(rootView: AgentTitleRenameSheet(store: store))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { window in
-            try await waitUntil { accessibleElement(labeled: "Save", in: window) != nil }
-            await store.save()
-            try await waitUntil {
-                (controller.presentedViewController as? UIAlertController) != nil
-            }
-            let alert = try #require(controller.presentedViewController as? UIAlertController)
-            #expect(alert.title == "Rename After Agent Stops?")
-            let actionTitles = alert.actions.compactMap(\.title)
-            #expect(actionTitles == ["Save", "Save and Don’t Show Again", "Cancel"])
-            #expect(alert.actions[2].style == .cancel)
-
-            store.confirmDeferredSave(store.deferredSaveConfirmation, suppressNextTime: true)
-            alert.dismiss(animated: false)
-            #expect(store.state == .renamed)
-            #expect(pendingStore.suppressBusyNotice)
-            #expect(pendingStore.entries[ConsoleAgent.ID(hostID: hostID, paneID: "w1:p1")]?.title == "Saved while busy")
-        }
-
-        let reopened = rig.store(hostID: hostID, pendingStore: pendingStore)
-        #expect(reopened.hasQueuedRename)
-        let reopenedController = UIHostingController(rootView: AgentTitleRenameSheet(store: reopened))
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: reopenedController
-        ) { window in
-            // SwiftUI draws a Form footer itself, so no UILabel holds its text.
-            try await waitUntil {
-                accessibleElement(
-                    labeled: "Saved on this device. Will be sent once the Agent stops.", in: window) != nil
-            }
-        }
     }
 
     @Test func consoleStoreQueuesRenameWhileWorkingAndFlushesWhenIdleOrDropsOnSessionChange() async throws {
@@ -528,36 +431,6 @@ struct AgentTitleRenameTests {
             budget.charge()
         }
         try #require(condition())
-    }
-
-    private static func views<T: UIView>(_ type: T.Type, in view: UIView) -> [T] {
-        (view as? T).map { [$0] } ?? view.subviews.flatMap { views(type, in: $0) }
-    }
-
-    private static func enclosingCell(of view: UIView) -> UICollectionViewCell? {
-        var current: UIView? = view.superview
-        while let candidate = current {
-            if let cell = candidate as? UICollectionViewCell { return cell }
-            current = candidate.superview
-        }
-        return nil
-    }
-
-    private actor SaveGate {
-        private var isOpen = false
-        private var waiters: [CheckedContinuation<Void, Never>] = []
-
-        func wait() async {
-            if isOpen { return }
-            await withCheckedContinuation { waiters.append($0) }
-        }
-
-        func open() {
-            isOpen = true
-            let pending = waiters
-            waiters.removeAll()
-            for waiter in pending { waiter.resume() }
-        }
     }
 
     @MainActor

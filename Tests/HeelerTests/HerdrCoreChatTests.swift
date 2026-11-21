@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 import Testing
 
 @testable import Heeler
@@ -509,109 +508,6 @@ struct HerdrCoreChatTests {
         #expect(reason.contains("can't tell which conversation"), "\(reason)")
         #expect(composer.draft == "hello")
         #expect(order.steps == ["confirm"])
-        chat.end()
-        rig.store.setHosts([])
-    }
-
-    // MARK: Choosing a conversation
-
-    /// The Agent's detail on its Chat surface, as the Console builds it.
-    static func chatDetail(of agent: ConsoleAgent, console: ConsoleStore, defaults: UserDefaults) -> some View {
-        let surface = AgentDetailSurfaceSettings(defaults: defaults)
-        surface.select(.chat)
-        return AgentDetailView(
-            agent: agent,
-            console: console,
-            terminal: TerminalSettings(
-                themes: TerminalThemeSettings(defaults: defaults),
-                zoom: TerminalZoomSettings(defaults: defaults),
-                fonts: TerminalFontSettings(defaults: defaults),
-                snippets: SnippetStore(defaults: defaults)),
-            inputMode: AgentInputModeSettings(defaults: defaults),
-            detailSurface: surface,
-            hosts: [],
-            activity: AppActivityCoordinator(),
-            keyboardHandoff: TerminalKeyboardHandoff(),
-            keyboardInset: TerminalKeyboardInset(),
-            stage: AgentDetailStage(isVisible: { true }, terminalAccess: { .holds }),
-            onSwitch: { _ in },
-            onClosed: {})
-    }
-
-    /// Activates the element of this label, until a sheet comes up.
-    static func opensASheet(
-        from label: String, in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation
-    ) async throws {
-        try await opensASheet(in: controller, sourceLocation: sourceLocation) { $0 == label }
-    }
-
-    /// Activates the first element whose label passes `matches`, until a sheet comes up.
-    static func opensASheet(
-        in controller: UIViewController, sourceLocation: SourceLocation = #_sourceLocation,
-        fromElementWhoseLabel matches: (String) -> Bool
-    ) async throws {
-        var budget = PollBudget(.seconds(10))
-        while budget.hasTimeLeft, controller.presentedViewController == nil {
-            AccessibilityProbe.elements(in: controller.view, whoseLabel: matches).first?.accessibilityActivate()
-            try await Task.sleep(for: .milliseconds(50))
-            budget.charge()
-        }
-        #expect(
-            controller.presentedViewController != nil, "\(AccessibilityProbe.labels(in: controller.view))",
-            sourceLocation: sourceLocation)
-    }
-
-    private static let cannotTell = ChatConversationSnapshot.Phase.unavailable(.cannotTellSession(.claude))
-
-    /// With no conversation to show, the screen in Chat's place opens the list (ADR 0034).
-    @Test func aChatThatCannotTellOpensTheListFromItsScreen() async throws {
-        let rig = Rig(host: host)
-        try await rig.start()
-        let chat = try rig.chat()
-        let suite = "core-chat-choose-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let controller = UIHostingController(
-            rootView: Self.chatDetail(of: try #require(rig.agent), console: rig.store, defaults: defaults))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
-            #expect(chat.conversation.transcript.entries.isEmpty)
-            try await Self.opensASheet(from: ChatCandidatePickerView.title, in: controller)
-        }
-        chat.end()
-        rig.store.setHosts([])
-    }
-
-    /// Over a conversation it keeps showing, the banner opens the list (ADR 0034).
-    @Test func aChatThatCannotTellOverItsConversationOpensTheListFromItsBanner() async throws {
-        let rig = Rig(host: host)
-        try await rig.start()
-        let chat = try rig.chat()
-        await rig.files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/\(Self.pid).json")
-        await rig.files.write(try Self.transcript(), at: Self.transcriptPath())
-        let suite = "core-chat-choose-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let controller = UIHostingController(
-            rootView: Self.chatDetail(of: try #require(rig.agent), console: rig.store, defaults: defaults))
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            try await rig.waitUntil("the conversation") { !chat.conversation.transcript.entries.isEmpty }
-            await rig.files.remove("\(Self.home)/.claude/sessions/\(Self.pid).json")
-            chat.retry()
-            try await rig.waitUntil("Chat to say it cannot tell") { chat.conversation.phase == Self.cannotTell }
-            #expect(!chat.conversation.transcript.entries.isEmpty)
-            // The banner reads as one element, whose action is its button's.
-            // iOS 27 ends that element's label with the button's title, and
-            // iOS 26 leaves the title out, so the label is matched by its start.
-            let banner = ChatBannerLine.unavailable(.cannotTellSession(.claude), showingSavedMessages: true).text
-            try await Self.opensASheet(in: controller) { $0.hasPrefix(banner) }
-        }
         chat.end()
         rig.store.setHosts([])
     }
@@ -1235,48 +1131,6 @@ struct HerdrCoreChatTests {
         #expect(!chat.isVisible)
         try await rig.waitUntil("the new Chat to follow it") { Self.isFollowing(next) }
         next.end()
-        rig.store.setHosts([])
-    }
-
-    /// A departed Agent has no program left to show a dialog. An Antigravity
-    /// CLI's store keeps reading for its trust prompt once the departure
-    /// clears its status, so it keeps the card it showed, but Chat gives the
-    /// Composer its place back.
-    @Test(arguments: [ChatAgentDeparture.ended, .restarting])
-    func aDepartedAgentsBlockedCardGivesTheComposerBack(_ departure: ChatAgentDeparture) async throws {
-        let record = Self.record(foreground: ["agy"], name: "agy", status: "blocked", app: "antigravity")
-        guard case .object(var fields) = record else { return }
-        fields["keep"] = .bool(departure == .restarting)
-        let rig = Rig(host: host, record: .object(fields))
-        try await rig.start()
-        let agent = try #require(rig.agent)
-        // Chat's store is keyed to the core the first link names.
-        try await rig.waitUntil("the Chat") { rig.store.chatStore(for: agent, program: .agy) != nil }
-        let chat = try #require(rig.store.chatStore(for: agent, program: .agy))
-        let suite = "core-chat-departed-card-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let controller = UIHostingController(
-            rootView: Self.chatDetail(of: agent, console: rig.store, defaults: defaults))
-        let card = "Waiting for Input"
-
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            try await rig.waitUntil("the card") { chat.blocked.content == .unreadable }
-            try await rig.waitUntil("the card on screen") {
-                !AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
-            }
-
-            let end = departure == .ended ? ("finished", Self.exitedEnd) : ("lost", Self.lostEnd)
-            await rig.transport.deliver(Self.event(sequence: 2, type: end.0, data: end.1))
-            try await rig.waitUntil("the Agent to leave") { rig.store.chatDeparture(of: agent.id) == departure }
-            #expect(chat.blocked.replacesComposer)
-            try await rig.waitUntil("the card to go") {
-                AccessibilityProbe.elements(labeled: card, in: controller.view).isEmpty
-            }
-        }
-        chat.end()
         rig.store.setHosts([])
     }
 

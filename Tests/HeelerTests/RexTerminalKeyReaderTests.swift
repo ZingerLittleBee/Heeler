@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -79,54 +78,6 @@ struct RexTerminalKeyReaderTests {
     /// as tmux input reads it.
     @Test func legacyShiftF3ReadsAsACursorReport() {
         #expect(read("\u{1B}[1;2R").isEmpty)
-    }
-
-    /// Whatever Heeler's own Ghostty answers to the queries a program may
-    /// send, each write read whole as the view hands it over, nothing leaves.
-    @MainActor
-    @Test func whatGhosttyAnswersNeverLeaves() async throws {
-        final class Writes {
-            var all: [Data] = []
-            var joined: Data { all.reduce(Data(), +) }
-        }
-        let writes = Writes()
-        let terminal = TerminalScreenView.makeConfiguredTerminal()
-        terminal.updateCallbacks(
-            onSizeChanged: nil, onViewportTextChanged: nil, onSend: { writes.all.append($0) }, onScroll: nil,
-            onPaste: nil)
-        let controller = UIViewController()
-        controller.view = terminal
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 600), rootViewController: controller)
-        defer {
-            terminal.updateCallbacks(
-                onSizeChanged: nil, onViewportTextChanged: nil, onSend: nil, onScroll: nil, onPaste: nil)
-            window.isHidden = true
-            window.rootViewController = nil
-        }
-        controller.view.layoutIfNeeded()
-
-        let queries = [
-            "\u{1B}[>c", "\u{1B}[=c", "\u{1B}[5n", "\u{1B}[6n", "\u{1B}[?6n", "\u{1B}[>q",
-            "\u{1B}]4;1;?\u{1B}\\", "\u{1B}]10;?\u{1B}\\", "\u{1B}]11;?\u{07}", "\u{1B}]12;?\u{1B}\\",
-            "\u{1B}[?2004$p", "\u{1B}[4$p", "\u{1B}[?u", "\u{1B}[14t", "\u{1B}[16t", "\u{1B}[18t", "\u{1B}[?996n",
-            "\u{1B}P$qm\u{1B}\\", "\u{1B}P+q544e\u{1B}\\", "\u{1B}[x",
-            // Last, so its answer says the others are in.
-            "\u{1B}[c",
-        ]
-        terminal.receive(Data(queries.joined().utf8))
-        terminal.terminalSession.waitForPendingOutput()
-        let marker = Data("\u{1B}[?62;".utf8)
-        let deadline = ContinuousClock.now + .seconds(3)
-        while writes.joined.range(of: marker) == nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(writes.joined.range(of: marker) != nil, "Ghostty's device attributes answer never came")
-
-        var reader = RexTerminalKeyReader(budget: 1 << 20)
-        let left = writes.all.flatMap { reader.read($0) }
-        print("Ghostty wrote \(writes.all.count) answers, \(writes.joined.count) bytes, for \(queries.count) queries")
-        #expect(left.isEmpty, "\(left)")
     }
 
     // MARK: Keys

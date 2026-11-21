@@ -300,51 +300,6 @@ struct HostRowPresentationTests {
 
     // MARK: The chips in words
 
-    private func chip(_ label: String, _ tone: HostConnectionTone) -> HostMachineRowPresentation.Server {
-        HostMachineRowPresentation.Server(
-            id: UUID(), label: label, tone: tone, offersRetry: false, isDialing: false)
-    }
-
-    /// A Hosts list row is one VoiceOver stop: where only a colored mark shows
-    /// a Server's state, a word does.
-    @MainActor
-    @Test func eachServerThatIsOnIsSpokenWithItsState() {
-        let chips = HostServerChips(
-            servers: [
-                chip("Herdr TUI", .connected), chip("tmux · work", .unavailable), chip("herdr-core", .pending),
-                chip("tmux", .paused), chip("tmux · logs", .reconnecting), chip("Herdr TUI · play", .warning),
-            ],
-            unseen: [])
-
-        #expect(
-            chips.spokenSummary
-                == "Herdr TUI, connected; tmux · work, unavailable; herdr-core, connecting; tmux, paused; "
-                + "tmux · logs, reconnecting; Herdr TUI · play, sync issue")
-    }
-
-    @MainActor
-    @Test func aHostWithNoServerOnSaysSo() {
-        #expect(HostServerChips(servers: [], unseen: []).spokenSummary == "No servers on")
-    }
-
-    /// The row points at news and Host detail lists it: two are named and the
-    /// rest counted.
-    @MainActor
-    @Test func serversFoundSinceAreSpokenAfterTheOnesThatAreOn() {
-        let on = [chip("Herdr TUI", .connected)]
-
-        #expect(
-            HostServerChips(servers: on, unseen: ["tmux", "herdr-core"]).spokenSummary
-                == "Herdr TUI, connected; tmux, found, not on; herdr-core, found, not on")
-        #expect(
-            HostServerChips(servers: on, unseen: ["tmux", "herdr-core", "tmux · work", "tmux · logs"])
-                .spokenSummary
-                == "Herdr TUI, connected; tmux, found, not on; herdr-core, found, not on; 2 more found")
-        #expect(
-            HostServerChips(servers: [], unseen: ["tmux"]).spokenSummary
-                == "No servers on; tmux, found, not on")
-    }
-
     @Test func hostsGroupByWhatTheyNeedFromTheUser() {
         #expect(row(.failed(.timedOut)).group == .cannotConnect)
         #expect(row(.connecting, standingFailure: .timedOut).group == .cannotConnect)

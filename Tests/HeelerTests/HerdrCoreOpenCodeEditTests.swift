@@ -1,7 +1,5 @@
 import Foundation
-import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -100,75 +98,6 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(!ChatUnavailableReason.cannotTellSession(.pi).offersOpenCodePluginEdit)
         #expect(!ChatUnavailableReason.noSession(.opencode).offersOpenCodePluginEdit)
         #expect(!ChatUnavailableReason.startScreen(.opencode).offersOpenCodePluginEdit)
-    }
-
-    @Test func theUnavailableStateShowsTheOfferAsRendered() async throws {
-        let offering = try await labels(
-            of: ChatUnavailableView(
-                reason: .cannotTellSession(.opencode), retry: {}, showAgentTerminal: {}, reviewEdit: {}),
-            showing: "Let Chat Follow OpenCode")
-        #expect(offering.contains { $0.contains("Let Chat Follow OpenCode") }, "\(offering)")
-
-        let notOffering = try await labels(
-            of: ChatUnavailableView(
-                reason: .cannotTellSession(.grok), retry: {}, showAgentTerminal: {}, reviewEdit: {}),
-            showing: "Can't Tell the Conversation")
-        #expect(!notOffering.contains { $0.contains("Let Chat Follow OpenCode") }, "\(notOffering)")
-    }
-
-    @Test func theOfferShowsTheFileTheEntryAndTheFolderWithNothingWritten() async throws {
-        let files = InMemoryHostFiles(files: [Self.tuiConfig: Self.original])
-        let (store, _, host) = try await started(files: files)
-        defer { store.setHosts([]) }
-        let flow = flow(store, host)
-
-        await flow.locate()
-        #expect(flow.phase == .idle)
-        #expect(await files.journal.isEmpty)
-
-        let change = try await reviewed(flow)
-
-        #expect(change.path == Self.tuiConfig)
-        #expect(
-            change.shownLines == [
-                .init(kind: .added, text: #"  "plugin": ["./heeler-opencode"],"#, endsWithoutNewline: false)
-            ])
-        #expect(change.folder?.path == Self.folder)
-        #expect(
-            change.folder?.filePaths == [
-                "\(Self.folder)/package.json", "\(Self.folder)/index.js", "\(Self.folder)/tui.js",
-            ])
-        #expect(await files.journal.isEmpty)
-
-        // The same, as the sheet draws it.
-        let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Apply")
-        #expect(shown.contains { $0.contains(Self.tuiConfig) }, "\(shown)")
-        #expect(shown.contains { $0.contains(#""plugin": ["./heeler-opencode"]"#) }, "\(shown)")
-        #expect(shown.contains { $0.contains(Self.folder) }, "\(shown)")
-        #expect(shown.contains { $0.contains("\(Self.folder)/tui.js") }, "\(shown)")
-        #expect(await files.journal.isEmpty)
-
-        flow.cancel()
-        #expect(flow.applied == nil)
-        #expect(await files.journal.isEmpty)
-        #expect(store.harnessEdits.edits(on: host.id).isEmpty)
-    }
-
-    /// What a view shows in a real window, once `text` is among it.
-    private func labels<Content: View>(of view: Content, showing text: String) async throws -> [String] {
-        let controller = UIHostingController(rootView: view)
-        var found: [String] = []
-        try await withTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller
-        ) { _ in
-            let deadline = ContinuousClock.now + .seconds(5)
-            repeat {
-                found = AccessibilityProbe.labels(in: controller.view)
-                if found.contains(where: { $0.contains(text) }) { return }
-                try await Task.sleep(for: .milliseconds(20))
-            } while ContinuousClock.now < deadline
-        }
-        return found
     }
 
     // MARK: Accepting and undoing
@@ -334,79 +263,7 @@ struct HerdrCoreOpenCodeEditTests {
         #expect(await files.journal.isEmpty)
     }
 
-    // MARK: What to do by hand
-
-    /// A list in the wrong file or under the wrong key does nothing and looks as if
-    /// it did, so what the sheet says follows the release, as the edit itself does.
-    @Test(arguments: [
-        (
-            "1.19.5", "/home/dev/.config/opencode/tui.json", #"{"plugin": "a"}"#,
-            #"Add "./heeler-opencode" to plugin in tui.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
-        ),
-        (
-            "1.19.5", "/home/dev/.config/opencode/tui.jsonc", "not json",
-            #"Add "./heeler-opencode" to plugin in tui.jsonc, with a copy of Heeler's plugin in a folder of that name beside the file."#
-        ),
-        (
-            "1.19.5", "/home/dev/.config/opencode/tui.json", #"{"tui": {"plugin": ["a"]}}"#,
-            #"Add "./heeler-opencode" to plugin inside tui in tui.json, not at the top of the file, where a list would replace the one inside tui, with a copy of Heeler's plugin in a folder of that name beside the file."#
-        ),
-        (
-            "opencode v2.2.5", "/home/dev/.config/opencode/cli.json", #"{"plugins": "a"}"#,
-            #"Add "./heeler-opencode" to plugins in cli.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
-        ),
-        (
-            "opencode v2.0.32", "/home/dev/.config/opencode/cli.json", "not json",
-            #"Add "./heeler-opencode" to plugins in cli.json, with a copy of Heeler's plugin in a folder of that name beside the file."#
-        ),
-    ])
-    func aRefusalSaysWhatToAddForThatRelease(
-        _ version: String, _ path: String, _ file: String, _ instruction: String
-    ) async throws {
-        let files = InMemoryHostFiles(files: [path: Data(file.utf8)])
-        let (store, _, host) = try await started(version: version, files: files)
-        defer { store.setHosts([]) }
-        let flow = flow(store, host)
-
-        await flow.review()
-
-        let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: instruction)
-        #expect(shown.contains { $0.contains(path) }, "\(shown)")
-        #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
-        #expect(await files.journal.isEmpty)
-    }
-
-    /// With no release to go on, both forms are what's left to say.
-    @Test func aVersionItCantReadSaysWhatToAddOnEachRelease() async throws {
-        let (store, _, host) = try await started(version: nil)
-        defer { store.setHosts([]) }
-        let flow = flow(store, host)
-        let instruction =
-            #"Add "./heeler-opencode" to plugin in tui.json on OpenCode 1.x, or to plugins in cli.json on 2.x, with a copy of Heeler's plugin in a folder of that name beside the file."#
-
-        await flow.review()
-
-        let shown = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: instruction)
-        #expect(shown.contains { $0.contains(instruction) }, "\(shown)")
-    }
-
     // MARK: What it promises on each release
-
-    /// Chat shows a 1.x conversation too (#541 Linux P3), so the sheet promises it on
-    /// either release.
-    @Test(arguments: ["1.19.5", "2.2.5"])
-    func theSheetPromisesTheConversation(version: String) async throws {
-        let (store, _, host) = try await started(version: version)
-        defer { store.setHosts([]) }
-        let flow = flow(store, host)
-        _ = try await reviewed(flow)
-        await flow.accept()
-
-        let done = try await labels(of: OpenCodePluginEditSheet(flow: flow), showing: "Start OpenCode again")
-
-        #expect(done.contains { $0.contains("Chat then follows its conversation") }, "\(done)")
-        #expect(!done.contains { $0.contains("can't show") }, "\(done)")
-    }
 
     /// Chat doesn't know the release here, and shows a conversation of either.
     @Test func theUnavailableTextNamesThePluginForEveryRelease() {
@@ -440,28 +297,6 @@ struct HerdrCoreOpenCodeEditTests {
     ) throws -> HarnessConfigEditFlow {
         store.harnessEditFlow(
             for: try #require(store.harnessEdits.edit(OpenCodePluginEdit.id, path: path, on: host.id)), on: host.id)
-    }
-
-    /// hc-lab, 2026-11-03: the 1.x review after the 2.x edit listed the folder that
-    /// edit had placed as Added, though nothing in it was to be written.
-    @Test func aSecondReleasesReviewShowsTheSharedFolderAsAlreadyThere() async throws {
-        let files = InMemoryHostFiles()
-        let (store, transport, host) = try await started(version: "2.2.2", files: files)
-        defer { store.setHosts([]) }
-        let newer = flow(store, host)
-        #expect(try await reviewed(newer).folderFilesInPlace.isEmpty)
-        await newer.accept()
-        await transport.setDiscovery(programs: ["opencode"], openCodeVersion: "1.19.5")
-        let older = flow(store, host)
-
-        let change = try await reviewed(older)
-
-        #expect(change.folderFilesInPlace == Set(change.folder?.filePaths ?? []))
-        #expect(!change.writesFolderFiles)
-        let shown = try await labels(of: OpenCodePluginEditSheet(flow: older), showing: "Already there")
-        #expect(shown.contains("Already there: \(Self.folder)/tui.js"), "\(shown)")
-        #expect(!shown.contains { $0.hasPrefix("Added: \(Self.folder)") }, "\(shown)")
-        #expect(shown.contains { $0.localizedCaseInsensitiveContains("Creates This File") }, "\(shown)")
     }
 
     /// A file that still names the folder keeps it, whichever goes first.

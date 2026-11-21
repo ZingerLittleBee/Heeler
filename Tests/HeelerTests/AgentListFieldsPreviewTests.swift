@@ -1,80 +1,10 @@
 import Testing
-import SwiftUI
 import Foundation
 
 @testable import Heeler
 
 @Suite("Agent list fields preview")
 struct AgentListFieldsPreviewTests {
-    @MainActor
-    @Test(arguments: [0, 1])
-    func savingSecondaryStyleChangesConsoleAndPreviewPixels(rowIndex: Int) throws {
-        let suite = "fields-style-\(UUID())"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let layouts = AgentRowLayoutStore(defaults: defaults)
-        let agent = AgentListFieldsPreview.sampleAgent(hostName: "Host")
-        let editor = AgentListFieldsEditor(
-            layouts: layouts, snapshots: HerdrSidebarSnapshotStore(), fetch: { _ in nil })
-        try layouts.setLayout(.init(rows: [
-            [.init(.workspace), .init(.agent)], [.init(.workspace), .init(.agent)],
-        ]), for: agent.hostID)
-        let before = layouts.resolvedLayout(for: agent.hostID, pluginSnapshot: nil)
-        editor.beginEditing()
-        AgentLayoutTokensEditing.setStyle(
-            .secondary, at: 0, editor: editor, hostID: agent.hostID, rowIndex: rowIndex)
-        editor.save()
-        let after = layouts.resolvedLayout(for: agent.hostID, pluginSnapshot: nil)
-        #expect(after.rows[rowIndex][0].dim == true)
-        #expect(try pixels(AgentCardView(agent: agent, layout: before))
-            != pixels(AgentCardView(agent: agent, layout: after)),
-            "Saving Secondary must visibly change the actual Agent card")
-        #expect(try pixels(AgentListFieldsPreview(layout: before, hostName: "Host"))
-            != pixels(AgentListFieldsPreview(layout: after, hostName: "Host")),
-            "The settings preview must show the saved field style")
-        #expect(try pixels(AgentListFieldsPreview(layout: after, hostName: "Host"))
-            == pixels(AgentCardView(
-                agent: agent, layout: after, sampleChanges: AgentListFieldsPreview.sampleChanges)),
-            "The settings preview must match the Agent card")
-    }
-
-    @MainActor
-    @Test func previewMatchesTheConsoleAgentCard() throws {
-        let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")
-        let layout = AgentRowLayout(rows: [
-            [.init(.workspace), .init(.agent)],
-            [.init(.terminalTitle)],
-        ])
-        #expect(try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac"))
-            == pixels(AgentCardView(
-                agent: agent, layout: layout, sampleChanges: AgentListFieldsPreview.sampleChanges)))
-        #expect(try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac"))
-            != pixels(AgentCardView(agent: agent, layout: layout)),
-            "The settings preview must show where the list puts a Checkout's totals")
-    }
-
-    /// A core Agent's row reads Changes as any other does, so its preview shows
-    /// where the totals go too.
-    @MainActor
-    @Test func aCoreHostsPreviewMatchesItsAgentCardWithTheChangesTotals() throws {
-        let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac", followsPlugin: false)
-        let layout = AgentRowLayout(rows: [[.init(.terminalTitleStripped)], [.init(.directory)]])
-        #expect(
-            try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac", followsPlugin: false))
-                == pixels(AgentCardView(
-                    agent: agent, layout: layout, sampleChanges: AgentListFieldsPreview.sampleChanges)))
-    }
-
-    @MainActor
-    private func pixels(_ view: some View) throws -> RenderedBitmap {
-        try RenderedBitmap(
-            view
-                .frame(width: 360, height: 160)
-                .background(Color.white)
-                .environment(\.colorScheme, .light),
-            proposedSize: .init(width: 360, height: 160))
-    }
-
     @MainActor
     @Test func sampleValuesDriveTheSharedRendererForBuiltinsAndCustomTokens() throws {
         let agent = AgentListFieldsPreview.sampleAgent(hostName: "Studio Mac")

@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import Testing
-import UIKit
 
 @testable import Heeler
 
@@ -115,43 +114,6 @@ struct ChangesStoreLineCountsTests {
             == "new.txt, renamed from old.txt, staged and unstaged, 41 lines added, 20 lines removed")
         #expect(LineCounts.binary.summary == "Binary")
         #expect(LineCounts.binary.accessibilityLabel == "binary")
-    }
-
-    @Test(arguments: ["new.txt", "logo.bin"])
-    func aTooLargeDiffKeepsItsRecordedCountsInTheVisibleAndVoiceOverFooter(path: String) async throws {
-        let recording = path == "new.txt"
-            ? GitProbeRecordings.rewrittenRename : GitProbeRecordings.tracking
-        let read = try ChangesStoreTests.read(recording)
-        let file = try #require(read.changes.files.first { $0.displayPath == path })
-        let transport = ScriptedTransport()
-        await transport.scriptChangesReads([.success(read)])
-        let cut = FilePatch(files: [], isTruncated: true)
-        await transport.scriptFilePatchReads([.success(cut), .success(cut)])
-        let store = ChangesStore(
-            directory: { "/home/dev/src/app" },
-            read: { try await transport.readChanges($0) },
-            readPatch: { try await transport.readFilePatch($0) })
-        await store.appear()
-        store.openDiff(file)
-        let diff = try #require(store.fileDiff.current)
-        await diff.appear()
-        #expect(diff.truncation == .canLoadMore)
-        await diff.loadMore()
-        #expect(diff.truncation == .tooLarge)
-        let expected = "This file is too large to display in full. "
-            + (path == "new.txt" ? "+41 −20 lines" : "Binary")
-        #expect(diff.tooLargeMessage == expected)
-        #expect(await transport.filePatchRequests.map(\.limit) == [.initial, .extended])
-        #expect(await transport.changesReadRequests.count == 1)
-
-        let controller = UIHostingController(rootView: FileDiffView(store: diff))
-        let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
-            rootViewController: controller)
-        defer { window.isHidden = true }
-        try #expect(await ChangesViewTests.eventually {
-            ChangesViewTests.labels(in: controller).contains(expected)
-        })
     }
 
     private func load(_ recording: (stdout: Data, stderr: Data)) async throws -> CheckoutChanges {

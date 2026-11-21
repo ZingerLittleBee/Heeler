@@ -63,13 +63,6 @@ final class TerminalGridReportPhaseRecorder {
     /// here. Nothing outside the recorder's own test sets this.
     var onWaitAboutToRegister: (@MainActor () -> Void)?
 
-    init(observing terminal: HeelerTerminalView) {
-        currentPhase = { [weak terminal] in terminal?.gridReportPhase ?? .live }
-        terminal.onGridReportPhaseChanged = { [weak self] phase, forwarded in
-            self?.record(phase, forwarded: forwarded)
-        }
-    }
-
     init(observing bridge: TerminalSessionCallbackBridge) {
         currentPhase = { [weak bridge] in bridge?.gridReportPhase ?? .live }
         bridge.onGridReportPhaseChanged = { [weak self] phase, forwarded in
