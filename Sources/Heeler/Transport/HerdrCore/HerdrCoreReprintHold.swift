@@ -13,6 +13,11 @@ import Synchronization
 /// goes out as one piece. The erase itself, and everything else, passes as it
 /// comes: what stays on screen while the block is on its way is whatever the
 /// program left there.
+///
+/// The reprint is not always the first block after the erase: on the resize
+/// that follows an attach, Antigravity CLI at times repaints its status line
+/// in a block of its own in between. So a block that opens right behind a
+/// held one is held as well.
 struct HerdrCoreReprint {
     /// What one read came to: the bytes that go out now, in order, and how
     /// many of the read's own bytes stay held.
@@ -23,10 +28,9 @@ struct HerdrCoreReprint {
 
     private static let blockOpen = Data("\u{1B}[?2026h".utf8)
     private static let blockClose = Data("\u{1B}[?2026l".utf8)
+    private static let erase = Data("\u{1B}[3J".utf8)
     /// The erase, then at most a cursor move home, then the block's opening.
-    private static let openings = [
-        Data("\u{1B}[3J".utf8) + blockOpen, Data("\u{1B}[3J\u{1B}[H".utf8) + blockOpen,
-    ]
+    private static let openings = [erase + blockOpen, erase + Data("\u{1B}[H".utf8) + blockOpen]
     /// An opening cut across reads starts within this much of a read's end.
     private static let overlap = (openings.map(\.count).max() ?? 1) - 1
 
@@ -85,7 +89,8 @@ struct HerdrCoreReprint {
             }
             rest = Data(held[close.upperBound...])
             held.removeSubrange(close.upperBound...)
-            passedEnd = Data(held.suffix(Self.overlap))
+            // The erase stands for a block that opens right behind this one.
+            passedEnd = Self.erase
             step.passed.append(held)
             step.held = 0
         }
