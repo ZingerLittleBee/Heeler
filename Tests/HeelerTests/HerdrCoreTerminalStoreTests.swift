@@ -281,11 +281,13 @@ struct HerdrCoreTerminalStoreTests {
 
     // MARK: Kept restarts
 
-    private static func keptRecord(address: String = "t1", argv: String = "vim", pid: Int = 7) -> JSONValue {
+    private static func keptRecord(
+        address: String = "t1", argv: String = "vim", pid: Int = 7, columns: Int = 80
+    ) -> JSONValue {
         .object([
             "address": .string(address), "cwd": .string("/work/app"), "state": .string("live"),
             "argv": .array([.string(argv)]), "keep": .bool(true), "title": .string(""),
-            "cols": .number(80), "rows": .number(24), "pid": .number(Double(pid)),
+            "cols": .number(Double(columns)), "rows": .number(24), "pid": .number(Double(pid)),
         ])
     }
 
@@ -687,6 +689,76 @@ struct HerdrCoreTerminalStoreTests {
         try await fixture.deliverOutput("live", on: attach)
         await attach.socket.waitForCredit(channel: attach.channel, total: paint.count + 4)
         #expect(sink.takes.last == Data("live".utf8))
+        await store.stop()
+        await fixture.finish()
+    }
+
+    private static let paint = "\u{1B}[!p\u{1B}[H\u{1B}[2Jscreen\u{1B}[?9001l"
+    /// Antigravity CLI's first answer to a resize: the screen erased down to
+    /// its status line.
+    private static let cleared = "\u{1B}[?2026h\r\u{1B}[20A\u{1B}[Jstatus\u{1B}[?2026l"
+    private static let reprint = "\u{1B}[2J\u{1B}[3J\u{1B}[H\u{1B}[?2026hhistory\r\n\u{1B}[?2026l"
+
+    /// The core sizes a Terminal to its viewer, and Antigravity CLI answers a
+    /// resize by erasing the screen and then printing its whole history again.
+    /// Where both hold, what follows the first paint waits for that reprint, so
+    /// the surface keeps the paint until then. The view here is 80 columns.
+    @Test(arguments: [("agy", 200, true), ("agy", 80, false), ("vim", 200, false)])
+    func onlyAnAntigravityTerminalItsAttachResizesKeepsItsFirstPaintUntilTheReprintIsWhole(
+        program: String, columns: Int, holds: Bool
+    ) async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: program, columns: columns)])
+        let store = fixture.store()
+        let sink = TakeRecordingSink()
+        store.feed.attach(sink)
+        let attach = try await fixture.opened(store)
+        let (paint, cleared, reprint) = (Self.paint, Self.cleared, Self.reprint)
+
+        try await fixture.deliverOutput(paint, on: attach)
+        try await fixture.deliverOutput(cleared, on: attach)
+        // Held or taken, the frame's credit has gone back by now.
+        await attach.socket.waitForCredit(channel: attach.channel, total: paint.utf8.count + cleared.utf8.count)
+        #expect(sink.takes == (holds ? [paint] : [paint, cleared]).map { Data($0.utf8) })
+
+        try await fixture.deliverOutput(reprint, on: attach)
+        let all = paint + cleared + reprint
+        await attach.socket.waitForCredit(channel: attach.channel, total: all.utf8.count)
+        #expect(sink.takes.reduce(Data(), +) == Data(all.utf8))
+        if holds { #expect(sink.takes.last == Data((cleared + reprint).utf8)) }
+        await store.stop()
+        await fixture.finish()
+    }
+
+    /// A viewer that leaves with its connection gives the Terminal its own
+    /// size back, so the reattach resizes it again. It goes out while the new
+    /// link's snapshot is still settling, with no Agent listed yet.
+    @Test func aReattachToAnAntigravityTerminalKeepsItsFirstPaintUntilTheReprintIsWhole() async throws {
+        let fixture = try await Fixture(terminals: [Self.keptRecord(argv: "agy")])
+        let store = fixture.store()
+        let sink = TakeRecordingSink()
+        store.feed.attach(sink)
+        let first = try await fixture.opened(store)
+        try await fixture.deliverOutput(Self.paint, on: first)
+        try await Self.until("the first output") { store.status == .live }
+
+        await fixture.console.suspend()
+        await fixture.scripted.setChannel(
+            .core(
+                .init(
+                    id: "c1", terminals: [Self.keptRecord(argv: "agy", columns: 200)],
+                    answersDocumentReads: false)))
+        await fixture.console.resume()
+        let second = try await fixture.opened(store, count: 2)
+        #expect(fixture.console.hostsAwaitingSnapshot.contains(fixture.host.id))
+        try await fixture.deliverOutput(Self.paint, on: second)
+        try await fixture.deliverOutput(Self.cleared, on: second)
+        let held = Self.paint.utf8.count + Self.cleared.utf8.count
+        await second.socket.waitForCredit(channel: second.channel, total: held)
+        #expect(sink.takes.last == Data(Self.paint.utf8))
+
+        try await fixture.deliverOutput(Self.reprint, on: second)
+        await second.socket.waitForCredit(channel: second.channel, total: held + Self.reprint.utf8.count)
+        #expect(sink.takes.last == Data((Self.cleared + Self.reprint).utf8))
         await store.stop()
         await fixture.finish()
     }

@@ -17,6 +17,7 @@ enum HerdrCoreAttach {
             creditsWhenConsumed: true)
         let firstPaint = HerdrCoreFirstPaintHold()
         let reprint = HerdrCoreReprintHold(
+            expecting: request.reprint,
             read: {
                 try await firstPaint.next(
                     read: { try await stream.read() }, credit: { await stream.consumed($0) })
