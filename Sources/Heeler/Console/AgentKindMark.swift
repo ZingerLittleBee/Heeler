@@ -182,6 +182,9 @@ private struct AgentKindMarkImage: View {
     let monogramSize: CGFloat
     /// The status ring style's brand tint in place of the program's art.
     var isTinted = false
+    /// Applies the program's brand tint to a template-only mark (such as Kimi)
+    /// when `isTinted` is false and no multi-color art exists.
+    var usesBrandTintFallback = false
 
     var body: some View {
         if let artwork = mark.artwork {
@@ -196,7 +199,9 @@ private struct AgentKindMarkImage: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: size, height: size)
-                    .foregroundStyle(isTinted ? artwork.tint.map(Self.color) ?? .primary : .primary)
+                    .foregroundStyle(
+                        (isTinted || usesBrandTintFallback)
+                            ? artwork.tint.map(Self.color) ?? .primary : .primary)
             }
         } else {
             Text(verbatim: mark.monogram)
@@ -207,6 +212,37 @@ private struct AgentKindMarkImage: View {
 
     private static func color(_ tint: AgentKindMark.Tint) -> Color {
         Color(light: UIColor(rgb: tint.light), dark: UIColor(rgb: tint.dark))
+    }
+}
+
+/// A harness's mark on a neutral rounded tile, without a status ring — for
+/// lists such as Launch Presets where there is no live Agent status.
+struct AgentKindBadge: View {
+    let mark: AgentKindMark
+    var size: CGFloat = 32
+
+    init(kind: SupportedAgentKind, size: CGFloat = 32) {
+        self.mark = AgentKindMark(kind: kind)
+        self.size = size
+    }
+
+    init(mark: AgentKindMark, size: CGFloat = 32) {
+        self.mark = mark
+        self.size = size
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: (size * 0.25).rounded(), style: .continuous)
+        ZStack {
+            shape
+                .fill(Color(uiColor: .tertiarySystemFill))
+            AgentKindMarkImage(
+                mark: mark,
+                size: (size * 0.62).rounded(),
+                monogramSize: (size * 0.45).rounded(),
+                usesBrandTintFallback: true)
+        }
+        .frame(width: size, height: size)
     }
 }
 

@@ -7,6 +7,27 @@ import Foundation
 /// here is the only way to give decent copy; server message passthrough
 /// remains the fallback for anything this subset misses.
 enum GitBranchName {
+    private static let generatedAdjectives = [
+        "brave", "calm", "clear", "green", "lucky", "quiet", "rapid", "silver",
+    ]
+
+    private static let generatedNouns = [
+        "river", "cloud", "field", "forest", "harbor", "meadow", "stone", "valley",
+    ]
+
+    /// Generates a random `<adjective>-<noun>-<4hex>` branch name,
+    /// using herdr TUI's `worktree::generated_branch_slug` wordlists without
+    /// the `worktree/` prefix.
+    static func generatedWorktreeBranch(seed: UInt64 = .random(in: .min ... .max)) -> String {
+        let adjectiveCount = UInt64(generatedAdjectives.count)
+        let nounCount = UInt64(generatedNouns.count)
+        let adjective = generatedAdjectives[Int(seed % adjectiveCount)]
+        let noun = generatedNouns[Int((seed / adjectiveCount) % nounCount)]
+        let rawHex = String(seed & 0xffff, radix: 16)
+        let suffix = String(repeating: "0", count: max(0, 4 - rawHex.count)) + rawHex
+        return "\(adjective)-\(noun)-\(suffix)"
+    }
+
     /// Nil when `name` is an acceptable branch name; otherwise a user-facing
     /// message naming the violated rule.
     static func validationError(_ name: String) -> String? {

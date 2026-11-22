@@ -25599,6 +25599,29 @@
         }
       }
     },
+    "Generate random branch" : {
+      "comment" : "Accessibility label for the button that generates a random worktree branch name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ランダムなブランチを生成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成随机分支"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "產生隨機分支"
+          }
+        }
+      }
+    },
     "Get notified when an Agent is waiting for your input or finishes." : {
       "localizations" : {
         "ja" : {
