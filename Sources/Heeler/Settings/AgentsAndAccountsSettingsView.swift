@@ -25,9 +25,13 @@ struct AgentsAndAccountsSettingsView: View {
                     Button {
                         editing = Editing(preset: preset)
                     } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(preset.name).foregroundStyle(.primary)
-                            LaunchPresetSummary(preset: preset)
+                        HStack(alignment: .center, spacing: 12) {
+                            AgentKindBadge(kind: preset.kind)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(preset.name).foregroundStyle(.primary)
+                                LaunchPresetSummary(preset: preset)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(.rect)

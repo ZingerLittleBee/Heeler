@@ -55,4 +55,22 @@ struct GitBranchNameTests {
     @Test func rejectsEmpty() {
         #expect(GitBranchName.validationError("") != nil)
     }
+
+    @Test func generatedWorktreeBranchMatchesHerdrTUIWordlistsWithoutPrefix() {
+        #expect(GitBranchName.generatedWorktreeBranch(seed: 0) == "brave-river-0000")
+        #expect(GitBranchName.generatedWorktreeBranch(seed: 9) == "calm-cloud-0009")
+        #expect(GitBranchName.generatedWorktreeBranch(seed: 0xcc8b) == "green-cloud-cc8b")
+        #expect(GitBranchName.generatedWorktreeBranch(seed: 0xffff) == "silver-valley-ffff")
+    }
+
+    @Test func randomGeneratedWorktreeBranchesAreValidBranchesAndFolderSlugs() {
+        for _ in 0..<32 {
+            let branch = GitBranchName.generatedWorktreeBranch()
+            #expect(!branch.contains("/"))
+            #expect(GitBranchName.validationError(branch) == nil, "\(branch)")
+            let slug = HerdrCoreWorktrees.slug(branch)
+            #expect(slug == branch)
+            #expect(!slug.isEmpty)
+        }
+    }
 }

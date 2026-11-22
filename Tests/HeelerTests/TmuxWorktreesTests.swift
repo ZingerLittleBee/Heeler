@@ -450,6 +450,10 @@ struct TmuxWorktreesTests {
         #expect(form.offersWorktree)
         #expect(form.worktreeNeedsBranch)
         form.startsInNewWorktree = true
+        #expect(!form.worktreeBranch.isEmpty)
+        #expect(!form.worktreeBranch.contains("/"))
+        #expect(form.canSubmit)
+        form.worktreeBranch = ""
         #expect(!form.canSubmit)
         form.worktreeBranch = branch
         #expect(form.canSubmit)

@@ -137,12 +137,48 @@ struct StartAgentView: View {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
                             .disabled(store.selectedWorkspaceID == nil)
                         if store.startsInNewWorktree {
-                            TextField(
-                                store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
-                                text: $store.worktreeBranch)
-                                .font(.callout.monospaced())
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
+                            HStack(spacing: 10) {
+                                TextField(
+                                    store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
+                                    text: $store.worktreeBranch)
+                                    .font(.callout.monospaced())
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .accessibilityIdentifier("startAgent.worktreeBranch")
+                                if !store.worktreeBranch.isEmpty {
+                                    Button {
+                                        store.worktreeBranch = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .symbolRenderingMode(.monochrome)
+                                            .foregroundStyle(Color(uiColor: .systemGray))
+                                    }
+                                    // Borderless, or the whole row would be the button.
+                                    .buttonStyle(.borderless)
+                                    .tint(Color(uiColor: .systemGray))
+                                    .contentShape(Rectangle().inset(by: -4))
+                                    .accessibilityLabel(
+                                        Text(
+                                            "Clear text",
+                                            comment: "Accessibility label for the button that clears the rename text field."
+                                        ))
+                                }
+                                Button {
+                                    store.regenerateWorktreeBranch()
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .tint(.secondary)
+                                .contentShape(Rectangle().inset(by: -4))
+                                .accessibilityLabel(
+                                    Text(
+                                        "Generate random branch",
+                                        comment: "Accessibility label for the button that generates a random worktree branch name."
+                                    ))
+                                .accessibilityIdentifier("startAgent.regenerateBranch")
+                            }
                             if !store.worktreeNeedsBranch {
                                 TextField("Base (optional)", text: $store.worktreeBase)
                                     .font(.callout.monospaced())
