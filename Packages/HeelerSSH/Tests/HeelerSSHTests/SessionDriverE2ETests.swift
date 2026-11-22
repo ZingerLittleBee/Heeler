@@ -847,8 +847,9 @@ struct SessionDriverE2ETests {
         let proxy = try #require(WeakNetworkProxyFixture.current)
         let connection = try await connectThroughProxy(environment: environment, proxy: proxy)
         do {
-            // A three-second round trip: the answer is on its way, and late.
-            try await proxy.delay(milliseconds: 1_500)
+            // A ten-second round trip: the answer is on its way, and stays
+            // late even when a loaded runner is slow to cancel the open.
+            try await proxy.delay(milliseconds: 5_000)
             let answer = SessionWaitHold()
             await connection.holdNextSessionWaitForTesting { await answer.waitUntilReleased() }
             let open = Task {
