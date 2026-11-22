@@ -303,10 +303,12 @@ struct AgentTerminalView: View {
     @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.portPreviewOpener) private var portPreview
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
+    @Environment(\.consoleHostFilter) private var hostFilter
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
     @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
@@ -637,7 +639,7 @@ struct AgentTerminalView: View {
             selection: $selectedPhotos,
             maxSelectionCount: 10,
             selectionBehavior: .ordered,
-            matching: .images)
+            matching: .any(of: [.images, .videos]))
         .fileImporter(
             isPresented: $isSelectingFile,
             allowedContentTypes: [.data]
@@ -813,7 +815,7 @@ struct AgentTerminalView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
+            session.enqueuePickedMedia(items.map(PickedMedia.from))
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -957,7 +959,8 @@ struct AgentTerminalView: View {
     private var agentSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
             items: TerminalAgentSwitcherItem.items(
-                for: console.agents, pins: console.pins,
+                for: console.agents, onHosts: hostFilter, showing: agent.id,
+                pins: console.pins,
                 layout: { console.rowLayout(for: $0) }),
             selectedID: agent.id,
             onSelect: switchToAgent,
@@ -1040,7 +1043,7 @@ struct AgentTerminalView: View {
             attachLinkCount: attach.attachLinks.count,
             addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
             pasteImage: offers.attachments
-                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
+                ? { session.pasteClipboard() } : nil,
             addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: { attachLinksOrigin = .composerChip },
             openTerminal: canOpenTerminal
@@ -1139,6 +1142,7 @@ struct AgentTerminalView: View {
 
     private var terminalSurface: some View {
         terminalScreen
+            .portPreviewLinks(portPreview) { hideKeyboard() }
             .id(attach.terminalID)
         // A terminal that keeps its own size, a Rex Agent's, says when
         // another device set it, as its Terminals screen does (ADR 0053).
@@ -1347,6 +1351,13 @@ struct AgentTerminalView: View {
                 showFiles()
             })
         }
+        if let portPreview, portPreview.isOffered {
+            actions.append(AgentDetailHeaderAction(title: "Ports", systemImage: PortPreviewCopy.symbol) {
+                // With the keyboard down, as Files opens.
+                hideKeyboard()
+                portPreview.showPorts()
+            })
+        }
         if console.offersTitleRename(for: agent) {
             actions.append(AgentDetailHeaderAction(title: "Rename", systemImage: "pencil") {
                 titleRename = console.titleRenameStore(for: agent)
@@ -1520,7 +1531,8 @@ struct AgentTerminalView: View {
             presentedOrigin: $attachLinksOrigin,
             links: attach.attachLinks,
             open: { link in openAttachLink(link) },
-            copy: { link in UIPasteboard.general.string = link.target })
+            copy: { link in UIPasteboard.general.string = link.target },
+            previews: { [portPreview] link in portPreview?.accepts(link.url) ?? false })
     }
 
     /// Chat and this terminal, for an Agent that has Chat. Chat always uses
@@ -1878,8 +1890,15 @@ struct AgentTerminalView: View {
 
     private func openAttachLink(_ link: AttachLink) {
         let openURL = openURL
+        let portPreview = portPreview
         attach.openAttachLink(link) { url in
             guard !Task.isCancelled else { return false }
+            // A page on the Host's own loopback interface: the browser
+            // would look for it on this device.
+            if let portPreview, portPreview.accepts(url) {
+                hideKeyboard()
+                return portPreview.open(url)
+            }
             let (results, continuation) = AsyncStream<Bool>.makeStream(
                 bufferingPolicy: .bufferingNewest(1))
             openURL(url) { accepted in
@@ -2234,6 +2253,8 @@ struct AttachLinksPopover: ViewModifier {
     let links: [AttachLink]
     let open: (AttachLink) -> Void
     let copy: (AttachLink) -> Void
+    /// Whether a link opens in the Port Preview: a page on the Host itself.
+    var previews: (AttachLink) -> Bool = { _ in false }
 
     func body(content: Content) -> some View {
         content.popover(
@@ -2241,7 +2262,7 @@ struct AttachLinksPopover: ViewModifier {
                 get: { origin.presents(presentedOrigin) },
                 set: { if !$0 { presentedOrigin = origin.dismissing(presentedOrigin) } })
         ) {
-            AttachLinksView(links: links, open: open, copy: copy)
+            AttachLinksView(links: links, open: open, copy: copy, previews: previews)
                 // Regular width keeps the popover; only compact size classes adapt.
                 .presentationCompactAdaptation(.sheet)
         }
@@ -2252,6 +2273,7 @@ private struct AttachLinksView: View {
     let links: [AttachLink]
     let open: (AttachLink) -> Void
     let copy: (AttachLink) -> Void
+    let previews: (AttachLink) -> Bool
 
     var body: some View {
         NavigationStack {
@@ -2276,7 +2298,8 @@ private struct AttachLinksView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(link.host)
                     .accessibilityValue(link.target)
-                    .accessibilityHint("Opens in your default browser")
+                    .accessibilityHint(
+                        previews(link) ? Text("Opens in a preview") : Text("Opens in your default browser"))
                     .accessibilityAction(named: "Copy Link") {
                         copy(link)
                     }

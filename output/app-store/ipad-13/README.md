@@ -34,7 +34,11 @@ exports and is excluded from Git.
   (`scripts/isolated-herdr-backend.py`), not demo fixtures. Claude Code and Codex
   ran real sessions on small demo repositories, so the conversations, approval
   prompt, Changes, diffs, Skills, and shell output are their real output.
-- The same captures are copied to `docs/images/*-ipad.png` for the README and to
+- `01-console.png` and `05-windowed-console.png` were retaken on 2026-11-22 for
+  the glass Composer, on the same simulator model (UDID
+  `9CAC7E2E-7D4D-4D58-85ED-C30FAA399BD8`) against the `scripts/store-shots.py`
+  rig, from an app built at `a91b5045`.
+- The captures are copied to `docs/images/*-ipad.png` for the README and to
   `landing/src/assets/screens/*-ipad.png` for the landing page.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,

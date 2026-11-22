@@ -56,14 +56,10 @@ struct ChatBackgroundWorkStrip: View {
                     }
                 }
             }
-            // Opaque in the theme's background, as the Composer's card is,
-            // so Chat scrolling under it stays out of the way, then veiled.
-            .background {
-                shape
-                    .fill(themeColors.background)
-                    .overlay { shape.fill(ThemeVeil.strip) }
-            }
             .clipShape(shape)
+            // Glass in the theme's background, as the Composer's card under
+            // it is: the conversation scrolling beneath shows through both.
+            .themeGlass(in: shape, theme: themeColors)
             // The strip grows up from the Composer, so what it holds keeps
             // to its top edge: a row that comes or goes rides under the
             // line over it, not across it.

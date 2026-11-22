@@ -7,7 +7,9 @@ struct ComposerStagingStatusBar: View {
     let staging: ComposerStagingStore
 
     var body: some View {
-        if Self.showsBar(for: staging.state), let presentation = staging.presentation {
+        if Self.showsBar(for: staging.state, isPill: staging.activeOperationIsPill),
+            let presentation = staging.presentation
+        {
             AttachmentStatusBar(
                 icon: presentation.icon,
                 title: presentation.title,
@@ -20,16 +22,20 @@ struct ComposerStagingStatusBar: View {
         }
     }
 
-    static func showsBar(for state: ComposerStagingStore.State) -> Bool {
+    static func showsBar(for state: ComposerStagingStore.State, isPill: Bool = false) -> Bool {
         switch state {
         case .idle:
             false
         case .preparing(let medium), .uploading(let medium, _):
-            medium == .file
+            medium == .file && !isPill
         case .completed(let outcome):
-            outcome.medium == .file
+            outcome.medium == .file && !isPill
         case .failed(let failure), .backgroundInterrupted(let failure):
-            failure.medium == .file || !failure.isRetryable
+            if failure.medium == .image || isPill {
+                !failure.isRetryable
+            } else {
+                true
+            }
         }
     }
 

@@ -198,6 +198,9 @@ final class ConsoleStore {
     /// A core Host's connection for the files rooted at its Host Helper, dialed
     /// for each use and apart from the session its projection holds.
     @ObservationIgnored private let connectCore: @Sendable (Host) async throws -> any HerdrCoreTransport
+    /// A Host's connection for a port preview, dialed apart from every
+    /// Server's. Nil where there is no SSH to dial, as in the demo.
+    @ObservationIgnored private let connectPortPreview: (@Sendable (Host) async throws -> any PortPreviewConnection)?
     /// The tmux Hosts' equivalent, dialed when no live tmux session is up.
     @ObservationIgnored private let connectTmux: @Sendable (Host) async throws -> any TmuxTransport
     @ObservationIgnored private let snapshotRetryDelay: Duration
@@ -289,6 +292,8 @@ final class ConsoleStore {
             ConsoleStore.sshCoreConnector(),
         connectTmux: @escaping @Sendable (Host) async throws -> any TmuxTransport =
             ConsoleStore.sshTmuxConnector(),
+        connectPortPreview: (@Sendable (Host) async throws -> any PortPreviewConnection)? =
+            ConsoleStore.sshPortPreviewConnector(),
         chatAdapter: @escaping @Sendable (ChatProgram) -> ChatTranscriptAdapter? = {
             ChatTranscriptAdapter.standard(for: $0)
         },
@@ -347,6 +352,7 @@ final class ConsoleStore {
         self.makeSession = makeSession
         self.connectCore = connectCore
         self.connectTmux = connectTmux
+        self.connectPortPreview = connectPortPreview
         cachedChats.onChange = { [weak self] in
             self?.rebuildAgentOrder()
         }
@@ -1182,6 +1188,8 @@ final class ConsoleStore {
                     root: root, rootID: rootID)
                 self.reconcileAgyAnnotationTitles()
             }
+        }
+        if program.promotesBackgroundWorkToWorking {
             source.onRunningBackgroundWorkChanged = { [weak self] _ in
                 guard let self, !self.isRebuilding else { return }
                 self.rebuild()
@@ -1945,7 +1953,7 @@ final class ConsoleStore {
 
     private func isAgentBusyInConsole(_ id: ConsoleAgent.ID) -> Bool {
         guard let row = projections[id.hostID]?.agentsByPane[id.paneID] else { return false }
-        let status = applyingAgyBackgroundWork(to: row).agent.status
+        let status = applyingBackgroundWork(to: row).agent.status
         return status == .working || status == .blocked
     }
 
@@ -2039,7 +2047,7 @@ final class ConsoleStore {
                 pending.matchesIdentity(of: liveRow.agent),
                 offersTitleRename(for: liveRow)
             else { continue }
-            let effectiveStatus = applyingAgyBackgroundWork(to: liveRow).agent.status
+            let effectiveStatus = applyingBackgroundWork(to: liveRow).agent.status
             guard effectiveStatus == .idle || effectiveStatus == .done else {
                 pendingTitleRenameDeclinedKeys[id] = nil
                 continue
@@ -2170,7 +2178,7 @@ final class ConsoleStore {
                 if let currentRow = projection.agentsByPane[id.paneID],
                     pending.matchesIdentity(of: currentRow.agent)
                 {
-                    let status = self.applyingAgyBackgroundWork(to: currentRow).agent.status
+                    let status = self.applyingBackgroundWork(to: currentRow).agent.status
                     if status == .idle || status == .done {
                         self.pendingTitleRenameDeclinedKeys[id] = attemptKey
                     }
@@ -2820,18 +2828,20 @@ final class ConsoleStore {
         }
     }
 
-    /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
-    /// foreground turn finishes, even while its Subagents, Workflows, Swarm
-    /// task workers, or non-daemon background commands keep running. Present
-    /// the Agent as `Working` across Console and Composer surfaces while a live
-    /// connected transcript confirms running, non-stale Background Work.
-    private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
-        guard row.agent.kind == ChatProgram.agy.rawValue,
+    /// Antigravity CLI and Claude Code report `Idle` or `Done` once a
+    /// foreground turn finishes, even while their Subagents, Workflows,
+    /// Swarm task workers, background commands, or Monitors keep running.
+    /// Present the Agent as `Working` across Console and Composer surfaces
+    /// while a live connected transcript confirms running, non-stale
+    /// Background Work.
+    private func applyingBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
+        guard let program = ChatProgram(rawValue: row.agent.kind),
+            program.promotesBackgroundWorkToWorking,
             row.agent.status == .idle || row.agent.status == .done,
             hostStatuses[row.hostID] == .connected,
             !hostsAwaitingSnapshot.contains(row.hostID),
             let store = chatStores[row.id],
-            store.program == .agy,
+            store.program == program,
             store.hasRunningBackgroundWork,
             store.agent.terminalID == row.agent.terminalID,
             store.agent.workspaceID == row.agent.workspaceID,
@@ -2853,7 +2863,7 @@ final class ConsoleStore {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-            .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
+            .map { applyingBackgroundWork(to: applyingClientTitles(to: $0)) }
         let serverOrder = catalogServerOrder()
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
@@ -3722,6 +3732,41 @@ extension ConsoleStore: NotificationTransportProvider {
         (projections[hostID] as? TmuxConsoleProjection)?.server
     }
 
+    /// Whether links to this Host's loopback interface open in a preview,
+    /// and its menus list Ports. A native Windows machine waits for a test
+    /// there, as its Files do.
+    func offersPortPreview(for hostID: Host.ID) -> Bool {
+        connectPortPreview != nil && hostPlatforms[hostID] != .nativeWindows
+            && !capabilities(for: hostID).isNativeWindowsCore
+            && catalog.contains { $0.id == hostID }
+    }
+
+    /// The connection a port preview keeps to this Host while it is open.
+    /// Each dial reads the catalog again, so a route edited meanwhile is the
+    /// one it takes.
+    func portPreviewLink(for hostID: Host.ID) -> PortPreviewLink? {
+        guard let connectPortPreview, offersPortPreview(for: hostID) else { return nil }
+        return PortPreviewLink { [weak self] in
+            guard let host = await self?.catalogHost(hostID) else {
+                throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+            }
+            return try await connectPortPreview(host)
+        }
+    }
+
+    /// A port preview of this Host: `target`'s page, or Ports alone when it
+    /// is nil. `directory` is where the Agent or terminal it opens from works.
+    func portPreviewSession(
+        for hostID: Host.ID, directory: String?, target: PortPreviewTarget?
+    ) -> PortPreviewSession? {
+        guard let link = portPreviewLink(for: hostID), let host = catalogHost(hostID) else { return nil }
+        return PortPreviewSession(link: link, hostName: host.machineName, directory: directory, target: target)
+    }
+
+    private func catalogHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID }
+    }
+
     fileprivate func coreHost(_ hostID: Host.ID) -> Host? {
         catalog.first { $0.id == hostID && $0.serverKind == .herdrCore }
     }
@@ -3802,6 +3847,20 @@ extension ConsoleStore {
     ) -> @Sendable (Host) async throws -> any TmuxTransport {
         { host in
             try await connector.connectTmux(
+                settings: consoleSettings(
+                    for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
+        }
+    }
+
+    /// A Host's connection for a port preview, with the same trust rules.
+    static func sshPortPreviewConnector(
+        connector: any TransportConnector = SSHTransportConnector(),
+        knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared,
+        credentials: HostCredentialsProvider = HostCredentialsProvider(),
+        overlays: OverlayNetworkRuntime = .shared
+    ) -> @Sendable (Host) async throws -> any PortPreviewConnection {
+        { host in
+            try await connector.connectForPortPreview(
                 settings: consoleSettings(
                     for: host, knownHosts: knownHosts, credentials: credentials, overlays: overlays))
         }

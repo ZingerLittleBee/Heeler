@@ -63,8 +63,7 @@ struct ThemeColors: Equatable, Sendable {
 enum ThemeVeil {
     /// A card on the page: the Composer, a sidebar card.
     static let card = Color.primary.opacity(0.04)
-    /// A strip: the Composer's Agent strip, and the strip of work over the
-    /// Composer.
+    /// A strip: the Composer's Agent strip.
     static let strip = Color.primary.opacity(0.06)
     /// A control on a card: a Blocked card's answers and its fields.
     static let control = Color.primary.opacity(0.08)
@@ -74,10 +73,46 @@ enum ThemeVeil {
     }
 }
 
+/// Chrome that floats over Chat's conversation, which scrolls beneath it: the
+/// Composer's card and the strip of work over it.
+enum ThemeGlass {
+    /// How much of the theme's background the glass carries. Enough that the
+    /// glass reads as the theme rather than as the system's grey laid over
+    /// it, and that a draft stays readable over the rows passing beneath.
+    static let tint: Double = 0.55
+    /// How much of the glass shows. A card's worth of the system's glass is
+    /// close to opaque, so at part strength the rows beneath stay legible
+    /// through it, as output does under the detail header's buttons
+    /// (`AgentDetailHeader.glassOpacity`).
+    static let opacity: Double = 0.9
+}
+
 extension EnvironmentValues {
     /// Set at the scene root (`appAppearance(_:themes:)`); the system's
     /// colours outside one.
     @Entry var themeColors: ThemeColors = .system
+}
+
+extension View {
+    /// Liquid Glass in `theme`'s background where the system has it, a blur
+    /// in it before that, behind this view: rows scrolling beneath show
+    /// through softened instead of stopping at an opaque edge. Touches on
+    /// the glass stay with this view rather than reach those rows.
+    func themeGlass(in shape: some Shape, theme: ThemeColors) -> some View {
+        let tint = theme.background.opacity(ThemeGlass.tint)
+        return background {
+            Group {
+                if #available(iOS 26, *) {
+                    Color.clear.glassEffect(.regular.tint(tint), in: shape)
+                } else {
+                    shape.fill(.ultraThinMaterial)
+                        .overlay { shape.fill(tint) }
+                }
+            }
+            .opacity(ThemeGlass.opacity)
+        }
+        .contentShape(shape)
+    }
 }
 
 extension View {

@@ -815,6 +815,94 @@ struct ConsoleStoreTests {
         }
     }
 
+    @Test func claudeBackgroundCommandPromotesConsoleAndComposerToWorkingUntilFinished() async throws {
+        let host = Host.fixture()
+        let claudeSessionID = "c4b8e110-129f-4e43-87dc-be2f661d5645"
+        let taskID = "b9876fedc"
+        let idleOther = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "codex",
+            cwd: "/home/dev/proj")
+        let claudeInfo = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1,
+            tabID: "t2", terminalID: "term-2", workspaceID: "w1", agent: "claude",
+            agentSession: AgentSessionInfo(
+                agent: ChatProgram.claude.sessionNaming.agent,
+                kind: .id,
+                source: ChatProgram.claude.sessionNaming.source,
+                value: claudeSessionID),
+            cwd: "/home/dev/proj")
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [idleOther, claudeInfo]))
+        let files = VirtualHostFiles()
+        let claudePath = "/home/dev/.claude/projects/-home-dev-proj/\(claudeSessionID).jsonl"
+        let outputPath = "/tmp/claude-501/-home-dev-proj/\(claudeSessionID)/tasks/\(taskID).output"
+        let initial = [
+            #"{"type":"user","uuid":"u1","timestamp":"2026-11-07T16:20:00.000Z","message":{"role":"user","content":"Retry the release"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-11-07T16:20:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_bg1","name":"Bash","input":{"command":"gh run watch 45026501363","description":"Wait for the second attempt of the release","run_in_background":true}}]}}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-11-07T16:20:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_bg1","content":"Command running in background with ID: \#(taskID). Output is being written to: \#(outputPath)"}]},"toolUseResult":{"backgroundTaskId":"\#(taskID)"}}"#,
+            #"{"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-11-07T16:20:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Retry started."}]}}"#,
+        ].joined(separator: "\n") + "\n"
+        await files.write(initial, at: claudePath)
+        await transport.scriptChat(files: files.hostFiles(), agent: Agent(claudeInfo))
+        let fixedNow = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(10),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatTiming: AgentChatStore.Timing(activeInterval: .milliseconds(15), idleInterval: .milliseconds(15)),
+            chatNow: { fixedNow })
+        defer { store.setHosts([]) }
+        let claudeID = ConsoleAgent.ID(hostID: host.id, paneID: "w1:p2")
+
+        var observedStatuses: [AgentStatus?] = []
+        let observer = Task { @MainActor in
+            for await update in store.agentStatusUpdates(for: claudeID) {
+                observedStatuses.append(update.status)
+            }
+        }
+        defer { observer.cancel() }
+
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("prefetched Claude Code Background Work promotes Console status to Working") {
+            store.agents.first(where: { $0.id == claudeID })?.agent.status == .working
+        }
+
+        // Priority sort places Working w1:p2 ahead of Idle w1:p1, and detail + Composer see Working.
+        #expect(store.agents.map(\.agent.paneID) == ["w1:p2", "w1:p1"])
+        #expect(store.detailAgent(for: claudeID)?.agent.status == .working)
+        try await waitUntil("Composer status stream receives Working") {
+            observedStatuses.last == .some(.working)
+        }
+
+        // Meanwhile AgentChatStore keeps herdr's underlying Idle status so the
+        // timeline and foreground turn detection stay accurate.
+        let claudeRow = try #require(store.agents.first(where: { $0.id == claudeID }))
+        let chat = try #require(store.chatStore(for: claudeRow, program: .claude))
+        #expect(chat.agent.status == .idle)
+        #expect(chat.hasRunningBackgroundWork)
+
+        // When the background command finishes without any new herdr event, the
+        // hidden watch loop clears the promotion back to Idle.
+        let completion =
+            #"{"type":"user","uuid":"n1","parentUuid":"a2","timestamp":"2026-11-07T16:26:00.000Z","message":{"role":"user","content":"<task-notification>\n<task-id>\#(taskID)</task-id>\n<tool-use-id>toolu_bg1</tool-use-id>\n<output-file>\#(outputPath)</output-file>\n<status>completed</status>\n<summary>Background command \"Wait for the second attempt of the release\" completed (exit code 0)</summary>\n</task-notification>"}}"#
+            + "\n"
+        await files.append(completion, to: claudePath)
+
+        try await waitUntil("completed Claude Code Background Work returns Console status to Idle") {
+            store.agents.first(where: { $0.id == claudeID })?.agent.status == .idle
+        }
+        #expect(store.detailAgent(for: claudeID)?.agent.status == .idle)
+        try await waitUntil("Composer status stream returns to Idle") {
+            observedStatuses.last == .some(.idle)
+        }
+    }
+
     /// Each read of a conversation an adapter reads by query is an exec on
     /// the Host, and the prefetch key changes with every status: only an
     /// open Chat reads it (ADR 0025).

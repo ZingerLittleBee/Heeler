@@ -23,8 +23,14 @@ struct ChatTimelineActions {
     /// Shown in an expanded tool row whose output was never read.
     var missingOutputText: String = String(localized: "Output is available when connected.")
     var loadImage: ChatImagePreviewController.Loader = { _ in throw ChatImagePreviewError.unavailable }
+    /// Opens a video file named in a Chat message in the video player sheet.
+    var previewVideo: (@MainActor (String, String?) -> Void)?
     /// The pictures image rows show; nil without a conversation store.
     var thumbnails: ChatImageThumbnails?
+    /// Opens a link that names the Host's loopback interface in a port
+    /// preview. False when it names another place, or this Host has none:
+    /// the link is then the browser's.
+    var openHostLink: @MainActor (URL) -> Bool = { _ in false }
     /// An open trajectory intersects the reading viewport.
     var collapseAvailabilityChanged: @MainActor (Bool) -> Void = { _ in }
     /// An earlier user message lies above the reading viewport.
@@ -51,6 +57,8 @@ struct ChatRowActions {
     /// Opens an image row's file in the zoomable sheet, showing an optional
     /// display title and the thumbnail, when there is one, until the file is read.
     var previewImage: @MainActor (String, String?, UIImage?) -> Void = { _, _, _ in }
+    /// Opens a link to the Host's loopback interface; false when it is not one.
+    var openHostLink: @MainActor (URL) -> Bool = { _ in false }
 }
 
 /// A pull past the timeline's top, as the Load Earlier row shows it.
@@ -373,10 +381,15 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             thumbnails: actions.thumbnails,
             previewImage: { [weak self] path, title, thumbnail in
                 self?.previewImage(path, title: title, thumbnail: thumbnail)
-            })
+            },
+            openHostLink: { [weak self] link in self?.actions.openHostLink(link) ?? false })
     }
 
     private func previewImage(_ path: String, title: String? = nil, thumbnail: UIImage?) {
+        if ChatImageLink.mediaKind(for: path) == .video {
+            actions.previewVideo?(path, title)
+            return
+        }
         ChatImagePreviewController(
             path: path, displayTitle: title, placeholder: thumbnail, loadImage: actions.loadImage)
             .present(from: self)
@@ -1746,23 +1759,35 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
                     self?.previewImage(path, thumbnail: thumbnail)
                 })
             }
-            // The images a message names, by display title or file name when it names several.
-            let previews = named.map { image in
-                UIAction(
+            // The images and videos a message names, by display title or file name when it names several.
+            let previews = named.map { item in
+                let isVideo = item.mediaKind == .video
+                let singleTitle =
+                    isVideo ? String(localized: "Preview Video") : String(localized: "Preview Image")
+                return UIAction(
                     title: named.count == 1
-                        ? String(localized: "Preview Image")
-                        : (image.title ?? RemoteHostPath.lastComponent(of: image.path)),
-                    image: UIImage(systemName: "photo")
+                        ? singleTitle
+                        : (item.title ?? RemoteHostPath.lastComponent(of: item.path)),
+                    image: UIImage(systemName: isVideo ? "film" : "photo")
                 ) { [weak self] _ in
                     self?.previewImage(
-                        image.path, title: image.title,
-                        thumbnail: self?.actions.thumbnails?.image(of: image.path))
+                        item.path, title: item.title,
+                        thumbnail: isVideo ? nil : self?.actions.thumbnails?.image(of: item.path))
                 }
             }
             if previews.count == 1 {
                 items += previews
             } else if !previews.isEmpty {
-                items.append(UIMenu(title: String(localized: "Preview Image"), image: UIImage(systemName: "photo"), children: previews))
+                let allVideos = named.allSatisfy { $0.mediaKind == .video }
+                let allImages = named.allSatisfy { $0.mediaKind == .image }
+                let menuTitle =
+                    allVideos
+                    ? String(localized: "Preview Video")
+                    : allImages
+                    ? String(localized: "Preview Image")
+                    : String(localized: "Preview Media")
+                let menuSymbol = allVideos ? "film" : "photo"
+                items.append(UIMenu(title: menuTitle, image: UIImage(systemName: menuSymbol), children: previews))
             }
             items += [
                 UIAction(title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")) { _ in

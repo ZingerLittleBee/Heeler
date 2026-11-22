@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Testing
 import UIKit
+import UniformTypeIdentifiers
 
 @testable import Heeler
 
@@ -1221,6 +1222,258 @@ struct AgentComposerStoreTests {
         #expect(ComposerDropItem.textDrop("keep") == .text("keep"))
     }
 
+    @Test func pastingClipboardVideoStagesVideoFileInsteadOfThumbnailImage() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-paste-video-\(UUID().uuidString)", isDirectory: true)
+        let preparedDir = root.appendingPathComponent("prepared", isDirectory: true)
+        let inboxDir = root.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let mp4Bytes = Data([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6F, 0x6D])
+        let recordedFiles = LockedArray<PreparedFile>()
+        let stagedImageCount = LockedCounter()
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in
+                stagedImageCount.increment()
+                return try StagedImage(path: "/tmp/heeler-stage/image.jpg")
+            },
+            stageFile: { file, _ in
+                recordedFiles.append(file)
+                return try StagedFile(path: "/tmp/heeler-stage/\(file.remoteFilename)")
+            },
+            filePreparer: FilePreparer(directory: preparedDir))
+
+        let selection = ClipboardVideoSelection(
+            content: .data(mp4Bytes, preferredType: .mpeg4Movie, suggestedName: "RPReplay_Final.mp4"),
+            inboxRoot: inboxDir)
+        session.pasteClipboard(.file(selection))
+
+        try await waitUntil("pasted video should stage as a video pill", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/RPReplay_Final.mp4"]
+        }
+
+        #expect(stagedImageCount.value == 0)
+        #expect(store.imageAttachments.count == 1)
+        #expect(store.imageAttachments.first?.kind == .video)
+        let previewURL = try #require(store.imageAttachments.first?.preview?.fileURL)
+        #expect(FileManager.default.fileExists(atPath: previewURL.path))
+        let staged = recordedFiles.values
+        #expect(staged.count == 1)
+        #expect(staged.first?.fileExtension == "mp4")
+        #expect(staged.first?.remoteFilename == "RPReplay_Final.mp4")
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/RPReplay_Final.mp4 ")
+        let inboxRemnants = try? FileManager.default.contentsOfDirectory(at: inboxDir, includingPropertiesForKeys: nil)
+        #expect(inboxRemnants?.isEmpty != false)
+
+        // Removing the video pill deletes the retained local file.
+        store.removeImageAttachment(id: try #require(store.imageAttachments.first?.id))
+        #expect(!FileManager.default.fileExists(atPath: previewURL.path))
+    }
+
+    @Test func unreadableClipboardVideoSurfacesClipboardErrorWithoutStagingImage() async throws {
+        let store = Self.draftOnlyStore()
+        let stagedImageCount = LockedCounter()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in
+                stagedImageCount.increment()
+                return try StagedImage(path: "/tmp/heeler-stage/image.jpg")
+            },
+            stageFile: { _, _ in
+                try StagedFile(path: "/tmp/heeler-stage/video.mov")
+            })
+
+        session.pasteClipboard(.file(ClipboardVideoSelection(content: .unreadable)))
+
+        try await waitUntil("unreadable clipboard video should fail", timeout: .seconds(5)) {
+            if case .failed = session.staging.state { return true }
+            return false
+        }
+
+        #expect(stagedImageCount.value == 0)
+        #expect(store.imageAttachments.isEmpty)
+        if case .failed(let failure) = session.staging.state {
+            #expect(failure.medium == .file)
+            #expect(!failure.isRetryable)
+            #expect(failure.message.contains("Allow Paste"))
+        } else {
+            Issue.record("Expected failed staging state")
+        }
+    }
+
+    @Test func droppingVideoFileStagesThroughFilePipelineAndCleansInbox() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-drop-video-\(UUID().uuidString)", isDirectory: true)
+        let sourceDir = root.appendingPathComponent("source", isDirectory: true)
+        let preparedDir = root.appendingPathComponent("prepared", isDirectory: true)
+        let inboxDir = root.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourceURL = sourceDir.appendingPathComponent("screen_recording.mov")
+        let movBytes = Data([0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20, 0x20])
+        try movBytes.write(to: sourceURL)
+
+        let droppedItem = ComposerDropItem.fileDrop(
+            from: sourceURL,
+            fallbackType: .quickTimeMovie,
+            inboxRoot: inboxDir)
+        guard case .file(_, let cleanupURL) = droppedItem, let cleanupURL else {
+            Issue.record("Expected dropped video to produce an inbox file item")
+            return
+        }
+        // Removing the original simulates SwiftUI reclaiming `received.file`.
+        try FileManager.default.removeItem(at: sourceURL)
+
+        let recordedFiles = LockedArray<PreparedFile>()
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-stage/image.jpg") },
+            stageFile: { file, _ in
+                recordedFiles.append(file)
+                return try StagedFile(path: "/tmp/heeler-stage/\(file.remoteFilename)")
+            },
+            filePreparer: FilePreparer(directory: preparedDir))
+
+        store.acceptDrop([.text("check this"), droppedItem])
+
+        try await waitUntil("dropped video should stage as a video pill", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/screen_recording.mov"]
+        }
+
+        #expect(store.imageAttachments.map(\.kind) == [.video])
+        #expect(recordedFiles.values.map(\.remoteFilename) == ["screen_recording.mov"])
+        #expect(store.draft == "check this")
+        #expect(store.composedDraft == "check this /tmp/heeler-stage/screen_recording.mov ")
+        #expect(!FileManager.default.fileExists(atPath: cleanupURL.path))
+    }
+
+    @Test func droppingOversizedVideoSurfacesFileLimitError() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-drop-oversized-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let hugeURL = root.appendingPathComponent("huge.mp4")
+        try Data(repeating: 0x02, count: 32).write(to: hugeURL)
+        let item = ComposerDropItem.fileDrop(
+            from: hugeURL,
+            fallbackType: .mpeg4Movie,
+            maximumByteCount: 8,
+            inboxRoot: root.appendingPathComponent("inbox", isDirectory: true))
+        #expect(item == .oversizedFile)
+
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-stage/image.jpg") },
+            stageFile: { _, _ in try StagedFile(path: "/tmp/heeler-stage/huge.mp4") })
+
+        store.acceptDrop([item])
+
+        try await waitUntil("oversized drop should fail with limit message", timeout: .seconds(5)) {
+            if case .failed = session.staging.state { return true }
+            return false
+        }
+        if case .failed(let failure) = session.staging.state {
+            #expect(failure.medium == .file)
+            #expect(failure.message.contains("64 MiB"))
+        } else {
+            Issue.record("Expected failed staging state")
+        }
+    }
+
+    @Test func droppingImageAndVideoStagesBothInSequence() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-drop-mixed-\(UUID().uuidString)", isDirectory: true)
+        let sourceDir = root.appendingPathComponent("source", isDirectory: true)
+        let preparedDir = root.appendingPathComponent("prepared", isDirectory: true)
+        let inboxDir = root.appendingPathComponent("inbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let videoURL = sourceDir.appendingPathComponent("clip.mp4")
+        try Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]).write(to: videoURL)
+        let droppedVideo = ComposerDropItem.fileDrop(from: videoURL, fallbackType: .mpeg4Movie, inboxRoot: inboxDir)
+        let jpeg = try Self.tinyJPEGData()
+
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-stage/image.jpg") },
+            stageFile: { file, _ in try StagedFile(path: "/tmp/heeler-stage/\(file.remoteFilename)") },
+            filePreparer: FilePreparer(directory: preparedDir))
+
+        store.acceptDrop([.image(jpeg, suggestedName: "frame.jpg"), droppedVideo])
+
+        try await waitUntil("both dropped image and video should finish staging", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg", "/tmp/heeler-stage/clip.mp4"]
+        }
+        #expect(store.imageAttachments.map(\.kind) == [.image, .video])
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/image.jpg /tmp/heeler-stage/clip.mp4 ")
+    }
+
+    @Test func pickingVideosAndPhotosFromPhotosPickerStagesVideosAsFilesAndPhotosAsPills() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("composer-picked-media-\(UUID().uuidString)", isDirectory: true)
+        let sourceDir = root.appendingPathComponent("source", isDirectory: true)
+        let preparedDir = root.appendingPathComponent("prepared", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstVideo = sourceDir.appendingPathComponent("first_clip.mov")
+        let secondVideo = sourceDir.appendingPathComponent("second_clip.mp4")
+        try Data([0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70]).write(to: firstVideo)
+        try Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]).write(to: secondVideo)
+        let jpeg = try Self.tinyJPEGData()
+
+        let recordedFiles = LockedArray<String>()
+        let store = Self.draftOnlyStore()
+        let session = AgentComposerSession(
+            composer: store,
+            stageImage: { _, _ in try StagedImage(path: "/tmp/heeler-stage/image.jpg") },
+            stageFile: { file, _ in
+                recordedFiles.append(file.remoteFilename)
+                return try StagedFile(path: "/tmp/heeler-stage/\(file.remoteFilename)")
+            },
+            filePreparer: FilePreparer(directory: preparedDir))
+
+        // First: pick two videos in one Photos selection.
+        session.enqueuePickedMedia([
+            .file(URLFileSelection(url: firstVideo)),
+            .file(URLFileSelection(url: secondVideo)),
+        ])
+
+        try await waitUntil("both picked videos should stage in order", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/first_clip.mov", "/tmp/heeler-stage/second_clip.mp4"]
+        }
+        #expect(recordedFiles.values == ["first_clip.mov", "second_clip.mp4"])
+        #expect(store.imageAttachments.map(\.kind) == [.video, .video])
+        #expect(store.draft.isEmpty)
+        #expect(store.composedDraft == "/tmp/heeler-stage/first_clip.mov /tmp/heeler-stage/second_clip.mp4 ")
+
+        // Remove the two video pills, then test mixed photo + video selection.
+        for attachment in store.imageAttachments {
+            store.removeImageAttachment(id: attachment.id)
+        }
+        session.enqueuePickedMedia([
+            .image(DataImageSelection(data: jpeg)),
+            .file(URLFileSelection(url: firstVideo)),
+        ])
+
+        try await waitUntil("mixed photo and video selection should stage both", timeout: .seconds(5)) {
+            store.readyImagePaths == ["/tmp/heeler-stage/image.jpg", "/tmp/heeler-stage/first_clip.mov"]
+        }
+        #expect(store.imageAttachments.map(\.kind) == [.image, .video])
+        #expect(store.composedDraft == "/tmp/heeler-stage/image.jpg /tmp/heeler-stage/first_clip.mov ")
+    }
+
     @Test func targetedHighlightIsStrongerThanIdle() {
         let idle = ComposerDropHighlight(isTargeted: false)
         let targeted = ComposerDropHighlight(isTargeted: true)
@@ -1754,5 +2007,31 @@ private actor LeaveStageCounter {
         await gate.waitUntilOpen()
         count += 1
         return try StagedImage(path: "/tmp/leave-\(count).jpg")
+    }
+}
+
+private final class LockedArray<Element: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Element] = []
+
+    var values: [Element] {
+        lock.withLock { storage }
+    }
+
+    func append(_ element: Element) {
+        lock.withLock { storage.append(element) }
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = 0
+
+    var value: Int {
+        lock.withLock { storage }
+    }
+
+    func increment() {
+        lock.withLock { storage += 1 }
     }
 }

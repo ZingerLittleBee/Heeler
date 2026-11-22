@@ -537,13 +537,28 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
-    @Test(arguments: [ChatProgram.claude, .codex, .grok, .agy])
+    @Test(arguments: [ChatProgram.claude, .codex, .grok])
     func missingSessionExplainsTheMissingIdentityWithoutAnInstallDiagnosis(program: ChatProgram) {
         let reason = ChatUnavailableReason.noSession(program)
         #expect(reason.title == "Waiting for Conversation")
         #expect(reason.explanation.contains("report"))
         #expect(!reason.explanation.lowercased().contains("install"))
         #expect(reason.offersRetry)
+        #expect(!reason.isAwaitingFirstMessage)
+    }
+
+    /// Antigravity CLI reports its conversation only after the first message, so
+    /// before any message it shows the same empty-conversation placeholder as a
+    /// new Claude Code conversation rather than Waiting for Conversation.
+    @Test func missingAntigravitySessionShowsEmptyConversation() {
+        let reason = ChatUnavailableReason.noSession(.agy)
+        #expect(reason.title == ChatUnavailableReason.awaitingFirstMessage(.claude).title)
+        #expect(reason.systemImage == ChatUnavailableReason.awaitingFirstMessage(.claude).systemImage)
+        #expect(reason.explanation.contains("report"))
+        #expect(!reason.explanation.lowercased().contains("install"))
+        #expect(reason.isAwaitingFirstMessage)
+        #expect(reason.isWaiting)
+        #expect(!reason.offersRetry)
     }
 
     @Test(arguments: [true, false])
@@ -4687,6 +4702,57 @@ struct AgentChatStoreTests {
         await fixture.files.append(NumberedChatReducer.prompt("Next task"), to: transcriptPath)
         await fixture.store.step()
         #expect(fixture.store.backgroundWork.rows.isEmpty)
+    }
+
+    @Test func claudePrefetchContinuesWatchingBackgroundCommandWhileHiddenAndStopsOnceDone() async throws {
+        let session = Self.first
+        let path = Self.path(session)
+        let taskID = "b1234abcd"
+        let outputPath = "/tmp/claude-501/-home-dev-proj/\(session)/tasks/\(taskID).output"
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: session, program: .claude,
+            timing: AgentChatStore.Timing(activeInterval: .milliseconds(10), idleInterval: .milliseconds(10)),
+            adapter: ChatTranscriptAdapter.standard(for: .claude),
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        // Launch timestamp is 4h before `now` (past the 3h transcript silence limit),
+        // while the command's output file was just written at `VirtualHostFiles`'s clock (~1_780_000_000).
+        fixture.clock.now = Date(timeIntervalSince1970: 1_780_000_060)
+
+        let initial = [
+            #"{"type":"user","uuid":"u1","timestamp":"2026-05-27T14:00:00.000Z","message":{"role":"user","content":"Watch the release run"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-05-27T14:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_bg1","name":"Bash","input":{"command":"gh run watch 45026501363","description":"Wait for the release run","run_in_background":true}}]}}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-05-27T14:00:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_bg1","content":"Command running in background with ID: \#(taskID). Output is being written to: \#(outputPath)"}]},"toolUseResult":{"backgroundTaskId":"\#(taskID)"}}"#,
+            #"{"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-05-27T14:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Watching the release run in the background."}]}}"#,
+        ].joined(separator: "\n") + "\n"
+        await fixture.files.write(initial, at: path)
+        await fixture.files.write("still running...\n", at: outputPath)
+
+        #expect(await fixture.store.prefetch())
+        #expect(!fixture.store.isVisible)
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(fixture.store.backgroundWork.rows.map(\.isStale) == [false])
+        #expect(reported == [true])
+
+        // Without opening Chat or receiving any further Host event, the hidden
+        // watch loop notices the `<task-notification>` completion and stops polling.
+        let completion =
+            #"{"type":"user","uuid":"n1","parentUuid":"a2","timestamp":"2026-05-27T18:14:25.000Z","message":{"role":"user","content":"<task-notification>\n<task-id>\#(taskID)</task-id>\n<tool-use-id>toolu_bg1</tool-use-id>\n<output-file>\#(outputPath)</output-file>\n<status>completed</status>\n<summary>Background command \"Wait for the release run\" completed (exit code 0)</summary>\n</task-notification>"}}"#
+            + "\n"
+        await fixture.files.append(completion, to: path)
+
+        try await Self.waitUntil { !fixture.store.hasRunningBackgroundWork }
+        #expect(reported == [true, false])
+        try await Task.sleep(for: .milliseconds(25))
+        let readsAfterCompletion = await fixture.files.reads.count
+        await fixture.files.append(
+            #"{"type":"user","uuid":"u2","parentUuid":"n1","timestamp":"2026-05-27T18:14:30.000Z","message":{"role":"user","content":"Follow up"}}"#
+                + "\n",
+            to: path)
+        try await Task.sleep(for: .milliseconds(35))
+        #expect(
+            await fixture.files.reads.count == readsAfterCompletion,
+            "hidden watch loop stops once Claude Code background work finishes")
     }
 
     @Test func prefetchPrewarmsTimelineAndEndResetsIt() async throws {

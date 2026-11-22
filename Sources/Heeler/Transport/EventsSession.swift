@@ -461,6 +461,9 @@ actor EventsSession {
     /// survived gets one probe, and only a failed probe replaces the connection.
     /// A channel-open timeout retires the session in the driver, so it skips the
     /// probe: that session must not admit more work even if the socket lives.
+    /// When this deadline was the one that cancelled the open, the driver first
+    /// gives the server two more seconds to answer; the probe waits behind that
+    /// and fails if the session was retired after all.
     private func connectionSurvives(_ error: any Error, on transport: any Transport) async -> Bool {
         guard error as? TransportError == .timedOut, await transport.isConnected else {
             return false

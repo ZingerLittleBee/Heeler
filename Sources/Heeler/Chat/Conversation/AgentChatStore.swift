@@ -597,8 +597,8 @@ final class AgentChatStore {
     }
 
     /// A Chat view left the screen. The last one out stops reading, saving
-    /// what showed, unless Antigravity CLI still runs Background Work that
-    /// holds the Agent's status at Working.
+    /// what showed, unless Background Work still holds the Agent's status at
+    /// Working.
     func hide(_ viewer: UUID = AgentChatStore.soleViewer) {
         viewers.remove(viewer)
         guard viewers.isEmpty else { return }
@@ -718,14 +718,18 @@ final class AgentChatStore {
 
     // MARK: Requests
 
+    /// Host file access shared with the transcript loop, used by Chat media
+    /// previews (such as playing a staged video).
+    var hostFiles: ChatHostFiles { source.files }
+
     /// Preview reads use the same Host connection as the transcript;
     /// thumbnails come from ``thumbnails``. A path a message names may be
     /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: try await hostPath(ofImage: path), files: source.files)
+        try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
     }
 
-    private func hostPath(ofImage path: String) async throws -> String {
+    func resolveHostPath(_ path: String) async throws -> String {
         if path.hasPrefix("/") { return path }
         let home = path.hasPrefix("~/") ? try await source.files.home() : nil
         let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
@@ -1206,9 +1210,13 @@ final class AgentChatStore {
                 if engine === self.engine {
                     claudeWorkflowEvidence = stampingEndPromptOffsets(workflowEnds, previous: claudeWorkflowEvidence)
                 }
-                let commandOutputs = await engine.followClaudeCommandOutputs()
-                if engine === self.engine { claudeCommandEvidence = commandOutputs }
             }
+        }
+        if olderRequest == nil, program == .claude, polled || opened,
+            case .following = snapshot.phase, snapshot.readFailure == nil
+        {
+            let commandOutputs = await engine.followClaudeCommandOutputs()
+            if engine === self.engine { claudeCommandEvidence = commandOutputs }
         }
         if olderRequest == nil, program == .agy, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
@@ -1261,12 +1269,13 @@ final class AgentChatStore {
         }
     }
 
-    /// Antigravity CLI's Host hook reports `Idle` once its foreground turn
-    /// finishes, even while its Subagents, Workflows, or background commands
-    /// keep running. Keep polling gently while hidden until they finish so
-    /// the Console's Working adaptation clears on time.
+    /// Antigravity CLI and Claude Code report `Idle` or `Done` once a
+    /// foreground turn finishes, even while their Subagents, Workflows,
+    /// background commands, or Monitors keep running. Keep polling gently
+    /// while hidden until they finish so the Console's Working adaptation
+    /// clears on time.
     private var watchesBackgroundWorkWhileHidden: Bool {
-        program == .agy && hasRunningBackgroundWork
+        program.promotesBackgroundWorkToWorking && hasRunningBackgroundWork
     }
 
     private var shouldRunLoop: Bool {

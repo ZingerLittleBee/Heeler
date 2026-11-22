@@ -163,7 +163,8 @@ struct ChatMarkdownView: View {
                 if !chunk.characters.isEmpty { pieces.append(Text(chunk)) }
                 chunk = AttributedString()
                 // A no-break space keeps the symbol on its path's line.
-                pieces.append(Text("\(Image(systemName: "photo"))\u{00A0}").foregroundStyle(.tint))
+                let symbol = ChatImageLink.mediaKind(for: path) == .video ? "film" : "photo"
+                pieces.append(Text("\(Image(systemName: symbol))\u{00A0}").foregroundStyle(.tint))
             }
             previousPath = path
             chunk.append(styled[run.range])
@@ -187,21 +188,41 @@ struct ChatImageOpener {
     }
 }
 
+/// Opens a web link that names the Host's loopback interface, where the
+/// browser would look on this device. False leaves the link to the browser.
+/// Rows that can show a port preview put one in the environment.
+struct ChatHostLinkOpener {
+    let open: @MainActor (URL) -> Bool
+}
+
 extension EnvironmentValues {
     @Entry var chatImageOpener: ChatImageOpener? = nil
+    @Entry var chatHostLinkOpener: ChatHostLinkOpener? = nil
 }
 
 extension View {
     /// What links in message text do: web links that pass `ChatLinkPolicy`
-    /// open in the browser and image paths in Chat's preview; nothing else
-    /// the model wrote acts on the phone.
+    /// open in the browser, or in a port preview when they name the Host's
+    /// own loopback interface, and image paths in Chat's preview; nothing
+    /// else the model wrote acts on the phone.
     func chatMessageLinks(opener: ChatImageOpener?) -> some View {
-        environment(\.openURL, OpenURLAction { url in
+        modifier(ChatMessageLinks(imageOpener: opener))
+    }
+}
+
+private struct ChatMessageLinks: ViewModifier {
+    let imageOpener: ChatImageOpener?
+    @Environment(\.chatHostLinkOpener) private var hostLinkOpener
+
+    func body(content: Content) -> some View {
+        content.environment(\.openURL, OpenURLAction { url in
             if let reference = ChatImageLink.opening(url) {
-                opener?.open(reference.path, reference.title)
-                return opener == nil ? .discarded : .handled
+                imageOpener?.open(reference.path, reference.title)
+                return imageOpener == nil ? .discarded : .handled
             }
-            return ChatLinkPolicy.allows(url) ? .systemAction : .discarded
+            guard ChatLinkPolicy.allows(url) else { return .discarded }
+            if let hostLinkOpener, hostLinkOpener.open(url) { return .handled }
+            return .systemAction
         })
     }
 }

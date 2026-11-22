@@ -55,9 +55,10 @@ struct AgentDetailStatusChrome: View {
                 AgentPermissionModeLabel(settings: session, controls: sessionControls)
                 if showsGit { StatusLineDivider() }
             }
-            // The Checkout's stretch, from the git item to the totals and
-            // the gap between them, is what opens Changes; the status and
-            // the latency are not.
+            // The git item and the totals open Changes. The gap between
+            // them does not, nor do the status and the latency: the gap is
+            // most of the line over a clean Checkout, right under the
+            // keyboard grabber and over the input.
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 if let store {
                     // Gives way first: only its branch shortens.
@@ -76,7 +77,6 @@ struct AgentDetailStatusChrome: View {
                     .modifier(OpensChanges(open: open))
                 }
             }
-            .modifier(OpensChangesOnTap(open: open))
             if let hostTelemetry {
                 if showsTotals { StatusLineDivider() }
                 hostTelemetryLabel(hostTelemetry)
@@ -165,34 +165,26 @@ private struct StatusLineDivider: View {
     }
 }
 
-/// The Checkout's stretch of the line is one touch target, a few points
-/// taller than its text without taking more room: the Tide git item and
-/// the totals alone are too small to hit. Unconditional, so the line keeps
-/// its identity when a read lands and the line starts opening Changes.
-private struct OpensChangesOnTap: ViewModifier {
-    let open: (() -> Void)?
-    private static let slop: CGFloat = 6
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.vertical, Self.slop)
-            .contentShape(.rect)
-            .onTapGesture { open?() }
-            .allowsHitTesting(open != nil)
-            .padding(.vertical, -Self.slop)
-    }
-}
-
-/// VoiceOver reaches Changes from the git item and the totals, each its
-/// own element, rather than from one button that would swallow them.
+/// The Tide git item and the totals each open Changes, for a touch and for
+/// VoiceOver. The touch target is as wide as the text and a few points
+/// taller, without taking more room: the text alone is too short to hit,
+/// and a touch already reaches it from about a finger's width to either
+/// side. Unconditional, so the line keeps its identity when a read lands
+/// and the line starts opening Changes.
 private struct OpensChanges: ViewModifier {
     let open: (() -> Void)?
+    private static let slop: CGFloat = 6
 
     func body(content: Content) -> some View {
         content
             .accessibilityAddTraits(open == nil ? [] : .isButton)
             .accessibilityHint(open == nil ? "" : "Opens Changes")
             .accessibilityAction { open?() }
+            .padding(.vertical, Self.slop)
+            .contentShape(.rect)
+            .onTapGesture { open?() }
+            .allowsHitTesting(open != nil)
+            .padding(.vertical, -Self.slop)
     }
 }
 
@@ -348,6 +340,7 @@ struct AgentPermissionModeLabel: View {
     var controls: AgentSessionControls? = nil
     @State private var confirmsBypass = false
     @Environment(\.colorScheme) private var colorScheme
+    private static let touchSlop: CGFloat = 8
 
     var body: some View {
         Group {
@@ -369,17 +362,20 @@ struct AgentPermissionModeLabel: View {
         let isSwitching = controls?.isSwitchingPermissionMode == true
         let prefix = mode.isEmpty && !isSwitching ? "" : (mode == "plan" ? "⏸\u{FE0E} " : "⏵⏵ ")
         let text = HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text(verbatim: prefix)
-                .opacity(isSwitching ? 0 : 1)
-                .overlay {
-                    if isSwitching {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(permissionInk(mode))
-                            .scaleEffect(0.65)
-                            .accessibilityHidden(true)
+            // Left out when empty: even an empty Text makes the line taller.
+            if !prefix.isEmpty {
+                Text(verbatim: prefix)
+                    .opacity(isSwitching ? 0 : 1)
+                    .overlay {
+                        if isSwitching {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(permissionInk(mode))
+                                .scaleEffect(0.65)
+                                .accessibilityHidden(true)
+                        }
                     }
-                }
+            }
             Text(verbatim: AgentSessionSettings.permissionTitle(mode))
         }
             .font(.caption2.weight(.medium))
@@ -401,8 +397,11 @@ struct AgentPermissionModeLabel: View {
                 }
                 .labelsHidden()
             } label: {
-                text.frame(minHeight: 28).contentShape(Rectangle())
+                text.padding(.vertical, Self.touchSlop).contentShape(Rectangle())
             }
+            // A finger's height without the room: a taller label would lift
+            // the status line above one that has no menu.
+            .padding(.vertical, -Self.touchSlop)
             .disabled(!controls.isEnabled)
             .accessibilityLabel("Permission mode")
             .accessibilityValue(isSwitching

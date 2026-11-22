@@ -80,6 +80,34 @@ final class AgentComposerSession {
         return policy
     }
 
+    /// Routes clipboard media to file staging (when a video is present) or
+    /// image staging, so copied videos never degrade into their poster frame.
+    func pasteClipboard(_ attachment: ClipboardAttachment = .current()) {
+        switch attachment {
+        case .file(let selection):
+            if staging.begin(.fileSelection(selection)) == nil {
+                composer.enqueueFile(selection)
+            }
+        case .image(let selection):
+            composer.enqueueImages([selection])
+        }
+    }
+
+    /// Enqueues photos and videos picked from the Photos library in selection
+    /// order: photos and videos both appear as Composer pills above the input,
+    /// with photos staging through `ImagePreparer` and videos through `FilePreparer`.
+    func enqueuePickedMedia(_ items: [PickedMedia]) {
+        guard !items.isEmpty else { return }
+        for item in items {
+            switch item {
+            case .image(let selection):
+                composer.enqueueImages([selection])
+            case .file(let selection):
+                composer.enqueueFile(selection)
+            }
+        }
+    }
+
     func detailDidAppear(_ key: UUID) {
         presence.insert(key)
     }

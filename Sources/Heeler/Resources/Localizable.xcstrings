@@ -1728,6 +1728,28 @@
         }
       }
     },
+    "%@ refused the connection. The server may have stopped, or it may be using another port." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が接続を拒否しました。サーバーが停止したか、別のポートを使用している可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 拒绝了连接。服务器可能已停止，或正在使用其他端口。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 拒絕了連線。伺服器可能已停止，或正在使用其他連接埠。"
+          }
+        }
+      }
+    },
     "%@ saves this conversation after its first reply." : {
       "localizations" : {
         "ja" : {
@@ -3659,6 +3681,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 個項目"
+          }
+        }
+      }
+    },
+    "%lld lines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld lines"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 行"
           }
         }
       }
@@ -6457,6 +6519,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機上的路徑。~ 代表家目錄。"
+          }
+        }
+      }
+    },
+    "A port or address typed above still opens." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上に入力したポートまたはアドレスはそのまま開けます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在上方输入的端口或地址仍可打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在上方輸入的連接埠或位址仍可開啟。"
           }
         }
       }
@@ -12614,6 +12698,72 @@
         }
       }
     },
+    "Can't Open This Page" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このページを開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开此页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開此頁面"
+          }
+        }
+      }
+    },
+    "Can't Reach %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に到達できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 %@"
+          }
+        }
+      }
+    },
+    "Can't Read Ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポートを読み取れません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取連接埠"
+          }
+        }
+      }
+    },
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -17830,6 +17980,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "複製路徑"
+          }
+        }
+      }
+    },
+    "Copy Post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿をコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製訊息"
           }
         }
       }
@@ -25338,6 +25510,28 @@
         }
       }
     },
+    "Forward" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前进"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前進"
+          }
+        }
+      }
+    },
     "Forward Delete" : {
       "localizations" : {
         "ja" : {
@@ -25555,6 +25749,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動產生"
+          }
+        }
+      }
+    },
+    "Generate random branch" : {
+      "comment" : "Accessibility label for the button that generates a random worktree branch name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ランダムなブランチを生成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成随机分支"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "產生隨機分支"
           }
         }
       }
@@ -29104,6 +29321,28 @@
         }
       }
     },
+    "Heeler shows a page from %@ on the same port of this device, and something else here holds that port. Close the app that uses it, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は %@ のページをこのデバイスの同じポートで表示しますが、そのポートはここで別のものが使用しています。使用している App を閉じてから、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 通过此设备上的同一个端口显示 %@ 的页面，而这个端口已被其他程序占用。请关闭占用它的 App，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 透過此裝置上的同一個連接埠顯示 %@ 的頁面，而這個連接埠已被其他程式佔用。請關閉佔用它的 App，然後重試。"
+          }
+        }
+      }
+    },
     "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on %@. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
@@ -30984,6 +31223,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "匯入 Planet 檔案…"
+          }
+        }
+      }
+    },
+    "In %@" : {
+      "comment" : "Header over the ports of programs working in one folder; the placeholder is the folder's name.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 内"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 中"
           }
         }
       }
@@ -33973,6 +34235,28 @@
         }
       }
     },
+    "Loading" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込み中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加载"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "載入中"
+          }
+        }
+      }
+    },
     "Loading Agents from %@…" : {
       "comment" : "Console row while a Host's Agents load. %@ is the Host name.",
       "localizations" : {
@@ -36320,6 +36604,28 @@
         }
       }
     },
+    "Next post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一則訊息"
+          }
+        }
+      }
+    },
     "Night Owl" : {
       "shouldTranslate" : false
     },
@@ -36588,6 +36894,28 @@
         }
       }
     },
+    "No Listening Ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リッスン中のポートはありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有正在监听的端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有正在監聽的連接埠"
+          }
+        }
+      }
+    },
     "No Loaded Folders" : {
       "localizations" : {
         "ja" : {
@@ -36673,6 +37001,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有符合的項目"
+          }
+        }
+      }
+    },
+    "No Matching Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一致する投稿がありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有符合的訊息"
           }
         }
       }
@@ -37670,6 +38020,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚無節點"
+          }
+        }
+      }
+    },
+    "No posts match the current filter." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のフィルタに一致する投稿はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有消息符合当前筛选条件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有訊息符合目前的篩選條件。"
           }
         }
       }
@@ -38982,6 +39354,28 @@
         }
       }
     },
+    "Nothing Is Listening on Port %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート %@ でリッスンしているものはありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口 %@ 上没有程序在监听"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠 %@ 上沒有程式在監聽"
+          }
+        }
+      }
+    },
     "Nothing Saved Yet" : {
       "localizations" : {
         "ja" : {
@@ -39044,6 +39438,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這裡列出的項目都不符合「%@」。"
+          }
+        }
+      }
+    },
+    "Nothing on %@ is listening on a port this account can see. A server that has just started appears after a refresh." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上で、このアカウントから見えるポートをリッスンしているものはありません。起動したばかりのサーバーは更新後に表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上没有程序正在监听此账户可见的端口。刚启动的服务器会在刷新后显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上沒有程式在監聽此帳號可見的連接埠。剛啟動的伺服器會在重新整理後顯示。"
           }
         }
       }
@@ -39688,6 +40104,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟"
+          }
+        }
+      }
+    },
+    "On %@" : {
+      "comment" : "Header over the ports a Host's programs listen on.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上"
           }
         }
       }
@@ -41607,6 +42046,28 @@
         }
       }
     },
+    "Opens in a preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューで開きます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在预览中打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在預覽中開啟"
+          }
+        }
+      }
+    },
     "Opens in your default browser" : {
       "localizations" : {
         "ja" : {
@@ -42161,6 +42622,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "其他資料夾…"
+          }
+        }
+      }
+    },
+    "Other Ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他のポート"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他連接埠"
           }
         }
       }
@@ -43722,6 +44205,29 @@
         }
       }
     },
+    "Plays a preview of the video" : {
+      "comment" : "Accessibility hint on a Composer video pill.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画のプレビューを再生します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放视频预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放影片預覽"
+          }
+        }
+      }
+    },
     "Plays when the download finishes. The copy is removed when you close the preview." : {
       "localizations" : {
         "ja" : {
@@ -43940,6 +44446,28 @@
         }
       }
     },
+    "Port %@ Is in Use on This Device" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート %@ はこのデバイスで使用中です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口 %@ 在此设备上已被占用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠 %@ 在此裝置上已被佔用"
+          }
+        }
+      }
+    },
     "Port %@." : {
       "localizations" : {
         "ja" : {
@@ -43958,6 +44486,116 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "連接埠 %@。"
+          }
+        }
+      }
+    },
+    "Port Forwarding Is Not Allowed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート転送が許可されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不允许端口转发"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不允許連接埠轉送"
+          }
+        }
+      }
+    },
+    "Port Preview" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポートプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠預覽"
+          }
+        }
+      }
+    },
+    "Port or localhost URL" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポートまたは localhost URL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口或 localhost URL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠或 localhost URL"
+          }
+        }
+      }
+    },
+    "Ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠"
+          }
+        }
+      }
+    },
+    "Ports that programs on %@ are listening on. Pages open through the Host's SSH connection." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上のプログラムがリッスンしているポートです。ページはホストの SSH 接続経由で開きます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的程序正在监听的端口。页面会通过主机的 SSH 连接打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的程式正在監聽的連接埠。頁面會透過主機的 SSH 連線開啟。"
           }
         }
       }
@@ -44004,6 +44642,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可能不完整。%@。"
+          }
+        }
+      }
+    },
+    "Post #%lld" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿 #%lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息 #%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息 #%lld"
+          }
+        }
+      }
+    },
+    "Post Unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿を表示できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法显示消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法顯示訊息"
           }
         }
       }
@@ -44471,6 +45153,72 @@
         }
       }
     },
+    "Preview Media" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メディアをプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览媒体"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預覽媒體"
+          }
+        }
+      }
+    },
+    "Preview Video" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画をプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預覽影片"
+          }
+        }
+      }
+    },
+    "Previous" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前へ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一条"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一則"
+          }
+        }
+      }
+    },
     "Previous Agent" : {
       "localizations" : {
         "ja" : {
@@ -44533,6 +45281,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上一次嘗試"
+          }
+        }
+      }
+    },
+    "Previous post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前の投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一条消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一則訊息"
           }
         }
       }
@@ -45863,6 +46633,28 @@
         }
       }
     },
+    "Reading ports on %@…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ のポートを読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取 %@ 上的端口…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取 %@ 上的連接埠…"
+          }
+        }
+      }
+    },
     "Reading the Agent's screen" : {},
     "Reading the board" : {
       "localizations" : {
@@ -46108,6 +46900,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在重新連線到 %@：%@"
+          }
+        }
+      }
+    },
+    "Reconnecting to %@…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に再接続中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新连接 %@…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重新連線到 %@…"
           }
         }
       }
@@ -47798,6 +48612,28 @@
         }
       }
     },
+    "Request Desktop Website" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップ用Webサイトを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求桌面网站"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換為電腦版網站"
+          }
+        }
+      }
+    },
     "Request Field" : {
       "localizations" : {
         "ja" : {
@@ -47816,6 +48652,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請求欄位"
+          }
+        }
+      }
+    },
+    "Request Mobile Website" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モバイル用Webサイトを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求移动网站"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換為行動版網站"
           }
         }
       }
@@ -50461,6 +51319,28 @@
         }
       }
     },
+    "Send Screenshot to Agent" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットをエージェントに送信"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将截图发送给 Agent"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將截圖傳送給 Agent"
+          }
+        }
+      }
+    },
     "Sending once the last words settle" : {
       "localizations" : {
         "ja" : {
@@ -51502,6 +52382,28 @@
         }
       }
     },
+    "Show All Posts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべての投稿を表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示全部消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示全部訊息"
+          }
+        }
+      }
+    },
     "Show All Statuses" : {
       "comment" : "Button that clears the status filter.",
       "localizations" : {
@@ -51701,6 +52603,28 @@
         }
       }
     },
+    "Show Ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポートを表示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示連接埠"
+          }
+        }
+      }
+    },
     "Show Sidebar" : {
       "localizations" : {
         "ja" : {
@@ -51789,28 +52713,6 @@
         }
       }
     },
-    "Show full brief" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "指示の全文を表示"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展开完整简报"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展開完整簡報"
-          }
-        }
-      }
-    },
     "Show iOS keyboard" : {
       "localizations" : {
         "ja" : {
@@ -51851,28 +52753,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示鍵盤"
-          }
-        }
-      }
-    },
-    "Show less" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "折りたたむ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起"
           }
         }
       }
@@ -52345,6 +53225,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示所有背景工作。"
+          }
+        }
+      }
+    },
+    "Shows the Host's ports" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストのポートを表示します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示主机的端口"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示主機的連接埠"
           }
         }
       }
@@ -58980,6 +59882,28 @@
         }
       }
     },
+    "The Host did not answer." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストから応答がありませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機沒有回應。"
+          }
+        }
+      }
+    },
     "The Host did not answer. Check the connection and retry." : {
       "localizations" : {
         "ja" : {
@@ -60139,6 +61063,28 @@
         }
       }
     },
+    "The Host's answer could not be read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストからの応答を読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取主机的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取主機的回應。"
+          }
+        }
+      }
+    },
     "The Host's connection was reset." : {
       "localizations" : {
         "ja" : {
@@ -60889,6 +61835,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SSH 檔案操作失敗。"
+          }
+        }
+      }
+    },
+    "The SSH server on %@ refused to open the connection. Allow forwarding in its sshd_config, restart sshd, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の SSH サーバーが接続の開始を拒否しました。sshd_config で転送を許可し、sshd を再起動してから再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 SSH 服务器拒绝打开连接。请在其 sshd_config 中允许转发，重启 sshd 后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 SSH 伺服器拒絕開啟連線。請在其 sshd_config 中允許轉送，重新啟動 sshd 後再試一次。"
           }
         }
       }
@@ -63482,6 +64450,28 @@
         }
       }
     },
+    "The page reloads when the Host is back." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストが復帰するとページは再読み込みされます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机恢复后，页面将重新加载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機恢復後，頁面會重新載入。"
+          }
+        }
+      }
+    },
     "The panel has no such action." : {
       "comment" : "Planner refusal for Grok Build's subagent panel",
       "localizations" : {
@@ -63771,6 +64761,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "兩種外觀皆適用的熱門編輯器調色盤"
+          }
+        }
+      }
+    },
+    "The preview is closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレビューは閉じられています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览已关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預覽已關閉。"
           }
         }
       }
@@ -68311,6 +69323,28 @@
         }
       }
     },
+    "This post is no longer on the board." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この投稿はボード上に存在しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息已不在公告板上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這則訊息已不在公告板上。"
+          }
+        }
+      }
+    },
     "This program has not reported a state yet." : {
       "localizations" : {
         "ja" : {
@@ -69515,6 +70549,28 @@
         }
       }
     },
+    "Try HTTPS" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS を試す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尝试 HTTPS"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "嘗試 HTTPS"
+          }
+        }
+      }
+    },
     "Try again once they are back." : {
       "localizations" : {
         "ja" : {
@@ -70122,6 +71178,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未知"
+          }
+        }
+      }
+    },
+    "Unknown Program" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不明なプログラム"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知程序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知程式"
           }
         }
       }
@@ -72493,6 +73571,52 @@
         }
       }
     },
+    "Video #%@" : {
+      "comment" : "Short label shown in a sent Chat message bubble in place of a staged video's temporary Host path, numbered in order within the message (e.g. Video #1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画#%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频#%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片#%@"
+          }
+        }
+      }
+    },
+    "Video %@" : {
+      "comment" : "Title of an attached video pill in the Composer, numbered in order (e.g. Video 1).",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片 %@"
+          }
+        }
+      }
+    },
     "View" : {
       "localizations" : {
         "ja" : {
@@ -73163,6 +74287,28 @@
       }
     },
     "Waiting for tmux" : {},
+    "Waiting for video…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画を待機中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待视频…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待影片…"
+          }
+        }
+      }
+    },
     "Waiting to join" : {
       "comment" : "Overlay network status: waiting for an admin's approval or a config server's network assignment",
       "localizations" : {
@@ -77735,6 +78881,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未更新"
+          }
+        }
+      }
+    },
+    "on %@" : {
+      "comment" : "Under a page's address in a port preview: the Host whose localhost the page comes from.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位于 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位於 %@"
           }
         }
       }

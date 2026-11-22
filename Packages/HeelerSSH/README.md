@@ -227,6 +227,18 @@ byte stream. The target performs its own Host Key verification and
 authentication. Closing the target connection tears down the target session,
 forwarding channel, and Jump Host session in that order.
 
+`SSHConnection.openDirectTCPIPStream(endpoint:timeout:)` is the other use of
+`direct-tcpip`, and the opposite arrangement: the channel shares its session
+with every other channel instead of owning it. It opens through the same
+serialized slot as any channel, then joins the long-lived stream-local
+registry, so its reads, writes and close are those turns and not the Jump
+Host's pump. The server's own refusal of the open, `forwardingDenied` or
+`targetUnreachable`, leaves the session usable, and so does an open that
+settled after its caller left; any other failure of the open invalidates it,
+as for stream-local. `directTCPIPStreamSharesTheSession` covers both refusals
+against the modern sshd, and the cancelled-open tests count this open among
+their sites.
+
 The same CI fixture also runs `HeelerSSHJumpHostGateE2ETests` against two
 disposable sshd instances with independent Host Keys. The suite is a hard gate
 for protocol-17 direct-streamlocal traffic, failure taxonomy, cancellation,

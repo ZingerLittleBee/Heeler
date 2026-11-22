@@ -14,6 +14,7 @@ protocol ComposerDraftOperations: AnyObject {
     /// instead of raw path insertions into `draft`.
     var retainsImageAttachments: Bool { get }
     func imageStagingDidBegin(operationID: UInt64)
+    func imageStagingDidBegin(operationID: UInt64, kind: ComposerImageAttachment.MediaKind)
     func imageStagingDidPrepare(
         operationID: UInt64,
         preview: ComposerImageAttachment.Preview,
@@ -35,6 +36,9 @@ protocol ComposerDraftOperations: AnyObject {
 extension ComposerDraftOperations {
     var retainsImageAttachments: Bool { false }
     func imageStagingDidBegin(operationID: UInt64) {}
+    func imageStagingDidBegin(operationID: UInt64, kind: ComposerImageAttachment.MediaKind) {
+        imageStagingDidBegin(operationID: operationID)
+    }
     func imageStagingDidPrepare(
         operationID: UInt64,
         preview: ComposerImageAttachment.Preview,
@@ -174,6 +178,10 @@ final class AgentComposerStore: ComposerDraftOperations {
     @ObservationIgnored private weak var staging: ComposerStagingStore?
     /// Queued image selections waiting for `ComposerStagingStore.begin(_:)`.
     @ObservationIgnored private var queuedImageSelections: [UUID: any ImageSelection] = [:]
+    /// Queued video file selections represented as pills in `imageAttachments`.
+    @ObservationIgnored private var queuedVideoSelections: [UUID: any FileSelection] = [:]
+    /// Queued non-video file selections waiting for `ComposerStagingStore.begin(_:)`.
+    @ObservationIgnored private var queuedFileSelections: [any FileSelection] = []
     /// Maps active `ComposerStagingStore` operation ids to attachment ids.
     @ObservationIgnored private var activeImageOperations: [UInt64: UUID] = [:]
     /// Identifies the queued attachment currently entering `staging.begin(_:)`.
@@ -184,6 +192,9 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Tracks local `PreparedImage` files owned by this store so `deinit`
     /// removes any uncollected temporary copies safely across isolation.
     @ObservationIgnored private let retainedPreviewURLs = OSAllocatedUnfairLock(initialState: Set<URL>())
+    /// Tracks temporary inbox directories for queued file selections so `deinit`
+    /// removes unstarted drop copies safely across isolation.
+    @ObservationIgnored private let retainedInboxURLs = OSAllocatedUnfairLock(initialState: Set<URL>())
     /// The editor holds marked text. Writing the draft then would destroy
     /// it, so Voice Input's text waits until the composition ends.
     @ObservationIgnored private var isEditorComposing = false
@@ -226,7 +237,12 @@ final class AgentComposerStore: ComposerDraftOperations {
             urls.removeAll()
             return copy
         }
-        for url in urls {
+        let inboxURLs = retainedInboxURLs.withLock { urls -> Set<URL> in
+            let copy = urls
+            urls.removeAll()
+            return copy
+        }
+        for url in urls.union(inboxURLs) {
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -265,14 +281,20 @@ final class AgentComposerStore: ComposerDraftOperations {
             && (!readyImagePaths.isEmpty || draft.contains(where: { !$0.isWhitespace }))
     }
 
-    /// VoiceOver hint for the Send button. Pending images and Voice Input
+    /// VoiceOver hint for the Send button. Pending images/videos and Voice Input
     /// disable Send.
     var sendAccessibilityHint: String {
-        !isConnectionAvailable
-            ? String(localized: "Waiting for the Host connection")
-            : hasPendingImages
-            ? String(localized: "Waiting for image…")
-            : voice.blocksSend
+        if !isConnectionAvailable {
+            return String(localized: "Waiting for the Host connection")
+        }
+        if hasPendingImages {
+            let hasPendingImage = imageAttachments.contains { $0.kind == .image && $0.phase.isPending }
+            if !hasPendingImage, imageAttachments.contains(where: { $0.kind == .video && $0.phase.isPending }) {
+                return String(localized: "Waiting for video…")
+            }
+            return String(localized: "Waiting for image…")
+        }
+        return voice.blocksSend
             ? String(localized: "Waiting for Voice Input…")
             : String(localized: "Delivers the complete draft to the Agent")
     }
@@ -391,9 +413,16 @@ final class AgentComposerStore: ComposerDraftOperations {
         startNextQueuedImageIfNeeded()
     }
 
-    /// Maps a drop onto draft text insertion and/or queued image attachments.
-    /// Empty and unsupported items are skipped without touching the draft or
-    /// submitting it.
+    /// Queues one file selection (e.g., a pasted or dropped video) for staging
+    /// through `FilePreparer` / `stageFile`.
+    func enqueueFile(_ selection: any FileSelection) {
+        enqueueQueuedFile(selection)
+        startNextQueuedImageIfNeeded()
+    }
+
+    /// Maps a drop onto draft text insertion, queued image attachments, and/or
+    /// queued video/file uploads. Empty and unsupported items are skipped
+    /// without touching the draft or submitting it.
     func acceptDrop(_ items: [ComposerDropItem]) {
         for item in items {
             switch item {
@@ -403,6 +432,10 @@ final class AgentComposerStore: ComposerDraftOperations {
             case .image(let data, _):
                 guard !data.isEmpty else { continue }
                 enqueueQueuedSelection(DataImageSelection(data: data))
+            case let .file(url, cleanupURL):
+                enqueueQueuedFile(URLFileSelection(url: url, cleanupURL: cleanupURL))
+            case .oversizedFile:
+                enqueueQueuedFile(FailingFileSelection(error: .sourceTooLarge, isVideo: true))
             case .unsupported:
                 continue
             }
@@ -415,6 +448,12 @@ final class AgentComposerStore: ComposerDraftOperations {
         switch imageAttachments[index].phase {
         case .queued:
             queuedImageSelections[id] = nil
+            if let video = queuedVideoSelections.removeValue(forKey: id) {
+                if let cleanupURL = video.cleanupURL {
+                    _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+                }
+                video.discard()
+            }
             let removed = imageAttachments.remove(at: index)
             releaseLocalPreviewIfUnreferenced(removed.preview)
         case .preparing, .uploading:
@@ -439,7 +478,6 @@ final class AgentComposerStore: ComposerDraftOperations {
             releaseLocalPreviewIfUnreferenced(removed.preview)
             if let staging,
                 case .completed(let outcome) = staging.state,
-                outcome.medium == .image,
                 outcome.path == path
             {
                 staging.perform(.dismiss)
@@ -456,11 +494,21 @@ final class AgentComposerStore: ComposerDraftOperations {
         staging?.perform(.retry)
     }
 
-    /// Clears pending/queued image uploads before staging teardown while
-    /// preserving any attachments that have already finished staging.
+    /// Clears pending/queued image and file uploads before staging teardown
+    /// while preserving any image attachments that have already finished staging.
     func abandonDroppedImagesForTeardown() {
         isTearingDownImages = true
         queuedImageSelections.removeAll()
+        let abandonedVideos = Array(queuedVideoSelections.values)
+        queuedVideoSelections.removeAll()
+        let abandonedFiles = queuedFileSelections
+        queuedFileSelections.removeAll()
+        for file in abandonedVideos + abandonedFiles {
+            if let cleanupURL = file.cleanupURL {
+                _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+            }
+            file.discard()
+        }
         activeImageOperations.removeAll()
         startingQueuedAttachmentID = nil
         imageAttachments.removeAll { $0.phase.isPending }
@@ -897,11 +945,16 @@ final class AgentComposerStore: ComposerDraftOperations {
         String(localized: "The message contains unsafe terminal control characters.")
 
     func imageStagingDidBegin(operationID: UInt64) {
+        imageStagingDidBegin(operationID: operationID, kind: .image)
+    }
+
+    func imageStagingDidBegin(operationID: UInt64, kind: ComposerImageAttachment.MediaKind) {
         if let queuedID = startingQueuedAttachmentID,
             let index = imageAttachments.firstIndex(where: { $0.id == queuedID })
         {
             startingQueuedAttachmentID = nil
             queuedImageSelections[queuedID] = nil
+            queuedVideoSelections[queuedID] = nil
             activeImageOperations[operationID] = queuedID
             imageAttachments[index].phase = .preparing
             return
@@ -909,7 +962,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         startingQueuedAttachmentID = nil
         let id = UUID()
         activeImageOperations[operationID] = id
-        imageAttachments.append(ComposerImageAttachment(id: id, preview: nil, phase: .preparing))
+        imageAttachments.append(ComposerImageAttachment(id: id, kind: kind, preview: nil, phase: .preparing))
     }
 
     func imageStagingDidPrepare(
@@ -1001,6 +1054,19 @@ final class AgentComposerStore: ComposerDraftOperations {
         imageAttachments.append(ComposerImageAttachment(id: id, preview: nil, phase: .queued))
     }
 
+    private func enqueueQueuedFile(_ selection: any FileSelection) {
+        if let cleanupURL = selection.cleanupURL {
+            _ = retainedInboxURLs.withLock { $0.insert(cleanupURL) }
+        }
+        if selection.isVideo {
+            let id = UUID()
+            queuedVideoSelections[id] = selection
+            imageAttachments.append(ComposerImageAttachment(id: id, kind: .video, preview: nil, phase: .queued))
+        } else {
+            queuedFileSelections.append(selection)
+        }
+    }
+
     private func startNextQueuedImageIfNeeded() {
         guard let staging, !isTearingDownImages else { return }
         guard activeImageOperations.isEmpty else { return }
@@ -1010,12 +1076,36 @@ final class AgentComposerStore: ComposerDraftOperations {
         case .failed, .backgroundInterrupted, .preparing, .uploading:
             return
         }
-        guard let next = imageAttachments.first(where: { $0.phase == .queued }),
-            let selection = queuedImageSelections[next.id]
-        else { return }
-        startingQueuedAttachmentID = next.id
-        if staging.begin(.photo(selection), insertPathIntoComposer: false) == nil {
-            startingQueuedAttachmentID = nil
+        if let next = imageAttachments.first(where: { $0.phase == .queued }) {
+            if let selection = queuedImageSelections[next.id] {
+                startingQueuedAttachmentID = next.id
+                if staging.begin(.photo(selection), insertPathIntoComposer: false) == nil {
+                    startingQueuedAttachmentID = nil
+                }
+                return
+            }
+            if let video = queuedVideoSelections[next.id] {
+                startingQueuedAttachmentID = next.id
+                if let cleanupURL = video.cleanupURL {
+                    _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+                }
+                if staging.begin(.fileSelection(video), insertPathIntoComposer: false) == nil {
+                    startingQueuedAttachmentID = nil
+                    if let cleanupURL = video.cleanupURL {
+                        _ = retainedInboxURLs.withLock { $0.insert(cleanupURL) }
+                    }
+                }
+                return
+            }
+        }
+        if !queuedFileSelections.isEmpty {
+            let nextFile = queuedFileSelections.removeFirst()
+            if let cleanupURL = nextFile.cleanupURL {
+                _ = retainedInboxURLs.withLock { $0.remove(cleanupURL) }
+            }
+            if staging.begin(.fileSelection(nextFile)) == nil {
+                nextFile.discard()
+            }
         }
     }
 

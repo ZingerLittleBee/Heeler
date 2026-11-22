@@ -552,15 +552,17 @@
                 snapshotRetryDelay: .seconds(30),
                 pins: PinnedAgentsStore(defaults: defaults),
                 rowLayouts: AgentRowLayoutStore(defaults: defaults),
-                usageSettings: AgentUsageSettings(defaults: defaults)
-            ) { host, subscriptions in
-                EventsSession(
-                    subscriptions: subscriptions,
-                    connect: { try transport(for: host) },
-                    reconnectPolicy: ReconnectPolicy(
-                        initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)),
-                    keepalive: nil)
-            }
+                usageSettings: AgentUsageSettings(defaults: defaults),
+                makeSession: { host, subscriptions in
+                    EventsSession(
+                        subscriptions: subscriptions,
+                        connect: { try transport(for: host) },
+                        reconnectPolicy: ReconnectPolicy(
+                            initialDelay: .seconds(30), multiplier: 1, maxDelay: .seconds(30)),
+                        keepalive: nil)
+                },
+                // The demo's Hosts have no SSH for a preview to dial.
+                connectPortPreview: nil)
         }
 
         private static func snapshot(

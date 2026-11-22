@@ -4233,3 +4233,71 @@ extension HeelerSSHTransport: RexHostConnection {
             contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
     }
 }
+
+// MARK: - What a port preview uses of this connection
+/// A direct-tcpip channel as the preview's proxy carries it.
+private struct SSHPortPreviewStream: PortPreviewStream {
+    let channel: SSHDirectTCPIPChannel
+
+    func read() async throws -> Data? {
+        while true {
+            do {
+                return try await channel.read(maximumBytes: 32 * 1024, timeout: .seconds(5))
+            } catch SSHError.timedOut {
+                // A quiet connection, such as a live-reload socket between
+                // edits, is not a failed one.
+                continue
+            }
+        }
+    }
+
+    func write(_ data: Data) async throws {
+        try await channel.write(data, timeout: .seconds(60))
+    }
+
+    func close() async {
+        try? await channel.close(timeout: .seconds(5))
+    }
+}
+
+extension HeelerSSHTransport: PortPreviewConnection {
+    /// The target is the name `localhost`, for the Host's SSH server to
+    /// resolve: it tries the IPv6 and the IPv4 loopback address in turn, and
+    /// a development server often listens on only one of them.
+    func openLoopbackStream(port: UInt16) async throws -> any PortPreviewStream {
+        guard connected else {
+            throw PortPreviewFailure.unreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        do {
+            return SSHPortPreviewStream(
+                channel: try await connection.openDirectTCPIPStream(
+                    endpoint: SSHEndpoint(host: "localhost", port: port), timeout: requestTimeout))
+        } catch SSHError.forwardingDenied {
+            throw PortPreviewFailure.forwardingDenied
+        } catch SSHError.targetUnreachable {
+            throw PortPreviewFailure.refused(port: Int(port))
+        } catch {
+            throw PortPreviewFailure(await mapOperationError(error))
+        }
+    }
+
+    /// One bounded exec: a shell, and `ss` or `lsof`.
+    func runListeningPortsRead(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "Ports"), deadline: .seconds(12), remoteSeconds: 8,
+            timeoutMarkerPrefix: "__HEELER_PORTS_READ_TIMEOUT_", timedOut: .hostFileTimedOut,
+            priority: .interactive)
+    }
+
+    /// An exec that only exits. A Host that does not answer it in the wait
+    /// is treated as gone, which costs a slow one a new connection.
+    func answers() async -> Bool {
+        guard connected else { return false }
+        do {
+            _ = try await runExec("exit 0", timeout: .seconds(4), priority: .interactive)
+            return true
+        } catch {
+            return false
+        }
+    }
+}

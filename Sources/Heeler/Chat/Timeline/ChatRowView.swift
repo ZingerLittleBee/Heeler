@@ -51,6 +51,7 @@ struct ChatRowView: View {
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
             .environment(\.chatImageOpener, imageOpener)
+            .environment(\.chatHostLinkOpener, ChatHostLinkOpener(open: actions.openHostLink))
     }
 
     /// Opens a path the message names in the preview an image row's

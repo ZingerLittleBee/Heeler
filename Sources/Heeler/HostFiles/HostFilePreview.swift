@@ -59,6 +59,10 @@ final class HostFilePreview: Identifiable {
 
     let path: String
     let name: String
+    /// Optional short display title (such as `Video #1` when opened from a Chat
+    /// staged video link) shown in the navigation bar while keeping `name` for
+    /// file-kind detection and local copy naming.
+    let displayTitle: String?
     let kind: HostFileKind
     private(set) var size: UInt64?
     private(set) var modified: Date?
@@ -83,11 +87,12 @@ final class HostFilePreview: Identifiable {
     @ObservationIgnored private var wholeText: Data?
 
     init(
-        path: String, name: String, size: UInt64?, modified: Date?,
+        path: String, name: String, displayTitle: String? = nil, size: UInt64?, modified: Date?,
         files: ChatHostFiles, copies: HostFileCopies, pace: HostFilePace
     ) {
         self.path = path
         self.name = name
+        self.displayTitle = displayTitle
         self.size = size
         self.modified = modified
         self.files = files
