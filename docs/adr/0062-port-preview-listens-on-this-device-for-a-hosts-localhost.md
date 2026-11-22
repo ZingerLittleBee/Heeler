@@ -192,5 +192,6 @@ the page at once, the page is a sheet, and without a link the way in is
 - Tried in the Simulator on an iPhone (iOS 27.0) against a tmux Host on Linux
   in a container, whose `ss` Ports read. The sheet, its links and Ports were
   also tried there and on an iPad (iOS 26.5) against a Herdr TUI Host on
-  macOS, with the first build's proxy. On an iPhone (iOS 27.3) only the
-  probe above has run. Not tried on iOS 18 or against the other Server Kinds.
+  macOS, with the first build's proxy. On an iPhone (iOS 27.3) a page and a
+  link from it to another port opened against a Host on macOS; nothing else
+  was tried there. Not tried on iOS 18 or against the other Server Kinds.
