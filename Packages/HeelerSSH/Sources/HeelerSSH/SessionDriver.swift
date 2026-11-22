@@ -3218,6 +3218,52 @@ actor SessionDriver {
         return try extractHostKey(createdSession)
     }
 
+    /// Opens a direct-tcpip channel that shares this session with its other
+    /// channels, where `openDirectTCPIP` below hands the whole session to one
+    /// pump for a Jump Host. Once open it is a stream-local channel in every
+    /// way but its far end, so it joins that registry and is read, written
+    /// and closed through the same turns.
+    func openDirectTCPIPStream(
+        endpoint: SSHEndpoint,
+        timeout: Duration
+    ) async throws -> SSHDirectTCPIPChannel {
+        try await withDiagnosticPhase("direct-tcpip stream open to \(endpoint.host):\(endpoint.port)") {
+            await acquireOperation()
+            defer { releaseOperation() }
+
+            guard valid, !forwarding, authenticated, session != nil else {
+                throw SSHError.connectionInvalidated
+            }
+            guard !endpoint.host.isEmpty, !endpoint.host.utf8.contains(0), endpoint.port > 0 else {
+                throw SSHError.channelFailed
+            }
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+
+            do {
+                let channel = try await openDirectTCPIPChannel(
+                    endpoint: endpoint,
+                    deadline: deadline,
+                    sharesSession: true)
+                nextStreamLocalChannelID &+= 1
+                let id = nextStreamLocalChannelID
+                streamLocalChannels[id] = StreamLocalChannelState(channel: channel)
+                return SSHDirectTCPIPChannel(id: id, driver: self)
+            } catch {
+                let normalized = normalize(error)
+                if !(error is SettledChannelOpenError),
+                    normalized != .forwardingDenied,
+                    normalized != .targetUnreachable
+                {
+                    // The rule `openStreamLocal` follows: the server's
+                    // refusal of this one channel, or an open that settled,
+                    // leaves the session usable. Nothing else does.
+                    invalidateResources()
+                }
+                throw normalized
+            }
+        }
+    }
+
     func openDirectTCPIP(
         endpoint: SSHEndpoint,
         timeout: Duration
@@ -3242,7 +3288,8 @@ actor SessionDriver {
             do {
                 channel = try await openDirectTCPIPChannel(
                     endpoint: endpoint,
-                    deadline: deadline)
+                    deadline: deadline,
+                    sharesSession: false)
                 guard let channel else { throw SSHError.channelFailed }
                 let transport = try DirectTCPIPByteTransport()
                 let pumpDescriptor = try transport.takePumpDescriptor()
@@ -3284,10 +3331,13 @@ actor SessionDriver {
 
     private func openDirectTCPIPChannel(
         endpoint: SSHEndpoint,
-        deadline: ContinuousClock.Instant
+        deadline: ContinuousClock.Instant,
+        sharesSession: Bool
     ) async throws -> OpaquePointer {
-        try await openChannel(deadline: deadline) { _, session in
-            classifyDirectTCPIPOpenFailure(session)
+        try await openChannel(deadline: deadline) { code, session in
+            sharesSession
+                ? sharedDirectTCPIPOpenFailure(code, session: session)
+                : classifyDirectTCPIPOpenFailure(session)
         } open: { session in
             endpoint.host.withCString { hostPointer in
                 libssh2_channel_direct_tcpip_ex(
@@ -3319,6 +3369,21 @@ actor SessionDriver {
             return .targetUnreachable
         }
         return .channelFailed
+    }
+
+    /// What a failed open means on a session other channels keep using. The
+    /// caller invalidates on everything but a refusal, so the two causes are
+    /// split on the code first: `LIBSSH2_ERROR_CHANNEL_FAILURE` is the
+    /// server's own answer to this one open, and its reason is in the message
+    /// libssh2 kept. A refusal that names neither reason reads as an
+    /// unreachable target, which is what it is to whoever asked.
+    private func sharedDirectTCPIPOpenFailure(_ code: Int32, session: OpaquePointer) -> SSHError {
+        guard code == LIBSSH2_ERROR_CHANNEL_FAILURE else {
+            return Self.isConnectionLoss(code) ? .connectionInvalidated : .channelFailed
+        }
+        return classifyDirectTCPIPOpenFailure(session) == .forwardingDenied
+            ? .forwardingDenied
+            : .targetUnreachable
     }
 
     private func pumpDirectTCPIP(

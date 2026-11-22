@@ -236,6 +236,7 @@ struct WorkspaceTerminalDetailView: View {
         } message: {
             Text(createFailure ?? "")
         }
+        .portPreview(console: console, hostID: terminal.hostID, directory: terminal.pane.cwd)
     }
 
     /// Routes as this screen now stands, which may have changed while the

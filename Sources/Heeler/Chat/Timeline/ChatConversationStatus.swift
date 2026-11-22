@@ -639,21 +639,21 @@ struct ChatUnavailableView: View {
     @ViewBuilder private var capsuleActions: some View {
         if let chooseConversation {
             Button(action: chooseConversation) { Text(ChatCandidatePickerView.title) }
-                .buttonStyle(ChatUnavailableCapsuleStyle(prominence: .primary))
+                .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
                 .accessibilityIdentifier("chat.chooseConversation")
         }
         if let reviewEdit, reason.offersOpenCodePluginEdit {
             Button(action: reviewEdit) { Text(OpenCodePluginEdit.offerTitle) }
-                .buttonStyle(ChatUnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
+                .buttonStyle(UnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
                 .accessibilityIdentifier("chat.unavailable.openCodeEdit")
         }
         if let addExtension, reason.offersHeelersExtension {
             Button(action: addExtension) { Text("Add Heeler's Extension…") }
-                .buttonStyle(ChatUnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
+                .buttonStyle(UnavailableCapsuleStyle(prominence: chooseConversation == nil ? .primary : .secondary))
                 .accessibilityIdentifier("chat.unavailable.addExtension")
         }
         Button(action: showAgentTerminal) { Text(AgentDetailSurface.terminal.showTitle) }
-            .buttonStyle(ChatUnavailableCapsuleStyle(prominence: hasSettlingAction ? .secondary : .primary))
+            .buttonStyle(UnavailableCapsuleStyle(prominence: hasSettlingAction ? .secondary : .primary))
             .accessibilityIdentifier("chat.unavailable.showAgentTerminal")
         if reason.offersRetry {
             Button(action: retry) {
@@ -664,7 +664,7 @@ struct ChatUnavailableView: View {
                         if isChecking { ProgressView() }
                     }
             }
-            .buttonStyle(ChatUnavailableCapsuleStyle(prominence: .secondary))
+            .buttonStyle(UnavailableCapsuleStyle(prominence: .secondary))
             .allowsHitTesting(!isChecking)
             .accessibilityLabel(isChecking ? Text("Checking") : Text("Check Again"))
             .accessibilityIdentifier("chat.unavailable.checkAgain")
@@ -675,8 +675,11 @@ struct ChatUnavailableView: View {
     }
 }
 
-/// Equal-width primary/secondary capsule stack matching the themed surface.
-private struct ChatUnavailableCapsuleStyle: ButtonStyle {
+/// Equal-width primary/secondary capsule stack matching the themed surface,
+/// for a screen that stands in for content and stacks its ways out. The
+/// stack around the buttons takes `fixedSize(horizontal:vertical:)`, so
+/// every capsule is as wide as the widest.
+struct UnavailableCapsuleStyle: ButtonStyle {
     enum Prominence {
         case primary
         case secondary

@@ -132,6 +132,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.themeColors) private var themeColors
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.portPreviewOpener) private var portPreview
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sceneWindow) private var sceneWindow
@@ -1027,6 +1028,12 @@ struct AgentChatSurfaceView: View {
                 }
             },
             thumbnails: chat?.thumbnails,
+            openHostLink: { [portPreview] link in
+                guard let portPreview, portPreview.accepts(link) else { return false }
+                // With the keyboard down, as Files opens.
+                composerKeyboardDismissRequest += 1
+                return portPreview.open(link)
+            },
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 },
             previousMessageAvailabilityChanged: { canJumpToPreviousMessage = $0 })
     }
@@ -2088,6 +2095,13 @@ struct AgentChatSurfaceView: View {
                 // the message. So Files opens with the keyboard down.
                 composerKeyboardDismissRequest += 1
                 showFiles()
+            })
+        }
+        if let portPreview, portPreview.isOffered {
+            actions.append(AgentDetailHeaderAction(title: "Ports", systemImage: PortPreviewCopy.symbol) {
+                // With the keyboard down, as Files opens.
+                composerKeyboardDismissRequest += 1
+                portPreview.showPorts()
             })
         }
         if console.offersTitleRename(for: agent) {

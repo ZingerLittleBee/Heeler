@@ -334,6 +334,26 @@ Host. A file opened in a viewer, shared or saved is first copied to this
 device, and the copy goes when its preview or Files closes (ADR 0059).
 _Avoid_: file manager, SFTP browser, downloads, Agent's files
 
+**Port Preview**:
+A sheet that shows a page a program serves on a Host's own loopback interface,
+its `localhost`, opened from a link to such a page in Chat or a terminal, or
+from Ports. It belongs to the Host, as Files does: it reaches any loopback
+port the Host's account can connect to, never "this Agent's server". Its
+pages travel over an SSH connection the preview dials for itself. While the
+sheet is open, Heeler listens on a page's port on this device, where the
+page's web view looks for `localhost`, and carries each connection to the
+same port on the Host. Nothing is installed or left listening on the Host,
+and the connection and the pages' website data go when the sheet closes
+(ADR 0062).
+_Avoid_: port forwarding, tunnel, port mapping, in-app browser
+
+**Ports**:
+The list in Port Preview of the TCP ports that programs on the Host listen on
+where its `localhost` reaches them, the ports of programs working in the
+Agent's or terminal's directory first. Read when the list is shown and again
+when asked, never watched (ADR 0062).
+_Avoid_: port scan, forwarded ports, services
+
 **Console**:
 The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, which an open Agent's switcher follows while keeping that Agent's own chip, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home

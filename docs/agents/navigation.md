@@ -395,6 +395,38 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   are the sheet, the preview and the system viewers
   ([ADR 0059](../adr/0059-files-reads-a-hosts-folders-and-changes-nothing.md)).
   No focused tests yet.
+- **Port Preview (a Host's `localhost` pages, from a link or Ports):**
+  `View.portPreview(console:hostID:directory:sendScreenshot:)` in
+  [PortPreviewPresenter](../../Sources/Heeler/PortPreview/PortPreviewPresenter.swift)
+  owns the sheet on `AgentDetailView` and `WorkspaceTerminalDetailView` and
+  puts a `PortPreviewOpener` in the environment. Chat's hosted rows inherit no
+  environment, so a link there arrives through `ChatTimelineActions.openHostLink`
+  and `ChatHostLinkOpener`; terminals use `portPreviewLinks` and
+  `AgentTerminalView.openAttachLink`, and both surfaces' header menus call
+  `showPorts`. `ConsoleStore.portPreviewSession(for:directory:target:)`, offered
+  by `offersPortPreview(for:)`, builds a
+  [PortPreviewSession](../../Sources/Heeler/PortPreview/PortPreviewSession.swift):
+  it owns the [PortPreviewRelay](../../Sources/Heeler/PortPreview/PortPreviewRelay.swift),
+  which listens on a page's port on this device and carries its connections,
+  and the `PortPreviewLink` actor in
+  [PortPreviewConnection](../../Sources/Heeler/PortPreview/PortPreviewConnection.swift),
+  which dials through `TransportConnector.connectForPortPreview` and redials a
+  lost connection. `HeelerSSHTransport` is that connection, over
+  `SSHConnection.openDirectTCPIPStream`.
+  [PortPreviewTarget](../../Sources/Heeler/PortPreview/PortPreviewTarget.swift)
+  decides which links are loopback and how they load,
+  [PortPreviewPage](../../Sources/Heeler/PortPreview/PortPreviewPage.swift) is
+  the web view and where its links go, and
+  [HostListeningPorts](../../Sources/Heeler/PortPreview/HostListeningPorts.swift)
+  is the Ports script and its parser.
+  [PortPreviewView](../../Sources/Heeler/PortPreview/PortPreviewView.swift) and
+  [PortsListView](../../Sources/Heeler/PortPreview/PortsListView.swift) are the
+  sheet ([ADR 0062](../adr/0062-port-preview-listens-on-this-device-for-a-hosts-localhost.md)).
+  In the Simulator, preview a Host on another machine or in a container: the
+  Simulator's loopback interface is the Mac's.
+  Coverage: [PortPreviewTests](../../Tests/HeelerTests/PortPreviewTests.swift)
+  (which links are targets, the Ports parser); the channel itself in
+  `SessionDriverE2ETests`. Nothing covers the relay.
 
 ## Sibling deliverables and generated files
 

@@ -1,6 +1,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import Network
 import Testing
 
 @testable import HeelerSSH
@@ -405,6 +406,46 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    /// The server is asked for `localhost` and the listener holds only IPv4
+    /// loopback, as many development servers do: sshd tries each address the
+    /// name has before it answers.
+    @Test("a direct TCP/IP stream carries bytes beside other channels, and a refused open spares the session")
+    func directTCPIPStreamSharesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let echo = try await LoopbackEchoServer.start()
+        let endpoint = SSHEndpoint(host: "localhost", port: echo.port)
+        let stream = try await connection.openDirectTCPIPStream(
+            endpoint: endpoint,
+            timeout: .seconds(10))
+        let payload = Data((0..<262_144).map { UInt8($0 % 251) })
+
+        async let written: Void = stream.write(payload, timeout: .seconds(30))
+        var received = Data()
+        while received.count < payload.count,
+            let chunk = try await stream.read(timeout: .seconds(30))
+        {
+            received.append(chunk)
+        }
+        try await written
+        #expect(received == payload)
+
+        let beside = try await connection.execute("printf beside", timeout: .seconds(5))
+        #expect(beside.stdout == Data("beside".utf8))
+        try await stream.close(timeout: .seconds(5))
+        try await stream.close(timeout: .seconds(5))
+
+        await echo.stop()
+        await #expect(throws: SSHError.targetUnreachable) {
+            _ = try await connection.openDirectTCPIPStream(
+                endpoint: endpoint,
+                timeout: .seconds(10))
+        }
+        let spared = try await connection.execute("printf spared", timeout: .seconds(5))
+        #expect(spared.stdout == Data("spared".utf8))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("uncertain exec stream opening invalidates the connection")
     func execStreamUncertainOpenInvalidatesConnection() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
@@ -764,7 +805,9 @@ struct SessionDriverE2ETests {
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
 
-        for site in channelOpenSites(connection: connection, socketPath: socketPath) {
+        let sites = channelOpenSites(
+            connection: connection, socketPath: socketPath, listening: environment.endpoint)
+        for site in sites {
             let free = Task {
                 withUnsafeCurrentTask { $0?.cancel() }
                 try await site.open()
@@ -807,7 +850,8 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
-        let sites = channelOpenSites(connection: connection, socketPath: socketPath)
+        let sites = channelOpenSites(
+            connection: connection, socketPath: socketPath, listening: environment.endpoint)
 
         // Three rounds open more session channels than sshd's default
         // `MaxSessions 10` admits at once, so a channel that was spared but
@@ -880,7 +924,8 @@ struct SessionDriverE2ETests {
     /// Every way a caller opens a channel through libssh2's serialized open.
     private func channelOpenSites(
         connection: SSHConnection,
-        socketPath: String
+        socketPath: String,
+        listening: SSHEndpoint
     ) -> [(name: String, open: @Sendable () async throws -> Void)] {
         [
             ("execute", { _ = try await connection.execute("printf no", timeout: .seconds(5)) }),
@@ -905,6 +950,12 @@ struct SessionDriverE2ETests {
                     socketPath: socketPath,
                     request: Data(#"{"id":"no","method":"ping"}\#n"#.utf8),
                     timeout: .seconds(5))
+            }),
+            // The SSH server's own port: a target that answers, so the open
+            // is granted as the others are.
+            ("openDirectTCPIPStream", {
+                _ = try await connection.openDirectTCPIPStream(
+                    endpoint: listening, timeout: .seconds(5))
             }),
         ]
     }
@@ -3614,6 +3665,76 @@ private struct WeakNetworkProxyFixture: Sendable {
 
 private enum WeakNetworkProxyFixtureError: Error {
     case unreachable
+}
+
+/// Sends back every byte it receives, on IPv4 loopback. The fixture's sshd
+/// runs on the Mac whose network the Simulator shares, so a listener in the
+/// test process is one that server can reach.
+private final class LoopbackEchoServer: Sendable {
+    let port: UInt16
+    private let listener: NWListener
+    private let stopped: AsyncStream<Void>
+
+    private init(port: UInt16, listener: NWListener, stopped: AsyncStream<Void>) {
+        self.port = port
+        self.listener = listener
+        self.stopped = stopped
+    }
+
+    static func start() async throws -> LoopbackEchoServer {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        let listener = try NWListener(using: parameters)
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: queue)
+            echo(on: connection)
+        }
+        let (states, statesContinuation) = AsyncStream.makeStream(of: NWListener.State.self)
+        let (stopped, stoppedContinuation) = AsyncStream.makeStream(of: Void.self)
+        listener.stateUpdateHandler = { state in
+            statesContinuation.yield(state)
+            if case .cancelled = state {
+                statesContinuation.finish()
+                stoppedContinuation.finish()
+            }
+        }
+        listener.start(queue: queue)
+        for await state in states {
+            switch state {
+            case .ready:
+                guard let port = listener.port?.rawValue else { throw SSHError.connectionFailed }
+                return LoopbackEchoServer(port: port, listener: listener, stopped: stopped)
+            case .failed(let error), .waiting(let error):
+                listener.cancel()
+                throw error
+            default:
+                continue
+            }
+        }
+        throw SSHError.connectionFailed
+    }
+
+    /// Returns once the port no longer accepts connections.
+    func stop() async {
+        listener.cancel()
+        for await _ in stopped {}
+    }
+
+    private static let queue = DispatchQueue(label: "heeler.ssh.tests.loopback-echo")
+
+    private static func echo(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { data, _, isComplete, error in
+            guard let data, !data.isEmpty else {
+                if isComplete || error != nil { connection.cancel() } else { echo(on: connection) }
+                return
+            }
+            connection.send(
+                content: data,
+                completion: .contentProcessed { sendError in
+                    if isComplete || sendError != nil { connection.cancel() } else { echo(on: connection) }
+                })
+        }
+    }
 }
 
 private struct SessionDriverTestEnvironment: Sendable {
