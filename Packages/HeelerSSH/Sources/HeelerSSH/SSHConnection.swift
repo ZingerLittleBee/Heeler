@@ -7,6 +7,7 @@ enum SSHConnectionTeardownStep: Sendable, Equatable {
 }
 
 /// Its `deinit`, like those of `SSHPTYChannel`, `SSHStreamLocalChannel`,
+/// `SSHDirectTCPIPChannel` (which closes as a stream-local channel does),
 /// `SSHSFTPClient` and `SSHSFTPFile`, hands remote cleanup to an unstructured
 /// `Task` that nothing retains: `deinit` returns with that work still
 /// outstanding, and no caller can await it. In a test process that reads as
@@ -14,14 +15,14 @@ enum SSHConnectionTeardownStep: Sendable, Equatable {
 /// reference happens to drop — so its cost can land on a later test than the
 /// one whose assertions provoked it.
 ///
-/// The cost is uneven across the five, and this `deinit` is the cheap end. It
+/// The cost is uneven across the six, and this `deinit` is the cheap end. It
 /// invalidates the driver — no operation mutex, no deadline — and only for a
 /// connection opened through a Jump Host does it also abort the forwarding
 /// transport and close the parent, so a direct connection reaches no close at
 /// all. The one close it can reach, `SessionDriver.close`, is cancellable, and
 /// its two-second budget bounds only the native calls: the deadline is computed
 /// after `acquireOperation()` returns, so the wait for the driver's operation
-/// mutex ahead of it is unbounded. The four channel `deinit`s are the expensive
+/// mutex ahead of it is unbounded. The five channel `deinit`s are the expensive
 /// end — they take that same mutex and then run non-cancellably.
 ///
 /// #139 is linked for its timing evidence, not as a cause — nothing here
@@ -378,6 +379,20 @@ public final class SSHConnection: Sendable {
     ) async throws -> SSHStreamLocalChannel {
         try await driver.openStreamLocal(
             socketPath: socketPath,
+            timeout: timeout)
+    }
+
+    /// Opens one long-lived direct-tcpip channel to `endpoint` as the server
+    /// reaches it, beside this connection's other channels. A server that
+    /// forbids forwarding throws `forwardingDenied` and one that could not
+    /// connect throws `targetUnreachable`; either leaves this connection
+    /// reusable, as does closing the returned handle.
+    public func openDirectTCPIPStream(
+        endpoint: SSHEndpoint,
+        timeout: Duration
+    ) async throws -> SSHDirectTCPIPChannel {
+        try await driver.openDirectTCPIPStream(
+            endpoint: endpoint,
             timeout: timeout)
     }
 
