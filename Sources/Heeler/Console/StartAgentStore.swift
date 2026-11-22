@@ -327,15 +327,38 @@ final class StartAgentStore {
     var tabLabel: String = ""
     /// Whether the launch targets a fresh git worktree of the selected
     /// workspace's repository instead of the workspace itself (#97).
-    var startsInNewWorktree = false
-    /// Optional branch for the new worktree; empty uses herdr's generated
-    /// `worktree/<name>` branch. Validated client-side because herdr folds
-    /// every git failure into one raw-stderr error code.
+    /// Turning it on populates an empty branch with a generated
+    /// `<adjective>-<noun>-<4hex>` name.
+    var startsInNewWorktree = false {
+        didSet {
+            if startsInNewWorktree, !oldValue, offersWorktree,
+                Self.nonEmptyTrimmed(worktreeBranch) == nil
+            {
+                worktreeBranch = generateWorktreeBranch()
+            }
+        }
+    }
+    /// Branch for the new worktree, pre-filled with a generated
+    /// `<adjective>-<noun>-<4hex>` name when enabled; empty on Herdr TUI still
+    /// falls back to herdr's server-generated branch. Validated client-side
+    /// because herdr folds every git failure into one raw-stderr error code.
     var worktreeBranch: String = ""
     /// Optional base commit-ish for the new branch; empty branches off HEAD.
     /// Not validated: any rev syntax is legal here, so the server's message
     /// passthrough is the honest feedback.
     var worktreeBase: String = ""
+
+    /// Replaces the worktree branch with a fresh random
+    /// `<adjective>-<noun>-<4hex>` name, avoiding repeating the current value
+    /// when the generator produces another.
+    func regenerateWorktreeBranch() {
+        let previous = Self.nonEmptyTrimmed(worktreeBranch)
+        var candidate = generateWorktreeBranch()
+        if let previous, candidate == previous {
+            candidate = generateWorktreeBranch()
+        }
+        worktreeBranch = candidate
+    }
 
     private(set) var state: State = .editing
     private(set) var agentDiscoveryState: AgentDiscoveryState = .idle
@@ -377,6 +400,8 @@ final class StartAgentStore {
     /// The variable a harness's Accounts set on a Host (its Accounts'
     /// `variable`, else the harness's own); nil when neither is known.
     private let accountVariable: (Host.ID, SupportedAgentKind) async throws -> String?
+    /// Generates a random default worktree branch matching herdr TUI.
+    private let generateWorktreeBranch: () -> String
     /// In-flight guard flipped synchronously before the first await, so a
     /// double-tap cannot dispatch the same command twice through the window
     /// before `state == .starting` disables the button.
@@ -403,12 +428,14 @@ final class StartAgentStore {
         presets: @escaping () -> [LaunchPreset] = { [] },
         accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
-        }
+        },
+        generateWorktreeBranch: @escaping () -> String = { GitBranchName.generatedWorktreeBranch() }
     ) {
         self.offersDesktopAppNames = offersDesktopAppNames
         self.offersConnectedWorktrees = offersConnectedWorktrees
         self.presetsProvider = presets
         self.accountVariable = accountVariable
+        self.generateWorktreeBranch = generateWorktreeBranch
         let hostChoices = LaunchHostChoice.grouped(hosts)
         self.hosts = hosts
         self.hostChoices = hostChoices

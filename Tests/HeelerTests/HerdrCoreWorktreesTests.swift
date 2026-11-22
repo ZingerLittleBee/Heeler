@@ -316,13 +316,18 @@ struct HerdrCoreWorktreesTests {
         ])
     }
 
-    /// Herdr TUI's generated `worktree/<name>` has no place here: no branch, no start.
+    /// Enabling Worktree pre-fills a generated `<adjective>-<noun>-<4hex>` branch;
+    /// clearing it blocks submission and leaves git untouched.
     @Test func withNoTypedBranchNothingStartsAndNoBranchIsMadeUp() async throws {
         let fixture = try await Fixture(terminals: [Self.shell("t9", cwd: Self.main)])
         defer { fixture.finish() }
         await fixture.store.checkNewAgentOffers(on: fixture.host.id)
         let form = await fixture.form()
         form.startsInNewWorktree = true
+        #expect(!form.worktreeBranch.isEmpty)
+        #expect(!form.worktreeBranch.contains("/"))
+        #expect(form.canSubmit)
+        form.worktreeBranch = ""
         #expect(!form.canSubmit)
         form.worktreeBranch = "   "
         #expect(!form.canSubmit)
