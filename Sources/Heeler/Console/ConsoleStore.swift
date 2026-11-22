@@ -1188,6 +1188,8 @@ final class ConsoleStore {
                     root: root, rootID: rootID)
                 self.reconcileAgyAnnotationTitles()
             }
+        }
+        if program.promotesBackgroundWorkToWorking {
             source.onRunningBackgroundWorkChanged = { [weak self] _ in
                 guard let self, !self.isRebuilding else { return }
                 self.rebuild()
@@ -1951,7 +1953,7 @@ final class ConsoleStore {
 
     private func isAgentBusyInConsole(_ id: ConsoleAgent.ID) -> Bool {
         guard let row = projections[id.hostID]?.agentsByPane[id.paneID] else { return false }
-        let status = applyingAgyBackgroundWork(to: row).agent.status
+        let status = applyingBackgroundWork(to: row).agent.status
         return status == .working || status == .blocked
     }
 
@@ -2045,7 +2047,7 @@ final class ConsoleStore {
                 pending.matchesIdentity(of: liveRow.agent),
                 offersTitleRename(for: liveRow)
             else { continue }
-            let effectiveStatus = applyingAgyBackgroundWork(to: liveRow).agent.status
+            let effectiveStatus = applyingBackgroundWork(to: liveRow).agent.status
             guard effectiveStatus == .idle || effectiveStatus == .done else {
                 pendingTitleRenameDeclinedKeys[id] = nil
                 continue
@@ -2176,7 +2178,7 @@ final class ConsoleStore {
                 if let currentRow = projection.agentsByPane[id.paneID],
                     pending.matchesIdentity(of: currentRow.agent)
                 {
-                    let status = self.applyingAgyBackgroundWork(to: currentRow).agent.status
+                    let status = self.applyingBackgroundWork(to: currentRow).agent.status
                     if status == .idle || status == .done {
                         self.pendingTitleRenameDeclinedKeys[id] = attemptKey
                     }
@@ -2826,18 +2828,20 @@ final class ConsoleStore {
         }
     }
 
-    /// Antigravity CLI's `PreInvocation` hook reports `Idle` once its
-    /// foreground turn finishes, even while its Subagents, Workflows, Swarm
-    /// task workers, or non-daemon background commands keep running. Present
-    /// the Agent as `Working` across Console and Composer surfaces while a live
-    /// connected transcript confirms running, non-stale Background Work.
-    private func applyingAgyBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
-        guard row.agent.kind == ChatProgram.agy.rawValue,
+    /// Antigravity CLI and Claude Code report `Idle` or `Done` once a
+    /// foreground turn finishes, even while their Subagents, Workflows,
+    /// Swarm task workers, background commands, or Monitors keep running.
+    /// Present the Agent as `Working` across Console and Composer surfaces
+    /// while a live connected transcript confirms running, non-stale
+    /// Background Work.
+    private func applyingBackgroundWork(to row: ConsoleAgent) -> ConsoleAgent {
+        guard let program = ChatProgram(rawValue: row.agent.kind),
+            program.promotesBackgroundWorkToWorking,
             row.agent.status == .idle || row.agent.status == .done,
             hostStatuses[row.hostID] == .connected,
             !hostsAwaitingSnapshot.contains(row.hostID),
             let store = chatStores[row.id],
-            store.program == .agy,
+            store.program == program,
             store.hasRunningBackgroundWork,
             store.agent.terminalID == row.agent.terminalID,
             store.agent.workspaceID == row.agent.workspaceID,
@@ -2859,7 +2863,7 @@ final class ConsoleStore {
         let span = PerfTrace.begin("console.rebuild.order")
         defer { PerfTrace.end(span) }
         let unsorted = projections.values.flatMap { $0.agentsByPane.values }
-            .map { applyingAgyBackgroundWork(to: applyingClientTitles(to: $0)) }
+            .map { applyingBackgroundWork(to: applyingClientTitles(to: $0)) }
         let serverOrder = catalogServerOrder()
         let pinRanks = Dictionary(uniqueKeysWithValues: unsorted.compactMap { agent in
             pins.pinRank(hostID: agent.hostID, paneID: agent.agent.paneID)
