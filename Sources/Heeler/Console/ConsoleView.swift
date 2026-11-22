@@ -173,6 +173,8 @@ struct ConsoleView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.sceneWindow) private var sceneWindow
     @State private var detailCrossfade = DetailCrossfade()
+    /// Where this window's Agent strip is scrolled to, across Agent switches.
+    @State private var agentSwitcherScroll = TerminalAgentSwitcherScroll()
     @State private var tabBarRequest = ConsoleTabBarBridge.Request()
     /// Which pass of `body` built the rows and the detail now showing; see
     /// `KeyedContent`.
@@ -949,6 +951,8 @@ struct ConsoleView: View {
                                 \.detailBarRow, horizontalSizeClass == .regular ? detailBar : nil)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                            .environment(\.consoleHostFilter, hostFilter)
+                            .environment(\.agentSwitcherScroll, agentSwitcherScroll)
                             .environment(
                                 \.showsDetailBackButton, !presentation.usesRegularColumns)
                             .toolbar {
@@ -3897,6 +3901,10 @@ extension EnvironmentValues {
     /// including a large iPhone in landscape, where the sidebar stands beside
     /// the detail and the header keeps only its other buttons.
     @Entry var showsDetailBackButton = false
+    /// The Hosts the Console's lists are filtered to, as Server records, for
+    /// a detail's Agent switcher to offer the same Hosts' Agents. Empty
+    /// while the lists show every Host, and outside the Console.
+    @Entry var consoleHostFilter: Set<Host.ID> = []
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.
