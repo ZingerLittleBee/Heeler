@@ -41,7 +41,9 @@ struct PortPreviewView: View {
         // page and what was typed into it. A page closes by its button.
         .interactiveDismissDisabled(session.target != nil)
         .task { await session.start() }
-        .onChange(of: PageRequest(target: session.target, proxy: session.proxy), initial: true) { _, request in
+        .onChange(
+            of: PageRequest(target: session.target, opens: session.opens, proxy: session.proxy), initial: true
+        ) { _, request in
             show(request)
         }
         .onChange(of: isHostConnected) { _, isConnected in
@@ -51,10 +53,11 @@ struct PortPreviewView: View {
         .onDisappear { page?.close() }
     }
 
-    /// What decides the page on screen: the address asked for, and the proxy
-    /// a web view needs before it can be made.
+    /// What decides the page on screen: the address asked for, which time it
+    /// was asked for, and the proxy a web view needs before it can be made.
     private struct PageRequest: Equatable {
         let target: PortPreviewTarget?
+        let opens: Int
         let proxy: PortPreviewSession.Proxy
     }
 

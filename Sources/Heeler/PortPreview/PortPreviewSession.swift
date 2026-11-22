@@ -19,6 +19,9 @@ final class PortPreviewSession: Identifiable {
     let directory: String?
     /// The page the sheet shows; nil while it shows only Ports.
     private(set) var target: PortPreviewTarget?
+    /// Counts the pages asked for. Asking again for the one already asked
+    /// for loads it again: the page may have gone elsewhere, or failed.
+    private(set) var opens = 0
     private(set) var proxy = Proxy.starting
     /// The SSH connection under the pages ended and has not come back.
     private(set) var isLinkLost = false
@@ -60,6 +63,7 @@ final class PortPreviewSession: Identifiable {
 
     func open(_ target: PortPreviewTarget) {
         self.target = target
+        opens += 1
     }
 
     /// Why the latest connection to `port` failed, when it just did.
