@@ -585,14 +585,18 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    /// Waiting for Conversation, as on Herdr TUI, with nothing to choose and nothing
-    /// of herdr in what it says.
+    /// Empty-conversation placeholder like a new Claude Code conversation and
+    /// Herdr TUI's fresh Antigravity CLI, with nothing to choose and nothing of
+    /// herdr in what it says.
     @Test func noConversationYetWaitsAsHerdrTUIsNoSessionDoes() {
         let reason = ChatUnavailableReason.noConversationYet(.agy)
 
+        #expect(reason.title == "No Messages Yet")
         #expect(reason.title == ChatUnavailableReason.noSession(.agy).title)
+        #expect(reason.title == ChatUnavailableReason.awaitingFirstMessage(.claude).title)
         #expect(reason.systemImage == ChatUnavailableReason.noSession(.agy).systemImage)
-        #expect(reason.isWaiting && reason.offersRetry)
+        #expect(reason.isAwaitingFirstMessage && ChatUnavailableReason.noSession(.agy).isAwaitingFirstMessage)
+        #expect(reason.isWaiting && !reason.offersRetry)
         #expect(!reason.leavesItToAPick && !reason.hidesConversation)
         #expect(reason.explanation.contains("first message"))
         #expect(!reason.explanation.contains("herdr"))
