@@ -4214,9 +4214,9 @@ actor SessionDriver {
         throw SettledChannelOpenError(underlying: .cancelled)
     }
 
-    /// Holds the serialized open slot from the first native call to its
-    /// outcome. Before that call a cancellation or deadline ends the open as it
-    /// always has. Once the call has returned `EAGAIN`, a cancellation only
+    /// Holds the serialized open slot until the open has an outcome. Before the
+    /// first native call a cancellation or deadline ends the open as it always
+    /// has. Once that call has returned `EAGAIN`, a cancellation only
     /// starts `abandonedChannelOpenBudget`: every wait from there is
     /// non-cancellable and bounded by it, and running out of it throws
     /// `.cancelled` with the open still on the session, which the caller
