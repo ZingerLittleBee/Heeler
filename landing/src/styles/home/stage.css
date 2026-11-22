@@ -125,14 +125,15 @@
     z-index: 1;
     transition: opacity 0.5s var(--ease-out), transform 0.95s var(--ease-out-expo), filter 0.5s var(--ease-out);
   }
-  .dev .lp-phone-screen > img[data-screen='live-terminal'] { background: #101010; }
+  .dev .lp-phone-screen > img:is([data-screen='chat'], [data-screen='live-terminal']) { background: #101010; }
   .dev .lp-phone-screen > img[data-screen='usage'] { background: #f2f1f6; }
-  /* the lock screen wallpaper runs light to dark and differs left and right: one edge gradient per half */
+  /* the lock screen wallpaper differs on every edge: one gradient per side, the left and right ones over the top and bottom ones */
   .dev .lp-phone-screen > img[data-screen='live-activity'] {
     background:
-      linear-gradient(#efefef 14%, #e8e8e8 30%, #c8c8c8 40%, #a4a4a4 50%, #999 58%, #979797 94%, #303030 97%, #050505) 0 var(--my) / 50% calc(100% - 2 * var(--my)) no-repeat,
-      linear-gradient(#eee 20%, #e8e8e8 30%, #c7c7c7 40%, #a4a4a4 50%, #9b9b9b 60%, #3a3a3a 62%, #3a3a3a 68%, #080808 74%, #050505) 100% var(--my) / 50% calc(100% - 2 * var(--my)) no-repeat,
-      linear-gradient(#efefef 50%, #050505 50%);
+      linear-gradient(#171729, #1c1b2c 10%, #393556 15%, #383658 20%, #262742 28%, #3a3d63 35%, #121321 40%, #0a0a11 50%, #07070c 65%, #050508) 0 var(--my) / 50% calc(100% - 2 * var(--my)) no-repeat,
+      linear-gradient(#2e2f55, #3d3f6d 5%, #111121 10%, #090a10 15%, #171827 25%, #505377 35%, #242743 40%, #50567e 45%, #54607a 60%, #434f6a 75%, #363c58 90%, #1d2033) 100% var(--my) / 50% calc(100% - 2 * var(--my)) no-repeat,
+      linear-gradient(90deg, #171829, #21233e 40%, #10101e 50%, #10111d 70%, #2e2f55) 0 0 / 100% 50% no-repeat,
+      linear-gradient(90deg, #040408, #141623 50%, #1c2032) 0 100% / 100% 50% no-repeat;
   }
   /* -7% and 9% of the screen height (94.6cqw wide, 1320 by 2868) */
   .dev .lp-phone-screen > img[data-p='a'] { transform: translate3d(0, -14.4cqw, 0) scale(0.93); filter: blur(5px); }
