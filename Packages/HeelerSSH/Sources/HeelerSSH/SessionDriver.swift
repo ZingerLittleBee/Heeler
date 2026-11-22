@@ -149,9 +149,18 @@ actor SessionDriver {
     private var nextSFTPFileID: UInt64 = 0
     private var sftpClients: [UInt64: SFTPState] = [:]
 
-    private struct ChannelOpenAdmissionError: Error, Sendable {
+    /// A channel open that failed and left nothing of itself on the session:
+    /// it gave up in the queue for the serialized open slot, or its caller
+    /// left while it was on the wire and the channel the server then granted
+    /// has been closed again. The operation that sees any other failure from
+    /// an open decides for itself whether the session can stay.
+    private struct SettledChannelOpenError: Error, Sendable {
         let underlying: SSHError
     }
+
+    /// How long an open keeps waiting for the server's answer once its caller
+    /// has been cancelled: the budget every other reclamation here runs on.
+    private static let abandonedChannelOpenBudget: Duration = .seconds(2)
 
     private struct OneShotChannel {
         let channel: OpaquePointer
@@ -451,7 +460,7 @@ actor SessionDriver {
                         // reclaim its native channel and server session slot.
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError) {
+                } else if !(error is SettledChannelOpenError) {
                     // A channel-open outcome is uncertain, so the session must not
                     // admit later work even if the underlying TCP socket survives.
                     invalidateResources()
@@ -529,7 +538,7 @@ actor SessionDriver {
                         // reclaim the native channel and its server session slot.
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError) {
+                } else if !(error is SettledChannelOpenError) {
                     invalidateResources()
                 }
                 throw normalized
@@ -597,7 +606,7 @@ actor SessionDriver {
                     } catch {
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError) {
+                } else if !(error is SettledChannelOpenError) {
                     invalidateResources()
                 }
                 throw normalized
@@ -648,7 +657,7 @@ actor SessionDriver {
                     } catch {
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError) {
+                } else if !(error is SettledChannelOpenError) {
                     invalidateResources()
                 }
                 throw normalized
@@ -1142,7 +1151,7 @@ actor SessionDriver {
                 return response
             } catch {
                 let normalized: SSHError?
-                if error is ChannelOpenAdmissionError {
+                if error is SettledChannelOpenError {
                     normalized = normalize(error)
                 } else {
                     normalized = (error as? SSHError).map(normalize)
@@ -1157,7 +1166,7 @@ actor SessionDriver {
                     } catch {
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError),
+                } else if !(error is SettledChannelOpenError),
                     normalized != .streamLocalOpenFailed
                 {
                     // `.streamLocalOpenFailed` now means only what it says: the
@@ -1214,7 +1223,7 @@ actor SessionDriver {
                     } catch {
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError),
+                } else if !(error is SettledChannelOpenError),
                     normalized != .streamLocalOpenFailed
                 {
                     // The same rule `exchangeStreamLocal` states above: only a
@@ -3263,7 +3272,7 @@ actor SessionDriver {
                     } catch {
                         invalidateResources()
                     }
-                } else if !(error is ChannelOpenAdmissionError),
+                } else if !(error is SettledChannelOpenError),
                     normalized == .timedOut || normalized == .cancelled
                 {
                     invalidateResources()
@@ -3277,61 +3286,16 @@ actor SessionDriver {
         endpoint: SSHEndpoint,
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
-        do {
-            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
-        } catch {
-            throw ChannelOpenAdmissionError(underlying: normalize(error))
-        }
-        defer { releaseChannelOpenSlot() }
-        let owner = allocateTransportSendOwner()
-        while true {
-            try checkProgress(deadline: deadline)
-            do {
-                try await waitForTransportSendAdmission(
-                    owner: owner,
-                    deadline: deadline,
-                    cancellable: true)
-            } catch {
-                if transportSendOwner == owner { invalidateResources() }
-                throw error
-            }
-            let session = try requireSession()
-            let channel = endpoint.host.withCString { hostPointer in
+        try await openChannel(deadline: deadline) { _, session in
+            classifyDirectTCPIPOpenFailure(session)
+        } open: { session in
+            endpoint.host.withCString { hostPointer in
                 libssh2_channel_direct_tcpip_ex(
                     session,
                     hostPointer,
                     Int32(endpoint.port),
                     "127.0.0.1",
                     0)
-            }
-            if let channel {
-                let disposition = notePacketProducingResult(
-                    0,
-                    owner: owner,
-                    session: session)
-                applyTransportSendOwnerDisposition(disposition)
-                return channel
-            }
-
-            let error = libssh2_session_last_errno(session)
-            let openFailure = error == LIBSSH2_ERROR_EAGAIN
-                ? nil
-                : classifyDirectTCPIPOpenFailure(session)
-            let disposition = notePacketProducingResult(
-                error,
-                owner: owner,
-                session: session)
-            if error == LIBSSH2_ERROR_EAGAIN {
-                do {
-                    try await waitForSession(session, deadline: deadline)
-                } catch {
-                    if transportSendOwner == owner { invalidateResources() }
-                    throw error
-                }
-            } else {
-                noteFailure(error)
-                applyTransportSendOwnerDisposition(disposition)
-                throw openFailure ?? SSHError.channelFailed
             }
         }
     }
@@ -4185,27 +4149,10 @@ actor SessionDriver {
     private func openSessionChannel(
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
-        do {
-            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
-        } catch {
-            throw ChannelOpenAdmissionError(underlying: normalize(error))
-        }
-        defer { releaseChannelOpenSlot() }
-        diagnosticStep = "channel open"
-        let owner = allocateTransportSendOwner()
-        while true {
-            try checkProgress(deadline: deadline)
-            do {
-                try await waitForTransportSendAdmission(
-                    owner: owner,
-                    deadline: deadline,
-                    cancellable: true)
-            } catch {
-                if transportSendOwner == owner { invalidateResources() }
-                throw error
-            }
-            let session = try requireSession()
-            if let channel = libssh2_channel_open_ex(
+        try await openChannel(step: "channel open", deadline: deadline) { _, _ in
+            .channelFailed
+        } open: { session in
+            libssh2_channel_open_ex(
                 session,
                 "session",
                 UInt32("session".utf8.count),
@@ -4213,30 +4160,6 @@ actor SessionDriver {
                 32 * 1024,
                 nil,
                 0)
-            {
-                let disposition = notePacketProducingResult(
-                    0,
-                    owner: owner,
-                    session: session)
-                applyTransportSendOwnerDisposition(disposition)
-                return channel
-            }
-            let error = libssh2_session_last_errno(session)
-            let disposition = notePacketProducingResult(
-                error,
-                owner: owner,
-                session: session)
-            guard error == LIBSSH2_ERROR_EAGAIN else {
-                noteFailure(error)
-                applyTransportSendOwnerDisposition(disposition)
-                throw SSHError.channelFailed
-            }
-            do {
-                try await waitForSession(session, deadline: deadline)
-            } catch {
-                if transportSendOwner == owner { invalidateResources() }
-                throw error
-            }
         }
     }
 
@@ -4244,57 +4167,139 @@ actor SessionDriver {
         socketPath: String,
         deadline: ContinuousClock.Instant
     ) async throws -> OpaquePointer {
-        do {
-            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
-        } catch {
-            throw ChannelOpenAdmissionError(underlying: normalize(error))
-        }
-        defer { releaseChannelOpenSlot() }
-        let owner = allocateTransportSendOwner()
-        while true {
-            try checkProgress(deadline: deadline)
-            do {
-                try await waitForTransportSendAdmission(
-                    owner: owner,
-                    deadline: deadline,
-                    cancellable: true)
-            } catch {
-                if transportSendOwner == owner { invalidateResources() }
-                throw error
-            }
-            let session = try requireSession()
-            let channel = socketPath.withCString { socketPathPointer in
+        try await openChannel(deadline: deadline) { code, _ in
+            Self.mappedStreamLocalOpenError(code)
+        } open: { session in
+            socketPath.withCString { socketPathPointer in
                 libssh2_channel_direct_streamlocal_ex(
                     session,
                     socketPathPointer,
                     "127.0.0.1",
                     0)
             }
-            if let channel {
+        }
+    }
+
+    /// Opens one channel through libssh2's serialized open and hands it to its
+    /// caller, unless that caller was cancelled while the open was on the wire.
+    ///
+    /// libssh2 keeps an unfinished open on the session, so one that has
+    /// returned `EAGAIN` cannot be dropped: the next open would resume it and
+    /// take its channel. Retiring the session at once for it reconnected a
+    /// healthy Host every time a screen cancelled its requests on the way
+    /// out. Such an open runs on instead, and when the server answers inside
+    /// `abandonedChannelOpenBudget` the channel nobody is left to own is
+    /// closed here and the session stays in use.
+    private func openChannel(
+        step: String? = nil,
+        deadline: ContinuousClock.Instant,
+        failure: (_ code: Int32, _ session: OpaquePointer) -> SSHError,
+        open: (_ session: OpaquePointer) -> OpaquePointer?
+    ) async throws -> OpaquePointer {
+        let opened = try await driveChannelOpen(
+            step: step,
+            deadline: deadline,
+            failure: failure,
+            open: open)
+        guard opened.callerLeft else { return opened.channel }
+        do {
+            try await cleanChannel(
+                opened.channel,
+                session: opened.session,
+                deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                cancellable: false)
+        } catch {
+            invalidateResources()
+        }
+        throw SettledChannelOpenError(underlying: .cancelled)
+    }
+
+    /// Holds the serialized open slot from the first native call to its
+    /// outcome. Before that call a cancellation or deadline ends the open as it
+    /// always has. Once the call has returned `EAGAIN`, a cancellation only
+    /// starts `abandonedChannelOpenBudget`: every wait from there is
+    /// non-cancellable and bounded by it, and running out of it throws
+    /// `.cancelled` with the open still on the session, which the caller
+    /// retires exactly as it does for a deadline.
+    private func driveChannelOpen(
+        step: String?,
+        deadline: ContinuousClock.Instant,
+        failure: (_ code: Int32, _ session: OpaquePointer) -> SSHError,
+        open: (_ session: OpaquePointer) -> OpaquePointer?
+    ) async throws -> (channel: OpaquePointer, session: OpaquePointer, callerLeft: Bool) {
+        do {
+            try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
+        } catch {
+            throw SettledChannelOpenError(underlying: normalize(error))
+        }
+        defer { releaseChannelOpenSlot() }
+        if let step { diagnosticStep = step }
+        let owner = allocateTransportSendOwner()
+        var isOnSession = false
+        var abandonedUntil: ContinuousClock.Instant?
+        func abandon() {
+            abandonedUntil = min(
+                deadline,
+                ContinuousClock.now.advanced(by: Self.abandonedChannelOpenBudget))
+        }
+        func interruption(_ error: any Error) -> any Error {
+            guard abandonedUntil != nil, error as? SSHError == .timedOut else { return error }
+            return SSHError.cancelled
+        }
+        while true {
+            if isOnSession, abandonedUntil == nil, Task.isCancelled { abandon() }
+            if let abandonedUntil {
+                if ContinuousClock.now >= abandonedUntil { throw interruption(noteTimedOut()) }
+            } else {
+                try checkProgress(deadline: deadline)
+            }
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: abandonedUntil == nil)
+            } catch {
+                if isOnSession, abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                if transportSendOwner == owner { invalidateResources() }
+                throw interruption(error)
+            }
+            let session = try requireSession()
+            if let channel = open(session) {
                 let disposition = notePacketProducingResult(
                     0,
                     owner: owner,
                     session: session)
                 applyTransportSendOwnerDisposition(disposition)
-                return channel
+                return (channel, session, abandonedUntil != nil)
             }
 
-            let error = libssh2_session_last_errno(session)
+            let code = libssh2_session_last_errno(session)
+            let openFailure = code == LIBSSH2_ERROR_EAGAIN ? nil : failure(code, session)
             let disposition = notePacketProducingResult(
-                error,
+                code,
                 owner: owner,
                 session: session)
-            if error == LIBSSH2_ERROR_EAGAIN {
-                do {
-                    try await waitForSession(session, deadline: deadline)
-                } catch {
-                    if transportSendOwner == owner { invalidateResources() }
-                    throw error
-                }
-            } else {
-                noteFailure(error)
+            if let openFailure {
+                noteFailure(code)
                 applyTransportSendOwnerDisposition(disposition)
-                throw Self.mappedStreamLocalOpenError(error)
+                throw openFailure
+            }
+            isOnSession = true
+            do {
+                try await waitForSession(
+                    session,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: abandonedUntil == nil)
+            } catch {
+                if abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                if transportSendOwner == owner { invalidateResources() }
+                throw interruption(error)
             }
         }
     }
@@ -5647,7 +5652,7 @@ actor SessionDriver {
 
     private func normalize(_ error: any Error) -> SSHError {
         let normalized: SSHError
-        if let error = error as? ChannelOpenAdmissionError {
+        if let error = error as? SettledChannelOpenError {
             normalized = error.underlying
         } else if let error = error as? SSHError {
             normalized = error
