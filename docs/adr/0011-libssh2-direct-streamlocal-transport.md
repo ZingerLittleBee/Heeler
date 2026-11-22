@@ -157,7 +157,7 @@ belongs to the waiter. Once its own open call begins, an interrupted open still
 invalidates the session under the original cancellation rule above, except for
 the cancelled caller the next amendment covers.
 
-Amendment (cancelled channel opens): that rule treated a cancelled caller and
+Amendment (#824): that rule treated a cancelled caller and
 an expired deadline alike, and they are not alike. A deadline says the server
 has not answered in the time the operation was given. A cancellation says only
 that the caller stopped waiting, and views cancel their requests every time the
