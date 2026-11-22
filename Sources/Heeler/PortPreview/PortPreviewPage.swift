@@ -77,9 +77,14 @@ final class PortPreviewPage: NSObject {
     }
 
     func load(_ target: PortPreviewTarget) {
+        load(target, as: URLRequest(url: target.url))
+    }
+
+    /// Loads `request`, which is addressed to `target`.
+    private func load(_ target: PortPreviewTarget, as request: URLRequest) {
         current = target
         phase = .loading
-        webView.load(URLRequest(url: target.url))
+        webView.load(request)
     }
 
     /// Loads the page again. After a failure that is the page that failed,
@@ -137,10 +142,14 @@ final class PortPreviewPage: NSObject {
 
     /// Where a request that would replace the page goes: a loopback address
     /// loads here, under `localhost`, and anything else on the web opens in
-    /// the browser, which reaches it without the Host.
-    private func place(_ url: URL) {
+    /// the browser, which reaches it without the Host. What loads here is
+    /// the request the page made, so a form keeps its method and its data.
+    private func place(_ request: URLRequest) {
+        guard let url = request.url else { return }
         if let target = PortPreviewTarget(link: url) {
-            load(target)
+            var request = request
+            request.url = target.url
+            load(target, as: request)
         } else if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             openExternally(url)
         }
@@ -162,7 +171,8 @@ final class PortPreviewPage: NSObject {
         guard let target = PortPreviewTarget(link: url), !target.isRewritten else {
             // After this decision returns: a load started inside it would
             // be the navigation being cancelled.
-            Task { @MainActor in self.place(url) }
+            let request = action.request
+            Task { @MainActor in self.place(request) }
             return .cancel
         }
         return .allow
@@ -249,7 +259,7 @@ extension PortPreviewPage: WKUIDelegate {
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url { place(url) }
+        place(navigationAction.request)
         return nil
     }
 }
