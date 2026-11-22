@@ -3254,8 +3254,9 @@ actor SessionDriver {
                     normalized != .forwardingDenied,
                     normalized != .targetUnreachable
                 {
-                    // The rule `openStreamLocal` follows: only the server's
-                    // refusal of this one channel leaves the session usable.
+                    // The rule `openStreamLocal` follows: the server's
+                    // refusal of this one channel, or an open that settled,
+                    // leaves the session usable. Nothing else does.
                     invalidateResources()
                 }
                 throw normalized
