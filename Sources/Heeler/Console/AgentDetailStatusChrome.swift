@@ -340,6 +340,7 @@ struct AgentPermissionModeLabel: View {
     var controls: AgentSessionControls? = nil
     @State private var confirmsBypass = false
     @Environment(\.colorScheme) private var colorScheme
+    private static let touchSlop: CGFloat = 8
 
     var body: some View {
         Group {
@@ -361,17 +362,20 @@ struct AgentPermissionModeLabel: View {
         let isSwitching = controls?.isSwitchingPermissionMode == true
         let prefix = mode.isEmpty && !isSwitching ? "" : (mode == "plan" ? "⏸\u{FE0E} " : "⏵⏵ ")
         let text = HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text(verbatim: prefix)
-                .opacity(isSwitching ? 0 : 1)
-                .overlay {
-                    if isSwitching {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(permissionInk(mode))
-                            .scaleEffect(0.65)
-                            .accessibilityHidden(true)
+            // Left out when empty: even an empty Text makes the line taller.
+            if !prefix.isEmpty {
+                Text(verbatim: prefix)
+                    .opacity(isSwitching ? 0 : 1)
+                    .overlay {
+                        if isSwitching {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(permissionInk(mode))
+                                .scaleEffect(0.65)
+                                .accessibilityHidden(true)
+                        }
                     }
-                }
+            }
             Text(verbatim: AgentSessionSettings.permissionTitle(mode))
         }
             .font(.caption2.weight(.medium))
@@ -393,8 +397,11 @@ struct AgentPermissionModeLabel: View {
                 }
                 .labelsHidden()
             } label: {
-                text.frame(minHeight: 28).contentShape(Rectangle())
+                text.padding(.vertical, Self.touchSlop).contentShape(Rectangle())
             }
+            // A finger's height without the room: a taller label would lift
+            // the status line above one that has no menu.
+            .padding(.vertical, -Self.touchSlop)
             .disabled(!controls.isEnabled)
             .accessibilityLabel("Permission mode")
             .accessibilityValue(isSwitching
