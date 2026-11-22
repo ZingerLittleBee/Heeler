@@ -176,6 +176,8 @@ struct ConsoleView: View {
     /// Where this window's Agent strip is scrolled to, across Agent switches.
     @State private var agentSwitcherScroll = TerminalAgentSwitcherScroll()
     @State private var tabBarRequest = ConsoleTabBarBridge.Request()
+    /// The pop a collapsed split view said it is making; see `compactColumn(for:)`.
+    @State private var compactPop = CompactPop()
     /// Which pass of `body` built the rows and the detail now showing; see
     /// `KeyedContent`.
     @State private var contentPass = ContentPass()
@@ -888,6 +890,49 @@ struct ConsoleView: View {
         splitVisibility(for: tab).isSidebarVisible == false ? detailBar.bottom : detailBar.top
     }
 
+    /// Which column a collapsed split view shows, and where it says it is
+    /// going. The list's selection puts the detail on top and hears a pop as
+    /// nil, but only while a list is there to hear it: once an empty state
+    /// stands in for the list, a pop often goes unreported, and the detail
+    /// stays on stage behind the list, the tab bar hidden for it. The split view
+    /// says here that it is going back, whatever its sidebar shows. It says
+    /// so as the pop starts, so the detail is given up only once it has left
+    /// the screen (`detailColumnDidDisappear(in:)`).
+    private func compactColumn(for tab: ConsoleTab) -> Binding<NavigationSplitViewColumn> {
+        Binding(
+            get: {
+                guard let detailOnStage else { return .sidebar }
+                // Still on stage until it has left the screen, but the split
+                // view is already going back: told the detail is on top by a
+                // pass of `body` in between, it pushes the detail again.
+                if let leaving = compactPop.leaving, leaving.tab == tab,
+                    leaving.detail == detailOnStage
+                {
+                    return .sidebar
+                }
+                return .detail
+            },
+            set: { column in
+                compactPop.leaving =
+                    if column == .sidebar, horizontalSizeClass == .compact, let detailOnStage {
+                        CompactPop.Leaving(tab: tab, detail: detailOnStage)
+                    } else {
+                        nil
+                    }
+            })
+    }
+
+    /// Gives up the detail of a pop the split view announced and no list
+    /// reported. A reported one has cleared the detail already.
+    private func detailColumnDidDisappear(in tab: ConsoleTab) {
+        let leaving = compactPop.leaving
+        compactPop.leaving = nil
+        guard let leaving, leaving.tab == tab, tab == currentTab,
+            leaving.detail == detailOnStage, horizontalSizeClass == .compact
+        else { return }
+        clearSelection()
+    }
+
     /// One tab's split view. A split view instead of a plain stack for the
     /// iPad's sake: regular width shows the list beside the Attach terminal;
     /// compact width collapses into the familiar push navigation. The
@@ -900,7 +945,8 @@ struct ConsoleView: View {
                 size: geometry.size,
                 safeAreaInsets: geometry.safeAreaInsets)
             NavigationSplitView(
-                columnVisibility: splitVisibilityBinding(for: tab, presentation: presentation)
+                columnVisibility: splitVisibilityBinding(for: tab, presentation: presentation),
+                preferredCompactColumn: compactColumn(for: tab)
             ) {
                 sidebarLists(showing: tab)
                     // The sidebar column reports a compact size class even
@@ -988,6 +1034,7 @@ struct ConsoleView: View {
                                 }
                             }
                     }
+                    .onDisappear { detailColumnDidDisappear(in: tab) }
                 }
             }
             // Keep structural identity stable across rotation and size-class changes.
@@ -1546,6 +1593,8 @@ struct ConsoleView: View {
     /// between them. A first selection or a cleared one is the split view's
     /// own navigation and needs nothing from here.
     private func changeSelection(_ change: () -> Void) {
+        // A pick or a pop reported since is the later word.
+        compactPop.leaving = nil
         let before = selectedItem.wrappedValue
         change()
         let after = selectedItem.wrappedValue
@@ -3819,6 +3868,19 @@ private struct ConsoleWorkspaceRowKey: Equatable, Sendable {
     var renamesTitle = false
     var offers: ConsoleAgentRowOffers?
     var newAgentOrigin: StartAgentStore.LaunchOrigin?
+}
+
+/// What a collapsed split view last said about going back to its list.
+@MainActor
+private final class CompactPop {
+    struct Leaving {
+        let tab: ConsoleTab
+        let detail: ConsoleSelection
+    }
+
+    /// The detail a pop under way is leaving, in the tab whose split view
+    /// said so. Held outside the view's state: nothing redraws for it.
+    var leaving: Leaving?
 }
 
 /// What the Console sidebar's split-view selection can hold. Only Agents
