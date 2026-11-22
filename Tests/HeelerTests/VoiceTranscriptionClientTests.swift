@@ -133,7 +133,8 @@ struct VoiceTranscriptionClientTests {
         for preset in VoiceInputPreset.allCases {
             let endpoint = try #require(VoiceInputEndpoint.preset(preset))
             let fields = try VoiceTranscriptionClient.fields(for: request(endpoint, options: .init()))
-            #expect(fields.map(\.name) == ["model"])
+            let expected = preset == .elevenLabs ? ["model_id", "tag_audio_events"] : ["model"]
+            #expect(fields.map(\.name) == expected)
         }
     }
 
@@ -218,6 +219,27 @@ struct VoiceTranscriptionClientTests {
                 + "Content-Type: audio/wav\r\n\r\nRIFF-audio\r\n--B--\r\n")
     }
 
+    @Test func elevenLabsUploadsOnlyTheRecordingAndScribeFields() throws {
+        let endpoint = try #require(VoiceInputEndpoint.preset(.elevenLabs))
+        let recording = request(
+            endpoint, options: .init(languages: ["zho", "eng", "yue"]), keywords: ["Heeler"], prompt: "shared prompt")
+        let (http, body) = try VoiceTranscriptionClient.makeRequest(recording, boundary: "B")
+
+        #expect(http.httpMethod == "POST")
+        #expect(http.url?.absoluteString == "https://api.elevenlabs.io/v1/speech-to-text")
+        #expect(http.value(forHTTPHeaderField: "xi-api-key") == "sk-test")
+        #expect(http.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(http.value(forHTTPHeaderField: "Content-Type") == "multipart/form-data; boundary=B")
+        #expect(String(decoding: body, as: UTF8.self)
+            == "--B\r\nContent-Disposition: form-data; name=\"model_id\"\r\n\r\nscribe_v3\r\n"
+                + "--B\r\nContent-Disposition: form-data; name=\"tag_audio_events\"\r\n\r\nfalse\r\n"
+                + "--B\r\nContent-Disposition: form-data; name=\"language_code\"\r\n\r\nzho\r\n"
+                + "--B\r\nContent-Disposition: form-data; name=\"secondary_language_codes\"\r\n\r\neng\r\n"
+                + "--B\r\nContent-Disposition: form-data; name=\"secondary_language_codes\"\r\n\r\nyue\r\n"
+                + "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"voice.wav\"\r\n"
+                + "Content-Type: audio/wav\r\n\r\nRIFF-audio\r\n--B--\r\n")
+    }
+
     struct ResponseCase: CustomTestStringConvertible, Sendable {
         let name: String
         let status: Int
@@ -233,6 +255,14 @@ struct VoiceTranscriptionClientTests {
             ResponseCase(
                 name: "JSON text", status: 200, body: #"{"text":" 把这个 useEffect 改一下。 ","usage":{}}"#,
                 expected: .success("把这个 useEffect 改一下。")),
+            ResponseCase(
+                name: "Scribe transcript", status: 200,
+                body: #"{"language_code":"zho","language_probability":0.99,"text":"检查代码。","words":[]}"#,
+                expected: .success("检查代码。")),
+            ResponseCase(
+                name: "Scribe key error", status: 401,
+                body: #"{"detail":{"status":"invalid_api_key","message":"Invalid API key"}}"#,
+                expected: .failure(.unauthorized("Invalid API key"))),
             ResponseCase(
                 name: "plain text", status: 200, body: "hello there\n",
                 headers: ["Content-Type": "text/plain; charset=utf-8"], expected: .success("hello there")),

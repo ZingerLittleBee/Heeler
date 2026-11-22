@@ -39,6 +39,35 @@ struct VoiceInputSettingsTests {
         }
     }
 
+    @Test func elevenLabsHasItsOwnKeyAgreementAndLanguage() throws {
+        try withDefaults { defaults in
+            let secrets = InMemorySecretStore()
+            let settings = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            let service = VoiceInputService.preset(.elevenLabs)
+            let endpoint = try #require(service.endpoint(custom: .init()))
+            #expect(VoiceInputService.allCases.contains(service))
+            #expect(endpoint.operatorName == "ElevenLabs")
+            #expect(!service.acceptsPrompt && !service.takesKeywords)
+            #expect(service.prompt("shared prompt", keywords: ["Heeler"]) == "shared prompt")
+
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "first", consented: true)
+            #expect(!settings.hasConsent(for: endpoint))
+            #expect(!settings.hasKey(for: endpoint))
+            #expect(throws: VoiceInputSettings.SaveError.notConsented) {
+                try settings.save(service: service, custom: .init(), apiKey: "second", consented: false)
+            }
+            let options = VoiceInputRequestOptions(languages: ["zho"])
+            #expect(VoiceInputLanguage.choices(for: .elevenLabs).contains("zho"))
+            try settings.save(service: service, custom: .init(), apiKey: "second", consented: true, options: options)
+
+            let reopened = VoiceInputSettings(defaults: defaults, secrets: secrets)
+            #expect(reopened.service == service)
+            #expect(reopened.isReady)
+            #expect(reopened.apiKey(for: endpoint) == "second")
+            #expect(reopened.options(for: endpoint) == options)
+        }
+    }
+
     @Test func aBlankKeyKeepsTheSavedOneAndAMissingKeyIsRefused() throws {
         try withDefaults { defaults in
             let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())

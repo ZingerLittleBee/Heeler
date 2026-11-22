@@ -48,8 +48,7 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
-    /// Whether the service reads Keywords on their own. The others hear
-    /// them only through the Prompt.
+    /// Whether the service reads Keywords directly.
     var takesKeywords: Bool {
         switch self {
         case .onDevice: true
@@ -58,12 +57,29 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
+    var acceptsPrompt: Bool {
+        switch self {
+        case .onDevice: false
+        case .preset(let preset): preset.uploadFormat.acceptsPrompt
+        case .custom: true
+        }
+    }
+
+    /// Whether the service reads Keywords only once the user turns them on,
+    /// because it bills them (`VoiceInputRequestOptions.sendsKeywords`).
+    var keywordsAreOptional: Bool {
+        switch self {
+        case .onDevice, .custom: false
+        case .preset(let preset): preset.uploadFormat.optionalKeywords != nil
+        }
+    }
+
     /// `prompt` as it should read with `keywords`. Where the service reads
     /// Keywords itself it is unchanged; elsewhere its `Vocabulary:` line,
     /// the form Qwen3-ASR's model card gives, is rewritten in place, added
     /// at the end, or removed when there are no terms.
     func prompt(_ prompt: String, keywords: [String]) -> String {
-        guard !takesKeywords else { return prompt }
+        guard acceptsPrompt, !takesKeywords else { return prompt }
         let isVocabulary = { (line: String) in
             line.trimmingCharacters(in: .whitespaces).hasPrefix(Self.vocabularyLabel)
         }
@@ -188,11 +204,9 @@ final class VoiceInputSettings {
     /// record in full bandwidth are connected. Off by default, and applied
     /// at once rather than on Save.
     private(set) var alwaysUsesBuiltInMicrophone: Bool
-    /// Names and terms the user says, sent with each recording so the
-    /// service spells them. One list for every service.
+    /// Shared spelling hints for services that accept Keywords or Prompt.
     private(set) var keywords: [String]
-    /// What recordings are about, sent with each one. One for every
-    /// service; empty when unset.
+    /// Shared context for services that accept Prompt. Empty when unset.
     private(set) var prompt: String
     /// The language On Device listens for, as a BCP 47 identifier: one per
     /// recording, with English words inside it. The device's first

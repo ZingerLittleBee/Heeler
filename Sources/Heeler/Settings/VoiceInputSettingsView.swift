@@ -6,7 +6,9 @@ import SwiftUI
 /// (ADR 0036); the microphone choice applies at once. Keywords and the Prompt
 /// stay the same whichever service is chosen, except that a service which
 /// doesn't read Keywords keeps them on the Prompt's Vocabulary line, updated
-/// as Keywords change or the service becomes one of those.
+/// as Keywords change or the service becomes one of those. A service that
+/// bills Keywords shows them behind Send Keywords, saved with its options,
+/// and one that takes no Prompt shows none.
 struct VoiceInputSettingsView: View {
     let settings: VoiceInputSettings
     /// The mic's sheet has Cancel; pushed from Settings, Back does it.
@@ -58,10 +60,11 @@ struct VoiceInputSettingsView: View {
             case nil:
                 EmptyView()
             }
-            if connection.service != nil {
-                keywordsSection
-                // The device's model takes Keywords and no Prompt.
-                if connection.service != .onDevice {
+            if let service = connection.service {
+                if service.takesKeywords || service.acceptsPrompt || service.keywordsAreOptional {
+                    keywordsSection
+                }
+                if service.acceptsPrompt {
                     promptSection
                 }
                 if connection.service == .custom, connection.endpoint != nil {
@@ -152,17 +155,36 @@ struct VoiceInputSettingsView: View {
 
     private var keywordsSection: some View {
         Section {
-            TextField(
-                "Keywords", text: $keywords,
-                prompt: Text(verbatim: "herdr, Claude Code, Codex, pnpm, SwiftUI"), axis: .vertical)
-                .lineLimit(2...6)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
+            if billedKeywordsOperator != nil {
+                Toggle("Send Keywords", isOn: $connection.options.sendsKeywords)
+            }
+            if billedKeywordsOperator == nil || connection.options.sendsKeywords {
+                TextField(
+                    "Keywords", text: $keywords,
+                    prompt: Text(verbatim: "herdr, Claude Code, Codex, pnpm, SwiftUI"), axis: .vertical)
+                    .lineLimit(2...6)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
         } header: {
             Text("Keywords")
         } footer: {
-            Text("Names and terms you say, separated by commas, so the service spells them right.")
+            let purpose = String(localized: "Names and terms you say, separated by commas, so the service spells them right.")
+            if let billedKeywordsOperator {
+                Text([purpose, String(localized: "\(billedKeywordsOperator) charges extra for recordings sent with Keywords.")].joinedAsSentences())
+            } else {
+                Text(purpose)
+            }
         }
+    }
+
+    /// Who bills Keywords, for a service that takes them only behind Send
+    /// Keywords; nil for every other service.
+    private var billedKeywordsOperator: String? {
+        guard case .preset(let preset) = connection.service, connection.service?.keywordsAreOptional == true else {
+            return nil
+        }
+        return preset.operatorName
     }
 
     private var promptSection: some View {

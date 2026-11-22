@@ -24,9 +24,9 @@ research behind it, including the vendor evidence, is
   service in Settings › Voice Input and enters their own API key, which stays
   in the Keychain on this device only. Built-in services are OpenAI
   (`gpt-transcribe`), DeepInfra and SiliconFlow (China) (both
-  `Qwen/Qwen3-ASR-1.7B`).
-- **One request shape.** Every service, built-in or Custom, takes OpenAI's
-  `POST <base>/audio/transcriptions`: multipart `file` and `model`, a Bearer
+  `Qwen/Qwen3-ASR-1.7B`), and ElevenLabs (`scribe_v3`).
+- **Shared upload and response handling.** OpenAI, DeepInfra, SiliconFlow, and Custom
+  take OpenAI's `POST <base>/audio/transcriptions`: multipart `file` and `model`, a Bearer
   key, and a JSON `text` in reply. Per-service differences are data on the
   preset, not code paths: `gpt-transcribe` takes the possible languages as
   `languages[]` and answers 400 when `language` comes beside them; DeepInfra
@@ -35,6 +35,19 @@ research behind it, including the vendor evidence, is
   default to automatic detection, independent of device language. OpenAI can
   select several hints; DeepInfra can select one. Settings are scoped by the
   preset and model.
+- **ElevenLabs Scribe.** The Composer sends its WAV directly to
+  `https://api.elevenlabs.io/v1/speech-to-text` with `xi-api-key`, `model_id`,
+  and optional hints (`language_code` for the first selection, then repeated
+  `secondary_language_codes`). It requests `tag_audio_events=false` to keep
+  sound descriptions out of the draft. The same multipart upload and JSON
+  `text` decoder serve both formats. Scribe charges extra for keyterm
+  prompting and transcript editing, so the preset never sends the Prompt and
+  sends the shared Keywords, as repeated `keyterms`, only after the user turns
+  on Send Keywords, which is off by default and saved with the preset's
+  options. Scribe answers 400 to the whole request over one term outside its
+  limits (50 characters, four spaces, none of `<>{}[]\`), so the upload leaves
+  out the refused characters and any term still outside the limits.
+  [ElevenLabs API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 - **Custom form fields.** Custom starts with `response_format=json` and no
   language field. Its Advanced Request Fields are scoped by normalized URL
   and model, saved only on Save. Multiple values repeat the exact field name;

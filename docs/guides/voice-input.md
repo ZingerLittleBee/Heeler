@@ -2,12 +2,12 @@
 
 Tap the microphone beside **Send** in the Composer to speak, and tap again to stop. The transcribed text lands at the cursor in your Agent terminal or [Chat](chat.md) draft.
 
-You need your own API key for OpenAI, DeepInfra, SiliconFlow (China), or a compatible speech service. Heeler keeps no copy of your recordings.
+You need your own API key for OpenAI, DeepInfra, ElevenLabs, SiliconFlow (China), or a compatible speech service. Heeler keeps no copy of your recordings.
 
 ## Set up Voice Input
 
 1. Open **Settings > Voice Input**, or tap the microphone in the Composer before Voice Input is set up.
-2. In **Service**, choose **OpenAI** (`gpt-transcribe`), **DeepInfra** or **SiliconFlow (China)** (`Qwen/Qwen3-ASR-1.7B`), or **Custom**.
+2. In **Service**, choose **OpenAI** (`gpt-transcribe`), **DeepInfra** or **SiliconFlow (China)** (`Qwen/Qwen3-ASR-1.7B`), **ElevenLabs** (`scribe_v3`), or **Custom**.
 3. For **Custom**, fill in:
    - **Base URL**: an `https://` URL compatible with OpenAI's `audio/transcriptions` endpoint.
    - **Model**: the model name the service expects.
@@ -37,6 +37,7 @@ Chinese and English. With **DeepInfra**, choose one **Language**, or keep
 **Automatic** for mixed speech. Its API documents a single language parameter;
 its effect on hosted Qwen3-ASR has not been verified with a real key. SiliconFlow
 stays automatic because its API does not document a language parameter.
+With **ElevenLabs**, leave **Languages** on **Automatic** or select the main language first, then any others you expect in the recording.
 Selections belong to each service and take effect on **Save**.
 
 ## Custom request fields
@@ -65,12 +66,17 @@ then-current first language. Later system language changes do not change it.
 
 ## Keywords and Prompt
 
-In **Settings > Voice Input**, two fields shared across all services stay when you switch **Service**:
+In **Settings > Voice Input**, two fields shared across compatible services stay when you switch **Service**:
 
 - **Keywords**: comma-separated names and terms you say, such as `herdr, Claude Code, Codex, pnpm, SwiftUI`, so the service spells them right.
 - **Prompt**: context for what you talk about, sent as written.
 
 **OpenAI** reads **Keywords** directly and leaves **Prompt** unchanged. **DeepInfra**, **SiliconFlow (China)**, and **Custom** do not read **Keywords**; editing **Keywords** under them or switching to one syncs a `Vocabulary: …` line in **Prompt** so **Prompt** shows what is sent.
+
+**ElevenLabs** charges extra for recordings sent with Keywords, so it reads them only
+after you turn on **Send Keywords** under it. A keyword longer than 50 characters or with
+more than four spaces is left out. ElevenLabs takes no **Prompt**; your saved Prompt
+remains available when you switch services. [ElevenLabs transcription API](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 
 ## Choose a microphone
 

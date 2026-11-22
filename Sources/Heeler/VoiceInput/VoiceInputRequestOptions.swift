@@ -13,6 +13,10 @@ struct VoiceInputCustomField: Codable, Equatable, Identifiable, Sendable {
 struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
     var languages: [String] = []
     var fields: [VoiceInputCustomField] = []
+    /// Whether Keywords go to a service that bills them
+    /// (`VoiceInputUploadFormat.optionalKeywords`). Off until the user turns
+    /// it on; other services ignore it.
+    var sendsKeywords = false
 
     enum Problem: Error, Equatable {
         case languagesUnavailable
@@ -75,6 +79,17 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
     }
 }
 
+extension VoiceInputRequestOptions {
+    /// Options saved before `sendsKeywords` existed have no value for it, and
+    /// one entry that fails to decode would drop every saved option.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        languages = try container.decode([String].self, forKey: .languages)
+        fields = try container.decode([VoiceInputCustomField].self, forKey: .fields)
+        sendsKeywords = try container.decodeIfPresent(Bool.self, forKey: .sendsKeywords) ?? false
+    }
+}
+
 enum VoiceInputLanguage {
     // Languages shared with Qwen3-ASR, using provider API codes (tl, not fil).
     // Hosted parameter behavior still needs vendor smoke tests.
@@ -83,10 +98,23 @@ enum VoiceInputLanguage {
         "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa", "el", "hu", "mk", "ro",
     ]
 
+    // ISO 639-3 codes in ElevenLabs' published Scribe language list.
+    private static let scribeCodes = [
+        "afr", "amh", "ara", "hye", "asm", "ast", "aze", "bel", "ben", "bos", "bul", "mya", "yue", "cat",
+        "ceb", "nya", "hrv", "ces", "dan", "nld", "eng", "est", "fil", "fin", "fra", "ful", "glg", "lug",
+        "kat", "deu", "ell", "guj", "hau", "heb", "hin", "hun", "isl", "ibo", "ind", "gle", "ita", "jpn",
+        "jav", "kea", "kan", "kaz", "khm", "kor", "kur", "kir", "lao", "lav", "lin", "lit", "luo", "ltz",
+        "mkd", "msa", "mal", "mlt", "zho", "mri", "mar", "mon", "nep", "nso", "nor", "oci", "ori", "pus",
+        "fas", "pol", "por", "pan", "ron", "rus", "srp", "sna", "snd", "sin", "slk", "slv", "som", "spa",
+        "swa", "swe", "tam", "tgk", "tel", "tha", "tur", "ukr", "umb", "urd", "uzb", "vie", "cym", "wol",
+        "xho", "zul",
+    ]
+
     static func choices(for preset: VoiceInputPreset) -> [String] {
         switch preset {
         case .openAI: commonCodes + ["zh-cn", "zh-tw", "zh-hk"]
         case .deepInfra: commonCodes
+        case .elevenLabs: scribeCodes
         case .siliconFlowCN: []
         }
     }

@@ -80,7 +80,7 @@ protocol VoiceTranscriptionHTTP: Sendable {
 
 /// An ephemeral session: no cookies, cache, or credential storage. Every
 /// redirect is refused (`VoiceTranscriptionRedirectRefusal`).
-struct URLSessionVoiceTranscriptionHTTP: VoiceTranscriptionHTTP {
+final class URLSessionVoiceTranscriptionHTTP: VoiceTranscriptionHTTP {
     private let session: URLSession
 
     /// `protocolClasses` lets tests answer in place of a server.
@@ -92,12 +92,14 @@ struct URLSessionVoiceTranscriptionHTTP: VoiceTranscriptionHTTP {
         configuration.urlCredentialStorage = nil
         configuration.urlCache = nil
         if let protocolClasses { configuration.protocolClasses = protocolClasses }
-        session = URLSession(configuration: configuration)
+        session = URLSession(
+            configuration: configuration, delegate: VoiceTranscriptionRedirectRefusal(), delegateQueue: nil)
     }
 
+    deinit { session.finishTasksAndInvalidate() }
+
     func upload(_ request: URLRequest, body: Data) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.upload(
-            for: request, from: body, delegate: VoiceTranscriptionRedirectRefusal())
+        let (data, response) = try await session.upload(for: request, from: body)
         guard let http = response as? HTTPURLResponse else {
             throw VoiceTranscriptionError.unreadableResponse
         }
@@ -112,9 +114,10 @@ final class VoiceTranscriptionRedirectRefusal: NSObject, URLSessionTaskDelegate,
         _: URLSession,
         task _: URLSessionTask,
         willPerformHTTPRedirection _: HTTPURLResponse,
-        newRequest _: URLRequest
-    ) async -> URLRequest? {
-        nil
+        newRequest _: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 
@@ -148,7 +151,8 @@ struct VoiceTranscriptionClient: Sendable {
         var urlRequest = URLRequest(url: request.endpoint.transcriptionURL)
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 90
-        urlRequest.setValue("Bearer \(request.apiKey)", forHTTPHeaderField: "Authorization")
+        let format = request.endpoint.uploadFormat
+        urlRequest.setValue(format.keyPrefix + request.apiKey, forHTTPHeaderField: format.keyHeader)
         urlRequest.setValue(
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -162,21 +166,24 @@ struct VoiceTranscriptionClient: Sendable {
         do { try request.options.validate(for: request.endpoint) } catch {
             throw VoiceTranscriptionError.invalidSettings(error.message)
         }
-        var fields: [(name: String, value: String)] = [("model", request.endpoint.model)]
+        let format = request.endpoint.uploadFormat
+        var fields: [(name: String, value: String)] = [(format.modelField, request.endpoint.model)] + format.fixedFields
         switch request.endpoint.languageField {
         case .none:
             break
         case .primary:
             if let language = request.options.languages.first { fields.append(("language", language)) }
-        case .candidates:
-            for language in request.options.languages {
-                fields.append(("languages[]", language))
+        case .candidates(let first, let additional):
+            for (index, language) in request.options.languages.enumerated() {
+                fields.append((index == 0 ? first : additional, language))
             }
         }
         if request.endpoint.takesKeywords {
             fields += request.keywords.map { ("keywords[]", $0) }
+        } else if let optional = format.optionalKeywords, request.options.sendsKeywords {
+            fields += optional.terms(from: request.keywords).map { (optional.field, $0) }
         }
-        if !request.prompt.isEmpty {
+        if format.acceptsPrompt, !request.prompt.isEmpty {
             fields.append(("prompt", request.prompt))
         }
         if request.endpoint.sendsResponseFormat {
@@ -249,6 +256,7 @@ struct VoiceTranscriptionClient: Sendable {
             (object["error"] as? [String: Any])?["message"],
             object["error"],
             object["message"],
+            (object["detail"] as? [String: Any])?["message"],
             object["detail"],
         ]
         for candidate in candidates {

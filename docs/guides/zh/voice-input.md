@@ -3,12 +3,12 @@
 
 轻点 Composer 中 **Send** 旁的麦克风即可开口说话，再点一下结束。Voice Input 会把转写出的文字插在草稿的光标处，在 Agent 终端和 [Chat](chat.md) 的 Composer 中都能使用，发送前可以先修改。
 
-你需要自己准备 OpenAI、DeepInfra、SiliconFlow (China) 或兼容语音服务的 API key。Heeler 不保留你的录音。
+你需要自己准备 OpenAI、DeepInfra、ElevenLabs、SiliconFlow (China) 或兼容语音服务的 API key。Heeler 不保留你的录音。
 
 ## 配置 Voice Input
 
 1. 打开 **Settings > Voice Input**，或者在尚未配置 Voice Input 时直接轻点 Composer 里的麦克风。
-2. 在 **Service** 中选择 **OpenAI**（`gpt-transcribe`）、**DeepInfra** 或 **SiliconFlow (China)**（`Qwen/Qwen3-ASR-1.7B`），或者 **Custom**。
+2. 在 **Service** 中选择 **OpenAI**（`gpt-transcribe`）、**DeepInfra** 或 **SiliconFlow (China)**（`Qwen/Qwen3-ASR-1.7B`）、**ElevenLabs**（`scribe_v3`）或 **Custom**。
 3. 如果选了 **Custom**，填写以下三项：
    - **Base URL**：兼容 OpenAI `audio/transcriptions` 接口的 `https://` 地址。
    - **Model**：服务要求的模型名称。
@@ -30,14 +30,18 @@
 - 单次录音最长 2 分钟，到时自动结束并转写。
 - 切到后台或离开 Composer 会结束录音并转写到该草稿中。进入 Direct Input、Chat 中出现 Blocked Card 替换 Composer，或离开当前 Agent 都会取消录音。
 
+使用 **ElevenLabs** 时，**Languages** 默认自动识别。手动选择时，先选主要语言，再选录音中可能出现的其他语言。
+
 ## Keywords 和 Prompt
 
-在 **Settings > Voice Input** 中，有两个所有服务共用的字段，切换 **Service** 时不会清空：
+在 **Settings > Voice Input** 中，有两个可由兼容服务共用的字段，切换 **Service** 时不会清空：
 
 - **Keywords**：你会说到的名称和术语，用逗号分隔，例如 `herdr, Claude Code, Codex, pnpm, SwiftUI`，帮服务把它们拼对。
 - **Prompt**：你说话内容的背景，原样发送。
 
 **OpenAI** 直接读取 **Keywords**，在 **OpenAI** 下修改 **Keywords** 不会改动 **Prompt**。**DeepInfra**、**SiliconFlow (China)** 和 **Custom** 不直接读取 **Keywords**；在这些服务下编辑 **Keywords** 或切换到它们时，Heeler 会在 **Prompt** 中同步一行 `Vocabulary: …`，因此 **Prompt** 里看到的就是实际发送的内容。
+
+**ElevenLabs** 对带关键词的录音额外收费，所以只有在它下面打开 **Send Keywords** 后才会读取 **Keywords**。超过 50 个字符或多于四个空格的关键词不会发送。ElevenLabs 不接收 **Prompt**，切回其他服务时仍可使用之前保存的 Prompt。[ElevenLabs 转写接口](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 
 ## 选择麦克风
 
