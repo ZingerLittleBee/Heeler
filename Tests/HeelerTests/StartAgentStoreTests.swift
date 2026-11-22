@@ -66,6 +66,7 @@ struct StartAgentStoreTests {
         accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
         },
+        generateWorktreeBranch: @escaping () -> String = { GitBranchName.generatedWorktreeBranch() },
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -80,7 +81,8 @@ struct StartAgentStoreTests {
             origin: origin,
             recents: recents ?? makeRecents(),
             presets: { presets },
-            accountVariable: accountVariable)
+            accountVariable: accountVariable,
+            generateWorktreeBranch: generateWorktreeBranch)
     }
 
     /// The `.started` state a default-recorder submit lands in: the recorder's
@@ -1217,7 +1219,41 @@ struct StartAgentStoreTests {
         #expect(recorder.worktrees == [WorktreeSpec(branch: "task/fix-97", base: "origin/main")])
     }
 
-    @Test func worktreeSubmitWithEmptyFieldsUsesHerdrsDefaults() async {
+    @Test func enablingWorktreePreFillsGeneratedBranchAndRegenerateRollsANewOne() async {
+        let host = Host.fixture()
+        let recorder = StartRecorder()
+        var rolls = [
+            GitBranchName.generatedWorktreeBranch(seed: 0),
+            GitBranchName.generatedWorktreeBranch(seed: 0),
+            GitBranchName.generatedWorktreeBranch(seed: 9),
+        ]
+        let store = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            generateWorktreeBranch: { rolls.removeFirst() },
+            recorder: recorder)
+        store.name = "reviewer"
+        await store.discoverAgents()
+
+        store.startsInNewWorktree = true
+        #expect(store.worktreeBranch == "brave-river-0000")
+
+        // Regenerate skips an immediate repeat and lands on the next roll.
+        store.regenerateWorktreeBranch()
+        #expect(store.worktreeBranch == "calm-cloud-0009")
+
+        // Toggling off and back on preserves a non-empty branch.
+        store.worktreeBranch = "feature/custom"
+        store.startsInNewWorktree = false
+        store.startsInNewWorktree = true
+        #expect(store.worktreeBranch == "feature/custom")
+
+        await store.submit()
+        #expect(store.state == started(on: host))
+        #expect(recorder.worktrees == [WorktreeSpec(branch: "feature/custom", base: nil)])
+    }
+
+    @Test func worktreeSubmitWithClearedBranchUsesHerdrsDefaults() async {
         let host = Host.fixture()
         let recorder = StartRecorder()
         let store = makeStore(
@@ -1226,6 +1262,10 @@ struct StartAgentStoreTests {
             recorder: recorder)
         store.name = "reviewer"
         store.startsInNewWorktree = true
+        #expect(!store.worktreeBranch.isEmpty)
+        #expect(!store.worktreeBranch.contains("/"))
+        #expect(GitBranchName.validationError(store.worktreeBranch) == nil)
+        store.worktreeBranch = ""
         await store.discoverAgents()
 
         await store.submit()
