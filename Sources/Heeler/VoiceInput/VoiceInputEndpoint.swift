@@ -86,13 +86,41 @@ struct VoiceInputUploadFormat: Sendable {
     let modelField: String
     let acceptsPrompt: Bool
     let fixedFields: [(name: String, value: String)]
+    /// Where Keywords go once the user turns them on, for a service that
+    /// bills them; nil where there is no such field.
+    let optionalKeywords: VoiceInputOptionalKeywords?
 
     static let openAI = Self(
         path: "audio/transcriptions", keyHeader: "Authorization", keyPrefix: "Bearer ",
-        modelField: "model", acceptsPrompt: true, fixedFields: [])
+        modelField: "model", acceptsPrompt: true, fixedFields: [], optionalKeywords: nil)
     static let scribe = Self(
         path: "speech-to-text", keyHeader: "xi-api-key", keyPrefix: "",
-        modelField: "model_id", acceptsPrompt: false, fixedFields: [("tag_audio_events", "false")])
+        modelField: "model_id", acceptsPrompt: false, fixedFields: [("tag_audio_events", "false")],
+        optionalKeywords: .init(
+            field: "keyterms", refusedCharacters: "<>{}[]\\", maxLength: 50, maxSpaces: 4, maxTerms: 1000))
+}
+
+/// A repeated form field for Keywords, with the limits the service puts on a
+/// term. Scribe answers 400 to the whole request over one term outside them,
+/// so `terms` leaves those out.
+struct VoiceInputOptionalKeywords: Sendable {
+    let field: String
+    let refusedCharacters: String
+    /// In Unicode scalars, the way the service counts.
+    let maxLength: Int
+    let maxSpaces: Int
+    let maxTerms: Int
+
+    func terms(from keywords: [String]) -> [String] {
+        let terms = keywords.compactMap { keyword -> String? in
+            let term = keyword.filter { !refusedCharacters.contains($0) }.trimmingCharacters(in: .whitespaces)
+            guard !term.isEmpty, term.unicodeScalars.count <= maxLength,
+                term.count(where: { $0 == " " }) <= maxSpaces
+            else { return nil }
+            return term
+        }
+        return Array(terms.prefix(maxTerms))
+    }
 }
 
 /// Where one recording goes and how the request is shaped.

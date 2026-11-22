@@ -180,6 +180,8 @@ struct VoiceTranscriptionClient: Sendable {
         }
         if request.endpoint.takesKeywords {
             fields += request.keywords.map { ("keywords[]", $0) }
+        } else if let optional = format.optionalKeywords, request.options.sendsKeywords {
+            fields += optional.terms(from: request.keywords).map { (optional.field, $0) }
         }
         if format.acceptsPrompt, !request.prompt.isEmpty {
             fields.append(("prompt", request.prompt))

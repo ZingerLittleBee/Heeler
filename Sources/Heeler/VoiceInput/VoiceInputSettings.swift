@@ -65,6 +65,15 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
         }
     }
 
+    /// Whether the service reads Keywords only once the user turns them on,
+    /// because it bills them (`VoiceInputRequestOptions.sendsKeywords`).
+    var keywordsAreOptional: Bool {
+        switch self {
+        case .onDevice, .custom: false
+        case .preset(let preset): preset.uploadFormat.optionalKeywords != nil
+        }
+    }
+
     /// `prompt` as it should read with `keywords`. Where the service reads
     /// Keywords itself it is unchanged; elsewhere its `Vocabulary:` line,
     /// the form Qwen3-ASR's model card gives, is rewritten in place, added

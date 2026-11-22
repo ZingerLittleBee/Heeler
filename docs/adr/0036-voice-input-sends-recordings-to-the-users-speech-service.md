@@ -40,9 +40,14 @@ research behind it, including the vendor evidence, is
   and optional hints (`language_code` for the first selection, then repeated
   `secondary_language_codes`). It requests `tag_audio_events=false` to keep
   sound descriptions out of the draft. The same multipart upload and JSON
-  `text` decoder serve both formats. The preset omits shared Keywords and
-  Prompt because Scribe charges extra for keyterm prompting and transcript
-  editing. [ElevenLabs API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
+  `text` decoder serve both formats. Scribe charges extra for keyterm
+  prompting and transcript editing, so the preset never sends the Prompt and
+  sends the shared Keywords, as repeated `keyterms`, only after the user turns
+  on Send Keywords, which is off by default and saved with the preset's
+  options. Scribe answers 400 to the whole request over one term outside its
+  limits (50 characters, four spaces, none of `<>{}[]\`), so the upload leaves
+  out the refused characters and any term still outside the limits.
+  [ElevenLabs API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 - **Custom form fields.** Custom starts with `response_format=json` and no
   language field. Its Advanced Request Fields are scoped by normalized URL
   and model, saved only on Save. Multiple values repeat the exact field name;

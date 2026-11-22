@@ -343,6 +343,28 @@
         }
       }
     },
+    "%@ charges extra for recordings sent with Keywords." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は、キーワードを付けて送信した録音に追加料金を請求します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会对附带关键词的录音额外收费。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會對附帶關鍵字的錄音額外收費。"
+          }
+        }
+      }
+    },
     "%@ commit ahead" : {
       "localizations" : {
         "ja" : {
@@ -51271,6 +51293,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "傳送輸入框草稿"
+          }
+        }
+      }
+    },
+    "Send Keywords" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーワードを送信"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送关键词"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送關鍵字"
           }
         }
       }

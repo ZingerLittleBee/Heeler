@@ -167,6 +167,8 @@ Custom URL you enter. The upload
 carries the audio, the model name, your API key, any language hints you select,
 and any Custom request fields you configure. OpenAI, DeepInfra, SiliconFlow,
 and Custom also receive the Keywords and Prompt you enter in Settings.
+ElevenLabs receives the Keywords only while **Send Keywords** is on, and
+never the Prompt.
 Heeler puts the returned text in your Composer draft. You choose when to send
 it to your Agent. The service processes the
 recording, and bills your key, under its own privacy terms. A Custom URL sends

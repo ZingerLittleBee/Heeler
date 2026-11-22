@@ -73,9 +73,10 @@ In **Settings > Voice Input**, two fields shared across compatible services stay
 
 **OpenAI** reads **Keywords** directly and leaves **Prompt** unchanged. **DeepInfra**, **SiliconFlow (China)**, and **Custom** do not read **Keywords**; editing **Keywords** under them or switching to one syncs a `Vocabulary: …` line in **Prompt** so **Prompt** shows what is sent.
 
-ElevenLabs uses the original transcript. The preset skips Keywords and Prompt because
-ElevenLabs bills keyterm prompting and transcript editing as extra features.
-Your saved values remain available when you switch services. [ElevenLabs transcription API](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
+**ElevenLabs** charges extra for recordings sent with Keywords, so it reads them only
+after you turn on **Send Keywords** under it. A keyword longer than 50 characters or with
+more than four spaces is left out. ElevenLabs takes no **Prompt**; your saved Prompt
+remains available when you switch services. [ElevenLabs transcription API](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 
 ## Choose a microphone
 

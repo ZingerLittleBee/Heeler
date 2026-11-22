@@ -13,6 +13,10 @@ struct VoiceInputCustomField: Codable, Equatable, Identifiable, Sendable {
 struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
     var languages: [String] = []
     var fields: [VoiceInputCustomField] = []
+    /// Whether Keywords go to a service that bills them
+    /// (`VoiceInputUploadFormat.optionalKeywords`). Off until the user turns
+    /// it on; other services ignore it.
+    var sendsKeywords = false
 
     enum Problem: Error, Equatable {
         case languagesUnavailable
@@ -72,6 +76,17 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
             if ["language", "languages"].contains(folded) { languageFields += 1 }
         }
         guard languageFields <= 1 else { throw .conflictingLanguages }
+    }
+}
+
+extension VoiceInputRequestOptions {
+    /// Options saved before `sendsKeywords` existed have no value for it, and
+    /// one entry that fails to decode would drop every saved option.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        languages = try container.decode([String].self, forKey: .languages)
+        fields = try container.decode([VoiceInputCustomField].self, forKey: .fields)
+        sendsKeywords = try container.decodeIfPresent(Bool.self, forKey: .sendsKeywords) ?? false
     }
 }
 

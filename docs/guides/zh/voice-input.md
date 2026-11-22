@@ -41,7 +41,7 @@
 
 **OpenAI** 直接读取 **Keywords**，在 **OpenAI** 下修改 **Keywords** 不会改动 **Prompt**。**DeepInfra**、**SiliconFlow (China)** 和 **Custom** 不直接读取 **Keywords**；在这些服务下编辑 **Keywords** 或切换到它们时，Heeler 会在 **Prompt** 中同步一行 `Vocabulary: …`，因此 **Prompt** 里看到的就是实际发送的内容。
 
-ElevenLabs 使用原始转写结果。它的关键词和转写后编辑需要额外付费，Heeler 的 ElevenLabs 选项会省略 **Keywords** 和 **Prompt**。切回其他服务时，仍可使用之前保存的内容。[ElevenLabs 转写接口](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
+**ElevenLabs** 对带关键词的录音额外收费，所以只有在它下面打开 **Send Keywords** 后才会读取 **Keywords**。超过 50 个字符或多于四个空格的关键词不会发送。ElevenLabs 不接收 **Prompt**，切回其他服务时仍可使用之前保存的 Prompt。[ElevenLabs 转写接口](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
 
 ## 选择麦克风
 
