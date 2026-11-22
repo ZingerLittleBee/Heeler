@@ -6,10 +6,10 @@ import SwiftUI
 extension ChatUnavailableReason {
     var title: String {
         switch self {
-        case .noSession, .noConversationYet: String(localized: "Waiting for Conversation")
+        case .noSession(.agy), .noConversationYet, .awaitingFirstMessage: String(localized: "No Messages Yet")
+        case .noSession: String(localized: "Waiting for Conversation")
         case .unidentifiedSession: String(localized: "Conversation Not Identified")
         case .notFound, .mismatched, .sessionStore(_, .sessionMissing): String(localized: "Conversation Not Found")
-        case .awaitingFirstMessage: String(localized: "No Messages Yet")
         case .compressed: String(localized: "Conversation Compressed")
         case .unsupportedSession, .unsupportedFormat, .sessionStore: String(localized: "Conversation Not Readable")
         case .startScreen: String(localized: "Not in This Conversation")
@@ -270,7 +270,9 @@ extension ChatUnavailableReason {
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .noConversationYet,
+        case .noSession(.agy), .noConversationYet:
+            false
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession,
             .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff,
             .codexSharedDaemon, .cannotTellSessionOnRex:
             true
@@ -279,8 +281,13 @@ extension ChatUnavailableReason {
         }
     }
 
+    /// Whether Chat shows the empty-conversation placeholder instead of the
+    /// unavailable view: the conversation is new and the Composer starts it.
     var isAwaitingFirstMessage: Bool {
-        if case .awaitingFirstMessage = self { true } else { false }
+        switch self {
+        case .awaitingFirstMessage, .noConversationYet, .noSession(.agy): true
+        default: false
+        }
     }
 
     /// Whether Chat waits for the program rather than for the user: its
