@@ -10,9 +10,11 @@ Connect listing text for `scripts/store-shots.py asc`:
 | `description.txt` | `description` | 4000 |
 
 These files match the listing uploaded for 0.1.21, which names Herdr TUI, the
-Herdr desktop app, tmux and Rex side by side. Compare them against the live App
-Store Connect listing before any upload, so store edits made since are not
-overwritten.
+Herdr desktop app, tmux and Rex side by side, with one addition:
+`description.txt` also names ElevenLabs for Voice Input, which ships after
+0.1.21, so upload it with the first version that has it. Compare them against
+the live App Store Connect listing before any upload, so store edits made since
+are not overwritten.
 
 `python3 scripts/test-store-shots.py` checks these character limits so edits
 fail locally before an App Store Connect upload is tried. To preview or apply an
