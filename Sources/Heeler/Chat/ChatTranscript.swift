@@ -13,6 +13,16 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case grok
     case opencode
     case agy
+
+    /// Whether live, non-stale Background Work promotes an Idle or Done
+    /// Agent's displayed Console and Composer status to Working (and keeps
+    /// hidden idle-pace polling alive until that work ends).
+    var promotesBackgroundWorkToWorking: Bool {
+        switch self {
+        case .agy, .claude: true
+        case .codex, .pi, .omp, .grok, .opencode: false
+        }
+    }
 }
 
 /// What herdr last reported the Agent doing. Adapters need it only to tell a
