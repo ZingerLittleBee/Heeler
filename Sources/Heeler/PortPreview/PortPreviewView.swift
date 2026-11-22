@@ -257,20 +257,28 @@ private struct PortPreviewFailureView: View {
                 Text(message)
             }
         } actions: {
-            Button("Try Again", action: retry)
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("port-preview-retry")
-            if let retrySecurely {
-                Button("Try HTTPS", action: retrySecurely)
-                    .accessibilityIdentifier("port-preview-retry-https")
+            VStack(spacing: 10) {
+                Button("Try Again", action: retry)
+                    .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
+                    .accessibilityIdentifier("port-preview-retry")
+                if let retrySecurely {
+                    Button("Try HTTPS", action: retrySecurely)
+                        .buttonStyle(UnavailableCapsuleStyle(prominence: .secondary))
+                        .accessibilityIdentifier("port-preview-retry-https")
+                }
+                switch failure {
+                case .portTaken, .refused, .other:
+                    Button("Show Ports", action: showPorts)
+                        .buttonStyle(UnavailableCapsuleStyle(prominence: .secondary))
+                        .accessibilityIdentifier("port-preview-show-ports")
+                case .forwardingDenied, .unreachable:
+                    EmptyView()
+                }
             }
-            switch failure {
-            case .portTaken, .refused, .other:
-                Button("Show Ports", action: showPorts)
-            case .forwardingDenied, .unreachable:
-                EmptyView()
-            }
+            .fixedSize(horizontal: true, vertical: false)
         }
+        // Without this the identifier below replaces each button's own.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("port-preview-failure")
     }
 }
