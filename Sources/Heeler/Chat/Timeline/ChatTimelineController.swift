@@ -27,6 +27,10 @@ struct ChatTimelineActions {
     var previewVideo: (@MainActor (String, String?) -> Void)?
     /// The pictures image rows show; nil without a conversation store.
     var thumbnails: ChatImageThumbnails?
+    /// Opens a link that names the Host's loopback interface in a port
+    /// preview. False when it names another place, or this Host has none:
+    /// the link is then the browser's.
+    var openHostLink: @MainActor (URL) -> Bool = { _ in false }
     /// An open trajectory intersects the reading viewport.
     var collapseAvailabilityChanged: @MainActor (Bool) -> Void = { _ in }
     /// An earlier user message lies above the reading viewport.
@@ -53,6 +57,8 @@ struct ChatRowActions {
     /// Opens an image row's file in the zoomable sheet, showing an optional
     /// display title and the thumbnail, when there is one, until the file is read.
     var previewImage: @MainActor (String, String?, UIImage?) -> Void = { _, _, _ in }
+    /// Opens a link to the Host's loopback interface; false when it is not one.
+    var openHostLink: @MainActor (URL) -> Bool = { _ in false }
 }
 
 /// A pull past the timeline's top, as the Load Earlier row shows it.
@@ -375,7 +381,8 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             thumbnails: actions.thumbnails,
             previewImage: { [weak self] path, title, thumbnail in
                 self?.previewImage(path, title: title, thumbnail: thumbnail)
-            })
+            },
+            openHostLink: { [weak self] link in self?.actions.openHostLink(link) ?? false })
     }
 
     private func previewImage(_ path: String, title: String? = nil, thumbnail: UIImage?) {

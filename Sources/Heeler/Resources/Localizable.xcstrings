@@ -1728,6 +1728,7 @@
         }
       }
     },
+    "%@ refused the connection. The server may have stopped, or it may be using another port." : {},
     "%@ saves this conversation after its first reply." : {
       "localizations" : {
         "ja" : {
@@ -6501,6 +6502,7 @@
         }
       }
     },
+    "A port or address typed above still opens." : {},
     "A rename is already in progress for this Agent." : {
       "localizations" : {
         "ja" : {
@@ -12654,6 +12656,9 @@
         }
       }
     },
+    "Can't Open This Page" : {},
+    "Can't Reach %@" : {},
+    "Can't Read Ports" : {},
     "Can't Show This Conversation" : {
       "localizations" : {
         "ja" : {
@@ -25378,6 +25383,7 @@
         }
       }
     },
+    "Forward" : {},
     "Forward Delete" : {
       "localizations" : {
         "ja" : {
@@ -31028,6 +31034,9 @@
         }
       }
     },
+    "In %@" : {
+      "comment" : "Header over the ports of programs working in one folder; the placeholder is the folder's name."
+    },
     "In Hosts, tap Scan to Pair and point the camera at the code, then choose the machine's servers." : {
       "localizations" : {
         "ja" : {
@@ -34013,6 +34022,7 @@
         }
       }
     },
+    "Loading" : {},
     "Loading Agents from %@…" : {
       "comment" : "Console row while a Host's Agents load. %@ is the Host name.",
       "localizations" : {
@@ -36650,6 +36660,7 @@
         }
       }
     },
+    "No Listening Ports" : {},
     "No Loaded Folders" : {
       "localizations" : {
         "ja" : {
@@ -39088,6 +39099,7 @@
         }
       }
     },
+    "Nothing Is Listening on Port %@" : {},
     "Nothing Saved Yet" : {
       "localizations" : {
         "ja" : {
@@ -39154,6 +39166,7 @@
         }
       }
     },
+    "Nothing on %@ is listening on a port this account can see. A server that has just started appears after a refresh." : {},
     "Nothing recorded in the last 30 days." : {
       "localizations" : {
         "ja" : {
@@ -39797,6 +39810,9 @@
           }
         }
       }
+    },
+    "On %@" : {
+      "comment" : "Header over the ports a Host's programs listen on."
     },
     "On Device" : {
       "comment" : "Voice Input service: speech recognition on this device",
@@ -41713,6 +41729,7 @@
         }
       }
     },
+    "Opens in a preview" : {},
     "Opens in your default browser" : {
       "localizations" : {
         "ja" : {
@@ -42271,6 +42288,7 @@
         }
       }
     },
+    "Other Ports" : {},
     "Otherwise, connected AirPods record when they support high-quality recording." : {
       "localizations" : {
         "ja" : {
@@ -44091,6 +44109,11 @@
         }
       }
     },
+    "Port Forwarding Is Not Allowed" : {},
+    "Port Preview" : {},
+    "Port or localhost URL" : {},
+    "Ports" : {},
+    "Ports that programs on %@ are listening on. Pages open through the Host's SSH connection." : {},
     "Possibly incomplete · %@" : {
       "comment" : "Changes freshness, then the read time",
       "localizations" : {
@@ -44666,6 +44689,7 @@
         }
       }
     },
+    "Preview Unavailable" : {},
     "Preview Video" : {
       "localizations" : {
         "ja" : {
@@ -46124,6 +46148,7 @@
         }
       }
     },
+    "Reading ports on %@…" : {},
     "Reading the Agent's screen" : {},
     "Reading the board" : {
       "localizations" : {
@@ -46373,6 +46398,7 @@
         }
       }
     },
+    "Reconnecting to %@…" : {},
     "Reconnecting…" : {
       "localizations" : {
         "ja" : {
@@ -48059,6 +48085,7 @@
         }
       }
     },
+    "Request Desktop Website" : {},
     "Request Field" : {
       "localizations" : {
         "ja" : {
@@ -48081,6 +48108,7 @@
         }
       }
     },
+    "Request Mobile Website" : {},
     "Require Encryption" : {
       "localizations" : {
         "ja" : {
@@ -50722,6 +50750,7 @@
         }
       }
     },
+    "Send Screenshot to Agent" : {},
     "Sending once the last words settle" : {
       "localizations" : {
         "ja" : {
@@ -51984,6 +52013,7 @@
         }
       }
     },
+    "Show Ports" : {},
     "Show Sidebar" : {
       "localizations" : {
         "ja" : {
@@ -52588,6 +52618,7 @@
         }
       }
     },
+    "Shows the Host's ports" : {},
     "Shows the details" : {
       "localizations" : {
         "ja" : {
@@ -59219,6 +59250,7 @@
         }
       }
     },
+    "The Host did not answer." : {},
     "The Host did not answer. Check the connection and retry." : {
       "localizations" : {
         "ja" : {
@@ -60378,6 +60410,7 @@
         }
       }
     },
+    "The Host's answer could not be read." : {},
     "The Host's connection was reset." : {
       "localizations" : {
         "ja" : {
@@ -61132,6 +61165,7 @@
         }
       }
     },
+    "The SSH server on %@ refused to open the connection. Allow forwarding in its sshd_config, restart sshd, then try again." : {},
     "The SSH server refuses socket forwarding" : {
       "localizations" : {
         "ja" : {
@@ -63721,6 +63755,7 @@
         }
       }
     },
+    "The page reloads when the Host is back." : {},
     "The panel has no such action." : {
       "comment" : "Planner refusal for Grok Build's subagent panel",
       "localizations" : {
@@ -64014,6 +64049,7 @@
         }
       }
     },
+    "The preview is closed." : {},
     "The private temporary file failed verification." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -69776,6 +69812,7 @@
         }
       }
     },
+    "Try HTTPS" : {},
     "Try again once they are back." : {
       "localizations" : {
         "ja" : {
@@ -70387,6 +70424,7 @@
         }
       }
     },
+    "Unknown Program" : {},
     "Unknown Workspace" : {
       "localizations" : {
         "ja" : {
@@ -78067,6 +78105,9 @@
           }
         }
       }
+    },
+    "on %@" : {
+      "comment" : "Under a page's address in a port preview: the Host whose localhost the page comes from."
     },
     "paused" : {},
     "per Host" : {

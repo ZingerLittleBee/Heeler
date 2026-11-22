@@ -83,6 +83,7 @@ struct ShellTerminalView: View {
     /// Whether the terminal takes the keyboard back once the password sheet
     /// has gone: it had it before, or a password went in and Return is next.
     @State private var passwordReturnsKeyboard = false
+    @Environment(\.portPreviewOpener) private var portPreview
     @Environment(\.themeAppearance) private var themeAppearance
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
@@ -305,6 +306,7 @@ struct ShellTerminalView: View {
 
     var body: some View {
         terminalScreen
+            .portPreviewLinks(portPreview) { hideKeyboard() }
             .id(store.terminalID)
             // Over the output, above the input row; the status dialog, the
             // drawers and the back header stay on top of it.
@@ -564,14 +566,26 @@ struct ShellTerminalView: View {
     }
 
     private var backHeaderActions: [AgentDetailHeaderAction] {
-        guard workspaceDrawer != nil else { return [] }
-        return [AgentDetailHeaderAction(title: "Terminals", systemImage: "apple.terminal.on.rectangle") {
-            withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
-                // Folded, the menu unfolds the header the panel drops from.
-                isBackHeaderExpanded = true
-                isHeaderDrawerOpen.toggle()
-            }
-        }]
+        var actions: [AgentDetailHeaderAction] = []
+        if workspaceDrawer != nil {
+            actions.append(AgentDetailHeaderAction(title: "Terminals", systemImage: "apple.terminal.on.rectangle") {
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                    // Folded, the menu unfolds the header the panel drops from.
+                    isBackHeaderExpanded = true
+                    isHeaderDrawerOpen.toggle()
+                }
+            })
+        }
+        if let portPreview, portPreview.isOffered {
+            actions.append(AgentDetailHeaderAction(title: "Ports", systemImage: PortPreviewCopy.symbol) {
+                // A menu opened inside the sheet hands the keyboard back to
+                // whatever held it here: it would cover the page and type
+                // into this terminal. So Ports opens with the keyboard down.
+                hideKeyboard()
+                portPreview.showPorts()
+            })
+        }
+        return actions
     }
 
     /// `restoresSystemKeyboard` is false when Text follows a fresh surface

@@ -210,6 +210,14 @@ struct AgentDetailView: View {
             && console.capabilities(for: agent.hostID).offersFiles(directory: agent.directory)
     }
 
+    /// Whether a port preview's picture has a message to go in: a Host that
+    /// takes attachments, and the Composer rather than Direct Input, which
+    /// has no place that shows one.
+    private var sendsPreviewScreenshots: Bool {
+        console.capabilities(for: agent.hostID).uploads
+            && !(inputMode.isDirect && effectiveSurface == .terminal)
+    }
+
     /// Files open in the Agent's directory, reading over the Host's live
     /// connection as Chat does.
     private func showFiles() {
@@ -594,6 +602,11 @@ struct AgentDetailView: View {
                 if let text = ChangesReference.insertion(path) { insertIntoMessage(text) }
             }
         }
+        .portPreview(
+            console: console, hostID: agent.hostID, directory: agent.directory,
+            sendScreenshot: sendsPreviewScreenshots
+                ? { picture in session.composer.enqueueImages([DataImageSelection(data: picture)]) }
+                : nil)
         // Open Terminal on an iPhone: a short detour, so Back and the swipe
         // come back to this Agent rather than to the list.
         .navigationDestination(item: shellRouteSelection) { route in

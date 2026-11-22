@@ -32,6 +32,12 @@ protocol TransportConnector: Sendable {
     /// Host's trusted key first; nil when none does. It signs in nowhere and
     /// keeps no connection (ADR 0058).
     func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int?
+
+    /// Dials a Host for a port preview's pages: SSH and nothing past it, on
+    /// a connection none of the Host's Servers uses (ADR 0062).
+    func connectForPortPreview(
+        settings: SSHTransportSettings
+    ) async throws -> any PortPreviewConnection
 }
 
 extension TransportConnector {
@@ -45,6 +51,12 @@ extension TransportConnector {
         settings: SSHTransportSettings
     ) async throws -> any ServerKindDetectionConnection {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Server Kind detection"))
+    }
+
+    func connectForPortPreview(
+        settings: SSHTransportSettings
+    ) async throws -> any PortPreviewConnection {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Port Preview"))
     }
 
     /// A connector that serves only Herdr TUI Hosts says so.
@@ -92,6 +104,12 @@ struct SSHTransportConnector: TransportConnector {
 
     func reachableRoute(among candidates: [Int], settings: SSHTransportSettings) async -> Int? {
         await HeelerSSHTransport.reachableRoute(among: candidates, settings: settings)
+    }
+
+    func connectForPortPreview(
+        settings: SSHTransportSettings
+    ) async throws -> any PortPreviewConnection {
+        try await HeelerSSHTransport.connect(settings: settings)
     }
 
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
