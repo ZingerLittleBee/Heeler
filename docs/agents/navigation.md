@@ -406,8 +406,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `showPorts`. `ConsoleStore.portPreviewSession(for:directory:target:)`, offered
   by `offersPortPreview(for:)`, builds a
   [PortPreviewSession](../../Sources/Heeler/PortPreview/PortPreviewSession.swift):
-  it owns the [PortPreviewProxy](../../Sources/Heeler/PortPreview/PortPreviewProxy.swift)
-  (messages and the loopback rule in [SOCKS5](../../Sources/Heeler/PortPreview/SOCKS5.swift))
+  it owns the [PortPreviewRelay](../../Sources/Heeler/PortPreview/PortPreviewRelay.swift),
+  which listens on a page's port on this device and carries its connections,
   and the `PortPreviewLink` actor in
   [PortPreviewConnection](../../Sources/Heeler/PortPreview/PortPreviewConnection.swift),
   which dials through `TransportConnector.connectForPortPreview` and redials a
@@ -421,10 +421,12 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   is the Ports script and its parser.
   [PortPreviewView](../../Sources/Heeler/PortPreview/PortPreviewView.swift) and
   [PortsListView](../../Sources/Heeler/PortPreview/PortsListView.swift) are the
-  sheet ([ADR 0062](../adr/0062-port-preview-carries-a-hosts-localhost-through-a-proxy-on-this-device.md)).
+  sheet ([ADR 0062](../adr/0062-port-preview-listens-on-this-device-for-a-hosts-localhost.md)).
+  In the Simulator, preview a Host on another machine or in a container: the
+  Simulator's loopback interface is the Mac's.
   Coverage: [PortPreviewTests](../../Tests/HeelerTests/PortPreviewTests.swift)
-  (which links are targets, SOCKS5 messages and the loopback rule, the Ports
-  parser); the channel itself in `SessionDriverE2ETests`.
+  (which links are targets, the Ports parser); the channel itself in
+  `SessionDriverE2ETests`. Nothing covers the relay.
 
 ## Sibling deliverables and generated files
 

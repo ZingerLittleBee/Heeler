@@ -1,8 +1,9 @@
 import Foundation
 
 /// A page a program serves on a Host's loopback interface, named the way the
-/// preview loads it: always under `localhost`, the one name a web view's
-/// proxy configuration carries (ADR 0062).
+/// preview loads it: always under `localhost`. However a link names the
+/// interface, the page is one origin, with one set of cookies, and its
+/// address is one the preview listens for on this device (ADR 0062).
 struct PortPreviewTarget: Hashable, Sendable {
     /// The address to load, its host rewritten to `localhost`.
     let url: URL

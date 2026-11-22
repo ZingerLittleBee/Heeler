@@ -54,58 +54,6 @@ struct PortPreviewTargetTests {
     }
 }
 
-@Suite("Port preview SOCKS5")
-struct PortPreviewSOCKS5Tests {
-    @Test func handshakeMessagesParseOnlyOnceWhole() {
-        let greeting: [UInt8] = [5, 2, 0, 2]
-        #expect(SOCKS5.greeting(in: Array(greeting.prefix(3))) == .incomplete)
-        #expect(SOCKS5.greeting(in: greeting + [1]) == .parsed([0, 2], consumed: 4))
-        #expect(SOCKS5.greeting(in: [4, 1, 0]) == .malformed)
-
-        let credentials: [UInt8] = [1, 2, 0x75, 0x31, 3, 0x70, 0x77, 0x31]
-        #expect(SOCKS5.credentials(in: Array(credentials.prefix(7))) == .incomplete)
-        #expect(
-            SOCKS5.credentials(in: credentials)
-                == .parsed(.init(username: [0x75, 0x31], password: [0x70, 0x77, 0x31]), consumed: 8))
-
-        let request: [UInt8] = [5, 1, 0, 3, 9] + Array("localhost".utf8) + [0x10, 0x04]
-        #expect(SOCKS5.request(in: Array(request.dropLast())) == .incomplete)
-        #expect(
-            SOCKS5.request(in: request)
-                == .parsed(.init(command: 1, address: .domain("localhost"), port: 4100), consumed: request.count))
-        #expect(SOCKS5.request(in: [5, 1, 0, 9, 0, 0]) == .malformed)
-    }
-
-    @Test func onlyAConnectToTheLoopbackInterfaceIsCarried() {
-        func asked(
-            _ address: SOCKS5.Address, port: UInt16 = 4100, command: UInt8 = SOCKS5.connect
-        ) -> Result<UInt16, SOCKS5.Refusal> {
-            SOCKS5.Request(command: command, address: address, port: port).loopbackPort
-        }
-
-        #expect(asked(.domain("LOCALHOST")) == .success(4100))
-        #expect(asked(.ipv4([127, 0, 0, 1])) == .success(4100))
-        #expect(asked(.ipv6([UInt8](repeating: 0, count: 15) + [1])) == .success(4100))
-
-        #expect(asked(.domain("db.internal")) == .failure(.init(reply: .notAllowed)))
-        #expect(asked(.domain("app.localhost")) == .failure(.init(reply: .notAllowed)))
-        #expect(asked(.ipv4([10, 0, 0, 5])) == .failure(.init(reply: .notAllowed)))
-        #expect(asked(.ipv4([127, 0, 0, 53])) == .failure(.init(reply: .notAllowed)))
-        #expect(asked(.domain("localhost"), port: 0) == .failure(.init(reply: .notAllowed)))
-        // BIND and UDP ASSOCIATE.
-        #expect(asked(.domain("localhost"), command: 2) == .failure(.init(reply: .commandNotSupported)))
-        #expect(asked(.domain("localhost"), command: 3) == .failure(.init(reply: .commandNotSupported)))
-    }
-
-    @Test func credentialsMatchOnlyWhenBothDo() {
-        let presented = SOCKS5.Credentials(username: [1, 2], password: [3, 4])
-
-        #expect(presented.matches(username: [1, 2], password: [3, 4]))
-        #expect(!presented.matches(username: [1, 2], password: [3, 5]))
-        #expect(!presented.matches(username: [1], password: [3, 4]))
-    }
-}
-
 @Suite("Host listening ports")
 struct HostListeningPortsTests {
     private let nonce = "0a1b2c"

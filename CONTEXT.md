@@ -339,10 +339,12 @@ A sheet that shows a page a program serves on a Host's own loopback interface,
 its `localhost`, opened from a link to such a page in Chat or a terminal, or
 from Ports. It belongs to the Host, as Files does: it reaches any loopback
 port the Host's account can connect to, never "this Agent's server". Its
-pages travel over an SSH connection the preview dials for itself, through a
-proxy on this device that carries only the name `localhost`. Nothing is
-installed or left listening on the Host, and the connection and the pages'
-website data go when the sheet closes (ADR 0062).
+pages travel over an SSH connection the preview dials for itself. While the
+sheet is open, Heeler listens on a page's port on this device, where the
+page's web view looks for `localhost`, and carries each connection to the
+same port on the Host. Nothing is installed or left listening on the Host,
+and the connection and the pages' website data go when the sheet closes
+(ADR 0062).
 _Avoid_: port forwarding, tunnel, port mapping, in-app browser
 
 **Ports**:

@@ -2,17 +2,10 @@ import Foundation
 
 /// One open port preview: the sheet over a detail that shows a Host's
 /// `localhost` pages. It owns what the pages travel on, an SSH connection of
-/// its own and the proxy that feeds it, from the moment the sheet opens until
+/// its own and the relay that feeds it, from the moment the sheet opens until
 /// it closes (ADR 0062).
 @MainActor @Observable
 final class PortPreviewSession: Identifiable {
-    enum Proxy: Equatable {
-        case starting
-        case ready(PortPreviewProxy.Access)
-        /// This device could not listen on its own loopback interface.
-        case failed(String)
-    }
-
     let hostName: String
     /// Where the Agent or terminal this preview opened from works, for the
     /// ports its own programs most likely hold.
@@ -22,7 +15,6 @@ final class PortPreviewSession: Identifiable {
     /// Counts the pages asked for. Asking again for the one already asked
     /// for loads it again: the page may have gone elsewhere, or failed.
     private(set) var opens = 0
-    private(set) var proxy = Proxy.starting
     /// The SSH connection under the pages ended and has not come back.
     private(set) var isLinkLost = false
     /// Counts the times the connection came back, for the page to reload on.
@@ -30,34 +22,21 @@ final class PortPreviewSession: Identifiable {
     let ports: HostPortsList
 
     @ObservationIgnored private let link: PortPreviewLink
-    @ObservationIgnored private var listener: PortPreviewProxy?
+    /// Nil once the preview closed.
+    @ObservationIgnored private var relay: PortPreviewRelay?
     @ObservationIgnored private var recovery: Task<Void, Never>?
     @ObservationIgnored private var isClosed = false
 
+    /// The SSH connection waits for the first page or the first look at
+    /// Ports, and nothing listens on this device until a page is opened.
     init(link: PortPreviewLink, hostName: String, directory: String?, target: PortPreviewTarget?) {
         self.link = link
         self.hostName = hostName
         self.directory = directory
         self.target = target
         ports = HostPortsList(link: link, directory: directory)
-    }
-
-    /// Starts the proxy. The SSH connection waits for the first page or the
-    /// first look at Ports.
-    func start() async {
-        guard listener == nil, !isClosed else { return }
-        do {
-            let started = try await PortPreviewProxy.start(link: link) { [weak self] in
-                Task { @MainActor in self?.linkLost() }
-            }
-            guard !isClosed else {
-                started.stop()
-                return
-            }
-            listener = started
-            proxy = .ready(started.access)
-        } catch {
-            proxy = .failed(error.localizedDescription)
+        relay = PortPreviewRelay(link: link) { [weak self] in
+            Task { @MainActor in self?.linkLost() }
         }
     }
 
@@ -66,9 +45,23 @@ final class PortPreviewSession: Identifiable {
         opens += 1
     }
 
+    /// Makes `port` on this device lead to the same port on the Host, for a
+    /// page about to load from it. False when the device cannot listen there.
+    func carries(port: Int) async -> Bool {
+        guard let relay, let port = UInt16(exactly: port) else { return false }
+        return (try? await relay.listen(on: port)) != nil
+    }
+
     /// Why the latest connection to `port` failed, when it just did.
     func recentFailure(port: Int) -> PortPreviewFailure? {
-        listener?.recentFailure(port: port)
+        relay?.recentFailure(port: port)
+    }
+
+    /// The app is in front again after a time in the background, where iOS
+    /// may have taken what the relay listened on.
+    func returnedToForeground() {
+        guard let relay else { return }
+        Task { await relay.listenAgain() }
     }
 
     /// The Console's connection to the Host went away or came back. It is
@@ -86,15 +79,15 @@ final class PortPreviewSession: Identifiable {
         }
     }
 
-    /// The sheet closed: the proxy stops, every page connection ends and the
-    /// SSH connection closes.
+    /// The sheet closed: the relay stops listening, every page connection
+    /// ends and the SSH connection closes.
     func close() {
         guard !isClosed else { return }
         isClosed = true
         recovery?.cancel()
         recovery = nil
-        listener?.stop()
-        listener = nil
+        relay?.stop()
+        relay = nil
         let link = link
         Task { await link.close() }
     }

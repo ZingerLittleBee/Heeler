@@ -12,6 +12,7 @@ struct PortPreviewView: View {
     var sendScreenshot: ((Data) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var page: PortPreviewPage?
     @State private var isShowingPorts = false
 
@@ -40,36 +41,36 @@ struct PortPreviewView: View {
         // A pull at the top of a page would close the sheet, and with it the
         // page and what was typed into it. A page closes by its button.
         .interactiveDismissDisabled(session.target != nil)
-        .task { await session.start() }
-        .onChange(
-            of: PageRequest(target: session.target, opens: session.opens, proxy: session.proxy), initial: true
-        ) { _, request in
+        .onChange(of: PageRequest(target: session.target, opens: session.opens), initial: true) { _, request in
             show(request)
         }
         .onChange(of: isHostConnected) { _, isConnected in
             session.hostConnectionChanged(isConnected: isConnected)
         }
+        .onChange(of: scenePhase) { before, phase in
+            if before == .background, phase != .background { session.returnedToForeground() }
+        }
         .onChange(of: session.recoveries) { page?.reload() }
         .onDisappear { page?.close() }
     }
 
-    /// What decides the page on screen: the address asked for, which time it
-    /// was asked for, and the proxy a web view needs before it can be made.
+    /// What decides the page on screen: the address asked for, and which
+    /// time it was asked for.
     private struct PageRequest: Equatable {
         let target: PortPreviewTarget?
         let opens: Int
-        let proxy: PortPreviewSession.Proxy
     }
 
     private func show(_ request: PageRequest) {
-        guard let target = request.target, case .ready(let access) = request.proxy else { return }
+        guard let target = request.target else { return }
         if let page {
             page.load(target)
         } else {
             let session = session
             let openURL = openURL
             page = PortPreviewPage(
-                target: target, access: access,
+                target: target,
+                carries: { await session.carries(port: $0) },
                 recentFailure: { session.recentFailure(port: $0) },
                 openExternally: { openURL($0) })
         }
@@ -97,12 +98,6 @@ struct PortPreviewView: View {
                     Color(uiColor: .systemBackground).opacity(0.7)
                         .ignoresSafeArea()
                         .accessibilityHidden(true)
-                }
-            } else if case .failed(let message) = session.proxy {
-                ContentUnavailableView {
-                    Label("Preview Unavailable", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
                 }
             } else {
                 ProgressView()
@@ -232,6 +227,8 @@ private struct PortPreviewFailureView: View {
     var body: some View {
         ContentUnavailableView {
             switch failure {
+            case .portTaken(let port):
+                Label("Port \(String(port)) Is in Use on This Device", systemImage: "exclamationmark.triangle")
             case .refused(let port):
                 Label("Nothing Is Listening on Port \(String(port))", systemImage: "network.slash")
             case .forwardingDenied:
@@ -243,6 +240,9 @@ private struct PortPreviewFailureView: View {
             }
         } description: {
             switch failure {
+            case .portTaken:
+                Text(
+                    "Heeler shows a page from \(hostName) on the same port of this device, and something else here holds that port. Close the app that uses it, then try again.")
             case .refused:
                 Text("\(hostName) refused the connection. The server may have stopped, or it may be using another port.")
             case .forwardingDenied:
@@ -265,7 +265,7 @@ private struct PortPreviewFailureView: View {
                     .accessibilityIdentifier("port-preview-retry-https")
             }
             switch failure {
-            case .refused, .other:
+            case .portTaken, .refused, .other:
                 Button("Show Ports", action: showPorts)
             case .forwardingDenied, .unreachable:
                 EmptyView()

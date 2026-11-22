@@ -1,4 +1,3 @@
-import Network
 import SwiftUI
 import WebKit
 
@@ -6,11 +5,14 @@ import WebKit
 ///
 /// Its website data lives only as long as the preview: every Host has a
 /// `localhost`, and a cookie one Host's page set must not go to another's.
-/// Only the name `localhost` goes to the proxy, so a page's requests to the
-/// public internet leave this device as any app's do (ADR 0062).
+/// The web view connects to `localhost` on this device, where the preview
+/// listens on each port a page is opened on, so nothing loads before
+/// `carries` has answered for its port (ADR 0062).
 @MainActor @Observable
 final class PortPreviewPage: NSObject {
     enum Failure: Equatable {
+        /// This device could not listen on the port.
+        case portTaken(port: Int)
         case refused(port: Int)
         case forwardingDenied
         case unreachable(detail: String)
@@ -39,27 +41,26 @@ final class PortPreviewPage: NSObject {
 
     @ObservationIgnored let webView: WKWebView
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    /// Counts the loads asked for, so one that waited for its port does not
+    /// start after a later one.
+    @ObservationIgnored private var loads = 0
+    @ObservationIgnored private let carries: @MainActor (Int) async -> Bool
     @ObservationIgnored private let recentFailure: (Int) -> PortPreviewFailure?
     @ObservationIgnored private let openExternally: (URL) -> Void
 
+    /// `carries` makes a port on this device lead to the same port on the
+    /// Host, and says whether it does.
     init(
-        target: PortPreviewTarget, access: PortPreviewProxy.Access,
+        target: PortPreviewTarget, carries: @escaping @MainActor (Int) async -> Bool,
         recentFailure: @escaping (Int) -> PortPreviewFailure?, openExternally: @escaping (URL) -> Void
     ) {
         current = target
+        self.carries = carries
         self.recentFailure = recentFailure
         self.openExternally = openExternally
 
-        var proxy = ProxyConfiguration(
-            socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: access.port)))
-        proxy.applyCredential(username: access.username, password: access.password)
-        // Only this name: an address such as 127.0.0.1 never goes to a proxy,
-        // which is why a link that names one is rewritten before it loads.
-        proxy.matchDomains = ["localhost"]
-        let store = WKWebsiteDataStore.nonPersistent()
-        store.proxyConfigurations = [proxy]
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = store
+        configuration.websiteDataStore = .nonPersistent()
         configuration.allowsInlineMediaPlayback = true
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
@@ -83,8 +84,7 @@ final class PortPreviewPage: NSObject {
     /// Loads `request`, which is addressed to `target`.
     private func load(_ target: PortPreviewTarget, as request: URLRequest) {
         current = target
-        phase = .loading
-        webView.load(request)
+        onceCarried(target.port) { $0.load(request) }
     }
 
     /// Loads the page again. After a failure that is the page that failed,
@@ -95,8 +95,25 @@ final class PortPreviewPage: NSObject {
         } else if webView.url == nil {
             load(current)
         } else {
-            phase = .loading
-            webView.reload()
+            onceCarried(current.port) { $0.reload() }
+        }
+    }
+
+    /// Starts a load once this device listens on `port`, or says it cannot.
+    /// A load asked for meanwhile takes this one's place.
+    private func onceCarried(_ port: Int, _ start: @escaping (WKWebView) -> Void) {
+        phase = .loading
+        loads += 1
+        let load = loads
+        Task {
+            let isCarried = await carries(port)
+            guard load == loads else { return }
+            if isCarried {
+                start(webView)
+            } else {
+                webView.stopLoading()
+                phase = .failed(.portTaken(port: port))
+            }
         }
     }
 
@@ -155,7 +172,7 @@ final class PortPreviewPage: NSObject {
         }
     }
 
-    private func policy(for action: WKNavigationAction) -> WKNavigationActionPolicy {
+    private func policy(for action: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = action.request.url else { return .cancel }
         let scheme = url.scheme?.lowercased() ?? ""
         let isWeb = scheme == "http" || scheme == "https"
@@ -173,6 +190,12 @@ final class PortPreviewPage: NSObject {
             // be the navigation being cancelled.
             let request = action.request
             Task { @MainActor in self.place(request) }
+            return .cancel
+        }
+        // A link or a redirect to a port no page was opened on yet.
+        guard await carries(target.port) else {
+            current = target
+            phase = .failed(.portTaken(port: target.port))
             return .cancel
         }
         return .allow
@@ -205,7 +228,7 @@ extension PortPreviewPage: WKNavigationDelegate {
         } else {
             preferences.preferredContentMode = .recommended
         }
-        return (policy(for: navigationAction), preferences)
+        return (await policy(for: navigationAction), preferences)
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

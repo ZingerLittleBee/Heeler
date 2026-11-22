@@ -2,7 +2,7 @@
 status: proposed
 ---
 
-# Port Preview carries a Host's localhost through a proxy on this device
+# Port Preview listens on this device for a Host's localhost
 
 An Agent starts a development server and says where to look:
 `http://localhost:4100/`. On the phone that link opened the browser, which
@@ -10,14 +10,23 @@ looked for the page on the phone. The page is on the Host, on an interface
 only the Host reaches, and the user already holds an SSH connection that
 could carry it.
 
-A prototype settled what a web view allows. A `WKWebsiteDataStore` takes a
-SOCKS5 `ProxyConfiguration` and sends it the requests whose host matches
-`matchDomains`. The name `localhost` is carried that way; `127.0.0.1` and
-`[::1]` are not, whatever the configuration says, and go to the device's own
-loopback interface. App Transport Security loads `http://localhost` and
-refuses `http` to a subdomain of it. The maintainer chose the shape on
-2026-11-22: a link opens the page at once, the page is a sheet, and without a
-link the way in is **Ports** in the More menu.
+The first build gave the web view a SOCKS5 proxy on the device. A prototype
+in the Simulator (iOS 27.0) had shown a `WKWebsiteDataStore` sending its
+`ProxyConfiguration` the requests for `localhost`, and only `127.0.0.1` and
+`[::1]` going to the device's own loopback interface. On an iPhone (iOS 27.3)
+the page did not open. A probe in the app on that iPhone loaded
+`http://localhost:4180/` through a proxy four ways, with and without
+`matchDomains` and credentials: no connection reached the proxy, and each
+load ended in `ECONNREFUSED` from the phone's own port 4180. The same proxy
+received the request for `https://example.com/`, and a web view with no proxy
+reached a listener the app held on the phone's loopback interface, by
+`localhost` and by `127.0.0.1`. A web view on a device connects to
+`localhost` itself. So the page has to be where its address says it is.
+
+App Transport Security loads `http://localhost` and refuses `http` to a
+subdomain of it. The maintainer chose the shape on 2026-11-22: a link opens
+the page at once, the page is a sheet, and without a link the way in is
+**Ports** in the More menu.
 
 ## Decision
 
@@ -31,17 +40,23 @@ link the way in is **Ports** in the More menu.
   terminal's Links or asked for by the terminal itself, opens the preview.
   Every other link keeps going to the browser, and so does a link inside a
   previewed page that leaves the loopback interface.
-- **The page loads under the name `localhost`.** That is the one name the web
-  view sends to a proxy, so a link written with an address is rewritten to
-  it, and the address bar shows `localhost:4100` on the Host's name.
-- **A SOCKS5 proxy on this device carries that name and nothing else.** It
-  listens on the device's loopback interface, on a port the system picks,
-  for as long as the sheet is open. A client must present a username and
-  password made at random for that preview. It serves CONNECT to `localhost`,
-  `127.0.0.1` or `::1` and refuses every other name, address and command, so
-  it is not a way onto the Host's network. `matchDomains` is `localhost`
-  alone: a page's requests to the public internet leave the device as any
-  app's do.
+- **The page loads under the name `localhost`.** A link written with an
+  address is rewritten to it, so one program is one origin with one set of
+  cookies however a link names it, and the address bar shows
+  `localhost:4100` on the Host's name.
+- **Heeler listens on the page's port on this device.** Before a page loads,
+  Heeler listens on the same port of the device's IPv4 loopback interface,
+  and carries every connection made there to that port on the Host. It
+  listens only on the ports a page was opened on: the first page's, and each
+  port a link or a redirect then takes the page to. It stops when the sheet
+  closes. The web view has no proxy: a page's requests to the public internet
+  leave the device as any app's do, and no other name or address on the
+  Host's network is reached.
+- **A port this device cannot listen on is said, not worked around.** When
+  something else on the device holds the port, the sheet names the port and
+  says so. Serving the page from another port would change its origin.
+- **Listeners are replaced when the app returns from the background.** iOS
+  may take a listening socket from an app it suspended.
 - **The Host's SSH server resolves `localhost`.** Each connection is a
   `direct-tcpip` channel to the name, not to an address. OpenSSH tries the
   IPv6 and the IPv4 loopback address in turn, and a development server often
@@ -54,8 +69,8 @@ link the way in is **Ports** in the More menu.
   output and a Server's link, where a page's assets and a live-reload socket
   that never closes would sit in front of them.
 - **Nothing is cancelled inside a channel open.** A web view drops requests
-  whenever a page navigates. Each proxy connection runs in a task that ends
-  by closing, never by cancellation, and a dial runs in a task of its own.
+  whenever a page navigates. Each connection it makes runs in a task that
+  ends by closing, never by cancellation, and a dial runs in a task of its own.
   A channel open cancelled part-way keeps the session's open slot until the
   Host answers, and costs the whole SSH session when the answer takes more
   than two seconds (#824), which a slow link makes of every dropped request.
@@ -67,13 +82,15 @@ link the way in is **Ports** in the More menu.
   page arrived through an SSH connection whose host key this device checked,
   to that Host's own loopback interface. Every other name keeps the system's
   judgment.
-- **A failure says which of three things happened.** Nothing listening on
-  the port, the SSH server refusing to forward (`AllowTcpForwarding`), or the
-  Host out of reach. The proxy remembers a port's last failure for 15 seconds
-  so the page that failed can say it, since a SOCKS reply reaches the web
-  view only as a generic error. A page that failed after its connection was
-  made over `http` offers **Try HTTPS**: a port chosen by its number is tried
-  over plain HTTP first.
+- **A failure says which of four things happened.** The port held by
+  something else on this device, nothing listening on it on the Host, the SSH
+  server refusing to forward (`AllowTcpForwarding`), or the Host out of
+  reach. The web view has its connection before the Host has answered for the
+  port, and sees a failure only as a connection that closed. So the last
+  failure of each port is remembered for 15 seconds, and the page that failed
+  reads it back. A page that failed after its connection was made over `http`
+  offers **Try HTTPS**: a port chosen by its number is tried over plain HTTP
+  first.
 - **A lost connection is dialed again.** A channel that fails because the
   connection is gone gets one silent redial. A refusal to forward drops the
   connection, because an SSH server reads its settings when a connection
@@ -103,12 +120,19 @@ link the way in is **Ports** in the More menu.
 
 ## Considered options
 
-- **A listener on the same port of the phone, and the browser.** What
-  `ssh -L` does. The origin stays `localhost:4100` in any browser, which
-  keeps a sign-in redirect working. The port may be taken on the phone, iOS
-  suspends Heeler while the browser is in front so the tunnel stops with no
-  place to say so, and the Host's name is nowhere on screen. It can be added
-  beside the preview later.
+- **A SOCKS5 proxy on this device, given to the web view.** The first build.
+  It needed no port on the device, took credentials made for each preview so
+  that only its own web view was served, and carried whatever port a page
+  asked for. A web view on a device never sends it `localhost`.
+- **The same listener, and the browser instead of a sheet.** The origin stays
+  `localhost:4100` in any browser, which keeps a sign-in redirect working.
+  iOS suspends Heeler while the browser is in front, so the pages stop with
+  no place to say so, and the Host's name is nowhere on screen. It can be
+  added beside the preview later.
+- **Listening on every port Ports lists.** A page's requests to another of
+  the Host's ports would then arrive, as they did through the proxy. Every
+  one of those ports would also be open to any app on the device for as long
+  as the sheet is, a database beside the development server.
 - **A proxy that serves the page under another port or name.** The origin
   changes, and with it absolute links, live-reload sockets, CORS rules and
   redirect addresses.
@@ -136,8 +160,23 @@ link the way in is **Ports** in the More menu.
   Host's loopback interface, a database's admin page as much as a
   development server. The same person could already type in a terminal
   there.
-- Only the page's address is rewritten. A page that asks for
-  `http://127.0.0.1:4100/api` by address from its own script asks the phone.
+- While a preview is open, any app running on this device can connect to the
+  ports it listens on, and so to those ports on the Host. Nothing tells the
+  preview's own web view from another client on the loopback interface. Only
+  the ports a page was opened on are open, and only until the sheet closes.
+- A page's requests to another port on the Host, such as an API server beside
+  the development server, reach nothing until a page has been opened on that
+  port in the same preview. A request to the page's own port arrives however
+  it is written, `http://127.0.0.1:4100/api` included; one written with
+  `[::1]` does not.
+- A port something else on the device holds cannot be previewed, and two
+  previews in two windows cannot show the same port of two Hosts at once.
+  Ports below 1024 have not been tried.
+- The Simulator shares its Mac's loopback interface. A preview of a Host on
+  that Mac finds the page's port in use, and for a port nothing listens on,
+  the Host's connection is expected to come back to the preview's own
+  listener, which was not tried. Try previews in the Simulator against a Host
+  on another machine, or in a container.
 - A subdomain of `localhost` does not load, and a server bound only to a LAN
   address is neither listed nor reached.
 - Sign-ins and other website data are gone when the sheet closes.
@@ -146,10 +185,12 @@ link the way in is **Ports** in the More menu.
   slower than that gets a new connection it did not need.
 - Ports shows what the account may see. On Linux a port another account's
   program holds is listed as an unknown program.
-- iOS suspends the app in the background, and the proxy and the connection
-  with it. Coming back within a few seconds kept the page; a longer absence
-  is expected to end in the reconnect above and has not been tried.
-- Tried in the Simulator on an iPhone (iOS 27.0) and an iPad (iOS 26.5)
-  against a Herdr TUI Host on macOS. Not tried on a device, on iOS 18,
-  against the other Server Kinds or a Linux Host's `ss`, whose output is
-  covered by the parser's test only.
+- iOS suspends the app in the background, and the listeners and the
+  connection with it. Coming back within a few seconds kept the page; a
+  longer absence is expected to end in the reconnect above and has not been
+  tried.
+- Tried in the Simulator on an iPhone (iOS 27.0) against a tmux Host on Linux
+  in a container, whose `ss` Ports read. The sheet, its links and Ports were
+  also tried there and on an iPad (iOS 26.5) against a Herdr TUI Host on
+  macOS, with the first build's proxy. On an iPhone (iOS 27.3) only the
+  probe above has run. Not tried on iOS 18 or against the other Server Kinds.

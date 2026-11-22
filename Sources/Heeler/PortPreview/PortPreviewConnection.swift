@@ -60,7 +60,7 @@ enum PortPreviewFailure: Error, Equatable, Sendable {
 /// is lost.
 ///
 /// No call here is cancelled once it reaches SSH. A dial runs in a task of
-/// its own, and callers are the proxy's connection tasks, which end by
+/// its own, and callers are the relay's connection tasks, which end by
 /// closing rather than by cancellation: a channel open interrupted part-way
 /// costs the whole SSH session when the Host is slow to answer it.
 actor PortPreviewLink {

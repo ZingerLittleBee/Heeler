@@ -29299,6 +29299,28 @@
         }
       }
     },
+    "Heeler shows a page from %@ on the same port of this device, and something else here holds that port. Close the app that uses it, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は %@ のページをこのデバイスの同じポートで表示しますが、そのポートはここで別のものが使用しています。使用している App を閉じてから、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 通过此设备上的同一个端口显示 %@ 的页面，而这个端口已被其他程序占用。请关闭占用它的 App，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 透過此裝置上的同一個連接埠顯示 %@ 的頁面，而這個連接埠已被其他程式佔用。請關閉佔用它的 App，然後重試。"
+          }
+        }
+      }
+    },
     "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on %@. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
@@ -44402,6 +44424,28 @@
         }
       }
     },
+    "Port %@ Is in Use on This Device" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート %@ はこのデバイスで使用中です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口 %@ 在此设备上已被占用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠 %@ 在此裝置上已被佔用"
+          }
+        }
+      }
+    },
     "Port %@." : {
       "localizations" : {
         "ja" : {
@@ -45105,28 +45149,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "預覽媒體"
-          }
-        }
-      }
-    },
-    "Preview Unavailable" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プレビューを利用できません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "预览不可用"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法使用預覽"
           }
         }
       }
