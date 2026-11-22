@@ -10,7 +10,7 @@ Compose scripts live with their exports:
 | --- | --- | --- |
 | iPhone large display | `output/app-store/iphone-6.9/` | `compose_mockups.py` |
 | iPad 13-inch | `output/app-store/ipad-13/` | `compose_mockups.py` |
-| iPhone Duo, first image | `output/app-store/iphone-duo/` | `compose_mockups.py` |
+| iPhone Duo, framed images | `output/app-store/iphone-duo/` | `compose_mockups.py` |
 | Servers, second image of all three | `output/app-store/servers/` | `compose_servers.py` |
 | Voice Input, third image of all three | `output/app-store/voice/` | `compose_voice.py` |
 | Header and Search Results | `output/app-store/creative-assets/` | `compose_creative.py` |
@@ -68,8 +68,20 @@ acting. Press the unfolded posture button in the window's bottom toolbar, then:
 xcrun simctl io "$UDID" screenshot --display=primary-1 capture.png
 ```
 
-That gives 2853 x 2007 in landscape. XCUITest taps miss in this posture on
-Xcode 27, so click through the Device Hub window.
+That gives 2853 x 2007 in landscape. In this posture on Xcode 27 an XCUITest
+tap at an absolute offset misses. Tap an element, or a coordinate normalized to
+the app's window; a click through the Device Hub window lands too.
+
+### Lock Screen
+
+The Live Activity image is a real activity on the simulator's Lock Screen. Turn
+on Settings › Notifications and the Host's switch there, start the activity from
+the Host's page, then lock the simulator and allow Live Activities when the
+Lock Screen first asks. The card lists three Agents, Blocked before Done before
+Working, so open Done Agents until one is left, run `store-shots.py working`,
+and capture within seconds of locking. The kept capture set its clock with a
+full timestamp, `simctl status_bar override --time 2026-11-22T09:41:00.000+08:00`;
+ISO forms without milliseconds are rejected.
 
 ### Servers
 

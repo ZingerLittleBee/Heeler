@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Paint a landscape iPhone Duo capture into the framed App Store template.
+"""Paint landscape iPhone Duo captures into their framed App Store templates.
 
-The template keeps the background, title, bezel and hinge marks. Only pixels
+A template keeps the background, title, bezel and hinge marks. Only pixels
 inside the rounded screen shape are replaced.
 """
 from pathlib import Path
@@ -15,6 +15,12 @@ SCREEN_LEFT, SCREEN_TOP, SCREEN_WIDTH, SCREEN_HEIGHT = 371, 440, 2110, 1484
 CORNER_RADIUS = 122
 SUPERSAMPLE = 4
 
+# Export name, its template, and whether the template's eyebrow still names herdr.
+MOCKUPS = (
+    ("01-console-and-chat", "frame-template.png", True),
+    ("03-chat", "03-chat-template.png", False),
+)
+
 
 def screen_mask() -> Image.Image:
     size = (SCREEN_WIDTH * SUPERSAMPLE, SCREEN_HEIGHT * SUPERSAMPLE)
@@ -26,12 +32,15 @@ def screen_mask() -> Image.Image:
 
 
 def main() -> None:
-    # The template is an App Store Connect download whose eyebrow still names herdr.
-    template = reletter(Image.open(ROOT / "source/frame-template.png"))
-    capture = Image.open(ROOT / "source/01-console-and-chat-capture.png").convert("RGB")
-    screen = capture.resize((SCREEN_WIDTH, SCREEN_HEIGHT), Image.LANCZOS)
-    template.paste(screen, (SCREEN_LEFT, SCREEN_TOP), screen_mask())
-    template.save(ROOT / "exports/01-console-and-chat.png", optimize=True)
+    mask = screen_mask()
+    for name, template_name, names_herdr in MOCKUPS:
+        template = Image.open(ROOT / "source" / template_name).convert("RGB")
+        if names_herdr:
+            template = reletter(template)
+        capture = Image.open(ROOT / f"source/{name}-capture.png").convert("RGB")
+        screen = capture.resize((SCREEN_WIDTH, SCREEN_HEIGHT), Image.LANCZOS)
+        template.paste(screen, (SCREEN_LEFT, SCREEN_TOP), mask)
+        template.save(ROOT / f"exports/{name}.png", optimize=True)
 
 
 if __name__ == "__main__":

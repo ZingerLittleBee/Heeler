@@ -17,7 +17,7 @@ The order follows the iPhone screens on the landing page.
 | 7 | `exports/05-see-what-changed.png` | `sources/changes-iphone.png` | See What Changed. |
 | 8 | `exports/06-your-shell-within-reach.png` | `sources/terminal-iphone.png` | Your Shell. Within Reach. |
 | 9 | `exports/07-skills-without-breaking-flow.png` | `sources/skills-iphone.png` | Skills Without Breaking Flow |
-| 10 | `exports/09-your-agents-at-a-glance.png` | `docs/images/live-activity-iphone.png` | Your Agents. At a Glance. |
+| 10 | `exports/09-your-agents-at-a-glance.png` | `sources/live-activity-iphone.png` | Your Agents. At a Glance. |
 
 All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
 `../servers/compose_servers.py` renders the Servers image (order 2) and

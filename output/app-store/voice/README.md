@@ -16,11 +16,11 @@ background and title style.
 
 ## Sources
 
-`sources/` holds two unedited captures per device, taken on 2026-11-06 in the
-Docs Agent's Chat. Captures come from the iPhone 17 Pro Max, iPad Pro 13-inch
-(M5) and iPhone Duo (unfolded) simulators on iOS 27.0. The app ran a 0.1.17
-(40) build connected to the `scripts/store-shots.py` rig, so the conversation
-is a real Codex session.
+`sources/` holds two unedited captures per device, taken on 2026-11-22 in the
+Docs Agent's Chat. Captures come from the iPhone 17 Pro Max and iPad Pro 13-inch
+(M5) simulators on iOS 27.0 and the iPhone Duo (unfolded) simulator on iOS 27.1.
+The app was built from `a91b5045`, the commit of 0.1.21 (57), and connected to
+the `scripts/store-shots.py` rig, so the conversation is a real Codex session.
 
 - `*-recording.png` is taken five seconds into a recording.
 - `*-draft.png` is taken after the transcript landed in the Composer.
@@ -40,5 +40,7 @@ python3 output/app-store/voice/compose_voice.py
 ```
 
 The renderer crops and scales the captures uniformly, then masks them. It does
-not redraw any application content. The reply above the bar is screened onto
-the background, so the app's black adds nothing where the piece ends.
+not redraw any application content. Each piece is the Composer's card above its
+Agent strip, so the Agent's status line is part of it. The reply above the bar
+has the Chat background subtracted and is screened onto the field, so only its
+text shows and no band marks where the piece ends.
