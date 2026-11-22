@@ -154,7 +154,33 @@ under the driver's operation mutex and finishes before another one begins.
 Waiting for that serialized slot is admission, not an open attempt: cancelling
 or timing out there leaves the session reusable because no native continuation
 belongs to the waiter. Once its own open call begins, an interrupted open still
-invalidates the session under the original cancellation rule above.
+invalidates the session under the original cancellation rule above, except for
+the cancelled caller the next amendment covers.
+
+Amendment (#824): that rule treated a cancelled caller and
+an expired deadline alike, and they are not alike. A deadline says the server
+has not answered in the time the operation was given. A cancellation says only
+that the caller stopped waiting, and views cancel their requests every time the
+user leaves a screen. Each request opens a channel of its own, so on a link
+with tens of milliseconds of latency a cancellation regularly landed between
+an open leaving and its confirmation arriving, and the session was invalidated
+for it: Events ended, every terminal on the Host closed, and a healthy Host
+read as reconnecting. Forty visits to an Agent detail over a link with 120 ms
+of latency each way retired the session ten times.
+
+Once an open has returned `EAGAIN`, a cancelled caller is therefore no longer a
+reason to give it up. The driver keeps driving that open, non-cancellably, for
+at most the two-second reclamation budget used for a pending send below. When
+the server answers inside it, the driver closes the channel nobody is left to
+own and reports the cancellation with the session intact; a refusal ends the
+open as it would have for a waiting caller. An open still unanswered when the
+budget runs out invalidates the session as before, and so does a deadline at
+any point of an open. The accepted cost is that a cancelled open holds the
+serialized slot and the operation mutex until the answer or the budget, where
+invalidating released both at once, so a dead link is noticed up to two seconds
+later on this path. `libssh2_sftp_init` is not part of this amendment and keeps
+the original rule: a cancellation or deadline during its pending init still
+invalidates the session.
 
 Post-open continuation is usually channel-owned — process startup, reads,
 writes, close, wait-closed and free each keep their state on `LIBSSH2_CHANNEL`

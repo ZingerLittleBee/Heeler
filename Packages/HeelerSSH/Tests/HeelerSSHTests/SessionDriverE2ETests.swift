@@ -763,26 +763,8 @@ struct SessionDriverE2ETests {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
         let connection = try await environment.connect()
-        let opens: [(name: String, open: @Sendable () async throws -> Void)] = [
-            ("execute", { _ = try await connection.execute("printf no", timeout: .seconds(5)) }),
-            ("openExec", { _ = try await connection.openExec(command: "cat", timeout: .seconds(5)) }),
-            ("openPTY", {
-                _ = try await connection.openPTY(
-                    command: "cat", columns: 80, rows: 24, timeout: .seconds(5))
-            }),
-            ("openStreamLocal", {
-                _ = try await connection.openStreamLocal(
-                    socketPath: socketPath, timeout: .seconds(5))
-            }),
-            ("exchangeStreamLocal", {
-                _ = try await connection.exchangeStreamLocal(
-                    socketPath: socketPath,
-                    request: Data(#"{"id":"no","method":"ping"}\#n"#.utf8),
-                    timeout: .seconds(5))
-            }),
-        ]
 
-        for site in opens {
+        for site in channelOpenSites(connection: connection, socketPath: socketPath) {
             let free = Task {
                 withUnsafeCurrentTask { $0?.cancel() }
                 try await site.open()
@@ -813,6 +795,118 @@ struct SessionDriverE2ETests {
         let echo = try await connection.execute("printf survived", timeout: .seconds(5))
         #expect(echo.stdout == Data("survived".utf8))
         try await connection.close(timeout: .seconds(2))
+    }
+
+    /// Leaving a screen cancels its requests while their channel opens are on
+    /// the wire. libssh2 keeps an unfinished open on the session, and the driver
+    /// used to retire the whole connection for each one, so the Host under an
+    /// Agent detail the user had just left read as reconnecting. The open now
+    /// runs on to the server's answer and gives back only its channel.
+    @Test("a channel open cancelled while its answer is pending spares the session")
+    func cancelledPendingChannelOpenSparesTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let connection = try await environment.connect()
+        let sites = channelOpenSites(connection: connection, socketPath: socketPath)
+
+        // Three rounds open more session channels than sshd's default
+        // `MaxSessions 10` admits at once, so a channel that was spared but
+        // never closed on the server fails a later open here.
+        for round in 1...3 {
+            for site in sites {
+                let answer = SessionWaitHold()
+                await connection.holdNextSessionWaitForTesting { await answer.waitUntilReleased() }
+                let open = Task { try await site.open() }
+                try await waitUntilTrue("\(site.name) should wait for the server's answer") {
+                    await answer.hasEntered
+                }
+                open.cancel()
+                await answer.release()
+
+                await #expect(throws: SSHError.cancelled, "\(site.name), round \(round)") {
+                    try await open.value
+                }
+                try #require(await connection.isConnected, "\(site.name) retired the session")
+                #expect(await connection.ptyChannelCountForTesting() == 0, "\(site.name)")
+                #expect(await connection.oneShotRegistryCountForTesting() == 0, "\(site.name)")
+            }
+        }
+
+        let echo = try await connection.execute("printf survived", timeout: .seconds(5))
+        #expect(echo.stdout == Data("survived".utf8))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    /// The other half of that rule. An answer that does not come inside the
+    /// driver's two-second reclamation budget leaves the open on the session,
+    /// where the next open would resume it, so the session still has to go.
+    @Test("a cancelled channel open that stays unanswered retires the session")
+    func cancelledChannelOpenLeftUnansweredRetiresTheSession() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let socketPath = try #require(SessionDriverTestEnvironment.streamLocalSocketPath)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let connection = try await connectThroughProxy(environment: environment, proxy: proxy)
+        do {
+            // A ten-second round trip: the answer is on its way, and stays
+            // late even when a loaded runner is slow to cancel the open.
+            try await proxy.delay(milliseconds: 5_000)
+            let answer = SessionWaitHold()
+            await connection.holdNextSessionWaitForTesting { await answer.waitUntilReleased() }
+            let open = Task {
+                try await connection.exchangeStreamLocal(
+                    socketPath: socketPath,
+                    request: Data(#"{"id":"late","method":"ping"}\#n"#.utf8),
+                    timeout: .seconds(20))
+            }
+            try await waitUntilTrue("the open should wait for the server's answer") {
+                await answer.hasEntered
+            }
+            open.cancel()
+            await answer.release()
+
+            await #expect(throws: SSHError.cancelled) {
+                _ = try await open.value
+            }
+            #expect(await connection.isConnected == false)
+        } catch {
+            try? await proxy.reset()
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+        try await proxy.reset()
+        try? await connection.close(timeout: .seconds(2))
+    }
+
+    /// Every way a caller opens a channel through libssh2's serialized open.
+    private func channelOpenSites(
+        connection: SSHConnection,
+        socketPath: String
+    ) -> [(name: String, open: @Sendable () async throws -> Void)] {
+        [
+            ("execute", { _ = try await connection.execute("printf no", timeout: .seconds(5)) }),
+            ("executeResponseLine", {
+                _ = try await connection.executeResponseLine(
+                    "cat",
+                    input: Data("no\n".utf8),
+                    maximumResponseBytes: 64,
+                    timeout: .seconds(5))
+            }),
+            ("openExec", { _ = try await connection.openExec(command: "cat", timeout: .seconds(5)) }),
+            ("openPTY", {
+                _ = try await connection.openPTY(
+                    command: "cat", columns: 80, rows: 24, timeout: .seconds(5))
+            }),
+            ("openStreamLocal", {
+                _ = try await connection.openStreamLocal(
+                    socketPath: socketPath, timeout: .seconds(5))
+            }),
+            ("exchangeStreamLocal", {
+                _ = try await connection.exchangeStreamLocal(
+                    socketPath: socketPath,
+                    request: Data(#"{"id":"no","method":"ping"}\#n"#.utf8),
+                    timeout: .seconds(5))
+            }),
+        ]
     }
 
     /// The store only reattaches a terminal when the failure reads as connection
@@ -3411,7 +3505,7 @@ private actor SSHErrorCompletionProbe {
 
 /// Minimal control client for `scripts/fixtures/weak-network-proxy.py`: the
 /// unprivileged TCP proxy the merge fixture puts in front of the disposable
-/// sshd. Only the two commands this suite needs are wired up — the app test
+/// sshd. Only the commands this suite needs are wired up — the app test
 /// target drives the full surface.
 private struct WeakNetworkProxyFixture: Sendable {
     let port: UInt16
@@ -3434,6 +3528,13 @@ private struct WeakNetworkProxyFixture: Sendable {
     func degrade() async throws {
         _ = try await send(
             #"{"command":"profile","profile":{"latencyMillis":30,"segmentBytes":256}}"#)
+    }
+
+    /// Holds every chunk back by `milliseconds` in each direction, so a round
+    /// trip takes twice that and an answer can be left in flight on purpose.
+    func delay(milliseconds: Int) async throws {
+        _ = try await send(
+            #"{"command":"profile","profile":{"latencyMillis":\#(milliseconds)}}"#)
     }
 
     func reset() async throws {
