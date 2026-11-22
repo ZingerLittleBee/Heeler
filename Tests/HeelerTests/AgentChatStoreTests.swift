@@ -537,13 +537,28 @@ struct AgentChatStoreTests {
         #expect(await fixture.files.reads.isEmpty)
     }
 
-    @Test(arguments: [ChatProgram.claude, .codex, .grok, .agy])
+    @Test(arguments: [ChatProgram.claude, .codex, .grok])
     func missingSessionExplainsTheMissingIdentityWithoutAnInstallDiagnosis(program: ChatProgram) {
         let reason = ChatUnavailableReason.noSession(program)
         #expect(reason.title == "Waiting for Conversation")
         #expect(reason.explanation.contains("report"))
         #expect(!reason.explanation.lowercased().contains("install"))
         #expect(reason.offersRetry)
+        #expect(!reason.isAwaitingFirstMessage)
+    }
+
+    /// Antigravity CLI reports its conversation only after the first message, so
+    /// before any message it shows the same empty-conversation placeholder as a
+    /// new Claude Code conversation rather than Waiting for Conversation.
+    @Test func missingAntigravitySessionShowsEmptyConversation() {
+        let reason = ChatUnavailableReason.noSession(.agy)
+        #expect(reason.title == ChatUnavailableReason.awaitingFirstMessage(.claude).title)
+        #expect(reason.systemImage == ChatUnavailableReason.awaitingFirstMessage(.claude).systemImage)
+        #expect(reason.explanation.contains("report"))
+        #expect(!reason.explanation.lowercased().contains("install"))
+        #expect(reason.isAwaitingFirstMessage)
+        #expect(reason.isWaiting)
+        #expect(!reason.offersRetry)
     }
 
     @Test(arguments: [true, false])

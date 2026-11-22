@@ -26,6 +26,11 @@ All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
 and falls back to the README image of the same name in `docs/images/`.
 The iPad set is `../ipad-13/`.
 
+`sources/live-activity-iphone.png` carries the display mask like the other
+sources. `docs/images/live-activity-iphone.png`, which the landing page also
+uses, is a second capture of the same Lock Screen taken with `--mask=ignored`,
+so its corners are square, as a device screenshot's are.
+
 ## Provenance
 
 `../backdrop.py` draws the background: the landing page's neutral graphite, a
