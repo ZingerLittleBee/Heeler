@@ -92,10 +92,11 @@ final class PortPreviewProxy: Sendable {
     /// Serves the connections the listener accepts.
     ///
     /// Each one runs in a task that is never cancelled and ends when either
-    /// side closes. A channel open that is cancelled part-way costs the whole
-    /// SSH connection, and a web view drops requests all the time: when a
-    /// page navigates away, an open in progress runs to its end and the
-    /// channel is closed after.
+    /// side closes. A channel open cancelled part-way holds the session's
+    /// open slot until the Host answers, and costs the whole SSH connection
+    /// when the answer takes more than two seconds. A web view drops
+    /// requests all the time: when a page navigates away, an open in
+    /// progress runs to its end and the channel is closed after.
     private final class Carrier: Sendable {
         /// More than a page opens at once to one origin, by a wide margin.
         private static let clientCap = 64

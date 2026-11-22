@@ -62,7 +62,7 @@ enum PortPreviewFailure: Error, Equatable, Sendable {
 /// No call here is cancelled once it reaches SSH. A dial runs in a task of
 /// its own, and callers are the proxy's connection tasks, which end by
 /// closing rather than by cancellation: a channel open interrupted part-way
-/// costs the whole SSH session.
+/// costs the whole SSH session when the Host is slow to answer it.
 actor PortPreviewLink {
     typealias Connect = @Sendable () async throws -> any PortPreviewConnection
 

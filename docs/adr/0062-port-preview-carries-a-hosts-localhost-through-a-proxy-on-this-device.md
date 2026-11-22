@@ -55,8 +55,10 @@ link the way in is **Ports** in the More menu.
   that never closes would sit in front of them.
 - **Nothing is cancelled inside a channel open.** A web view drops requests
   whenever a page navigates. Each proxy connection runs in a task that ends
-  by closing, never by cancellation, and a dial runs in a task of its own: a
-  channel open interrupted part-way costs the whole SSH session.
+  by closing, never by cancellation, and a dial runs in a task of its own.
+  A channel open cancelled part-way keeps the session's open slot until the
+  Host answers, and costs the whole SSH session when the answer takes more
+  than two seconds (#824), which a slow link makes of every dropped request.
 - **Website data lives as long as the sheet.** The store is not persistent.
   Every Host has a `localhost`, and a cookie one Host's page set must not go
   to another's.
