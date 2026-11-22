@@ -307,6 +307,7 @@ struct AgentTerminalView: View {
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
+    @Environment(\.consoleHostFilter) private var hostFilter
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
     @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
@@ -957,7 +958,8 @@ struct AgentTerminalView: View {
     private var agentSwitcher: TerminalAgentSwitcher {
         TerminalAgentSwitcher(
             items: TerminalAgentSwitcherItem.items(
-                for: console.agents, pins: console.pins,
+                for: console.agents, onHosts: hostFilter, showing: agent.id,
+                pins: console.pins,
                 layout: { console.rowLayout(for: $0) }),
             selectedID: agent.id,
             onSelect: switchToAgent,

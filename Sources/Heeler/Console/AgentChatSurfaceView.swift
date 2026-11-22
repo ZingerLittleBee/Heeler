@@ -136,6 +136,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
+    @Environment(\.consoleHostFilter) private var hostFilter
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
     @Environment(\.usesVerticalToolbar) private var usesVerticalToolbar
@@ -1948,7 +1949,8 @@ struct AgentChatSurfaceView: View {
     private var agentSwitcher: TerminalAgentSwitcher {
         let items = PerfTrace.span("switcher.items") {
             TerminalAgentSwitcherItem.items(
-                for: console.chatDisplayAgents, pins: console.pins,
+                for: console.chatDisplayAgents, onHosts: hostFilter, showing: agent.id,
+                pins: console.pins,
                 layout: { console.rowLayout(for: $0) })
         }
         return TerminalAgentSwitcher(

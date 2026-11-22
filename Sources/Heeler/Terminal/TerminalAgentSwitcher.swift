@@ -32,11 +32,22 @@ extension TerminalAgentSwitcherItem {
 
     /// The strip's chips, in the Console's order. A chip shows only Row 1,
     /// so chips whose Row 1 reads the same carry their program's name.
+    ///
+    /// `hostFilter` is the lists' Host filter: the strip offers the Agents
+    /// on the Hosts the lists show, and empty offers every Host's. Neither
+    /// the Agents list's status filter nor its search narrows the strip. The
+    /// Agent on screen, `shownID`, keeps its chip on a Host outside the
+    /// filter (a notification opens one there), so the strip always marks
+    /// where the user is.
     @MainActor
     static func items(
-        for agents: [ConsoleAgent], pins: PinnedAgentsStore,
+        for agents: [ConsoleAgent], onHosts hostFilter: Set<Host.ID> = [],
+        showing shownID: ConsoleAgent.ID? = nil, pins: PinnedAgentsStore,
         layout: (Host.ID) -> AgentRowLayout
     ) -> [TerminalAgentSwitcherItem] {
+        let agents = hostFilter.isEmpty
+            ? agents
+            : agents.filter { hostFilter.contains($0.hostID) || $0.id == shownID }
         let qualifiers = AgentTitleQualifier.qualifiers(for: agents) { agent in
             let card = AgentCardPresentation(agent: agent, layout: layout(agent.hostID))
             return .init(title: card.switcherTitle, namesAgent: card.namesAgent(inFirst: 1))
