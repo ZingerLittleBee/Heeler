@@ -3683,6 +3683,22 @@ struct ConsoleStoreTests {
         #expect(!agentsInvalidated.withLock { $0 })
         #expect(!capabilitiesInvalidated.withLock { $0 })
     }
+    @Test func projectionRebuildBurstCoalescesToOneRebuild() async throws {
+        let store = ConsoleStore(snapshotRetryDelay: .milliseconds(10))
+        let hosts = (0..<3).map {
+            Host(name: "host-\($0)", address: "10.0.0.\($0 + 1)", username: "dev", serverKind: .herdrCore)
+        }
+        store.setHosts(hosts)
+        defer { store.setHosts([]) }
+        let before = store.rebuildCountForTesting
+        for _ in 0..<50 {
+            store.requestRebuildForBench()
+        }
+        try await waitUntil("coalesced rebuild should run") {
+            store.rebuildCountForTesting > before
+        }
+        #expect(store.rebuildCountForTesting - before == 1)
+    }
 }
 
 /// Hands out scripted transports in order, one per `connect`, so tests can

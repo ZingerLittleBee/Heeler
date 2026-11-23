@@ -138,8 +138,20 @@ final class AgentRowChanges {
             guard let self, let entry else { return true }
             return self.visibleRows[id] == nil || entry.isStoodInFor
         }
+        store.onReadCompleted = { [weak self] completed in
+            self?.shareCompletedRead(from: completed, hostID: id.hostID)
+        }
         entries[agent.id] = entry
         return entry
+    }
+
+    /// Shares a just-completed row read with sibling rows on the same Host
+    /// that read the same directory or proven Checkout, avoiding duplicate
+    /// queued git execs when multiple Agents share one repository.
+    private func shareCompletedRead(from source: ChangesStore, hostID: Host.ID) {
+        for (siblingID, siblingEntry) in entries where siblingID.hostID == hostID {
+            siblingEntry.store.adoptFreshSiblingRead(of: source)
+        }
     }
 }
 

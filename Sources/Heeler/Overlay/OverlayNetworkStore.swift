@@ -195,9 +195,13 @@ final class OverlayNetworkStore {
         knownTailscaleLogins = Set(
             (defaults.stringArray(forKey: Self.knownLoginsKey) ?? []).compactMap(UUID.init(uuidString:)))
             .intersection(networks.filter { $0.kind == .tailscale }.map(\.id))
-        migrateLegacyZeroTierPlanet()
+        if networks.contains(where: { $0.kind == .zerotier }) {
+            migrateLegacyZeroTierPlanet()
+        }
         publish()
-        refreshZeroTierDeviceState()
+        if networks.contains(where: { $0.kind == .zerotier }) {
+            refreshZeroTierDeviceState()
+        }
     }
 
     /// A process-local catalog for previews and tests that never touches

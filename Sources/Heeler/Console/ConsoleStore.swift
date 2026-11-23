@@ -264,6 +264,10 @@ final class ConsoleStore {
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var isRebuilding = false
+    @ObservationIgnored private var rebuildCoalesceTask: Task<Void, Never>?
+    #if DEBUG
+    @ObservationIgnored private(set) var rebuildCountForTesting = 0
+    #endif
     @ObservationIgnored private lazy var agyTitles = AgyAnnotationTitleStore(
         retryDelay: chatPrefetchRetryDelay
     ) { [weak self] in
@@ -1775,7 +1779,9 @@ final class ConsoleStore {
         _ request: WorktreeRemovalRequest, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> WorktreeRemovalReceipt {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
-        return try await projection(for: hostID).removeWorktree(request)
+        let receipt = try await projection(for: hostID).removeWorktree(request)
+        flushScheduledRebuild()
+        return receipt
     }
 
     /// Where a core Host's close or removal says how it ended once the screen that
@@ -2240,7 +2246,7 @@ final class ConsoleStore {
 
     /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
-        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
+        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.scheduleRebuild() }
         let projection: any ConsoleHostProjection =
             if let makeProjection {
                 makeProjection(host)
@@ -2288,7 +2294,37 @@ final class ConsoleStore {
         projection.start(isActive: isActive)
     }
 
+    #if DEBUG
+    func requestRebuildForBench() {
+        scheduleRebuild()
+    }
+    #endif
+
+    /// Coalesces bursts of projection updates arriving in the same main-actor
+    /// turn into a single `rebuild()` pass.
+    private func scheduleRebuild() {
+        guard rebuildCoalesceTask == nil else { return }
+        rebuildCoalesceTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.rebuildCoalesceTask = nil
+            self.rebuild()
+        }
+    }
+
+    /// Runs any coalesced projection rebuild immediately, used after explicit
+    /// user-initiated mutations so callers observe updated state on return.
+    private func flushScheduledRebuild() {
+        guard rebuildCoalesceTask != nil else { return }
+        rebuild()
+    }
+
     private func rebuild() {
+        rebuildCoalesceTask?.cancel()
+        rebuildCoalesceTask = nil
+        #if DEBUG
+        rebuildCountForTesting += 1
+        #endif
         let span = PerfTrace.begin("console.rebuild")
         isRebuilding = true
         defer {

@@ -406,6 +406,65 @@ struct ChangesAutoRefreshTests {
         updates.finish()
     }
 
+    @Test func siblingRowsInSameCheckoutShareFreshReadWithoutDuplicateExecs() async throws {
+        let hostID = UUID()
+        let transport = ScriptedTransport()
+        let firstRead = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let secondRead = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: firstRead.changes.checkout,
+                head: firstRead.changes.head,
+                files: []),
+            directoryPrefix: Data())
+        await transport.scriptChangesReads([
+            .success(firstRead), .success(firstRead), .success(secondRead),
+        ])
+        let gate = GitExecGate()
+        let agents: [ConsoleAgent] = [
+            ("/home/dev/src/app", "w1:p1"),
+            ("/home/dev/src/app/sub", "w1:p2"),
+            ("/home/dev/src/app", "w1:p3"),
+        ].map { dir, paneID in
+            ConsoleAgent(
+                hostID: hostID,
+                hostName: "box",
+                agent: Agent(
+                    AgentInfo(
+                        agentStatus: .idle, focused: false, paneID: paneID, revision: 1,
+                        tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                        agent: "claude", cwd: dir, terminalTitleStripped: paneID)),
+                workspaceLabel: "ws",
+                repositoryCheckout: nil)
+        }
+        let rows = AgentRowChanges { agent in
+            ChangesStore(
+                directory: { agent.directory },
+                read: { try await transport.readChanges($0) },
+                gate: gate,
+                sleep: { _ in })
+        }
+        for agent in agents { rows.rowAppeared(agent) }
+        defer { for agent in agents { rows.rowDisappeared(agent.id) } }
+        await Self.waitUntil {
+            agents.allSatisfy { rows.store(for: $0)?.phase == .loaded(firstRead.changes) }
+        }
+        // p1 and p3 share the exact directory, so cold appearance runs 2 execs (root + sub), not 3.
+        #expect(await transport.changesReadRequests.count == 2)
+
+        // Now all 3 rows proved the same Checkout topLevel; gate the first
+        // refresh read on the wire so the sibling rows queue behind the Host
+        // gate, then verify all 3 adopt the single completed read.
+        let refreshGate = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: refreshGate)
+        let refreshTasks = agents.compactMap { rows.store(for: $0)?.startRead(automatic: true) }
+        await refreshGate.waitForEntry()
+        await Self.drain()
+        await refreshGate.open()
+        for task in refreshTasks { await task.value }
+        #expect(await transport.changesReadRequests.count == 3)
+        #expect(agents.allSatisfy { rows.store(for: $0)?.phase == .loaded(secondRead.changes) })
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }

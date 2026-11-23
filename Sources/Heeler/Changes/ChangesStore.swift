@@ -84,6 +84,9 @@ final class ChangesStore {
     /// Told of each document this store takes, from its own read or from
     /// another store's.
     @ObservationIgnored var onLoaded: (@MainActor (CheckoutChanges) -> Void)?
+    /// Invoked after a successful read finishes so `AgentRowChanges` can share
+    /// the fresh snapshot with sibling rows on the same Host and Checkout.
+    @ObservationIgnored var onReadCompleted: (@MainActor (ChangesStore) -> Void)?
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,
@@ -231,6 +234,7 @@ final class ChangesStore {
             autoRefresh.readWasWhileWorking = autoRefresh.readSawWorking || autoRefresh.status == .working
             fileDiff.listDidRefresh(result.changes)
             onLoaded?(result.changes)
+            onReadCompleted?(self)
             if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
@@ -324,12 +328,30 @@ final class ChangesStore {
         else { return }
         untrackedDirectories.collapseAll()
         phase = .loaded(changes)
-        readDirectory = other.readDirectory
+        // Preserve this store's own directory so future `readsSameCheckout`
+        // checks keep matching `readDirectory == directory()` when adopting
+        // from a sibling store in another subdirectory of the same Checkout.
+        readDirectory = directory() ?? lastDirectory ?? other.readDirectory
         readAt = otherReadAt
+        hasRead = true
         timedOutKeepingContent = false
         autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
         fileDiff.listDidRefresh(changes)
         onLoaded?(changes)
+    }
+
+    /// Adopts a fresh read just completed by a sibling row on the same Host
+    /// and Checkout, cancelling any queued-but-undispatched automatic read so
+    /// multiple rows in the same repository do not re-run identical git probes.
+    func adoptFreshSiblingRead(of other: ChangesStore) {
+        guard other !== self else { return }
+        let beforeReadAt = readAt
+        adoptNewerRead(of: other)
+        guard readAt != beforeReadAt else { return }
+        if activeRead != nil, !isReadDispatched {
+            cancelRead()
+        }
+        dropPendingAutomaticRefresh()
     }
 
     /// Opening Changes starts from the list row's latest read of the same

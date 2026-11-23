@@ -78,16 +78,31 @@ final class RexComposerSend: CheckedComposerSend {
         }
         if lastSendHasNoAnswer { return await settleLastSend(on: requests) }
 
+        // Run the three read-only pre-lane checks concurrently (saving 2 RTTs)
+        // while still evaluating their results in the exact original order.
+        async let heldResult = readHeldAgent(on: requests, in: projection, route: route)
+        async let flagsResult: Result<UInt8, any Error> = {
+            do { return .success(try await RexChatScreen.kittyKeyboardFlags(on: requests)) }
+            catch { return .failure(error) }
+        }()
+        async let modesRawResult: Result<JSONValue, any Error> = {
+            do { return .success(try await requests.read(.modes)) }
+            catch { return .failure(error) }
+        }()
+
         let held: RexAgentHolder
-        switch await readHeldAgent(on: requests, in: projection, route: route) {
+        switch await heldResult {
         case .success(let holder): held = holder
-        case .failure(let halt): return halt.outcome
+        case .failure(let halt):
+            _ = await (flagsResult, modesRawResult)
+            return halt.outcome
         }
 
         let modes: TerminalModeTracker
         do {
-            let flags = try await RexChatScreen.kittyKeyboardFlags(on: requests)
-            modes = try RexChatScreen.modes(from: await requests.read(.modes), kittyKeyboardFlags: flags)
+            let flags = try await flagsResult.get()
+            let rawModes = try await modesRawResult.get()
+            modes = try RexChatScreen.modes(from: rawModes, kittyKeyboardFlags: flags)
         } catch {
             return Self.beforePaste(error)
         }
@@ -171,23 +186,38 @@ final class RexComposerSend: CheckedComposerSend {
     private func stillHeld(
         _ held: RexAgentHolder, on requests: RexBlockRequests, in projection: RexConsoleProjection
     ) async throws {
+        async let readResult: Result<RexAgentHolder.Read, any Error> = {
+            do { return .success(try await RexAgentHolder.read(on: requests)) }
+            catch { return .failure(error) }
+        }()
+        async let modesRawResult: Result<JSONValue, any Error> = {
+            do { return .success(try await requests.read(.modes)) }
+            catch { return .failure(error) }
+        }()
+
         let read: RexAgentHolder.Read
         do {
-            read = try await RexAgentHolder.read(on: requests)
+            read = try await readResult.get()
         } catch {
+            _ = await modesRawResult
             throw Halt(outcome: Self.beforePaste(error))
         }
         switch read {
         case .holds(let now) where now == held:
-            if projection.agentStatus(at: address, heldBy: now) == .blocked { throw Halt(outcome: .refused(.agentBlocked)) }
+            if projection.agentStatus(at: address, heldBy: now) == .blocked {
+                _ = await modesRawResult
+                throw Halt(outcome: .refused(.agentBlocked))
+            }
         case .ended:
+            _ = await modesRawResult
             throw Halt(outcome: .refused(.inputNotReady(Self.agentEnded)))
         case .holds, .agentLeft, .notSampledYet:
+            _ = await modesRawResult
             throw Halt(outcome: .refused(.inputNotReady(Self.holderChangedWhileOpening)))
         }
         let modes: TerminalModeTracker
         do {
-            modes = try RexChatScreen.modes(from: await requests.read(.modes), kittyKeyboardFlags: 0)
+            modes = try RexChatScreen.modes(from: try await modesRawResult.get(), kittyKeyboardFlags: 0)
         } catch {
             throw Halt(outcome: Self.beforePaste(error))
         }
