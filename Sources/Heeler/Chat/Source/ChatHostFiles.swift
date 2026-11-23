@@ -95,10 +95,11 @@ struct ChatHostFiles: Sendable {
                 RemoteFileRange(
                     path: path, offset: offset,
                     maxBytes: Int(min(UInt64(chunk), end - offset))))
-            guard slice.length != nil else { return nil }
+            guard let reportedLength = slice.length else { return nil }
             guard !slice.data.isEmpty else { break }
             data.append(slice.data)
             offset += UInt64(slice.data.count)
+            if offset >= reportedLength { break }
         }
         return data
     }
@@ -108,13 +109,19 @@ struct ChatHostFiles: Sendable {
     /// the limit; `.unterminated` for a file that ends without one.
     func firstLine(of path: String, initialBytes: Int, limit: Int) async throws -> FirstLine? {
         var length = initialBytes
+        var accumulated = Data()
         while true {
-            guard let data = try await read(path: path, from: 0, to: UInt64(length), chunk: 256 << 10)
+            let start = UInt64(accumulated.count)
+            guard
+                let piece = try await read(
+                    path: path, from: start, to: UInt64(length), chunk: 1 << 20)
             else { return nil }
-            if let newline = data.firstIndex(of: 0x0A) {
-                return .line(data[data.startIndex..<newline])
+            if let newline = piece.firstIndex(of: 0x0A) {
+                accumulated.append(piece[piece.startIndex..<newline])
+                return .line(accumulated)
             }
-            if data.count < length { return .unterminated }
+            accumulated.append(piece)
+            if accumulated.count < length { return .unterminated }
             if length >= limit { return .tooLong }
             length = min(limit, length * 8)
         }

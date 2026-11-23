@@ -81,12 +81,14 @@ final class HostConsoleProjection: ConsoleHostProjection {
         let task: Task<Void, any Error>
     }
 
+    private static let eventResyncDebounce: Duration = .milliseconds(200)
     private let snapshotRetryDelay: Duration
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var terminalTransportTask: Task<Void, Never>?
     private var resyncTask: Task<Void, Never>?
+    private var resyncDebounceTask: Task<Void, Never>?
     private var resyncRetryTask: Task<Void, Never>?
     private var resyncPending = false
     /// Invalidates snapshot work that crossed a disconnected state. A request
@@ -241,11 +243,13 @@ final class HostConsoleProjection: ConsoleHostProjection {
         resyncPending = false
         cancelFocusTasks()
         resyncTask?.cancel()
+        resyncDebounceTask?.cancel()
         resyncRetryTask?.cancel()
         consumeTask?.cancel()
         latencyTask?.cancel()
         terminalTransportTask?.cancel()
         resyncTask = nil
+        resyncDebounceTask = nil
         resyncRetryTask = nil
         consumeTask = nil
         latencyTask = nil
@@ -832,13 +836,34 @@ final class HostConsoleProjection: ConsoleHostProjection {
                     // Status deltas keep badges responsive; the authoritative
                     // snapshot also supplies recency, titles and plugin values.
                     // Unknown can additionally mean the Agent left its Pane.
-                    scheduleResync()
+                    scheduleDebouncedEventResync()
                 }
             } else if event.kind == GlobalEventKind.paneUpdated.kind {
                 applyPaneChange(event.data)
             } else if Self.resyncEventKinds.contains(event.kind) {
-                scheduleResync()
+                scheduleDebouncedEventResync()
             }
+        }
+    }
+
+    /// Coalesces bursts of event-driven snapshots behind a short trailing
+    /// debounce so rapid status transitions do not each open a full
+    /// `session.snapshot` channel, while `.connected` and explicit refreshes
+    /// stay immediate.
+    private func scheduleDebouncedEventResync() {
+        guard !hasEnded, status == .connected else { return }
+        if resyncTask != nil {
+            resyncPending = true
+            return
+        }
+        resyncDebounceTask?.cancel()
+        resyncDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.eventResyncDebounce)
+            guard !Task.isCancelled, let self, !self.hasEnded, self.status == .connected else {
+                return
+            }
+            self.resyncDebounceTask = nil
+            self.scheduleResync()
         }
     }
 
@@ -855,6 +880,8 @@ final class HostConsoleProjection: ConsoleHostProjection {
     /// one follow-up run.
     private func scheduleResync() {
         guard !hasEnded, status == .connected else { return }
+        resyncDebounceTask?.cancel()
+        resyncDebounceTask = nil
         if resyncTask != nil {
             resyncPending = true
             return
@@ -934,6 +961,8 @@ final class HostConsoleProjection: ConsoleHostProjection {
         isAwaitingSnapshot = true
         resyncPending = false
         cancelFocusTasks()
+        resyncDebounceTask?.cancel()
+        resyncDebounceTask = nil
         resyncRetryTask?.cancel()
         resyncRetryTask = nil
         syncError = nil

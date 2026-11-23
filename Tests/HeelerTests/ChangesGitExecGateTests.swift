@@ -308,6 +308,38 @@ struct ChangesGitExecGateTests {
                 == [ChangesReadRequest(directory: "/home/dev/src/app")])
     }
 
+    @Test func interactivePriorityRunsAheadOfQueuedNormalWaiters() async throws {
+        let gate = GitExecGate()
+        let holderGate = ScriptedTransportCallGate()
+        let holder = Task { try await gate.run { await holderGate.waitUntilOpen() } }
+        await holderGate.waitForEntry()
+
+        actor OrderLog {
+            var items: [String] = []
+            func append(_ item: String) { items.append(item) }
+        }
+        let order = OrderLog()
+        let firstNormal = Task {
+            try await gate.run(priority: .normal) { await order.append("normal-1") }
+        }
+        let secondNormal = Task {
+            try await gate.run(priority: .normal) { await order.append("normal-2") }
+        }
+        await Self.drain()
+        let interactive = Task {
+            try await gate.run(priority: .interactive) { await order.append("interactive") }
+        }
+        await Self.drain()
+
+        await holderGate.open()
+        try await holder.value
+        try await firstNormal.value
+        try await secondNormal.value
+        try await interactive.value
+
+        #expect(await order.items == ["interactive", "normal-1", "normal-2"])
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }

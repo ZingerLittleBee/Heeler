@@ -2646,19 +2646,36 @@ final class AgentChatStore {
             return entryID.map { Candidate(claim: $0.rawValue, offset: offset, entryID: $0) }
         }
         let transcript = conversation.transcript
-        let recorded = transcript.recordedPrompts.compactMap { prompt in
-            candidate(offset: prompt.offset, entryID: prompt.entryID).map {
-                (
-                    candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
-                    rawText: prompt.text, imagePaths: prompt.pastedImagePaths,
-                    hasUnresolvedImagePlaceholders: prompt.hasUnresolvedImagePlaceholders
-                )
+        typealias RecordedPromptCandidate = (
+            candidate: Candidate, key: String, text: String,
+            rawText: String, imagePaths: [String]?,
+            hasUnresolvedImagePlaceholders: Bool
+        )
+        var cachedRecorded: [RecordedPromptCandidate]?
+        func recordedPrompts() -> [RecordedPromptCandidate] {
+            if let cachedRecorded { return cachedRecorded }
+            let built = transcript.recordedPrompts.compactMap { prompt in
+                candidate(offset: prompt.offset, entryID: prompt.entryID).map {
+                    (
+                        candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
+                        rawText: prompt.text, imagePaths: prompt.pastedImagePaths,
+                        hasUnresolvedImagePlaceholders: prompt.hasUnresolvedImagePlaceholders
+                    )
+                }
             }
+            cachedRecorded = built
+            return built
         }
         // Codex records no prompt for `/compact`, only the compaction.
-        let compactions = transcript.entries.compactMap { entry -> Candidate? in
-            guard case .divider(let divider) = entry.content, divider.kind == .compaction else { return nil }
-            return candidate(offset: entry.sourceOffset, entryID: entry.id)
+        var cachedCompactions: [Candidate]?
+        func compactionCandidates() -> [Candidate] {
+            if let cachedCompactions { return cachedCompactions }
+            let built = transcript.entries.compactMap { entry -> Candidate? in
+                guard case .divider(let divider) = entry.content, divider.kind == .compaction else { return nil }
+                return candidate(offset: entry.sourceOffset, entryID: entry.id)
+            }
+            cachedCompactions = built
+            return built
         }
         let date = now()
         // A new Pi or Oh My Pi conversation records nothing until the
@@ -2685,6 +2702,7 @@ final class AgentChatStore {
                 statuses[send.id] = .abandoned
                 continue
             }
+            let recorded = recordedPrompts()
             let isSameConversation = send.generation == conversationGeneration
             let floor = isSameConversation && send.layout == layout ? send.floor : 0
             func isAfter(_ candidate: Candidate) -> Bool {
@@ -2708,6 +2726,7 @@ final class AgentChatStore {
             // is a later `/compact`'s, however long this one stays in the
             // Composer.
             if match == nil, send.key == "/compact" {
+                let compactions = compactionCandidates()
                 match = compactions.first { compaction in
                     isOpen(compaction)
                         && !recorded.contains { isAfter($0.candidate) && $0.candidate.offset < compaction.offset }

@@ -1673,6 +1673,91 @@ struct SessionDriverE2ETests {
         try await connection.close(timeout: .seconds(2))
     }
 
+    @Test("asymmetric inbound zlib@openssh.com compression transfers data cleanly and can be disabled")
+    func asymmetricInboundCompressionWorksAndCanBeDisabled() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+
+        let compressed = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout,
+            compressInbound: true)
+        defer { Task { try? await compressed.close(timeout: .seconds(2)) } }
+        try await environment.authenticate(compressed)
+        let negotiated = await compressed.negotiatedInboundCompression
+        #expect(negotiated == "zlib@openssh.com" || negotiated == "none")
+
+        let payload = String(repeating: "heeler-zlib-asymmetric-verification-line\n", count: 400)
+        let compressedMetricsBefore = await compressed.metrics()
+        let compressedExec = try await compressed.execute(
+            "python3 -c 'import sys; sys.stdout.write(\"heeler-zlib-asymmetric-verification-line\\n\" * 400)'",
+            timeout: .seconds(10))
+        let compressedDelta = await compressed.metrics().delta(since: compressedMetricsBefore)
+        #expect(compressedExec.stdout == Data(payload.utf8))
+
+        let uncompressed = try await SSHConnection.connect(
+            to: environment.endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout,
+            compressInbound: false)
+        defer { Task { try? await uncompressed.close(timeout: .seconds(2)) } }
+        try await environment.authenticate(uncompressed)
+        #expect(await uncompressed.negotiatedInboundCompression == "none")
+
+        let uncompressedMetricsBefore = await uncompressed.metrics()
+        let uncompressedExec = try await uncompressed.execute(
+            "python3 -c 'import sys; sys.stdout.write(\"heeler-zlib-asymmetric-verification-line\\n\" * 400)'",
+            timeout: .seconds(10))
+        let uncompressedDelta = await uncompressed.metrics().delta(since: uncompressedMetricsBefore)
+        #expect(uncompressedExec.stdout == Data(payload.utf8))
+        if negotiated == "zlib@openssh.com" {
+            #expect(compressedDelta.wireBytesReceived < uncompressedDelta.wireBytesReceived)
+        }
+    }
+
+    @Test("cancelling an in-flight SFTP stat does not desync subsequent responses")
+    func cancellingInFlightSFTPStatDoesNotDesyncSubsequentResponses() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let proxy = try #require(WeakNetworkProxyFixture.current)
+        let endpoint = SSHEndpoint(host: environment.endpoint.host, port: proxy.port)
+        try await proxy.degrade()
+        let connection = try await SSHConnection.connect(
+            to: endpoint,
+            timeout: SessionDriverTestEnvironment.setupTimeout)
+        do {
+            try await environment.authenticate(connection)
+            let rootResult = try await connection.execute(
+                "mktemp -d /tmp/heeler-sftp-cancel.XXXXXXXX",
+                timeout: .seconds(10))
+            let root = String(decoding: rootResult.stdout, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let pathA = "\(root)/large.bin"
+            let pathB = "\(root)/small.bin"
+            _ = try await connection.execute(
+                "python3 -c 'open(\"\(pathA)\", \"wb\").write(b\"a\" * 4096); open(\"\(pathB)\", \"wb\").write(b\"b\" * 37)'",
+                timeout: .seconds(10))
+
+            let sftp = try await connection.openSFTP(timeout: .seconds(10))
+            for _ in 0..<4 {
+                let cancelled = Task {
+                    try? await sftp.fileStatus(at: pathA, timeout: .seconds(10))
+                }
+                try await Task.sleep(for: .milliseconds(30))
+                cancelled.cancel()
+                _ = await cancelled.value
+
+                let statusB = try await sftp.fileStatus(at: pathB, timeout: .seconds(10))
+                #expect(statusB?.size == 37)
+            }
+            try await sftp.close(timeout: .seconds(5))
+            _ = try await connection.execute("rm -rf -- '\(root)'", timeout: .seconds(10))
+            try await proxy.reset()
+            try await connection.close(timeout: .seconds(2))
+        } catch {
+            try? await proxy.reset()
+            try? await connection.close(timeout: .seconds(2))
+            throw error
+        }
+    }
+
     @Test("SFTP stats and filtered listings report kinds, sizes and times")
     func sftpStatsAndFilteredListings() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

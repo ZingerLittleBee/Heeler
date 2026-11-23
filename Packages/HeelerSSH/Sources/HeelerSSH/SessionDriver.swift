@@ -200,6 +200,9 @@ actor SessionDriver {
     private var sftpUses: [UInt64: Int] = [:]
     private var nextSFTPIdleWaiterID: UInt64 = 0
     private var sftpIdleWaiters: [UInt64: DriverWaiter] = [:]
+    private var operationMutexWaitCount: UInt64 = 0
+    private var operationMutexWaitNanoseconds: UInt64 = 0
+    private var operationMutexMaxWaitNanoseconds: UInt64 = 0
 
 #if DEBUG
     private var directTCPIPInboundBufferHighWaterMark = 0
@@ -244,7 +247,21 @@ actor SessionDriver {
     // Actor reentrancy would otherwise allow a second task to call libssh2
     // while the first one is suspended on socket readiness.
     private var operationInProgress = false
-    private var operationWaiters: [CheckedContinuation<Void, Never>] = []
+    enum OperationPriority {
+        case interactive
+        case normal
+    }
+    private struct OperationWaiter {
+        let priority: OperationPriority
+        let continuation: CheckedContinuation<Void, Never>
+    }
+    private var operationWaiters: [OperationWaiter] = []
+    private let compressInbound: Bool
+    private(set) var negotiatedInboundCompression: String?
+
+    init(compressInbound: Bool = true) {
+        self.compressInbound = compressInbound
+    }
 
     // Whoever holds the session may consume the bytes the operations waiting
     // for it are blocked on, which leaves them nothing to see on the socket.
@@ -677,7 +694,7 @@ actor SessionDriver {
                 // another operation, such as a health probe opening a channel on
                 // a stalled link, says nothing about this channel.
                 let queuedAt = ContinuousClock.now
-                await acquireOperation()
+                await acquireOperation(priority: .interactive)
                 deadline = deadline.advanced(by: queuedAt.duration(to: ContinuousClock.now))
                 let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
                 do {
@@ -748,7 +765,7 @@ actor SessionDriver {
 
             let owner = allocateTransportSendOwner()
             while true {
-                await acquireOperation()
+                await acquireOperation(priority: .interactive)
                 let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
                 do {
                     try checkProgress(deadline: deadline)
@@ -1620,25 +1637,22 @@ actor SessionDriver {
         timeout: Duration
     ) async throws -> SSHSFTPFileSlice {
         guard Self.isValidSFTPPath(path), maxBytes >= 0 else { throw SSHError.channelFailed }
-        // Asked for by path, before the ranged read claims the subsystem:
-        // `sftpAttributes` waits for the subsystem to be idle, so it cannot run
-        // inside the read's own use.
-        let reportedSize: UInt64?
-        do {
-            reportedSize = try await sftpAttributes(id: id, path: path, timeout: timeout).size
-        } catch {
-            // A file that is not there is an answer, not a failure: it is how
-            // the follower learns to stop showing figures nothing backs.
-            if case SSHError.sftpFailure(let status) = error,
-                status == UInt64(LIBSSH2_FX_NO_SUCH_FILE)
-            {
-                return SSHSFTPFileSlice(data: Data(), length: nil)
+        if maxBytes == 0 {
+            do {
+                let reportedSize = try await sftpAttributes(id: id, path: path, timeout: timeout).size
+                return SSHSFTPFileSlice(data: Data(), length: reportedSize)
+            } catch {
+                if case SSHError.sftpFailure(let status) = error,
+                    status == UInt64(LIBSSH2_FX_NO_SUCH_FILE)
+                {
+                    return SSHSFTPFileSlice(data: Data(), length: nil)
+                }
+                throw error
             }
-            throw error
         }
 
         let deadline = ContinuousClock.now.advanced(by: timeout)
-        let data: Data? = try await withSFTPUse(id: id, deadline: deadline) {
+        let result: (data: Data, length: UInt64?)? = try await withSFTPUse(id: id, deadline: deadline) {
             guard
                 let fileID = try await openSFTPFileForReadingIfPresent(
                     sftpID: id,
@@ -1651,6 +1665,7 @@ actor SessionDriver {
                     try await seekSFTPFileToStart(sftpID: id, fileID: fileID, offset: offset)
                 }
                 var contents = Data()
+                var reachedEOF = false
                 while contents.count < maxBytes {
                     guard
                         let chunk = try await readSFTPFileChunk(
@@ -1658,14 +1673,28 @@ actor SessionDriver {
                             fileID: fileID,
                             wanted: maxBytes - contents.count,
                             deadline: deadline)
-                    else { break }
+                    else {
+                        reachedEOF = true
+                        break
+                    }
                     contents.append(chunk.prefix(maxBytes - contents.count))
+                }
+                let reportedSize: UInt64?
+                if reachedEOF, !contents.isEmpty {
+                    // Reaching EOF after reading at least one byte proves the
+                    // exact file length without an extra STAT/FSTAT round trip.
+                    reportedSize = offset + UInt64(contents.count)
+                } else {
+                    reportedSize = try await sftpFileSizeWithinUse(
+                        sftpID: id,
+                        fileID: fileID,
+                        deadline: deadline)
                 }
                 try await closeSFTPFileWithinUse(
                     sftpID: id,
                     fileID: fileID,
                     timeout: timeout)
-                return contents
+                return (contents, reportedSize)
             } catch {
                 try? await closeSFTPFileWithinUse(
                     sftpID: id,
@@ -1674,13 +1703,106 @@ actor SessionDriver {
                 throw normalize(error)
             }
         }
-        // Gone between the size check and the open.
-        guard let data else { return SSHSFTPFileSlice(data: Data(), length: nil) }
-        // A server that reports no size at all leaves the bytes read as the
-        // only floor available.
+        guard let result else { return SSHSFTPFileSlice(data: Data(), length: nil) }
         return SSHSFTPFileSlice(
-            data: data,
-            length: reportedSize ?? offset + UInt64(data.count))
+            data: result.data,
+            length: result.length ?? offset + UInt64(result.data.count))
+    }
+
+    private func sftpFileSizeWithinUse(
+        sftpID: UInt64,
+        fileID: UInt64,
+        deadline: ContinuousClock.Instant
+    ) async throws -> UInt64? {
+        await acquireOperation()
+        defer { releaseOperation() }
+        var attributes = LIBSSH2_SFTP_ATTRIBUTES()
+        let owner = allocateTransportSendOwner()
+        var isOnSFTP = false
+        var abandonedUntil: ContinuousClock.Instant?
+        func abandon() {
+            abandonedUntil = min(
+                deadline,
+                ContinuousClock.now.advanced(by: Self.abandonedChannelOpenBudget))
+        }
+        func drive() -> Int32? {
+            guard let file = sftpClients[sftpID]?.files[fileID] else { return nil }
+            return libssh2_sftp_fstat_ex(file, &attributes, 0)
+        }
+        while true {
+            if isOnSFTP, abandonedUntil == nil, Task.isCancelled { abandon() }
+            if let abandonedUntil {
+                if ContinuousClock.now >= abandonedUntil {
+                    await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                    retireDesyncedSFTPClient(id: sftpID)
+                    throw SSHError.channelFailed
+                }
+            } else {
+                try await checkProgressFinishingOwnedSend(
+                    owner: owner, deadline: deadline, cancellable: true, drive: drive)
+            }
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: abandonedUntil == nil)
+            } catch {
+                if isOnSFTP, abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                if abandonedUntil != nil {
+                    retireDesyncedSFTPClient(id: sftpID)
+                    throw SSHError.channelFailed
+                }
+                throw error
+            }
+            guard let state = sftpClients[sftpID], let file = state.files[fileID] else {
+                throw SSHError.connectionInvalidated
+            }
+            let session = try requireSession()
+            let code = libssh2_sftp_fstat_ex(file, &attributes, 0)
+            let disposition = notePacketProducingResult(code, owner: owner, session: session)
+            if code != LIBSSH2_ERROR_EAGAIN {
+                applyTransportSendOwnerDisposition(disposition)
+                if abandonedUntil != nil {
+                    if disposition == .invalidate { invalidateResources(); throw SSHError.connectionInvalidated }
+                    throw SSHError.cancelled
+                }
+                try checkSFTPResult(PacketOperationResult(code: code, disposition: disposition), sftpID: sftpID)
+                return (attributes.flags & UInt(LIBSSH2_SFTP_ATTR_SIZE)) != 0 ? attributes.filesize : nil
+            }
+            isOnSFTP = true
+            do {
+                try await waitForSessionYielding(
+                    session,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: abandonedUntil == nil)
+            } catch {
+                if abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                if abandonedUntil != nil {
+                    retireDesyncedSFTPClient(id: sftpID)
+                    throw SSHError.channelFailed
+                }
+                throw error
+            }
+        }
+    }
+
+    /// Drops a client whose in-flight SFTP continuation could not be drained
+    /// within the abandoned-request budget so no later caller can observe a
+    /// stale reply from a cancelled request.
+    private func retireDesyncedSFTPClient(id: UInt64) {
+        guard let state = sftpClients.removeValue(forKey: id) else { return }
+        for file in state.files.values {
+            _ = libssh2_sftp_close_handle(file)
+        }
+        _ = libssh2_sftp_shutdown(state.handle)
     }
 
     /// Moves an open read handle to `offset`. Local to the handle — the next
@@ -1709,14 +1831,41 @@ actor SessionDriver {
             throw SSHError.connectionInvalidated
         }
         let owner = allocateTransportSendOwner()
+        var isOnSFTP = false
+        var abandonedUntil: ContinuousClock.Instant?
+        func abandon() {
+            abandonedUntil = min(
+                deadline,
+                ContinuousClock.now.advanced(by: Self.abandonedChannelOpenBudget))
+        }
 
         do {
         while true {
-            try checkProgress(deadline: deadline)
-            try await waitForTransportSendAdmission(
-                owner: owner,
-                deadline: deadline,
-                cancellable: true)
+            if isOnSFTP, abandonedUntil == nil, Task.isCancelled { abandon() }
+            if let abandonedUntil {
+                if ContinuousClock.now >= abandonedUntil {
+                    retireDesyncedSFTPClient(id: sftpID)
+                    throw SSHError.channelFailed
+                }
+            } else {
+                try checkProgress(deadline: deadline)
+            }
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: abandonedUntil == nil)
+            } catch {
+                if isOnSFTP, abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                if abandonedUntil != nil {
+                    retireDesyncedSFTPClient(id: sftpID)
+                    throw SSHError.channelFailed
+                }
+                throw error
+            }
             let session = try requireSession()
             guard let sftp = sftpClients[sftpID]?.handle else {
                 throw SSHError.connectionInvalidated
@@ -1736,6 +1885,12 @@ actor SessionDriver {
                     owner: owner,
                     session: session)
                 applyTransportSendOwnerDisposition(disposition)
+                if abandonedUntil != nil {
+                    // Drain finished after caller left: close the orphaned handle
+                    // immediately so the SFTP client stays clean.
+                    _ = libssh2_sftp_close_handle(file)
+                    throw SSHError.cancelled
+                }
                 nextSFTPFileID &+= 1
                 let fileID = nextSFTPFileID
                 sftpClients[sftpID]?.files[fileID] = file
@@ -1748,7 +1903,23 @@ actor SessionDriver {
                 owner: owner,
                 session: session)
             if error == LIBSSH2_ERROR_EAGAIN {
-                try await waitForSession(session, deadline: deadline)
+                isOnSFTP = true
+                do {
+                    try await waitForSessionYielding(
+                        session,
+                        deadline: abandonedUntil ?? deadline,
+                        cancellable: abandonedUntil == nil)
+                } catch {
+                    if abandonedUntil == nil, error as? SSHError == .cancelled {
+                        abandon()
+                        continue
+                    }
+                    if abandonedUntil != nil {
+                        retireDesyncedSFTPClient(id: sftpID)
+                        throw SSHError.channelFailed
+                    }
+                    throw error
+                }
                 continue
             }
             if Self.isConnectionLoss(error) {
@@ -1758,6 +1929,7 @@ actor SessionDriver {
             let status = UInt64(libssh2_sftp_last_error(sftp))
             applyTransportSendOwnerDisposition(disposition)
             if disposition == .invalidate { throw SSHError.connectionInvalidated }
+            if abandonedUntil != nil { throw SSHError.cancelled }
             if status == UInt64(LIBSSH2_FX_NO_SUCH_FILE) { return nil }
             throw SSHError.sftpFailure(status: status)
         }
@@ -1768,7 +1940,7 @@ actor SessionDriver {
     }
 
     /// The most one read hands libssh2 to fill.
-    static let maximumSFTPReadBufferBytes = 64 * 1_024
+    static let maximumSFTPReadBufferBytes = 256 * 1_024
     /// The least: under it a range's last bytes would come a few at a time.
     static let minimumSFTPReadBufferBytes = 1_024
 
@@ -2534,19 +2706,24 @@ actor SessionDriver {
         fileID: UInt64,
         deadline: ContinuousClock.Instant
     ) async throws {
+        let owner = allocateTransportSendOwner()
         try await waitForTransportSendAdmission(
-            owner: allocateTransportSendOwner(),
+            owner: owner,
             deadline: deadline,
             cancellable: false)
-        guard let file = sftpClients[sftpID]?.files[fileID] else { return }
-        let result = try await repeatUntilCompleteHolding(
-            deadline: deadline,
-            cancellable: false
-        ) {
-            libssh2_sftp_close_handle(file)
+        while true {
+            guard let file = sftpClients[sftpID]?.files[fileID] else { return }
+            let session = try requireSession()
+            let result = libssh2_sftp_close_handle(file)
+            let disposition = notePacketProducingResult(result, owner: owner, session: session)
+            if result != LIBSSH2_ERROR_EAGAIN {
+                applyTransportSendOwnerDisposition(disposition)
+                guard result == 0 else { throw SSHError.channelFailed }
+                sftpClients[sftpID]?.files[fileID] = nil
+                return
+            }
+            try await waitForSessionYielding(session, deadline: deadline, cancellable: false)
         }
-        guard result == 0 else { throw SSHError.channelFailed }
-        sftpClients[sftpID]?.files[fileID] = nil
     }
 
     func removeSFTPFile(
@@ -3169,6 +3346,7 @@ actor SessionDriver {
 #endif
 
     private func configureAlgorithms(_ session: OpaquePointer) throws {
+        let inboundCompression = compressInbound ? "zlib@openssh.com,none" : "none"
         let preferences: [(Int32, String)] = [
             (LIBSSH2_METHOD_HOSTKEY, Self.hostKeyPreference),
             (LIBSSH2_METHOD_SIGN_ALGO, Self.signaturePreference),
@@ -3177,6 +3355,11 @@ actor SessionDriver {
             (LIBSSH2_METHOD_CRYPT_SC, Self.cipherPreference),
             (LIBSSH2_METHOD_MAC_CS, Self.macPreference),
             (LIBSSH2_METHOD_MAC_SC, Self.macPreference),
+            // One-way delayed post-auth compression (Host -> App only).
+            // Client -> Host stays uncompressed so keystrokes, credentials,
+            // and already-compressed uploads are never compressed.
+            (LIBSSH2_METHOD_COMP_CS, "none"),
+            (LIBSSH2_METHOD_COMP_SC, inboundCompression),
         ]
         for (method, preference) in preferences {
             let result = preference.withCString {
@@ -3197,6 +3380,9 @@ actor SessionDriver {
         }
         session = createdSession
         libssh2_session_set_blocking(createdSession, 0)
+        if compressInbound {
+            libssh2_session_flag(createdSession, LIBSSH2_FLAG_COMPRESS, 1)
+        }
         activity.install(on: createdSession)
         try configureAlgorithms(createdSession)
 
@@ -3215,6 +3401,9 @@ actor SessionDriver {
         serverIdentification = libssh2_session_banner_get(createdSession).map {
             String(cString: $0)
         }
+        negotiatedInboundCompression = libssh2_session_methods(
+            createdSession, LIBSSH2_METHOD_COMP_SC
+        ).map { String(cString: $0) }
         return try extractHostKey(createdSession)
     }
 
@@ -5194,6 +5383,13 @@ actor SessionDriver {
         try beginSFTPUse(id)
         defer { endSFTPUse(id) }
         let owner = allocateTransportSendOwner()
+        var isOnSFTP = false
+        var abandonedUntil: ContinuousClock.Instant?
+        func abandon() {
+            abandonedUntil = min(
+                deadline,
+                ContinuousClock.now.advanced(by: Self.abandonedChannelOpenBudget))
+        }
         func drive() -> Int32? {
             guard let sftp = sftpClients[id]?.handle else { return nil }
             return operation(sftp)
@@ -5208,11 +5404,20 @@ actor SessionDriver {
             throw error
         }
         while true {
-            try await checkProgressFinishingOwnedSend(
-                owner: owner,
-                deadline: deadline,
-                cancellable: cancellable,
-                drive: drive)
+            if isOnSFTP, cancellable, abandonedUntil == nil, Task.isCancelled { abandon() }
+            if let abandonedUntil {
+                if ContinuousClock.now >= abandonedUntil {
+                    await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                    retireDesyncedSFTPClient(id: id)
+                    throw SSHError.channelFailed
+                }
+            } else {
+                try await checkProgressFinishingOwnedSend(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: cancellable,
+                    drive: drive)
+            }
             guard let sftp = sftpClients[id]?.handle else {
                 throw SSHError.connectionInvalidated
             }
@@ -5223,17 +5428,34 @@ actor SessionDriver {
                 owner: owner,
                 session: session)
             if result != LIBSSH2_ERROR_EAGAIN {
+                if abandonedUntil != nil {
+                    applyTransportSendOwnerDisposition(disposition)
+                    if disposition == .invalidate {
+                        invalidateResources()
+                        throw SSHError.connectionInvalidated
+                    }
+                    throw SSHError.cancelled
+                }
                 return PacketOperationResult(
                     code: result,
                     disposition: disposition)
             }
+            isOnSFTP = true
             do {
-                try await waitForSession(
+                try await waitForSessionYielding(
                     session,
-                    deadline: deadline,
-                    cancellable: cancellable)
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: cancellable && abandonedUntil == nil)
             } catch {
+                if cancellable, abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
                 await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                if abandonedUntil != nil {
+                    retireDesyncedSFTPClient(id: id)
+                    throw SSHError.channelFailed
+                }
                 throw error
             }
         }
@@ -5437,6 +5659,29 @@ actor SessionDriver {
             sessionWaitPlan(session),
             until: deadline,
             cancellable: cancellable)
+    }
+
+    /// Releases the operation mutex while awaiting socket readiness and
+    /// unconditionally reacquires it before returning or throwing, so callers
+    /// protected by a per-handle lease (e.g. `sftpUses`) do not hold the
+    /// session mutex across network RTTs.
+    private func waitForSessionYielding(
+        _ session: OpaquePointer,
+        deadline: ContinuousClock.Instant,
+        cancellable: Bool = true
+    ) async throws {
+        let plan = sessionWaitPlan(session)
+        releaseOperation()
+        do {
+            try await awaitSessionProgress(
+                plan,
+                until: deadline,
+                cancellable: cancellable)
+            await acquireOperation()
+        } catch {
+            await acquireOperation()
+            throw error
+        }
     }
 
     private func freeSession(
@@ -5779,17 +6024,45 @@ actor SessionDriver {
         }
     }
 
-    private func acquireOperation() async {
+    func metrics() -> SSHConnectionMetrics {
+        SSHConnectionMetrics(
+            wireBytesSent: activity.wireBytesSent,
+            wireBytesReceived: activity.wireBytesReceived,
+            sendCalls: activity.sendCalls,
+            receiveCalls: activity.receiveCalls,
+            operationMutexWaitCount: operationMutexWaitCount,
+            operationMutexWaitNanoseconds: operationMutexWaitNanoseconds,
+            operationMutexMaxWaitNanoseconds: operationMutexMaxWaitNanoseconds)
+    }
+
+    private func acquireOperation(priority: OperationPriority = .normal) async {
         if !operationInProgress {
             operationInProgress = true
             sampleTransportSendOwnerIfNeeded()
             return
         }
         SSHDiagnosticOperation.current?.recordWait("operation admission")
+        let waitStart = ContinuousClock.now
         await withCheckedContinuation { continuation in
-            operationWaiters.append(continuation)
+            operationWaiters.append(
+                OperationWaiter(priority: priority, continuation: continuation))
+        }
+        let elapsed = waitStart.duration(to: .now)
+        let ns = Self.nanoseconds(of: elapsed)
+        operationMutexWaitCount &+= 1
+        operationMutexWaitNanoseconds &+= ns
+        if ns > operationMutexMaxWaitNanoseconds {
+            operationMutexMaxWaitNanoseconds = ns
         }
         sampleTransportSendOwnerIfNeeded()
+    }
+
+    private static func nanoseconds(of duration: Duration) -> UInt64 {
+        let c = duration.components
+        guard c.seconds >= 0 else { return 0 }
+        let secNs = UInt64(c.seconds).multipliedReportingOverflow(by: 1_000_000_000)
+        let subNs = UInt64(max(0, c.attoseconds / 1_000_000_000))
+        return secNs.overflow ? UInt64.max : secNs.partialValue &+ subNs
     }
 
     private func releaseOperation() {
@@ -5798,8 +6071,10 @@ actor SessionDriver {
         activity.wakeStaleWaiters()
         if operationWaiters.isEmpty {
             operationInProgress = false
+        } else if let interactiveIndex = operationWaiters.firstIndex(where: { $0.priority == .interactive }) {
+            operationWaiters.remove(at: interactiveIndex).continuation.resume()
         } else {
-            operationWaiters.removeFirst().resume()
+            operationWaiters.removeFirst().continuation.resume()
         }
     }
 }

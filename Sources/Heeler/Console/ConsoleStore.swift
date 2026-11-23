@@ -517,16 +517,22 @@ final class ConsoleStore {
             // Before the terminals go: an upload ends interrupted, with
             // Retry, rather than cancelled by the teardown.
             for session in composerSessions.values { session.didSuspend() }
-            for projection in projections.values {
-                await projection.pauseHealthChecks()
+            let currentProjections = Array(projections.values)
+            await withTaskGroup(of: Void.self) { group in
+                for projection in currentProjections {
+                    group.addTask { await projection.pauseHealthChecks() }
+                }
             }
-            await terminalConnections.suspend()
-            await agentTerminals.suspend()
+            async let suspendTerminals: Void = terminalConnections.suspend()
+            async let suspendAgentTerminals: Void = agentTerminals.suspend()
+            _ = await (suspendTerminals, suspendAgentTerminals)
             agyTitles.suspendAll()
             sidebarSnapshots.invalidateAll()
             rebuild()
-            for projection in projections.values {
-                await projection.suspend()
+            await withTaskGroup(of: Void.self) { group in
+                for projection in currentProjections {
+                    group.addTask { await projection.suspend() }
+                }
             }
         }
     }
@@ -1282,7 +1288,7 @@ final class ConsoleStore {
         return try await projection.checkChatSession(paneID: paneID, program: program)
     }
 
-    nonisolated private static let backgroundPrefetchReadChunk = 32 << 10
+    nonisolated static let backgroundPrefetchReadChunk = 1 << 20
 
     private func isBackgroundPrefetchRead(for agentID: ConsoleAgent.ID, on hostID: Host.ID) -> Bool {
         chatPrefetchActiveAgent[hostID] == agentID && chatStores[agentID]?.isVisible != true
@@ -2400,10 +2406,16 @@ final class ConsoleStore {
         rebuildCapabilities()
         rebuildHostIssues()
         for (id, session) in composerSessions {
-            session.composer.isConnectionAvailable = isHostReadyForInput(id.hostID)
+            let ready = isHostReadyForInput(id.hostID)
+            if session.composer.isConnectionAvailable != ready {
+                session.composer.isConnectionAvailable = ready
+            }
         }
         for entry in agentTerminals.entries.values {
-            entry.attach.input.isEnabled = isHostReadyForInput(entry.agentID.hostID)
+            let ready = isHostReadyForInput(entry.agentID.hostID)
+            if entry.attach.input.isEnabled != ready {
+                entry.attach.input.isEnabled = ready
+            }
         }
         let nextWorkspacesByHost = Dictionary(
             uniqueKeysWithValues: current.map {

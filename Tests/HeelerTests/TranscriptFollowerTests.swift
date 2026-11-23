@@ -374,4 +374,18 @@ struct TranscriptFollowerTests {
         follower.beginOlderSearch()
         #expect(!follower.olderSearchExhausted)
     }
+
+    @Test func appendPollReadsTailAnchorAndNewBytesInOneRead() async throws {
+        var (follower, files, _) = try await Self.makeFollower(Self.lines(0..<4))
+        await files.clearRecords()
+        await files.append(Self.lines(4..<5), to: Self.path)
+
+        let change = try await follower.poll(files.hostFiles())
+        guard case .appended(let appended) = change else {
+            Issue.record("expected appended lines, got \(change)")
+            return
+        }
+        #expect(Self.texts(appended) == Self.expected(4..<5))
+        #expect(await files.reads.count == 1)
+    }
 }

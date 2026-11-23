@@ -20,3 +20,18 @@ void heeler_libssh2_set_receive_callback(
         (libssh2_cb_generic *)callback
     );
 }
+
+void heeler_libssh2_set_send_callback(
+    LIBSSH2_SESSION *session,
+    heeler_libssh2_send_callback callback
+) {
+    if (session == NULL || callback == NULL) {
+        return;
+    }
+
+    libssh2_session_callback_set2(
+        session,
+        LIBSSH2_CALLBACK_SEND,
+        (libssh2_cb_generic *)callback
+    );
+}

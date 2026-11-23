@@ -141,9 +141,9 @@ final class ChangesStore {
         self.announce = announce
         self.autoRefresh = ChangesAutoRefresh(agentStatus: agentStatus, sleep: sleep)
         self.fileDiff = FileDiffPresenter(
-            read: GitExecGate.wrapping(gate, operation: readPatch), now: now)
+            read: GitExecGate.wrapping(gate, priority: .interactive, operation: readPatch), now: now)
         self.untrackedDirectories = UntrackedDirectoryExpansions(
-            list: GitExecGate.wrapping(gate, operation: listUntrackedDirectory))
+            list: GitExecGate.wrapping(gate, priority: .interactive, operation: listUntrackedDirectory))
     }
 
     /// Reads once per store; returning to the view reads nothing new once a
@@ -188,7 +188,7 @@ final class ChangesStore {
                 if let gate {
                     // Publish the list and invalidate obsolete lazy requests
                     // before handing the Host slot to the next queued read.
-                    try await gate.run {
+                    try await gate.run(priority: automatic ? .normal : .interactive) {
                         await self.readAndApply(directory: directory, id: id, automatic: automatic)
                     }
                 } else {

@@ -283,7 +283,7 @@ private struct ChatMarkdownBlockView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-                Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil))
+                Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil && block.hasImageLinks))
                     .font(.system(.footnote, design: .monospaced))
             }
             .padding(10)

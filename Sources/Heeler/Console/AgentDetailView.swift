@@ -140,6 +140,9 @@ struct AgentDetailView: View {
         permitsRetention = attachStore == nil && openTerminalStore == nil
         _retainedAgent = State(initialValue: nil)
         let retainsSessions = permitsRetention
+        if retainsSessions {
+            PerfTrace.count("agent-detail.placeholder-attach")
+        }
         let attach = attachStore
             ?? AgentAttachStore(
                 target: agent.agent.paneID,

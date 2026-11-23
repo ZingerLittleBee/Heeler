@@ -690,7 +690,7 @@ actor HeelerSSHTransport: Transport {
         overlay: OverlayRoute?
     ) async throws -> SSHConnection {
         let connection = try await openConnection(
-            to: endpoint, timeout: timeout, overlay: overlay)
+            to: endpoint, timeout: timeout, overlay: overlay, compressInbound: false)
         do {
             let verifier = HeelerSSHHostKeyVerifier(
                 host: endpoint.host,
@@ -715,15 +715,18 @@ actor HeelerSSHTransport: Transport {
     private static func openConnection(
         to endpoint: SSHEndpoint,
         timeout: Duration,
-        overlay: OverlayRoute?
+        overlay: OverlayRoute?,
+        compressInbound: Bool = true
     ) async throws -> SSHConnection {
         guard let overlay else {
-            return try await SSHConnection.connect(to: endpoint, timeout: timeout)
+            return try await SSHConnection.connect(
+                to: endpoint, timeout: timeout, compressInbound: compressInbound)
         }
         return try await SSHConnection.connect(
             to: endpoint,
             timeout: timeout,
-            transportLabel: "overlay \(overlay.networkName)"
+            transportLabel: "overlay \(overlay.networkName)",
+            compressInbound: compressInbound
         ) { remaining in
             // Each handshake attempt dials a fresh stream; the package hands
             // the descriptor to libssh2 and calls `release` once it is done.
@@ -2478,7 +2481,7 @@ actor HeelerSSHTransport: Transport {
 #if DEBUG
             await signalStagingPhaseForTesting(.payloadWriteReady)
 #endif
-            let chunkSize = 64 * 1_024
+            let chunkSize = 512 * 1_024
             var transferred: Int64 = 0
             while transferred < byteCount {
                 try Task.checkCancellation()
@@ -2541,9 +2544,22 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    func connectionMetrics() async -> SSHConnectionMetrics {
+        await connection.metrics()
+    }
+
     func close() async throws {
         guard connected else { return }
         connected = false
+        if PerfTrace.isEnabled {
+            let m = await connection.metrics()
+            let waitMs = Double(m.operationMutexWaitNanoseconds) / 1_000_000
+            let maxWaitMs = Double(m.operationMutexMaxWaitNanoseconds) / 1_000_000
+            PerfTrace.event(
+                "ssh.metrics",
+                "tx=\(m.wireBytesSent) rx=\(m.wireBytesReceived) mutexWaits=\(m.operationMutexWaitCount) mutexWaitMs=\(String(format: "%.1f", waitMs)) mutexMaxMs=\(String(format: "%.1f", maxWaitMs))"
+            )
+        }
         let stagingClients = Array(imageStageClients.values)
         imageStageClients.removeAll()
         let notificationClients = Array(notificationFileClients.values)

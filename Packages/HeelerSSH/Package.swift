@@ -25,7 +25,8 @@ let package = Package(
         ),
         .target(
             name: "HeelerSSH",
-            dependencies: ["CLibSSH2", "COpenSSL", "CHeelerSSHSupport"]
+            dependencies: ["CLibSSH2", "COpenSSL", "CHeelerSSHSupport"],
+            linkerSettings: [.linkedLibrary("z")]
         ),
         .testTarget(
             name: "HeelerSSHTests",

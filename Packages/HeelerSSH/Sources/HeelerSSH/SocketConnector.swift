@@ -28,6 +28,19 @@ enum SocketConnector {
                 now: { ContinuousClock.now },
                 makeSocket: makeSocket,
                 setNonBlocking: { descriptor in
+                    var one: Int32 = 1
+                    _ = setsockopt(
+                        descriptor,
+                        IPPROTO_TCP,
+                        TCP_NODELAY,
+                        &one,
+                        socklen_t(MemoryLayout<Int32>.size))
+                    _ = setsockopt(
+                        descriptor,
+                        SOL_SOCKET,
+                        SO_NOSIGPIPE,
+                        &one,
+                        socklen_t(MemoryLayout<Int32>.size))
                     let flags = fcntl(descriptor, F_GETFL, 0)
                     return flags >= 0
                         && fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0

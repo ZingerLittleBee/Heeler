@@ -37,7 +37,11 @@ make verify-ssh-artifacts
 
 OpenSSL is built without its legacy provider and without the legacy algorithms
 listed in the provenance record. The pinned libssh2 snapshot disables obsolete
-algorithms upstream; the build additionally defines `LIBSSH2_NO_AES_CBC`.
+algorithms upstream; the build additionally defines `LIBSSH2_NO_AES_CBC`,
+enables delayed post-auth `zlib@openssh.com` compression (Host-to-App only,
+linking system `libz`), and applies
+`Patches/libssh2-remote-decomp-check.patch` to fix upstream `src/transport.c`'s
+asymmetric decompression check (`session->remote.comp` instead of `local.comp`).
 
 ## Session scheduling
 
@@ -129,10 +133,17 @@ SFTP is a second exception and a stronger one. `struct _LIBSSH2_SFTP`
 call of the same kind resumes the first call's state instead of starting its
 own, so it can combine one request's packet with another's length or deliver
 one call's result into another's output buffer. Re-resolving the handle by id
-does not isolate this, because the id resolves to the same shared state. Every
-call on one SFTP handle stays mutually exclusive for its whole logical
-operation, waits included, and `libssh2_sftp_init` stays serialized on its own
-session-owned `open_state`.
+does not isolate this, because the id resolves to the same shared state. Every call on one SFTP handle stays mutually exclusive via the per-handle SFTP
+gate for its whole logical operation, waits included, and `libssh2_sftp_init`
+stays serialized on its own session-owned `open_state`. Once initialized, SFTP
+operations release the shared session operation mutex during `EAGAIN` waits so
+concurrent interactive PTY reads and writes (scheduled with `.interactive`
+priority) make progress without head-of-line blocking, while the SFTP gate
+prevents a second SFTP caller from touching the handle. If a Swift task is
+cancelled while an SFTP reply is in flight, `SessionDriver` performs a bounded
+non-cancellable drain (up to 2 seconds) and retires the shared SFTP client if
+that budget expires so subsequent callers cannot read a shifted response
+(ADR 0063).
 
 Waits are released session-wide rather than per channel. libssh2 buffers what
 it decrypts, so an operation reading its own channel consumes the packets the

@@ -65,6 +65,7 @@ struct TmuxPaneFeed: Sendable {
     private var purposes: [UInt64: Purpose] = [:]
     private var generation: UInt64 = 0
     private var paint: Paint?
+    private var capturedHistory: [Data]?
     private var attempts = 0
     private var painted = false
     private var checking = false
@@ -144,7 +145,8 @@ struct TmuxPaneFeed: Sendable {
     private mutating func beginPaint() -> [Action] {
         generation += 1
         attempts += 1
-        let steps = TmuxPanePaint.steps(includingHistory: wantsHistory && !painted)
+        let needsHistory = wantsHistory && !painted && capturedHistory == nil
+        let steps = TmuxPanePaint.steps(includingHistory: needsHistory)
         paint = Paint(generation: generation, steps: steps)
         return steps.map { send(TmuxPanePaint.command($0, pane: pane), for: .paint(generation: generation, step: $0)) }
     }
@@ -179,6 +181,9 @@ struct TmuxPaneFeed: Sendable {
 
     private mutating func finishPaint(_ paint: Paint) -> [Action] {
         self.paint = nil
+        if let historyReply = paint.replies[.history], historyReply.succeeded {
+            capturedHistory = historyReply.lines
+        }
         guard let modes = paint.replies[.modes]?.lines.first.flatMap(TmuxPaneModes.init) else {
             return attempts < Self.paintAttempts ? beginPaint() : end(.paintFailed)
         }
@@ -187,9 +192,11 @@ struct TmuxPaneFeed: Sendable {
         }
         attempts = 0
         painted = true
+        let history = paint.replies[.history]?.lines ?? capturedHistory
+        capturedHistory = nil
         let bytes = TmuxPanePaint.bytes(
             modes: modes,
-            history: paint.replies[.history]?.lines,
+            history: history,
             screen: paint.replies[.screen]?.lines ?? [],
             normalScreen: paint.replies[.normalScreen]?.lines ?? [],
             viewRows: viewRows)

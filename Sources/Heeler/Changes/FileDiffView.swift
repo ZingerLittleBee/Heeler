@@ -15,7 +15,10 @@ struct FileDiffView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let patch):
                 FileDiffDocumentView(
-                    patch: patch, file: store.file, refreshError: store.refreshError
+                    patch: patch,
+                    prepared: store.preparedDocument ?? FileDiffPreparedDocument(patch: patch),
+                    file: store.file,
+                    refreshError: store.refreshError
                 ) {
                     FileDiffFooter(store: store) {
                         action = Task { await store.loadMore() }
@@ -53,19 +56,86 @@ struct FileDiffView: View {
     }
 }
 
+/// Precomputed rows, side-by-side pairings, and intraline word ranges for a
+/// loaded `FilePatch`, built once off the main actor when the patch arrives so
+/// SwiftUI body re-evaluations stay O(1).
+struct FileDiffPreparedDocument: Sendable {
+    enum Row: Identifiable, Sendable {
+        enum ID: Hashable, Sendable {
+            case file(Int)
+            case hunk(Int)
+            case line(Int)
+        }
+
+        case file(DiffFile)
+        case hunk(DiffHunk, unchangedBefore: Int?)
+        case line(DiffLine)
+        case pair(SideBySideRow)
+
+        var id: ID {
+            switch self {
+            case .file(let file): .file(file.id)
+            case .hunk(let hunk, _): .hunk(hunk.id)
+            case .line(let line): .line(line.id)
+            case .pair(let pair): .line(pair.id)
+            }
+        }
+    }
+
+    let rows: [Row]
+    let pairedRows: [Row]
+    let pairRowIDByLineID: [Int: Int]
+    let wordChanges: [Int: [Range<Int>]]
+    let numberDigits: Int
+
+    nonisolated init(patch: FilePatch) {
+        var rows: [Row] = []
+        var maximumNumber = 1
+        var wordChanges: [Int: [Range<Int>]] = [:]
+        var paired: [Row] = []
+        var lineMap: [Int: Int] = [:]
+        for file in patch.files {
+            rows.append(.file(file))
+            paired.append(.file(file))
+            for (index, hunk) in file.hunks.enumerated() {
+                let unchangedBefore = file.unchangedLinesBefore(hunkAt: index)
+                rows.append(.hunk(hunk, unchangedBefore: unchangedBefore))
+                paired.append(.hunk(hunk, unchangedBefore: unchangedBefore))
+                wordChanges.merge(DiffWordChanges.ranges(in: hunk)) { _, new in new }
+                for line in hunk.lines {
+                    rows.append(.line(line))
+                    maximumNumber = max(maximumNumber, max(line.oldNumber ?? 0, line.newNumber ?? 0))
+                }
+                for side in SideBySideDiff.rows(for: hunk) {
+                    paired.append(.pair(side))
+                    if let left = side.left { lineMap[left.id] = side.id }
+                    if let right = side.right { lineMap[right.id] = side.id }
+                }
+            }
+        }
+        self.rows = rows
+        self.wordChanges = wordChanges
+        self.numberDigits = String(maximumNumber).count
+        self.pairedRows = paired
+        self.pairRowIDByLineID = lineMap
+    }
+}
+
 /// Flattening the document makes each line a direct lazy child: one large
 /// hunk must not cause SwiftUI to lay out every line when its header appears.
 private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
+    private typealias Row = FileDiffPreparedDocument.Row
     let patch: FilePatch
+    let prepared: FileDiffPreparedDocument
     /// The Changes list's file: its kind, staging, and line counts.
     let file: ChangedFile
     let refreshError: String?
     let footer: Footer
-    private let rows: [Row]
-    private let pairedRows: [Row]
-    private let pairRowIDByLineID: [Int: Int]
-    private let wordChanges: [Int: [Range<Int>]]
-    private let numberDigits: Int
+    private var rows: [Row] { prepared.rows }
+    private var pairedRows: [Row] { prepared.pairedRows }
+    private var pairRowIDByLineID: [Int: Int] { prepared.pairRowIDByLineID }
+    private var wordChanges: [Int: [Range<Int>]] { prepared.wordChanges }
+    private var numberDigits: Int { prepared.numberDigits }
     @Namespace private var rotor
     @Environment(\.diffLayoutSettings) private var injectedSettings
     @ScaledMetric(relativeTo: .footnote) private var columnWidth: CGFloat =
@@ -81,45 +151,17 @@ private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
     @State private var endRecovery = DiffEndRecovery<Row.ID>()
 
     init(
-        patch: FilePatch, file: ChangedFile, refreshError: String?,
+        patch: FilePatch,
+        prepared: FileDiffPreparedDocument,
+        file: ChangedFile,
+        refreshError: String?,
         @ViewBuilder footer: () -> Footer
     ) {
         self.patch = patch
+        self.prepared = prepared
         self.file = file
         self.refreshError = refreshError
         self.footer = footer()
-        var rows: [Row] = []
-        var maximumNumber = 1
-        var wordChanges: [Int: [Range<Int>]] = [:]
-        for file in patch.files {
-            rows.append(.file(file))
-            for (index, hunk) in file.hunks.enumerated() {
-                rows.append(.hunk(hunk, unchangedBefore: file.unchangedLinesBefore(hunkAt: index)))
-                wordChanges.merge(DiffWordChanges.ranges(in: hunk)) { _, new in new }
-                for line in hunk.lines {
-                    rows.append(.line(line))
-                    maximumNumber = max(maximumNumber, max(line.oldNumber ?? 0, line.newNumber ?? 0))
-                }
-            }
-        }
-        self.rows = rows
-        self.wordChanges = wordChanges
-        numberDigits = String(maximumNumber).count
-        var paired: [Row] = []
-        var lineMap: [Int: Int] = [:]
-        for file in patch.files {
-            paired.append(.file(file))
-            for (index, hunk) in file.hunks.enumerated() {
-                paired.append(.hunk(hunk, unchangedBefore: file.unchangedLinesBefore(hunkAt: index)))
-                for side in SideBySideDiff.rows(for: hunk) {
-                    paired.append(.pair(side))
-                    if let left = side.left { lineMap[left.id] = side.id }
-                    if let right = side.right { lineMap[right.id] = side.id }
-                }
-            }
-        }
-        self.pairedRows = paired
-        self.pairRowIDByLineID = lineMap
     }
 
     var body: some View {
@@ -322,28 +364,6 @@ private struct FileDiffDocumentView<Footer: View & SendableMetatype>: View {
             path: diffFile.newPath ?? diffFile.oldPath ?? String(localized: "File"), kind: kind, detail: detail,
             summary: diffFile.summary ?? (diffFile.isBinary ? String(localized: "Binary file.") : nil),
             lineCounts: counts, showsPath: !isWholePatch)
-    }
-
-    private enum Row: Identifiable {
-        enum ID: Hashable {
-            case file(Int)
-            case hunk(Int)
-            case line(Int)
-        }
-
-        case file(DiffFile)
-        case hunk(DiffHunk, unchangedBefore: Int?)
-        case line(DiffLine)
-        case pair(SideBySideRow)
-
-        var id: ID {
-            switch self {
-            case .file(let file): .file(file.id)
-            case .hunk(let hunk, _): .hunk(hunk.id)
-            case .line(let line): .line(line.id)
-            case .pair(let pair): .line(pair.id)
-            }
-        }
     }
 
     private var settings: DiffLayoutSettings {

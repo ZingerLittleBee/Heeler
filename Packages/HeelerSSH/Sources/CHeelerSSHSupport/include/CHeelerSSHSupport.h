@@ -14,9 +14,22 @@ typedef ssize_t (*heeler_libssh2_receive_callback)(
     void **abstract
 );
 
+typedef ssize_t (*heeler_libssh2_send_callback)(
+    libssh2_socket_t socket,
+    const void *buffer,
+    size_t length,
+    int flags,
+    void **abstract
+);
+
 void heeler_libssh2_set_receive_callback(
     LIBSSH2_SESSION *session,
     heeler_libssh2_receive_callback callback
+);
+
+void heeler_libssh2_set_send_callback(
+    LIBSSH2_SESSION *session,
+    heeler_libssh2_send_callback callback
 );
 
 #endif

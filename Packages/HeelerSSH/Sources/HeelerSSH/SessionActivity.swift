@@ -2,6 +2,7 @@ import CHeelerSSHSupport
 import CLibSSH2
 import Darwin
 import Foundation
+import Synchronization
 
 /// Releases the operations blocked on one libssh2 session as soon as another
 /// operation has taken bytes off the socket they share.
@@ -28,6 +29,15 @@ final class SessionActivity: @unchecked Sendable {
     private var receiveCount: UInt64 = 0
     private var generation: UInt64 = 0
     private var registrations: [ObjectIdentifier: Registration] = [:]
+    private let _wireBytesReceived = Atomic<UInt64>(0)
+    private let _wireBytesSent = Atomic<UInt64>(0)
+    private let _receiveCalls = Atomic<UInt64>(0)
+    private let _sendCalls = Atomic<UInt64>(0)
+
+    var wireBytesReceived: UInt64 { _wireBytesReceived.load(ordering: .relaxed) }
+    var wireBytesSent: UInt64 { _wireBytesSent.load(ordering: .relaxed) }
+    var receiveCalls: UInt64 { _receiveCalls.load(ordering: .relaxed) }
+    var sendCalls: UInt64 { _sendCalls.load(ordering: .relaxed) }
 
     /// Records the current receive count and invalidation generation so a
     /// later wait can tell whether the session moved or was invalidated while
@@ -55,6 +65,7 @@ final class SessionActivity: @unchecked Sendable {
         guard let abstract = libssh2_session_abstract(session) else { return }
         abstract.pointee = Unmanaged.passUnretained(self).toOpaque()
         heeler_libssh2_set_receive_callback(session, sessionReceive)
+        heeler_libssh2_set_send_callback(session, sessionSend)
     }
 
     /// Parks `waiter` until the receive count moves past `token`, and reports
@@ -108,8 +119,15 @@ final class SessionActivity: @unchecked Sendable {
         for waiter in waiters { waiter.finish(.success(())) }
     }
 
-    fileprivate func recordReceive() {
+    fileprivate func recordReceive(bytes: Int) {
+        _wireBytesReceived.add(UInt64(bytes), ordering: .relaxed)
+        _receiveCalls.add(1, ordering: .relaxed)
         lock.withLock { receiveCount &+= 1 }
+    }
+
+    fileprivate func recordSend(bytes: Int) {
+        _wireBytesSent.add(UInt64(bytes), ordering: .relaxed)
+        _sendCalls.add(1, ordering: .relaxed)
     }
 }
 
@@ -154,7 +172,30 @@ private func sessionReceive(
         return -Int(code)
     }
     if received > 0, let context = abstract?.pointee {
-        Unmanaged<SessionActivity>.fromOpaque(context).takeUnretainedValue().recordReceive()
+        Unmanaged<SessionActivity>.fromOpaque(context).takeUnretainedValue()
+            .recordReceive(bytes: received)
     }
     return received
+}
+
+/// libssh2's own send, counting socket-level encrypted bytes sent.
+private func sessionSend(
+    _ socket: libssh2_socket_t,
+    _ buffer: UnsafeRawPointer?,
+    _ length: Int,
+    _ flags: Int32,
+    _ abstract: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int {
+    let sent = Darwin.send(socket, buffer, length, flags)
+    guard sent >= 0 else {
+        let code = errno
+        if code == EINTR { return -Int(EAGAIN) }
+        if code == EAGAIN || code == EWOULDBLOCK { return -Int(EAGAIN) }
+        return -Int(code)
+    }
+    if sent > 0, let context = abstract?.pointee {
+        Unmanaged<SessionActivity>.fromOpaque(context).takeUnretainedValue()
+            .recordSend(bytes: sent)
+    }
+    return sent
 }
