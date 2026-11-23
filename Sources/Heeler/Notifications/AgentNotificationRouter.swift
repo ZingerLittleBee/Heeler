@@ -3,8 +3,10 @@ import Observation
 
 /// Owns the Console's navigation path and lands Agent Notification taps on
 /// the right Agent detail (#74, #179). A tap can arrive before the tapped
-/// pane is known — a killed-state launch routes only once the Host's first sync
-/// delivers the pane — so an unresolved target waits as pending until the
+/// pane is known. While its Host has yet to report, as after a launch or a
+/// return from the background, the tap lands on the detail at once, which
+/// waits for the Host as a restored one does (#830). When a Host that has
+/// reported does not list the pane, the target waits as pending until the
 /// pane appears, the user navigates somewhere themselves, or a grace window
 /// elapses. Falling back always means the Console, quietly: never an alert.
 @MainActor
@@ -28,29 +30,37 @@ final class AgentNotificationRouter {
         knownAgentIDs.contains(id)
     }
 
+    /// Whether an Agent the Console does not list is one its Host has yet to
+    /// report, rather than one a reporting Host no longer holds. The window
+    /// sets it before it registers for links; see
+    /// `MissingAgentPresentation.awaitsHost`.
+    @ObservationIgnored var awaitsHostReport: @MainActor (ConsoleAgent.ID) -> Bool = { _ in false }
+
     @ObservationIgnored private var knownAgentIDs: Set<ConsoleAgent.ID> = []
     @ObservationIgnored private var pendingExpiry: Task<Void, Never>?
     @ObservationIgnored private let pendingGrace: Duration
 
-    /// `pendingGrace` bounds how long a tap may wait for its pane: long
-    /// enough for a cold launch to connect and sync its Hosts, short enough
-    /// that a stale pane cannot yank the user around minutes later.
+    /// `pendingGrace` bounds how long a tap may wait for a pane its Host has
+    /// reported without: long enough for an event still on its way, short
+    /// enough that a stale pane cannot yank the user around minutes later.
     init(pendingGrace: Duration = .seconds(15)) {
         self.pendingGrace = pendingGrace
     }
 
-    /// Routes a tapped notification. A known pane opens its detail at once;
-    /// an unknown one parks the user on the Console and follows up if the
-    /// pane arrives within the grace window (killed-state launches); no
-    /// target at all (unknown key id, undecryptable envelope) is the Console
-    /// itself, with no alarming copy.
+    /// Routes a tapped notification. A known pane opens its detail at once,
+    /// and so does one whose Host has yet to report: the detail says where
+    /// the connection stands and takes the Agent up when the Host does,
+    /// however long that takes. A pane a reporting Host does not list parks
+    /// the user on the Console and follows up if the pane arrives within the
+    /// grace window; no target at all (unknown key id, undecryptable
+    /// envelope) is the Console itself, with no alarming copy.
     func open(_ target: AgentNotificationTarget?) {
         cancelPending()
         guard let target else {
             path = []
             return
         }
-        if knownAgentIDs.contains(target.agentID) {
+        if knownAgentIDs.contains(target.agentID) || awaitsHostReport(target.agentID) {
             if path == [target.agentID] {
                 repeatLandings += 1
             } else {

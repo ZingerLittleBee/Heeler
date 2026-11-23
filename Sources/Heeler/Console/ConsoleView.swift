@@ -834,7 +834,7 @@ struct ConsoleView: View {
     /// went. The detail keeps such a selection through a reconnect; a tab
     /// switch in the meantime must too.
     private func isUnreported(_ id: ConsoleAgent.ID) -> Bool {
-        MissingAgentPresentation(agentID: id, console: console, hosts: hosts).cause != .paneGone
+        MissingAgentPresentation(agentID: id, console: console, hosts: hosts).awaitsHost
     }
 
     private func splitVisibility(for tab: ConsoleTab) -> ConsoleSplitVisibilityState {
@@ -3422,6 +3422,12 @@ struct MissingAgentPresentation: Equatable {
             .staticUnavailable
         }
     }
+
+    /// Whether the Agent is missing only because its Host has not reported
+    /// since (paused, connecting, failed, loading) rather than because it
+    /// went. The detail waits such an Agent out, so a tab switch keeps it
+    /// and a link to it opens it.
+    var awaitsHost: Bool { cause != .paneGone }
 
     /// Resolves the Host from the selection rather than taking a status the
     /// caller looked up: the pane address alone is not unique across Hosts,

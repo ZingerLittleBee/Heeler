@@ -4,9 +4,9 @@ import Testing
 @testable import Heeler
 
 /// The navigation half of #74: taps land on the right Agent detail through
-/// the Console's navigation path, a killed-state tap waits for the pane to
-/// arrive with the Host's first sync, and stale or unresolvable pushes fall
-/// back to the Console with no alarming copy.
+/// the Console's navigation path, a tap ahead of its Host's report opens the
+/// detail that waits for it, and stale or unresolvable pushes fall back to
+/// the Console with no alarming copy.
 ///
 /// Pane ids that stand in for a live herdr address use the observed
 /// alphanumeric `w…:p…` family (uppercase included). `%gone` and `%other`
@@ -77,10 +77,27 @@ struct AgentNotificationRouterTests {
         #expect(router.repeatLandings == 2)
     }
 
-    /// The killed-state launch path: the tap arrives before any Host has
-    /// synced, so the router waits on the Console and routes the moment the
-    /// pane appears.
-    @Test func tapBeforeTheConsoleSyncsWaitsForThePaneThenOpens() {
+    /// A tap after a launch or a return from the background finds its Host
+    /// still connecting and no Agents listed. The detail opens at once and
+    /// waits for the Host itself, so a connection slower than the grace
+    /// window still lands on the Agent (#830).
+    @Test func tapWhileTheHostHasYetToReportOpensTheDetailAtOnce() {
+        let router = AgentNotificationRouter()
+        let hostID = UUID()
+        router.awaitsHostReport = { $0.hostID == hostID }
+        // Viewing another Agent when the tap lands.
+        router.path = [ConsoleAgent.ID(hostID: hostID, paneID: "w1C:p1")]
+
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
+
+        #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")])
+        #expect(router.pendingTarget == nil)
+    }
+
+    /// A tap for a pane its Host has reported without, as when the event
+    /// that adds it is still on its way: the router waits on the Console and
+    /// routes the moment the pane appears.
+    @Test func tapOnAPaneNotListedYetWaitsForThePaneThenOpens() {
         let router = AgentNotificationRouter()
         let hostID = UUID()
 
