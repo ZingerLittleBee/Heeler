@@ -277,18 +277,27 @@ struct AgyBackgroundWorkFollower: Sendable {
 /// when it last stepped and whether its current turn has finished with no
 /// child tasks or subagents left running.
 struct AgySubagentState: Sendable {
+    private struct ActiveSchedule: Sendable {
+        let isCron: Bool
+        let maxIterations: Int?
+        let timerCondition: String?
+        var firedCount = 0
+    }
+
     private var seenSteps: Set<Int> = []
     private(set) var hasPlannerResponse = false
     private(set) var hasReply = false
     private var isCompact = false
     private var pendingCalls: [AgyStep.Call] = []
     private(set) var runningTasks: Set<String> = []
+    private var runningSchedules: [String: ActiveSchedule] = [:]
     private var spawnedSubagents: Set<String> = []
     private(set) var runningSubagents: Set<String> = []
     private(set) var latestStepAt: Date?
 
     var isIdle: Bool {
-        hasPlannerResponse && hasReply && pendingCalls.isEmpty && runningTasks.isEmpty && runningSubagents.isEmpty
+        hasPlannerResponse && hasReply && pendingCalls.isEmpty && runningTasks.isEmpty
+            && runningSchedules.isEmpty && runningSubagents.isEmpty
     }
 
     mutating func apply(_ lines: [ChatLine]) {
@@ -324,10 +333,21 @@ struct AgySubagentState: Sendable {
         guard !pendingCalls.isEmpty else { return }
         let call = pendingCalls.removeFirst()
         if step.status == .running {
-            if !AgyToolCall.waitTools.contains(call.name),
-                call.args?["IsDaemon"] != .bool(true),
+            guard call.args?["IsDaemon"] != .bool(true),
                 let taskID = AgyTranscriptReducer.backgroundTaskID(in: step.resultBody)
-            {
+            else { return }
+            if call.name == "schedule" {
+                let isCron = call.args?["CronExpression"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } != nil
+                let maxIterations: Int? =
+                    if case .number(let n)? = call.args?["MaxIterations"], let int = Int(exactly: n), int > 0 {
+                        int
+                    } else {
+                        nil
+                    }
+                let condition = call.args?["TimerCondition"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+                runningSchedules[taskID] = ActiveSchedule(
+                    isCron: isCron, maxIterations: maxIterations, timerCondition: condition)
+            } else {
                 runningTasks.insert(taskID)
             }
             return
@@ -372,6 +392,7 @@ struct AgySubagentState: Sendable {
                 let taskID = call.args?["TaskId"]?.stringValue, !taskID.isEmpty
             {
                 runningTasks.remove(taskID)
+                runningSchedules.removeValue(forKey: taskID)
             }
         default:
             break
@@ -381,27 +402,57 @@ struct AgySubagentState: Sendable {
     private mutating func readSystemMessage(_ step: AgyStep) {
         if let end = AgyTranscriptReducer.taskEnd(in: step) {
             runningTasks.remove(end.taskID)
+            runningSchedules.removeValue(forKey: end.taskID)
+            cancelTimers(triggeredBy: [end.taskID, step.systemMessage?.sender].compactMap(\.self), excluding: end.taskID)
             hasReply = false
             isCompact = false
             return
         }
         if let error = AgyTranscriptReducer.subagentError(in: step) {
             runningSubagents.remove(error.subagentID)
+            cancelTimers(triggeredBy: [error.subagentID, step.systemMessage?.sender].compactMap(\.self))
             hasReply = false
             isCompact = false
             return
         }
         if let text = step.systemMessageText, text.hasPrefix(AgyTranscriptReducer.restartNotice) {
             runningTasks.removeAll()
+            runningSchedules.removeAll()
             runningSubagents.removeAll()
             return
         }
         if let sender = step.systemMessage?.sender {
+            cancelTimers(triggeredBy: [sender], excluding: sender)
+            if var active = runningSchedules[sender] {
+                if active.isCron {
+                    active.firedCount += 1
+                    if let maxIterations = active.maxIterations, active.firedCount >= maxIterations {
+                        runningSchedules.removeValue(forKey: sender)
+                    } else {
+                        runningSchedules[sender] = active
+                    }
+                } else {
+                    runningSchedules.removeValue(forKey: sender)
+                }
+            }
             if spawnedSubagents.contains(sender) {
                 runningSubagents.remove(sender)
             }
             hasReply = false
             isCompact = false
+        }
+    }
+
+    private mutating func cancelTimers(triggeredBy senders: [String], excluding selfTaskID: String? = nil) {
+        guard !runningSchedules.isEmpty, !senders.isEmpty else { return }
+        let senderSet = Set(senders)
+        for (taskID, active) in runningSchedules {
+            guard !active.isCron, taskID != selfTaskID,
+                let condition = active.timerCondition, condition != "never"
+            else { continue }
+            if condition == "any" || senderSet.contains(condition) {
+                runningSchedules.removeValue(forKey: taskID)
+            }
         }
     }
 }

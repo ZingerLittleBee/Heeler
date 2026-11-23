@@ -203,11 +203,18 @@ That line is never followed by a `DONE` for the step. The end comes as a
 `SYSTEM_MESSAGE` from `<conversation>/task-<N>`: `Task id "…/task-N"
 finished with result:` or `was canceled with result:`, then the result.
 All 44 census commands sent to the background got one (41 finished, 3
-canceled); the 13 `schedule` waits that ran in the background got none, so
-Chat tracks no task for a wait and shows its call done once agy goes on
-past it. The `RUNNING` body tells the model how to follow the task (`YOU
-MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS …` on a command), so Chat shows
-none of it as output. A `manage_task` call can report the status too. When the turn has already
+canceled); `schedule` timers and crons never emit `Task id "…" finished with
+result:` either, instead delivering their `Prompt` as a `SYSTEM_MESSAGE` with
+`sender=<conversation>/task-<N>` when they fire (or cancelling early without a
+timer message when a `TimerCondition` matches another arriving message). Chat
+therefore keeps non-daemon `schedule` timers and crons in Background Work
+(`.timer`) until they fire, hit `MaxIterations`, are cancelled by
+`TimerCondition`, are killed by `manage_task(kill)`, or are retired by screen
+evidence / restart, while skipping `IsDaemon: true` crons and still letting the
+`schedule` tool row settle once agy goes on past it. The `RUNNING` body tells
+the model how to follow the task (`YOU MUST TAKE ONE OF THE FOLLOWING TWO
+ACTIONS …` on a command), so Chat shows none of it as output. A `manage_task`
+call can report the status too. When the turn has already
 ended, agy starts one on its own: the system message, then a planner
 response, with no `USER_INPUT` and no history line (a herdr-core Terminal
 showed one again on 2026-11-08, with no prompt before it). When the command

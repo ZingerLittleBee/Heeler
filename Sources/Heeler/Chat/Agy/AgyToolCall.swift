@@ -46,6 +46,9 @@ struct AgyToolCall: Sendable {
     var taskID: String?
     var taskEnd: TaskEnd?
     var killedByManageTask = false
+    /// A `schedule` timer or bounded cron that fired, reached `MaxIterations`,
+    /// or was cancelled early by its `TimerCondition`.
+    var scheduleEnded = false
     var subagentID: String?
     var subagentEnd: SubagentEnd?
     /// Antigravity CLI restarted while the task or subagent ran, which stops it.
@@ -105,21 +108,21 @@ struct AgyToolCall: Sendable {
     /// Native Swarm coordination tools (agy 1.5.9).
     static let swarmTools: Set<String> = ["swarm", "post_message", "read_board", "swarm_wait"]
 
-    /// The tools that wait in the background without a task of their own
-    /// to follow: a `schedule` wait's result reads as sent to the
-    /// background, but no end of its task ever comes (13 of 13 in the
-    /// census, where all 44 commands sent there got one). agy writes the
-    /// wait's prompt to the agent when it fires, which Chat can't tell
-    /// from other context.
+    /// The tools whose tool-row status settles once the agent moves past
+    /// launching them in the background: a `schedule` timer or cron keeps
+    /// running as Background Work, while the `schedule` call itself finishes
+    /// returning once armed.
     static let waitTools: Set<String> = ["schedule"]
 
-    /// A result agy sent to the background: a command's task, which ends
-    /// with a system message, or a wait (`waitTools`), which never does.
+    /// A result agy sent to the background: a command's task, workflow, or
+    /// scheduled timer/cron.
     var isInTheBackground: Bool { result?.status == .running }
 
-    /// The call as Chat's Stop reads it once agy made it a task.
+    /// The call as Chat's Stop reads it once agy made it a task. Scheduled
+    /// timers carry no shell `CommandLine` and are excluded from command Stop
+    /// matching.
     var backgroundCommand: ChatBackgroundCommand? {
-        guard taskID != nil else { return nil }
+        guard taskID != nil, name != "schedule" else { return nil }
         return ChatBackgroundCommand(
             callID: entryID.rawValue, command: command,
             isRunning: taskEnd == nil && !killedByManageTask && !stoppedByRestart,
@@ -427,6 +430,86 @@ struct AgyToolCall: Sendable {
 
     var isDaemon: Bool { args?["IsDaemon"] == .bool(true) }
 
+    var isCronSchedule: Bool { string("CronExpression") != nil }
+
+    var scheduleMaxIterations: Int? {
+        guard let max = integer("MaxIterations"), max > 0 else { return nil }
+        return max
+    }
+
+    var timerCondition: String? { string("TimerCondition") }
+
+    /// Title and subtitle for a `schedule` call's Background Work row: the
+    /// prompt's first line as the headline, and the concise timer duration
+    /// (matching agy's `4m timer` strip) or cron expression as the subtitle.
+    func scheduleBackgroundTitles(resultBody: String) -> (title: String, subtitle: String?) {
+        let parsed = Self.scheduleDescriptionParts(inResultBody: resultBody)
+        let spec: String? =
+            if let seconds = integer("DurationSeconds") {
+                Self.scheduleDurationLabel(seconds)
+            } else if let cron = string("CronExpression") {
+                cron
+            } else {
+                parsed.spec
+            }
+        let promptLine = Self.firstLine(of: string("Prompt")) ?? Self.firstLine(of: parsed.prompt)
+        let fallback = String(localized: "Timer")
+        let title = promptLine ?? spec ?? fallback
+        let subtitle = spec.flatMap { $0.isEmpty || $0 == title ? nil : $0 }
+        return (title, subtitle)
+    }
+
+    /// Formats `DurationSeconds` in the compact form agy uses in its terminal
+    /// strip (`4m`, `30s`, `1m30s`, `1h`).
+    static func scheduleDurationLabel(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let hours = clamped / 3_600
+        let minutes = (clamped % 3_600) / 60
+        let secs = clamped % 60
+        var parts: [String] = []
+        if hours > 0 { parts.append("\(hours)h") }
+        if minutes > 0 { parts.append("\(minutes)m") }
+        if secs > 0 || parts.isEmpty { parts.append("\(secs)s") }
+        return parts.joined()
+    }
+
+    /// Extracts `(isCron, spec, prompt)` from a `Task Description:` line in a
+    /// `schedule` tool result body, if present.
+    static func scheduleDescriptionParts(inResultBody body: String) -> (isCron: Bool, spec: String?, prompt: String?) {
+        for rawLine in normalized(body).split(separator: "\n") {
+            guard rawLine.hasPrefix("Task Description: ") else { continue }
+            let description = String(rawLine.dropFirst("Task Description: ".count))
+                .trimmingCharacters(in: .whitespaces)
+            return scheduleDescriptionParts(description)
+        }
+        return (false, nil, nil)
+    }
+
+    /// Parses agy's `Timer: 4m, Prompt: ...` and `Cron: */3 * * * *, Prompt: ...`
+    /// task descriptions (from launch results and `manage_task(list)`).
+    static func scheduleDescriptionParts(_ description: String) -> (isCron: Bool, spec: String?, prompt: String?) {
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixAndKind: (String, Bool)? =
+            if trimmed.hasPrefix("Timer: ") {
+                ("Timer: ", false)
+            } else if trimmed.hasPrefix("Cron: ") {
+                ("Cron: ", true)
+            } else {
+                nil
+            }
+        guard let (prefix, isCron) = prefixAndKind else {
+            return (trimmed.localizedCaseInsensitiveContains("cron"), nil, nil)
+        }
+        let body = trimmed.dropFirst(prefix.count)
+        if let marker = body.range(of: ", Prompt: ") {
+            let spec = body[..<marker.lowerBound].trimmingCharacters(in: .whitespaces)
+            let prompt = body[marker.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            return (isCron, spec.isEmpty ? nil : spec, prompt.isEmpty ? nil : prompt)
+        }
+        let spec = body.trimmingCharacters(in: .whitespaces)
+        return (isCron, spec.isEmpty ? nil : spec, nil)
+    }
+
     /// The row's title and the line under it.
     var titles: (title: String, subtitle: String?) {
         let summary = toolSummary
@@ -482,11 +565,16 @@ struct AgyToolCall: Sendable {
                 integer("since").map { String(localized: "Wait on swarm board after #\($0)") }
                 ?? String(localized: "Wait on swarm board")
         case "schedule":
-            title = integer("DurationSeconds").map { seconds in
+            if let seconds = integer("DurationSeconds") {
                 let duration = Duration.seconds(seconds).formatted(.units(allowed: [.seconds], width: .narrow))
-                return String(
+                title = String(
                     localized: "Wait up to \(duration)",
                     comment: "Title of an Antigravity CLI tool row that waits: the longest wait, such as 30s")
+            } else if let cron = string("CronExpression") {
+                title = cron
+                subtitle = summary ?? Self.firstLine(of: string("Prompt"))
+            } else {
+                title = nil
             }
         case "ask_question":
             let texts = questions.map(\.text)
@@ -512,7 +600,7 @@ struct AgyToolCall: Sendable {
         return nil
     }
 
-    private static func firstLine(of text: String?, maxLength: Int = 140) -> String? {
+    static func firstLine(of text: String?, maxLength: Int = 140) -> String? {
         guard let text else { return nil }
         let line = text
             .split(whereSeparator: \.isNewline)

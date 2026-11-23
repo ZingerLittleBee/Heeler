@@ -224,10 +224,28 @@ struct AgyTaskPanelTests {
         #expect(killedEvidence[sleep60.id]?.endedState == .stopped)
         #expect(killedEvidence[subagent.id] == nil)
 
-        // Idle unobstructed box with no tasks (`agy-185`): retires tasks, keeps subagent untouched.
+        // Running `schedule` timer in the strip (`● [01:56:32] 4m timer running`):
+        // confirms the `.timer` item by matching `"\(subtitle) timer"` and retires
+        // when the unobstructed box shows no running tasks or when `/tasks` marks it cancelled.
+        let timer = ChatBackgroundWorkItem(
+            id: "agy:task:conv/task-9", kind: .timer, title: "Check status", subtitle: "4m",
+            state: .running, launchOffset: 0, launchedAt: launched)
+        let timerStripScreen = ScreenFixture.synthetic([
+            rule,
+            ">",
+            rule,
+            "  \u{25CF} [01:56:32] 4m timer running",
+            rule,
+            "? for shortcuts       Gemini 3.1 Pro \u{00B7} high \u{00B7} 1 task(s) \u{00B7} /tasks",
+        ])
+        let timerStripEvidence = AgyScreen(timerStripScreen).backgroundWorkEvidence(for: [timer], at: now)
+        #expect(timerStripEvidence[timer.id] == ChatBackgroundWorkEvidence(lastSeenAt: now))
+
+        // Idle unobstructed box with no tasks (`agy-185`): retires tasks and timers, keeps subagent untouched.
         let idleEmpty = AgyScreen(try Self.captured("agy-185-idle-after-tasks-62x46"))
-        let emptyEvidence = idleEmpty.backgroundWorkEvidence(for: [sleep60, subagent], at: now)
+        let emptyEvidence = idleEmpty.backgroundWorkEvidence(for: [sleep60, timer, subagent], at: now)
         #expect(emptyEvidence[sleep60.id]?.endedState == .stopped)
+        #expect(emptyEvidence[timer.id]?.endedState == .stopped)
         #expect(emptyEvidence[subagent.id] == nil)
 
         // Exited agy (`agy-88` and `agy-151`): retires both tasks and subagents.
