@@ -101,7 +101,16 @@ actor TmuxHostSession {
     private var activationGeneration: UInt64 = 0
     private var runTask: Task<Void, Never>?
     private var waitSleep: Task<Void, any Error>?
+    private var inFlightAsk: InFlightAsk?
     private var immediateAskRequested = false
+
+    private struct InFlightAsk {
+        let id: UUID
+        let gate: TmuxAskGate
+        let operationTask: Task<Void, Never>
+        var timeoutTask: Task<Void, Never>?
+        var boundedByRevalidation: Bool
+    }
     private var lifecycleTransition: Task<Void, Never>?
     /// Attaches waiting for a server to answer on a connection.
     private var attachWaiters: [AttachWaiter] = []
@@ -155,9 +164,15 @@ actor TmuxHostSession {
 
     /// Asks a server that was answering, on a foreground return or network
     /// change. A failed ask goes down the keepalive's path at once instead of
-    /// at its next interval.
+    /// at its next interval. If an ask is already in flight when a bounded
+    /// network-change revalidation arrives, the deadline applies to that
+    /// in-flight ask immediately rather than waiting for the next iteration.
     func revalidate(timeout: Duration? = nil) async {
         guard phase == .active, liveServer != nil else { return }
+        if let current = inFlightAsk {
+            if let timeout { armInFlightAskTimeout(timeout, id: current.id) }
+            return
+        }
         if let timeout { pendingRevalidateTimeout = timeout }
         waitSleep?.cancel()
     }
@@ -397,8 +412,8 @@ actor TmuxHostSession {
                 let askTimeout = pendingRevalidateTimeout
                 pendingRevalidateTimeout = nil
                 let started = ContinuousClock.now
-                let asked = await Self.ask(transport, timeout: askTimeout)
-                if askTimeout != nil, case .failure(.timedOut) = asked {
+                let (asked, boundedByRevalidation) = await ask(transport, timeout: askTimeout)
+                if boundedByRevalidation, case .failure(.timedOut) = asked {
                     skipNextReconnectDelay = true
                 }
                 if let kernel = await transport.hostFacts().kernel {
@@ -449,22 +464,67 @@ actor TmuxHostSession {
         }
     }
 
-    private static func ask(
+    private func ask(
         _ transport: any TmuxTransport, timeout: Duration? = nil
-    ) async -> Result<TmuxServerStatus, TransportError> {
-        do {
-            try Task.checkCancellation()
-            if let timeout {
-                return .success(try await AsyncDeadline.run(for: timeout) {
-                    try await transport.status()
-                })
+    ) async -> (result: Result<TmuxServerStatus, TransportError>, boundedByRevalidation: Bool) {
+        if Task.isCancelled { return (.failure(.cancelled), false) }
+        let id = UUID()
+        let gate = TmuxAskGate()
+        let operationTask = Task {
+            let outcome: Result<TmuxServerStatus, TransportError>
+            do {
+                try Task.checkCancellation()
+                outcome = .success(try await transport.status())
+            } catch {
+                outcome = .failure(Self.transportFailure(error))
             }
-            return .success(try await transport.status())
-        } catch is AsyncDeadlineError {
-            return .failure(.timedOut)
-        } catch {
-            return .failure(transportFailure(error))
+            await gate.resolve(with: outcome)
         }
+        inFlightAsk = InFlightAsk(
+            id: id,
+            gate: gate,
+            operationTask: operationTask,
+            timeoutTask: nil,
+            boundedByRevalidation: timeout != nil)
+        if let timeout {
+            armInFlightAskTimeout(timeout, id: id)
+        }
+        let result = await withTaskCancellationHandler {
+            await gate.value()
+        } onCancel: {
+            operationTask.cancel()
+            Task { await gate.resolve(with: .failure(.cancelled)) }
+        }
+        var bounded = timeout != nil
+        if let current = inFlightAsk, current.id == id {
+            bounded = current.boundedByRevalidation
+            current.timeoutTask?.cancel()
+            current.operationTask.cancel()
+            inFlightAsk = nil
+        } else {
+            operationTask.cancel()
+        }
+        return (result, bounded)
+    }
+
+    private func armInFlightAskTimeout(_ timeout: Duration, id: UUID) {
+        guard var current = inFlightAsk, current.id == id else { return }
+        current.timeoutTask?.cancel()
+        current.boundedByRevalidation = true
+        let gate = current.gate
+        let operationTask = current.operationTask
+        let sleep = sleep
+        current.timeoutTask = Task {
+            do {
+                try await sleep(timeout)
+            } catch {
+                return
+            }
+            if await gate.resolve(with: .failure(.timedOut)) {
+                operationTask.cancel()
+            }
+        }
+        inFlightAsk = current
     }
 
     private func announce(_ server: TmuxServerStatus, latency: Duration, routeID: UUID?) {
@@ -768,6 +828,14 @@ actor TmuxHostSession {
     private func windDown(abandon: Bool = false) async {
         waitSleep?.cancel()
         waitSleep = nil
+        if let ask = inFlightAsk {
+            inFlightAsk = nil
+            ask.timeoutTask?.cancel()
+            ask.operationTask.cancel()
+            await ask.gate.resolve(with: .failure(.cancelled))
+        }
+        pendingRevalidateTimeout = nil
+        skipNextReconnectDelay = false
         let task = runTask
         runTask = nil
         task?.cancel()
@@ -790,5 +858,26 @@ actor TmuxHostSession {
         if case DeviceKeyStoreError.storedKeyCorrupt = error { return .deviceKeyCorrupt }
         if case RSAKeyStoreError.storedKeyCorrupt = error { return .rsaKeyCorrupt }
         return .channelFailed(detail: String(describing: error))
+    }
+}
+
+private actor TmuxAskGate {
+    private var result: Result<TmuxServerStatus, TransportError>?
+    private var waiter: CheckedContinuation<Result<TmuxServerStatus, TransportError>, Never>?
+
+    func value() async -> Result<TmuxServerStatus, TransportError> {
+        if let result { return result }
+        return await withCheckedContinuation { waiter = $0 }
+    }
+
+    @discardableResult
+    func resolve(with result: Result<TmuxServerStatus, TransportError>) -> Bool {
+        guard self.result == nil else { return false }
+        self.result = result
+        if let waiter {
+            self.waiter = nil
+            waiter.resume(returning: result)
+        }
+        return true
     }
 }
