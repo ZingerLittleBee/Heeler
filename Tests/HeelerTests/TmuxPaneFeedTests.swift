@@ -257,4 +257,14 @@ struct TmuxPaneFeedTests {
             viewRows: 8)
         #expect(written(repainted) == [expected])
     }
+
+    @Test func disturbedFirstPaintReusesCapturedHistoryWithoutRefetching() throws {
+        var feed = feed(history: true)
+        let first = answer(sent(feed.start()), into: &feed, between: [output("moved")])
+        #expect(written(first).isEmpty)
+        let retry = sent(first)
+        #expect(retry.map(\.line) == TmuxPanePaint.commands(pane: pane, includingHistory: false).map(\.line))
+        let second = answer(retry, into: &feed, screen: ["moved", "", "", ""])
+        #expect(written(second) == [try paint(["moved", "", "", ""], history: [Data("history".utf8)])])
+    }
 }

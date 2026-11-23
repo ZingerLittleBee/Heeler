@@ -8,8 +8,16 @@ import Foundation
 /// (`NotificationRegistrationCeremony`): a FIFO, cancellable, non-reentrant
 /// critical section is all either use needs.
 actor GitExecGate {
+    enum Priority: Sendable {
+        /// User-initiated reads (file diffs, untracked directory expansion,
+        /// manual Changes refresh) jump ahead of queued background row probes.
+        case interactive
+        case normal
+    }
+
     private struct Waiter {
         let id: UUID
+        let priority: Priority
         let continuation: CheckedContinuation<Void, any Error>
     }
 
@@ -17,9 +25,10 @@ actor GitExecGate {
     private var waiters: [Waiter] = []
 
     func run<Value: Sendable>(
+        priority: Priority = .normal,
         _ operation: @Sendable () async throws -> Value
     ) async throws -> Value {
-        try await acquire()
+        try await acquire(priority: priority)
         defer { release() }
         try Task.checkCancellation()
         return try await operation()
@@ -29,15 +38,16 @@ actor GitExecGate {
     /// scripted concurrently. Production supplies the Console's per-Host gate.
     nonisolated static func wrapping<Request: Sendable, Response: Sendable>(
         _ gate: GitExecGate?,
+        priority: Priority = .normal,
         operation: @escaping @Sendable (Request) async throws -> Response
     ) -> @Sendable (Request) async throws -> Response {
         { request in
             guard let gate else { return try await operation(request) }
-            return try await gate.run { try await operation(request) }
+            return try await gate.run(priority: priority) { try await operation(request) }
         }
     }
 
-    private func acquire() async throws {
+    private func acquire(priority: Priority) async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
@@ -47,7 +57,7 @@ actor GitExecGate {
                     occupied = true
                     continuation.resume()
                 } else {
-                    waiters.append(Waiter(id: id, continuation: continuation))
+                    waiters.append(Waiter(id: id, priority: priority, continuation: continuation))
                 }
             }
         } onCancel: {
@@ -63,6 +73,8 @@ actor GitExecGate {
     private func release() {
         if waiters.isEmpty {
             occupied = false
+        } else if let interactiveIndex = waiters.firstIndex(where: { $0.priority == .interactive }) {
+            waiters.remove(at: interactiveIndex).continuation.resume()
         } else {
             waiters.removeFirst().continuation.resume()
         }

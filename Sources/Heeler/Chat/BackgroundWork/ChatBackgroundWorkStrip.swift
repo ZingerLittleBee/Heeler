@@ -394,16 +394,23 @@ struct ChatBackgroundWorkSpinningArc: View {
     var lineWidth: CGFloat = 2
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isOnScreen = false
 
     var body: some View {
         if reduceMotion {
             arc(angle: .degrees(-45))
         } else {
-            TimelineView(.animation) { context in
+            TimelineView(.animation(
+                minimumInterval: 1.0 / 30,
+                paused: !isOnScreen || scenePhase != .active
+            )) { context in
                 let period = 1.1
                 let turns = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
                 arc(angle: .degrees(turns * 360))
             }
+            .onAppear { isOnScreen = true }
+            .onDisappear { isOnScreen = false }
         }
     }
 

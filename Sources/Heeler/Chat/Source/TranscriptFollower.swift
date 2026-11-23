@@ -18,7 +18,7 @@ struct TranscriptFollower: Sendable {
         /// How much of the file's end is read on open.
         var tailWindow = 1 << 20
         /// The largest single read; each runs under the transport deadline.
-        var readChunk = 256 << 10
+        var readChunk = 1 << 20
         /// The most one poll reads before handing lines on.
         var pollBudget = 2 << 20
         /// The first backward page; it doubles while a line does not fit.
@@ -143,12 +143,18 @@ struct TranscriptFollower: Sendable {
         tailAnchor = Data()
         modificationTime = status.modificationTime
         knownSize = size
-        guard let lines = try await readForward(files, until: size, budget: limits.tailWindow) else {
+        var capturedHead: Data? = (start == 0 && preloadedHead == nil) ? Data() : nil
+        guard
+            let lines = try await readForward(
+                files, until: size, budget: limits.tailWindow, capturingHead: &capturedHead)
+        else {
             return nil
         }
         let resolvedHead: Data?
         if let preloadedHead {
             resolvedHead = preloadedHead
+        } else if let capturedHead {
+            resolvedHead = capturedHead
         } else {
             resolvedHead = try await files.read(
                 path: path, from: 0, to: UInt64(limits.headLength), chunk: limits.readChunk)
@@ -200,15 +206,62 @@ struct TranscriptFollower: Sendable {
                 return .unchanged
             }
         }
-        let anchorStart = readOffset - UInt64(tailAnchor.count)
+        let anchorLength = tailAnchor.count
+        let anchorStart = readOffset - UInt64(anchorLength)
         let end = status.size ?? (readOffset + UInt64(limits.pollBudget))
-        guard
-            let overlap = try await files.read(
-                path: path, from: anchorStart, to: readOffset, chunk: limits.readChunk)
-        else { return .missing }
-        guard overlap == tailAnchor else { return try await reload(files) }
-        guard let lines = try await readForward(files, until: end, budget: limits.pollBudget)
-        else { return .missing }
+        // Read the tail anchor and the newly appended bytes in a single SFTP
+        // open/read/close round trip, requesting one extra byte past `end` so
+        // the server reports EOF in the same RTT and avoids an extra FSTAT.
+        let desired = end > anchorStart ? (end - anchorStart) + 1 : UInt64(anchorLength + 1)
+        let firstMaxBytes = Int(
+            min(
+                UInt64(limits.readChunk),
+                UInt64(anchorLength + limits.pollBudget),
+                desired))
+        let firstSlice = try await files.read(
+            RemoteFileRange(path: path, offset: anchorStart, maxBytes: firstMaxBytes))
+        guard let reported = firstSlice.length else { return .missing }
+        knownSize = reported
+        var initialNew = Data()
+        if firstSlice.data.count >= anchorLength {
+            guard firstSlice.data.prefix(anchorLength) == tailAnchor else {
+                return try await reload(files)
+            }
+            initialNew = Data(firstSlice.data.dropFirst(anchorLength))
+        } else {
+            // A short read can return fewer bytes than the anchor without the
+            // file having shrunk; read the remainder of the anchor before
+            // concluding the file was rewritten.
+            guard !firstSlice.data.isEmpty,
+                tailAnchor.starts(with: firstSlice.data),
+                let rest = try await files.read(
+                    path: path,
+                    from: anchorStart + UInt64(firstSlice.data.count),
+                    to: readOffset,
+                    chunk: limits.readChunk),
+                firstSlice.data + rest == tailAnchor
+            else {
+                return try await reload(files)
+            }
+        }
+        var lines: [ChatLine] = []
+        var remaining = limits.pollBudget
+        if !initialNew.isEmpty {
+            lines.append(contentsOf: framer.append(initialNew))
+            readOffset += UInt64(initialNew.count)
+            remaining -= initialNew.count
+            remember(initialNew)
+            if windowStart == nil { windowStart = framer.deliveryStart }
+        }
+        let targetEnd = max(end, reported)
+        if readOffset < targetEnd, remaining > 0 {
+            var noHead: Data? = nil
+            guard
+                let more = try await readForward(
+                    files, until: targetEnd, budget: remaining, capturingHead: &noHead)
+            else { return .missing }
+            lines.append(contentsOf: more)
+        }
         modificationTime = status.modificationTime
         return lines.isEmpty ? .unchanged : .appended(lines)
     }
@@ -261,7 +314,8 @@ struct TranscriptFollower: Sendable {
     /// Reads from `readOffset` toward `end`, at most `budget` bytes, feeding
     /// the framer. Nil when the file disappeared mid-read.
     private mutating func readForward(
-        _ files: ChatHostFiles, until end: UInt64, budget: Int
+        _ files: ChatHostFiles, until end: UInt64, budget: Int,
+        capturingHead: inout Data?
     ) async throws -> [ChatLine]? {
         var lines: [ChatLine] = []
         var remaining = budget
@@ -273,11 +327,17 @@ struct TranscriptFollower: Sendable {
             guard let reported = slice.length else { return nil }
             knownSize = reported
             guard !slice.data.isEmpty else { break }
+            if var head = capturingHead, head.count < limits.headLength {
+                let needed = limits.headLength - head.count
+                head.append(slice.data.prefix(needed))
+                capturingHead = head
+            }
             lines.append(contentsOf: framer.append(slice.data))
             readOffset += UInt64(slice.data.count)
             remaining -= slice.data.count
             remember(slice.data)
             if windowStart == nil { windowStart = framer.deliveryStart }
+            if readOffset >= reported { break }
         }
         return lines
     }

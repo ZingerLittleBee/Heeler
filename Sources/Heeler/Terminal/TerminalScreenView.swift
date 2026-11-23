@@ -1284,6 +1284,7 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
     /// parses host output off-main, so coalescing briefly lets redraw bursts
     /// settle without making terminal rendering wait on link collection.
     func reportViewportText() {
+        guard callbackBridge.onViewportTextChanged != nil else { return }
         guard let text = terminalSession.readViewportText() else { return }
         callbackBridge.viewportTextDidChange(text)
     }
@@ -1299,6 +1300,10 @@ final class HeelerTerminalView: UITerminalView, TerminalByteSink {
 
     private func scheduleViewportSnapshot(after delay: Duration = .milliseconds(50)) {
         viewportSnapshotTask?.cancel()
+        guard callbackBridge.onViewportTextChanged != nil else {
+            viewportSnapshotTask = nil
+            return
+        }
         viewportSnapshotTask = Task { @MainActor [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }

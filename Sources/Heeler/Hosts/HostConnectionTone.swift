@@ -76,13 +76,18 @@ struct HostToneBadge: View {
     let tone: HostConnectionTone
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isOnScreen = false
 
     var body: some View {
         switch tone {
         case .reconnecting:
             // Driven by the clock rather than a repeating animation, which
             // leaks into a List's row insertions and removals.
-            TimelineView(.animation(paused: reduceMotion)) { context in
+            TimelineView(.animation(
+                minimumInterval: 1.0 / 30,
+                paused: reduceMotion || !isOnScreen || scenePhase != .active
+            )) { context in
                 // Inset by half the line so the arc stays inside the badge.
                 Circle()
                     .inset(by: 0.75)
@@ -95,6 +100,8 @@ struct HostToneBadge: View {
                                 : context.date.timeIntervalSinceReferenceDate
                                     .truncatingRemainder(dividingBy: 1) * 360))
             }
+            .onAppear { isOnScreen = true }
+            .onDisappear { isOnScreen = false }
         case .pending:
             // Still dialing: an open ring, not yet a state.
             Circle().strokeBorder(tone.tint, style: StrokeStyle(lineWidth: 1.5, dash: [2, 1.6]))

@@ -25,6 +25,7 @@ final class FileDiffStore {
     private(set) var file: ChangedFile
     let checkout: CheckoutLocation
     private(set) var phase: Phase = .loading
+    @ObservationIgnored private(set) var preparedDocument: FileDiffPreparedDocument?
     private(set) var isRefreshing = false
     private(set) var readAt: Date?
     /// A refresh failure accompanies the earlier patch instead of replacing it.
@@ -51,7 +52,7 @@ final class FileDiffStore {
     @ObservationIgnored private let read:
         @Sendable (FilePatchRequest) async throws -> FilePatch
     @ObservationIgnored private var hasRead = false
-    @ObservationIgnored private var activeRead: Task<FilePatch, any Error>?
+    @ObservationIgnored private var activeRead: Task<(FilePatch, FileDiffPreparedDocument), any Error>?
     @ObservationIgnored private var readID = UUID()
 
     init(
@@ -138,7 +139,12 @@ final class FileDiffStore {
         else { return }
         let id = UUID()
         readID = id
-        let task = Task { [read] in try await read(request) }
+        let task = Task.detached(priority: .userInitiated) { [read] in
+            let patch = try await read(request)
+            try Task.checkCancellation()
+            let prepared = FileDiffPreparedDocument(patch: patch)
+            return (patch, prepared)
+        }
         activeRead = task
         refreshError = nil
         if case .loaded = phase { isRefreshing = true }
@@ -149,13 +155,14 @@ final class FileDiffStore {
             }
         }
         do {
-            let patch = try await withTaskCancellationHandler {
+            let (patch, prepared) = try await withTaskCancellationHandler {
                 try await task.value
             } onCancel: {
                 task.cancel()
             }
             try Task.checkCancellation()
             guard readID == id else { return }
+            preparedDocument = prepared
             phase = .loaded(patch)
             loadedLimit = limit
             readAt = now()

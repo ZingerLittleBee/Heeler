@@ -549,6 +549,8 @@ private struct ConsoleHostIssueBottomBar: View {
     let animates: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isOnScreen = false
 
     private static let height: CGFloat = 2.5
     private static let cycleSeconds: Double = 1.6
@@ -563,7 +565,10 @@ private struct ConsoleHostIssueBottomBar: View {
 
     var body: some View {
         if animates && !reduceMotion {
-            TimelineView(.animation) { context in
+            TimelineView(.animation(
+                minimumInterval: 1.0 / 30,
+                paused: !isOnScreen || scenePhase != .active
+            )) { context in
                 GeometryReader { proxy in
                     let width = proxy.size.width
                     let thumbWidth = max(width * 0.52, min(width, 10))
@@ -583,6 +588,8 @@ private struct ConsoleHostIssueBottomBar: View {
                     .clipShape(Capsule())
                 }
             }
+            .onAppear { isOnScreen = true }
+            .onDisappear { isOnScreen = false }
             .frame(height: Self.height)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
