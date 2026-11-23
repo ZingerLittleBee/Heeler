@@ -72,7 +72,36 @@ struct HostRouteUpgraderTests {
         await upgrader(machine, leases: leases, calls: calls, reaching: 0).check()
 
         #expect(calls.probes == [[0]])
-        #expect(calls.redials == machine.servers.map(\.id))
+        #expect(Set(calls.redials) == Set(machine.servers.map(\.id)))
+        #expect(await leases.route(for: machine.id) == 0)
+    }
+
+    @Test func aDirectRouteUpgradeRedialsAllConnectedServersConcurrently() async {
+        let machine = machine()
+        let leases = HostRouteLeases()
+        _ = await leases.hold(1, for: machine.id) { true }
+        var entered: Set<Host.ID> = []
+        var waiters: [CheckedContinuation<Void, Never>] = []
+
+        let upgrader = HostRouteUpgrader(
+            leases: leases,
+            machines: { [machine] },
+            isConnected: { _ in true },
+            probe: { _, _ in 0 },
+            redial: { id in
+                entered.insert(id)
+                if entered.count == machine.servers.count {
+                    let pending = waiters
+                    waiters.removeAll()
+                    for waiter in pending { waiter.resume() }
+                } else {
+                    await withCheckedContinuation { waiters.append($0) }
+                }
+            })
+
+        await upgrader.check()
+
+        #expect(entered == Set(machine.servers.map(\.id)))
         #expect(await leases.route(for: machine.id) == 0)
     }
 

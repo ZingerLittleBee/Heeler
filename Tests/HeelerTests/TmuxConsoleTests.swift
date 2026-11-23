@@ -679,4 +679,144 @@ struct TmuxConsoleTests {
         #expect(await tmux.skillQueries == [SkillListQuery(kind: .claude, projectRoot: "/work/app")])
         #expect(await tmux.readSkillPaths == [skillPath])
     }
+
+    @Test func networkChangeRevalidationBoundsAnInFlightTmuxProbeAndSkipsInitialBackoff() async throws {
+        let paths = try #require(TmuxPaths(executable: "/usr/bin/tmux", socket: "/tmp/tmux-1000/default"))
+        let server = TmuxServerStatus(
+            instance: TmuxServerInstance(pid: 42, startTime: 1_700_000_000),
+            version: "3.4",
+            paths: paths)
+        let first = HangingSecondAskTmuxTransport(server: server)
+        let second = HangingSecondAskTmuxTransport(server: server, hangOnSecondAsk: false)
+        let dialCount = Mutex(0)
+        let session = TmuxHostSession(
+            storedPaths: server.paths,
+            connect: { _ in
+                let index = dialCount.withLock { count -> Int in
+                    count += 1
+                    return count
+                }
+                return index == 1 ? first : second
+            },
+            reconnectPolicy: ReconnectPolicy(initialDelay: .seconds(10), multiplier: 2, maxDelay: .seconds(30)),
+            keepalive: KeepalivePolicy(interval: .seconds(60), timeout: .seconds(15)))
+        var updates = session.updates.makeAsyncIterator()
+
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+        #expect(await updates.next() == .server(server))
+
+        // Start an unbounded revalidation (as on foreground return) whose probe hangs.
+        await session.revalidate()
+        await first.waitUntilSecondAskEntered()
+
+        // Network changes while that probe is already in flight.
+        let started = ContinuousClock.now
+        await session.revalidate(timeout: .milliseconds(60))
+
+        // The in-flight probe must time out promptly, abandon the dead connection,
+        // and reconnect with zero backoff instead of waiting for the 10s policy delay.
+        var reconnectingStatus: EventsSessionStatus?
+        while let update = await updates.next() {
+            if case .status(.reconnecting(let attempt, let delay, let failure)) = update {
+                reconnectingStatus = .reconnecting(attempt: attempt, delay: delay, failure: failure)
+                break
+            }
+        }
+        guard case .reconnecting(let attempt, let delay, .timedOut) = reconnectingStatus else {
+            Issue.record("expected immediate timed-out reconnecting status, got \(String(describing: reconnectingStatus))")
+            await first.releaseSecondAsk()
+            await session.end()
+            return
+        }
+        #expect(attempt == 1)
+        #expect(delay == .zero)
+        #expect(await first.abandonedCount == 1)
+        #expect(started.duration(to: .now) < .seconds(2))
+
+        // Second transport answers immediately.
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
+            if dialCount.withLock({ $0 }) == 2, await second.statusCallCount >= 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(dialCount.withLock { $0 } == 2)
+        #expect(await second.statusCallCount >= 1)
+        await first.releaseSecondAsk()
+        await session.end()
+    }
+}
+
+private actor HangingSecondAskTmuxTransport: TmuxTransport {
+    nonisolated let routeID: UUID? = nil
+    nonisolated let hostServices: any HostServices = ScriptedTmuxHost()
+    nonisolated let hostHelperHost: any HostHelperHost = ScriptedTmuxHost()
+
+    private let server: TmuxServerStatus
+    private let hangOnSecondAsk: Bool
+    private(set) var statusCallCount = 0
+    private(set) var abandonedCount = 0
+    private var closed = false
+    private var enteredSecondAsk = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseSecondAskFlag = false
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(server: TmuxServerStatus, hangOnSecondAsk: Bool = true) {
+        self.server = server
+        self.hangOnSecondAsk = hangOnSecondAsk
+    }
+
+    var isConnected: Bool { !closed }
+
+    func status() async throws -> TmuxServerStatus {
+        statusCallCount += 1
+        if hangOnSecondAsk, statusCallCount == 2 {
+            enteredSecondAsk = true
+            let waiters = enteredWaiters
+            enteredWaiters.removeAll()
+            for waiter in waiters { waiter.resume() }
+            if !releaseSecondAskFlag {
+                await withCheckedContinuation { releaseWaiters.append($0) }
+            }
+            throw TransportError.sshUnreachable(detail: "released")
+        }
+        return server
+    }
+
+    func waitUntilSecondAskEntered() async {
+        if enteredSecondAsk { return }
+        await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+
+    func releaseSecondAsk() {
+        releaseSecondAskFlag = true
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+    }
+
+    func resolvedPaths() -> TmuxPaths? { nil }
+    func hostFacts() -> TmuxHostFacts { TmuxHostFacts(paths: server.paths, kernel: "Linux", shell: "/bin/sh") }
+    func adoptStoredPaths(_ storedPaths: TmuxPaths?) {}
+    func runTmuxScript(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
+        GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)
+    }
+    func inventory() async throws -> AsyncThrowingStream<TmuxInventory, any Error> {
+        let (stream, continuation) = AsyncThrowingStream<TmuxInventory, any Error>.makeStream()
+        continuation.onTermination = { _ in }
+        return stream
+    }
+    func attachPane(_ pane: String, request: TerminalAttachRequest) async throws -> TerminalAttachSession {
+        throw TransportError.tmuxPaneGone
+    }
+    func readPaneForeground(_ pane: String) async throws -> TmuxPaneForeground {
+        throw TransportError.tmuxPaneGone
+    }
+    func close() async throws { closed = true }
+    func abandon() async {
+        abandonedCount += 1
+        closed = true
+    }
 }

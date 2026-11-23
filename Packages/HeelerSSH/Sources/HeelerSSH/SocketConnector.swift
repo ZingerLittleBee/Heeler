@@ -102,11 +102,17 @@ enum SocketConnector {
             operations: .live(makeSocket: makeSocket))
     }
 
+    /// RFC 8305 Happy Eyeballs stagger between candidate addresses so a
+    /// blackholed first address (e.g. unreachable IPv6) falls back to IPv4 in
+    /// 250 ms instead of spending half the overall connect deadline waiting.
+    static let happyEyeballsStagger: Duration = .milliseconds(250)
+
     static func connect(
         to endpoint: SSHEndpoint,
         until deadline: ContinuousClock.Instant,
         resolver: any SocketAddressResolving,
-        operations: Operations
+        operations: Operations,
+        stagger: Duration = happyEyeballsStagger
     ) async throws -> Int32 {
         guard !endpoint.host.isEmpty, endpoint.port > 0 else {
             throw SSHError.invalidEndpoint
@@ -114,33 +120,170 @@ enum SocketConnector {
 
         try checkProgress(until: deadline, now: operations.now())
         let addresses = try await resolver.resolve(endpoint, until: deadline)
-        var lastError: SSHError = .connectionFailed
-        for (index, address) in addresses.enumerated() {
-            do {
-                let candidateStart = operations.now()
-                try checkProgress(until: deadline, now: candidateStart)
-                let remainingCandidates = addresses.count - index
-                // Split the time still owned by the caller evenly across the
-                // candidates that have not yet had a chance to connect.
-                let candidateDeadline = min(
-                    candidateStart.advanced(
-                        by: candidateStart.duration(to: deadline) / remainingCandidates),
-                    deadline)
-                return try await connect(
-                    to: address,
-                    until: candidateDeadline,
-                    operations: operations)
-            } catch let error as SSHError {
-                if error == .cancelled { throw error }
-                if error == .timedOut {
-                    lastError = error
-                    try checkProgress(until: deadline, now: operations.now())
-                    continue
+        guard !addresses.isEmpty else { throw SSHError.connectionFailed }
+        if addresses.count == 1 {
+            return try await connect(
+                to: addresses[0],
+                until: deadline,
+                operations: operations)
+        }
+        return try await connectHappyEyeballs(
+            addresses: addresses,
+            until: deadline,
+            operations: operations,
+            stagger: stagger)
+    }
+
+    private enum RaceOutcome: Sendable {
+        case won(Int32)
+        case failed(SSHError)
+        case cancelled
+    }
+
+    private actor HappyEyeballsCoordinator {
+        private let addresses: [SocketAddress]
+        private let deadline: ContinuousClock.Instant
+        private let operations: Operations
+        private let stagger: Duration
+        private var nextIndex = 0
+        private var inFlightCount = 0
+        private var failureCount = 0
+        private var lastError: SSHError = .connectionFailed
+        private var isDecided = false
+        private var tasks: [Task<Void, Never>] = []
+        private var staggerTask: Task<Void, Never>?
+        private var continuation: CheckedContinuation<RaceOutcome, Never>?
+
+        init(
+            addresses: [SocketAddress],
+            deadline: ContinuousClock.Instant,
+            operations: Operations,
+            stagger: Duration
+        ) {
+            self.addresses = addresses
+            self.deadline = deadline
+            self.operations = operations
+            self.stagger = stagger
+        }
+
+        func start(_ continuation: CheckedContinuation<RaceOutcome, Never>) {
+            guard !isDecided else {
+                continuation.resume(returning: .cancelled)
+                return
+            }
+            self.continuation = continuation
+            launchNext()
+            scheduleStaggerIfNeeded()
+        }
+
+        func cancel() {
+            decide(.cancelled)
+        }
+
+        private func launchNext() {
+            guard !isDecided, nextIndex < addresses.count else { return }
+            let address = addresses[nextIndex]
+            nextIndex += 1
+            inFlightCount += 1
+            let deadline = deadline
+            let operations = operations
+            tasks.append(Task {
+                do {
+                    let fd = try await SocketConnector.connect(
+                        to: address,
+                        until: deadline,
+                        operations: operations)
+                    if !self.won(fd) {
+                        operations.closeSocket(fd)
+                    }
+                } catch let error as SSHError {
+                    self.failed(error)
+                } catch {
+                    self.failed(.connectionFailed)
                 }
-                lastError = error
+            })
+        }
+
+        private func scheduleStaggerIfNeeded() {
+            staggerTask?.cancel()
+            staggerTask = nil
+            guard !isDecided, nextIndex < addresses.count else { return }
+            let stagger = stagger
+            staggerTask = Task {
+                if stagger > .zero {
+                    do { try await Task.sleep(for: stagger) } catch { return }
+                }
+                guard !Task.isCancelled else { return }
+                self.staggerFired()
             }
         }
-        throw lastError
+
+        private func staggerFired() {
+            staggerTask = nil
+            guard !isDecided, nextIndex < addresses.count else { return }
+            launchNext()
+            scheduleStaggerIfNeeded()
+        }
+
+        private func won(_ fd: Int32) -> Bool {
+            guard !isDecided else { return false }
+            decide(.won(fd))
+            return true
+        }
+
+        private func failed(_ error: SSHError) {
+            guard !isDecided else { return }
+            inFlightCount -= 1
+            failureCount += 1
+            lastError = error
+            if failureCount == addresses.count {
+                decide(.failed(lastError))
+            } else if inFlightCount == 0, nextIndex < addresses.count {
+                // Every active candidate failed fast (e.g. ECONNREFUSED); start
+                // the next address immediately instead of waiting out stagger.
+                launchNext()
+                scheduleStaggerIfNeeded()
+            }
+        }
+
+        private func decide(_ outcome: RaceOutcome) {
+            guard !isDecided else { return }
+            isDecided = true
+            staggerTask?.cancel()
+            staggerTask = nil
+            for task in tasks { task.cancel() }
+            tasks.removeAll()
+            continuation?.resume(returning: outcome)
+            continuation = nil
+        }
+    }
+
+    private static func connectHappyEyeballs(
+        addresses: [SocketAddress],
+        until deadline: ContinuousClock.Instant,
+        operations: Operations,
+        stagger: Duration
+    ) async throws -> Int32 {
+        let coordinator = HappyEyeballsCoordinator(
+            addresses: addresses,
+            deadline: deadline,
+            operations: operations,
+            stagger: stagger)
+        let outcome = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                Task { await coordinator.start(continuation) }
+            }
+        } onCancel: {
+            Task { await coordinator.cancel() }
+        }
+        switch outcome {
+        case .won(let fd):
+            return fd
+        case .failed(let error):
+            throw error
+        case .cancelled:
+            throw SSHError.cancelled
+        }
     }
 
     private static func connect(

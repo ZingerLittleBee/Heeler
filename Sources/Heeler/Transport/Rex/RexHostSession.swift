@@ -241,14 +241,18 @@ actor RexHostSession {
         await enqueueLifecycleTransition { await self.restart() }
     }
 
-    /// Asks the server that was answering, on a foreground return. A link that
-    /// stays silent for `revalidateDeadline` before the answer, or brings no
-    /// answer in half a minute however much else arrives, is dropped for a
-    /// new one at once. The answer may queue behind a redraw's pages, which
-    /// keep the link from going silent.
-    func revalidate() async {
+    /// Bounded probe deadline after an OS network path change.
+    static let networkChangeProbeTimeout: Duration = .seconds(3)
+
+    /// Asks the server that was answering, on a foreground return or network
+    /// change. A link that stays silent for `silence` before the answer, or
+    /// brings no answer in half a minute however much else arrives, is dropped
+    /// for a new one at once. The answer may queue behind a redraw's pages,
+    /// which keep the link from going silent.
+    func revalidate(timeout: Duration? = nil) async {
         guard phase == .active, liveServer != nil, let link else { return }
-        let deadline = RexDeliveryDeadline(silence: revalidateDeadline, limit: max(revalidateDeadline, .seconds(30)))
+        let silence = timeout ?? revalidateDeadline
+        let deadline = RexDeliveryDeadline(silence: silence, limit: max(silence, .seconds(30)))
         Task { [weak self] in
             do {
                 _ = try await link.call("server.status", payload: JSONValue?.none, waiting: deadline)
@@ -300,7 +304,7 @@ actor RexHostSession {
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldStatus(.connecting)
-        await windDown(leaving: false)
+        await windDown(leaving: false, abandon: true)
         guard phase == .active, activationGeneration == generation else { return }
         runTask = Task { await self.run(generation: generation) }
     }
@@ -515,7 +519,7 @@ actor RexHostSession {
             link = nil
             // A link kept to resume is dropped, so closing sends no close frame.
             if let resumable { await resumable.disconnect() }
-            await transport.close()
+            await transport.abandon()
         }
         let previous = clientOpenedDataLinks ? nil : resumable
         resumable = nil
@@ -562,7 +566,7 @@ actor RexHostSession {
     /// be resumed. The run task is cancelled but not awaited, since a stalled
     /// SSH operation may ignore cancellation; generation checks make any late
     /// result harmless.
-    private func windDown(leaving: Bool) async {
+    private func windDown(leaving: Bool, abandon: Bool = false) async {
         waitSleep?.cancel()
         waitSleep = nil
         let task = runTask
@@ -582,7 +586,11 @@ actor RexHostSession {
                 if await control.isOpen { await control.disconnect() }
                 resumable = control
             }
-            await transport.close()
+            if abandon {
+                await transport.abandon()
+            } else {
+                await transport.close()
+            }
         } else if leaving {
             resumable = nil
         }

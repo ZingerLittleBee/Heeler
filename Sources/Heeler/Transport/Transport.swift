@@ -249,10 +249,18 @@ protocol Transport: HostServices, HostNotificationFiles {
     /// Tears the connection down explicitly, ending every channel it
     /// carries. Terminal: a closed Transport is not reusable.
     func close() async throws
+
+    /// Tears down an unresponsive or superseded connection without waiting
+    /// for graceful protocol shutdown over a dead link.
+    func abandon() async
 }
 
 extension Transport {
     var routeID: UUID? { nil }
+
+    func abandon() async {
+        try? await close()
+    }
 
     func ping(timeout: Duration) async throws -> ServerInfo {
         try await ping()

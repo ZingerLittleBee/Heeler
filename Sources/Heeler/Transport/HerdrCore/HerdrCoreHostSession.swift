@@ -79,11 +79,16 @@ actor HerdrCoreHostSession {
     private let holderRestart: HerdrCoreHolderRestartPolicy
     private let sleep: Sleep
 
+    /// Bounded probe deadline after an OS network path change, so a half-open
+    /// dead link drops promptly instead of waiting out the full request timeout.
+    static let networkChangeProbeTimeout: Duration = .seconds(3)
+
     private var phase: Phase = .suspended
     private var currentTransport: (any HerdrCoreTransport)?
     private var hasEstablishedConnection = false
     /// A swallowed request or silent link: the next reconnect redials SSH.
     private var transportSuspect = false
+    private var skipNextReconnectDelay = false
     private var pendingKeepaliveFailure: TransportError?
     /// Whether the last status said Connected. A link reopening on the same
     /// connection stays there, so a core restart never reads as a lost Host.
@@ -149,17 +154,27 @@ actor HerdrCoreHostSession {
         await enqueueLifecycleTransition { await self.restart() }
     }
 
-    /// Asks a link that believes it is alive, on a foreground return. A failed
-    /// ask goes down the keepalive's path.
-    func revalidate() async {
+    /// Asks a link that believes it is alive, on a foreground return or network
+    /// change. A failed ask goes down the keepalive's path.
+    func revalidate(timeout: Duration? = nil) async {
         guard phase == .active, let stream = liveStream, let transport = currentTransport else { return }
         do {
-            let latency = try await measureLatency(on: transport)
+            let latency: Duration
+            if let timeout {
+                latency = try await AsyncDeadline.run(for: timeout) {
+                    try await self.measureLatency(on: transport)
+                }
+            } else {
+                latency = try await measureLatency(on: transport)
+            }
             publishLatency(latency, measuredOn: stream)
         } catch is CancellationError {
         } catch TransportError.cancelled {
         } catch {
-            await keepaliveDidFail(Self.transportFailure(error), on: stream)
+            if timeout != nil { skipNextReconnectDelay = true }
+            let failure: TransportError = error is AsyncDeadlineError
+                ? .timedOut : Self.transportFailure(error)
+            await keepaliveDidFail(failure, on: stream)
         }
     }
 
@@ -307,7 +322,7 @@ actor HerdrCoreHostSession {
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldUpdate(.status(.connecting))
-        await windDown()
+        await windDown(abandon: true)
         guard phase == .active, activationGeneration == generation else { return }
         runTask = Task { await self.run(generation: generation) }
     }
@@ -536,7 +551,7 @@ actor HerdrCoreHostSession {
             currentTransport = nil
             liveCoreID = nil
             isAnnouncedConnected = false
-            try? await transport.close()
+            await transport.abandon()
         }
         let transport = try await connect()
         guard activationIsCurrent(generation) else {
@@ -560,6 +575,11 @@ actor HerdrCoreHostSession {
     private func emitReconnectingAndBackOff(
         attempt: Int, failure: TransportError, generation: UInt64
     ) async {
+        if skipNextReconnectDelay {
+            skipNextReconnectDelay = false
+            yieldUpdate(.status(.reconnecting(attempt: attempt, delay: .zero, failure: failure)))
+            return
+        }
         let delay = reconnectPolicy.delay(beforeAttempt: attempt)
         yieldUpdate(.status(.reconnecting(attempt: attempt, delay: delay, failure: failure)))
         let backoff = Task { [sleep] in try await sleep(delay) }
@@ -575,7 +595,7 @@ actor HerdrCoreHostSession {
     /// Ends the activation and closes everything. The run task is cancelled but
     /// not awaited, since a stalled SSH operation may ignore cancellation;
     /// generation checks make any late result harmless.
-    private func windDown() async {
+    private func windDown(abandon: Bool = false) async {
         failPinnedTerminalTransportWaiters(.cancelled)
         backoffSleep?.cancel()
         backoffSleep = nil
@@ -587,12 +607,21 @@ actor HerdrCoreHostSession {
         let stream = liveStream
         liveStream = nil
         liveCoreID = nil
-        await stream?.end()
-        if let transport = currentTransport {
-            currentTransport = nil
-            try? await transport.close()
+        let transport = currentTransport
+        currentTransport = nil
+        if abandon {
+            if let transport {
+                await transport.abandon()
+            }
+            await stream?.end()
+        } else {
+            await stream?.end()
+            if let transport {
+                try? await transport.close()
+            }
         }
         transportSuspect = false
+        skipNextReconnectDelay = false
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
     }
@@ -655,6 +684,10 @@ actor HerdrCoreHostSession {
         guard phase == .active, liveStream === stream else { return }
         transportSuspect = true
         pendingKeepaliveFailure = failure
+        if let transport = currentTransport {
+            currentTransport = nil
+            await transport.abandon()
+        }
         await stream.end()
     }
 

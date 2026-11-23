@@ -200,7 +200,15 @@ actor EventsSession {
     private let keepalive: KeepalivePolicy?
     private let terminalWaiterDidRegister: (@Sendable () -> Void)?
 
+    /// Bounded probe deadline after an OS network path change, so a half-open
+    /// dead TCP socket on the old interface is dropped promptly instead of
+    /// waiting out the full 30-second keepalive window.
+    static let networkChangeProbeTimeout: Duration = .seconds(3)
+
     private var phase: Phase = .suspended
+    /// Consumed once after a network-change probe fails so the replacement
+    /// dial starts immediately instead of sleeping `ReconnectPolicy.initialDelay`.
+    private var skipNextReconnectDelay = false
     /// The Host's live Transport. It never escapes this module; consumers
     /// use `withTransport` or `withTerminalTransport` so replacement and
     /// terminal admission remain local.
@@ -326,9 +334,9 @@ actor EventsSession {
     /// Starts an owned probe without holding the app's lifecycle queue.
     /// Suspension cancels it; a short foreground bounce joins it.
     @discardableResult
-    func startRevalidation() -> Task<Bool, Never>? {
+    func startRevalidation(timeout: Duration? = nil) -> Task<Bool, Never>? {
         guard let transport = currentTransport, liveStream != nil else { return nil }
-        return checkConnection(transport)
+        return checkConnection(transport, timeout: timeout)
     }
 
     /// Release a probe's SSH operation before terminal teardown needs the
@@ -606,7 +614,7 @@ actor EventsSession {
         activationGeneration &+= 1
         let generation = activationGeneration
         yieldUpdate(.status(.connecting))
-        await windDown()
+        await windDown(abandon: true)
         guard phase == .active, activationGeneration == generation else { return }
         runTask = Task { await self.run(generation: generation) }
     }
@@ -835,7 +843,7 @@ actor EventsSession {
             }
             cancelConnectionProbe()
             currentTransport = nil
-            try? await transport.close()
+            await transport.abandon()
         }
         let transport = try await connect()
         do {
@@ -879,6 +887,11 @@ actor EventsSession {
         failure: TransportError,
         generation: UInt64
     ) async {
+        if skipNextReconnectDelay {
+            skipNextReconnectDelay = false
+            yieldUpdate(.status(.reconnecting(attempt: attempt, delay: .zero, failure: failure)))
+            return
+        }
         let delay = reconnectPolicy.delay(beforeAttempt: attempt)
         yieldUpdate(.status(.reconnecting(attempt: attempt, delay: delay, failure: failure)))
         let sleep = Task { try await Task.sleep(for: delay) }
@@ -896,7 +909,7 @@ actor EventsSession {
     /// ignore task cancellation. Generation checks
     /// make any late result harmless, while an installed Transport is still
     /// closed explicitly before lifecycle teardown returns.
-    private func windDown() async {
+    private func windDown(abandon: Bool = false) async {
         isWindingDown = true
         failTerminalTransportWaiters(TransportError.cancelled)
         failTransportWaiters(TransportError.cancelled)
@@ -910,18 +923,32 @@ actor EventsSession {
         task?.cancel()
         let stream = liveStream
         liveStream = nil
-        if let stream {
-            // End the events channel before closing the transport it rides on.
-            // Otherwise close can queue behind the still-running reader on the
-            // same SSH session and turn a bounded teardown into an unbounded one.
-            await stream.end()
-        }
-        if let transport = currentTransport {
-            currentTransport = nil
-            try? await transport.close()
+        let transport = currentTransport
+        currentTransport = nil
+        if abandon {
+            // Abandon the underlying SSH transport first so a dead or busy
+            // link unwinds the events channel immediately instead of stalling
+            // a route switch or reconnect.
+            if let transport {
+                await transport.abandon()
+            }
+            if let stream {
+                await stream.end()
+            }
+        } else {
+            if let stream {
+                // End the events channel before closing the transport it rides on.
+                // Otherwise close can queue behind the still-running reader on the
+                // same SSH session and turn a bounded teardown into an unbounded one.
+                await stream.end()
+            }
+            if let transport {
+                try? await transport.close()
+            }
         }
         await waitForTerminalIdle()
         transportSuspect = false
+        skipNextReconnectDelay = false
         pendingKeepaliveFailure = nil
         resubscribeRequested = false
         lastConnectionActivity = nil
@@ -959,18 +986,30 @@ actor EventsSession {
     }
 
     private func checkConnection(
-        _ transport: any Transport, warnImmediately: Bool = false
+        _ transport: any Transport,
+        warnImmediately: Bool = false,
+        timeout overrideTimeout: Duration? = nil
     ) -> Task<Bool, Never>? {
         guard phase == .active,
             isSameTransport(currentTransport, transport)
         else { return nil }
         if warnImmediately { setCheckingConnection(true) }
-        if let probe = connectionProbe { return probe.task }
+        if let probe = connectionProbe {
+            guard overrideTimeout != nil else { return probe.task }
+            // Replace an existing longer keepalive probe with the shorter
+            // network-change probe so a dead link is detected promptly.
+            probe.task.cancel()
+            connectionProbe = nil
+        }
         let id = UUID()
         let generation = activationGeneration
         let task = Task {
             let recovered = await self.runConnectionProbe(
-                transport, generation: generation, id: id, afterRequestTimeout: warnImmediately)
+                transport,
+                generation: generation,
+                id: id,
+                afterRequestTimeout: warnImmediately,
+                overrideTimeout: overrideTimeout)
             if self.connectionProbe?.id == id {
                 self.connectionProbe = nil
             }
@@ -982,10 +1021,12 @@ actor EventsSession {
 
     private func runConnectionProbe(
         _ transport: any Transport, generation: UInt64, id: UUID,
-        afterRequestTimeout: Bool
+        afterRequestTimeout: Bool,
+        overrideTimeout: Duration? = nil
     ) async -> Bool {
         let policy = keepalive ?? .default
-        let timeout = afterRequestTimeout ? policy.timeout - policy.warningDelay : policy.timeout
+        let timeout = overrideTimeout
+            ?? (afterRequestTimeout ? policy.timeout - policy.warningDelay : policy.timeout)
         let warning = Task {
             do { try await Task.sleep(for: policy.warningDelay) } catch { return }
             guard connectionProbe?.id == id, activationIsCurrent(generation),
@@ -1031,8 +1072,13 @@ actor EventsSession {
                     isSameTransport(currentTransport, transport)
                 else { return false }
                 transportSuspect = true
+                if overrideTimeout != nil { skipNextReconnectDelay = true }
                 pendingKeepaliveFailure = failure
                 if liveStream == nil { setCheckingConnection(true) }
+                if isSameTransport(currentTransport, transport) {
+                    currentTransport = nil
+                    await transport.abandon()
+                }
                 await liveStream?.end()
                 return false
             }

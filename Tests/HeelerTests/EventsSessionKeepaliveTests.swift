@@ -438,6 +438,46 @@ struct EventsSessionKeepaliveTests {
         await session.end()
     }
 
+    @Test func networkChangeRevalidationUsesShortTimeoutAndSkipsInitialBackoff() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        let connector = SequencedTransportConnector([first, second])
+        let session = EventsSession(
+            subscriptions: subscriptions,
+            connect: { try await connector.connect() },
+            reconnectPolicy: ReconnectPolicy(initialDelay: .seconds(10), multiplier: 2, maxDelay: .seconds(30)),
+            keepalive: KeepalivePolicy(interval: .seconds(60), timeout: .seconds(30)))
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        // Hang the revalidation ping so only the short network-change timeout ends it.
+        let pingGate = ScriptedTransportCallGate()
+        await first.gateNextPing(using: pingGate)
+        let started = ContinuousClock.now
+        let check = await session.startRevalidation(timeout: .milliseconds(80))
+        await pingGate.waitForEntry()
+        #expect(await check?.value == false)
+
+        // The session must enter reconnecting with zero backoff and immediately redial.
+        let status = await updates.next()
+        guard case .status(.reconnecting(let attempt, let delay, .timedOut)) = status else {
+            Issue.record("expected immediate reconnecting status, got \(String(describing: status))")
+            await pingGate.open()
+            await session.end()
+            return
+        }
+        #expect(attempt == 1)
+        #expect(delay == .zero)
+        #expect(await updates.next() == .status(.connected))
+        #expect(started.duration(to: .now) < .seconds(2))
+        #expect(await connector.connectCount == 2)
+
+        await pingGate.open()
+        await session.end()
+    }
+
     private func waitUntil(
         _ message: String,
         timeout: Duration = .seconds(3),

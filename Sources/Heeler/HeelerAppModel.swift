@@ -263,10 +263,12 @@ final class HeelerAppModel {
         }
         Task { [console] in
             for await _ in NetworkPathChanges.stream() {
-                // A change arrives as a burst of path updates; act once.
-                try? await Task.sleep(for: .seconds(1))
-                await console.networkPathDidChange()
-                await routeUpgrader.check()
+                // A change arrives as a burst of path updates; settle briefly
+                // then probe live links and check direct route upgrades together.
+                try? await Task.sleep(for: Self.networkPathSettleDelay)
+                async let revalidation: Void = console.networkPathDidChange()
+                async let upgrade: Void = routeUpgrader.check()
+                _ = await (revalidation, upgrade)
             }
         }
         Task { await pushRegistration.refresh() }
@@ -286,6 +288,10 @@ final class HeelerAppModel {
             console.sceneDidEnd(sceneID)
         }
     }
+
+    /// Coalesces rapid `NWPathMonitor` bursts during a Wi-Fi / cellular
+    /// transition without adding a full second of idle wait before probing.
+    static let networkPathSettleDelay: Duration = .milliseconds(350)
 
     /// The app's aggregate scene phase: active while any window is.
     func scenePhaseDidChange(_ phase: ScenePhase) {
