@@ -2553,7 +2553,8 @@ actor SessionDriver {
         sftpID: UInt64,
         fileID: UInt64,
         data: Data,
-        timeout: Duration
+        timeout: Duration,
+        onProgress: (@Sendable (Int) async -> Void)? = nil
     ) async throws {
         try await withDiagnosticPhase("SFTP write file \(fileID)") {
             guard !data.isEmpty else { return }
@@ -2629,6 +2630,9 @@ actor SessionDriver {
 
                     if progress.written > 0 {
                         offset += progress.written
+                        if let onProgress {
+                            await onProgress(progress.written)
+                        }
                         await Task.yield()
                     } else {
                         #if DEBUG

@@ -112,6 +112,13 @@ private actor HeelerSSHNotificationFileCompletion {
 /// `TransportError.terminalChannelAlreadyOpen` and leave the claimant running,
 /// whether output is parked or buffered; see `next()`.
 final class HeelerSSHAttachOutputGate: Sendable {
+    /// Maximum bytes combined into one coalesced chunk returned by `next()`.
+    private static let coalesceByteCap = 64 * 1024
+    /// Producer pauses reading from SSH once buffered bytes reach this ceiling
+    /// and resumes once the consumer drains below `lowWaterBytes`.
+    private static let highWaterBytes = 256 * 1024
+    private static let lowWaterBytes = 128 * 1024
+
     private enum Completion {
         case finished
         case failed(any Error)
@@ -120,7 +127,9 @@ final class HeelerSSHAttachOutputGate: Sendable {
     private struct State: ~Copyable {
         var buffered: [Data] = []
         var bufferedIndex = 0
+        var bufferedBytes = 0
         var waiter: CheckedContinuation<Data?, any Error>?
+        var producerWaiter: CheckedContinuation<Void, Never>?
         var completion: Completion?
         var isExplicitlyEnding = false
         var isConsumerCancelled = false
@@ -176,8 +185,11 @@ final class HeelerSSHAttachOutputGate: Sendable {
             state.isExplicitlyEnding = true
             state.buffered.removeAll(keepingCapacity: false)
             state.bufferedIndex = 0
+            state.bufferedBytes = 0
             state.waiter?.resume(returning: nil)
             state.waiter = nil
+            state.producerWaiter?.resume()
+            state.producerWaiter = nil
         }
     }
 
@@ -193,6 +205,37 @@ final class HeelerSSHAttachOutputGate: Sendable {
                 waiting.resume(returning: bytes)
             } else {
                 state.buffered.append(bytes)
+                state.bufferedBytes += bytes.count
+            }
+        }
+    }
+
+    /// Suspends the PTY reader when buffered output exceeds `highWaterBytes`,
+    /// letting the SSH channel window apply backpressure to the Host until the
+    /// consumer drains below `lowWaterBytes`.
+    func waitForBufferRoom() async {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let shouldSuspend = state.withLock { state -> Bool in
+                    guard
+                        !Task.isCancelled,
+                        !state.isExplicitlyEnding,
+                        !state.isConsumerCancelled,
+                        state.completion == nil,
+                        state.bufferedBytes >= Self.highWaterBytes
+                    else { return false }
+                    state.producerWaiter?.resume()
+                    state.producerWaiter = continuation
+                    return true
+                }
+                if !shouldSuspend {
+                    continuation.resume()
+                }
+            }
+        } onCancel: {
+            state.withLock { state in
+                state.producerWaiter?.resume()
+                state.producerWaiter = nil
             }
         }
     }
@@ -201,6 +244,8 @@ final class HeelerSSHAttachOutputGate: Sendable {
         state.withLock { state in
             guard state.completion == nil else { return }
             state.completion = failure.map(Completion.failed) ?? .finished
+            state.producerWaiter?.resume()
+            state.producerWaiter = nil
             guard
                 state.bufferedIndex == state.buffered.count,
                 let waiter = state.waiter
@@ -234,11 +279,46 @@ final class HeelerSSHAttachOutputGate: Sendable {
                         return
                     }
                     if state.bufferedIndex < state.buffered.count {
-                        let bytes = state.buffered[state.bufferedIndex]
+                        let first = state.buffered[state.bufferedIndex]
                         state.bufferedIndex += 1
+                        state.bufferedBytes -= first.count
+                        let bytes: Data
+                        if state.bufferedIndex < state.buffered.count, first.count < Self.coalesceByteCap {
+                            var combined = Data()
+                            let remaining = state.buffered.count - state.bufferedIndex
+                            var planned = first.count
+                            var endIndex = state.bufferedIndex
+                            while endIndex < state.buffered.count,
+                                planned + state.buffered[endIndex].count <= Self.coalesceByteCap
+                            {
+                                planned += state.buffered[endIndex].count
+                                endIndex += 1
+                            }
+                            if endIndex > state.bufferedIndex {
+                                combined.reserveCapacity(planned)
+                                combined.append(first)
+                                for idx in state.bufferedIndex..<endIndex {
+                                    let chunk = state.buffered[idx]
+                                    combined.append(chunk)
+                                    state.bufferedBytes -= chunk.count
+                                }
+                                state.bufferedIndex = endIndex
+                                _ = remaining
+                                bytes = combined
+                            } else {
+                                bytes = first
+                            }
+                        } else {
+                            bytes = first
+                        }
                         if state.bufferedIndex == state.buffered.count {
                             state.buffered.removeAll(keepingCapacity: true)
                             state.bufferedIndex = 0
+                            state.bufferedBytes = 0
+                        }
+                        if state.bufferedBytes <= Self.lowWaterBytes, let producer = state.producerWaiter {
+                            state.producerWaiter = nil
+                            producer.resume()
                         }
                         continuation.resume(returning: bytes)
                         return
@@ -264,15 +344,6 @@ final class HeelerSSHAttachOutputGate: Sendable {
         }
     }
 
-    /// Ends delivery because a consumer's task was cancelled.
-    ///
-    /// The cancellation handler is installed by every reader before the
-    /// claim check in `next()` can refuse it, and it can fire at any point
-    /// after installation. Without the ownership guard, a refused second
-    /// consumer whose task is cancelled around its read would clear the
-    /// buffer and resume the claimant's waiter with nil — silently ending a
-    /// terminal it never owned (#164). Only the claimant, or a first reader
-    /// still racing its own claim, may cancel delivery.
     private func cancelConsumer(_ reader: TaskIdentity) {
         state.withLock { state in
             guard state.consumer == nil || state.consumer == reader else { return }
@@ -280,8 +351,11 @@ final class HeelerSSHAttachOutputGate: Sendable {
             state.isConsumerCancelled = true
             state.buffered.removeAll(keepingCapacity: false)
             state.bufferedIndex = 0
+            state.bufferedBytes = 0
             state.waiter?.resume(returning: nil)
             state.waiter = nil
+            state.producerWaiter?.resume()
+            state.producerWaiter = nil
         }
     }
 }
@@ -394,6 +468,15 @@ actor HeelerSSHTransport: Transport {
     /// honors and records (`openSFTP`).
     private let sftpRefusal: HostSFTPRefusal
     private var notificationTemporaryPaths: [UUID: String] = [:]
+    /// Cached verified `0700` staging parent directory on this connection,
+    /// avoiding repeated `mktemp` exec + `chmod` round trips across uploads
+    /// when `stageDirectoryCommand` uses the default command.
+    private var cachedStageParentDirectory: String?
+    /// Reusable dedicated SFTP client for attachment staging (separate from
+    /// Chat's `sessionFileClient`), retired after an idle grace window or on
+    /// error/cancellation/close so back-to-back uploads skip SFTP open/close RTTs.
+    private var idleStagingSFTPClient: SSHSFTPClient?
+    private var idleStagingSFTPTask: Task<Void, Never>?
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
         [AttachmentStagingPhaseForTesting: @Sendable () async -> Void] = [:]
@@ -417,11 +500,14 @@ actor HeelerSSHTransport: Transport {
     /// connections hold (ADR 0058).
     static func connect(settings: SSHTransportSettings) async throws -> HeelerSSHTransport {
         guard let lease = settings.routeLease, settings.routes.count > 1 else {
-            return try await dial(settings, following: nil).connection
+            return try await dial(settings, following: nil, preferredRoute: nil).connection
         }
+        let preferredRoute = await lease.leases.lastWinningRoute(for: lease.host)
         return try await lease.leases.connect(
             to: lease.host,
-            dial: { leased in try await dial(settings, following: leased) },
+            dial: { leased in
+                try await dial(settings, following: leased, preferredRoute: preferredRoute)
+            },
             isAlive: { await $0.isConnected },
             close: { try? await $0.close() })
     }
@@ -430,7 +516,7 @@ actor HeelerSSHTransport: Transport {
     /// `leased` alone when the Host's connections hold a route, otherwise
     /// whichever wins the race.
     private static func dial(
-        _ settings: SSHTransportSettings, following leased: Int?
+        _ settings: SSHTransportSettings, following leased: Int?, preferredRoute: Int?
     ) async throws -> (connection: HeelerSSHTransport, route: Int) {
         let gate = HostKeyVerificationGate()
         let connection: SSHConnection
@@ -442,7 +528,8 @@ actor HeelerSSHTransport: Transport {
             connection = try await follow(leased, settings: settings, gate: gate)
             index = leased
         } else {
-            let won = try await race(settings: settings, gate: gate)
+            let won = try await race(
+                settings: settings, preferredRoute: preferredRoute, gate: gate)
             connection = won.connection
             index = won.index
         }
@@ -516,14 +603,16 @@ actor HeelerSSHTransport: Transport {
 
     /// The winning route's index in `settings.routes` and its connection.
     private static func race(
-        settings: SSHTransportSettings, gate: HostKeyVerificationGate
+        settings: SSHTransportSettings, preferredRoute: Int?, gate: HostKeyVerificationGate
     ) async throws -> (index: Int, connection: SSHConnection) {
         let routes = settings.routes
         let hasDirectRoute = routes.contains(where: \.isDirect)
         do {
             let won = try await RouteRace.first(
                 count: routes.count,
-                isDeferred: { hasDirectRoute && !routes[$0].isDirect },
+                isDeferred: { index in
+                    hasDirectRoute && !routes[index].isDirect && index != preferredRoute
+                },
                 stagger: routeRaceStagger,
                 attempt: { index in
                     try await reach(routes[index], settings: settings, gate: gate)
@@ -2301,12 +2390,56 @@ actor HeelerSSHTransport: Transport {
 
         await progress(
             AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
-        let parentDirectory = try await createStageParentDirectory()
+        let usesDefaultParentCommand =
+            stageDirectoryCommand == SSHTransportSettings.defaultStageDirectoryCommand
+        let hasRemoteParentHold: Bool
+#if DEBUG
+        hasRemoteParentHold = stagingPhaseHoldsForTesting[.remoteParentReady] != nil
+#else
+        hasRemoteParentHold = false
+#endif
+        let parentDirectory: String
+        let parentAlreadyVerified: Bool
+        var preopenedSFTP: SSHSFTPClient? = takeIdleStagingSFTPClient()
+        if usesDefaultParentCommand, let cached = cachedStageParentDirectory {
+            parentDirectory = cached
+            parentAlreadyVerified = true
+        } else if preopenedSFTP == nil, !hasRemoteParentHold {
+            // Overlap the parent-directory `mktemp` exec with opening the
+            // dedicated staging SFTP channel (saving ~3 RTT on first upload).
+            async let parentTask = createStageParentDirectory()
+            async let sftpTask: Result<SSHSFTPClient, any Error> = {
+                do { return .success(try await self.openSFTP(askingAgain: true)) }
+                catch { return .failure(error) }
+            }()
+            do {
+                parentDirectory = try await parentTask
+            } catch {
+                if case .success(let opened) = await sftpTask {
+                    returnIdleStagingSFTPClient(opened)
+                }
+                throw error
+            }
+            if case .success(let opened) = await sftpTask {
+                preopenedSFTP = opened
+            } else if case .failure(let sftpError) = await sftpTask {
+                if Task.isCancelled { throw AttachmentStagingError.cancelled }
+                if sftpError as? SSHError == .sftpUnavailable {
+                    throw AttachmentStagingError.sftpUnavailable
+                }
+                throw AttachmentStagingError.transferFailed
+            }
+            parentAlreadyVerified = false
+        } else {
+            parentDirectory = try await createStageParentDirectory()
+            parentAlreadyVerified = false
+        }
 #if DEBUG
         await signalStagingPhaseForTesting(.remoteParentReady)
 #endif
         let operationID = UUID()
 
+        let sftpToUse = preopenedSFTP
         do {
             // No cancellation handler. One used to race the staging task from
             // `onCancel:`, closing the SFTP client out from under it so the
@@ -2320,6 +2453,9 @@ actor HeelerSSHTransport: Transport {
                 try await self.performStage(
                     source,
                     parentDirectory: parentDirectory,
+                    parentAlreadyVerified: parentAlreadyVerified,
+                    cacheParentOnSuccess: usesDefaultParentCommand,
+                    preopenedSFTP: sftpToUse,
                     operationID: operationID,
                     progress: progress)
             }
@@ -2360,34 +2496,93 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    private func takeIdleStagingSFTPClient() -> SSHSFTPClient? {
+        idleStagingSFTPTask?.cancel()
+        idleStagingSFTPTask = nil
+        let client = idleStagingSFTPClient
+        idleStagingSFTPClient = nil
+        return client
+    }
+
+    private func returnIdleStagingSFTPClient(_ client: SSHSFTPClient) {
+        guard connected, idleStagingSFTPClient == nil else {
+            Task { try? await client.close(timeout: .seconds(2)) }
+            return
+        }
+        idleStagingSFTPClient = client
+        idleStagingSFTPTask?.cancel()
+        idleStagingSFTPTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch { return }
+            await self?.retireIdleStagingSFTPClient()
+        }
+    }
+
+    private func retireIdleStagingSFTPClient() async {
+        idleStagingSFTPTask = nil
+        guard let client = idleStagingSFTPClient else { return }
+        idleStagingSFTPClient = nil
+        try? await client.close(timeout: .seconds(2))
+    }
+
     private func performStage(
         _ source: StagingSource,
         parentDirectory: String,
+        parentAlreadyVerified: Bool,
+        cacheParentOnSuccess: Bool,
+        preopenedSFTP: SSHSFTPClient?,
         operationID: UUID,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
         let sftp: SSHSFTPClient
-        do {
-            sftp = try await openSFTP(askingAgain: true)
-        } catch SSHError.sftpUnavailable {
-            throw AttachmentStagingError.sftpUnavailable
-        } catch {
-            if Task.isCancelled { throw AttachmentStagingError.cancelled }
-            throw AttachmentStagingError.transferFailed
+        if let preopenedSFTP {
+            sftp = preopenedSFTP
+        } else {
+            do {
+                sftp = try await openSFTP(askingAgain: true)
+            } catch SSHError.sftpUnavailable {
+                throw AttachmentStagingError.sftpUnavailable
+            } catch {
+                if Task.isCancelled { throw AttachmentStagingError.cancelled }
+                throw AttachmentStagingError.transferFailed
+            }
         }
         imageStageClients[operationID] = sftp
 
-        let stageID = UUID().uuidString.lowercased()
-        let remoteDirectory = "\(parentDirectory)/stage-\(stageID)"
-        let finalPath = "\(remoteDirectory)/\(source.remoteFilename)"
+        var resolvedParent = parentDirectory
+        var stageID = UUID().uuidString.lowercased()
+        var remoteDirectory = "\(resolvedParent)/stage-\(stageID)"
+        var finalPath = "\(remoteDirectory)/\(source.remoteFilename)"
         var partPath: String? = "\(finalPath).part"
 
         do {
-            try await enforcePermissions(0o700, at: parentDirectory, over: sftp)
-            try await sftp.createDirectory(
-                at: remoteDirectory,
-                permissions: 0o700,
-                timeout: requestTimeout)
+            if !parentAlreadyVerified {
+                try await enforcePermissions(0o700, at: resolvedParent, over: sftp)
+            }
+            do {
+                try await sftp.createDirectory(
+                    at: remoteDirectory,
+                    permissions: 0o700,
+                    timeout: requestTimeout)
+            } catch where parentAlreadyVerified {
+                // The cached temporary directory may have been purged on the
+                // Host; recreate it once and retry creating the stage folder.
+                cachedStageParentDirectory = nil
+                resolvedParent = try await createStageParentDirectory()
+                stageID = UUID().uuidString.lowercased()
+                remoteDirectory = "\(resolvedParent)/stage-\(stageID)"
+                finalPath = "\(remoteDirectory)/\(source.remoteFilename)"
+                partPath = "\(finalPath).part"
+                try await enforcePermissions(0o700, at: resolvedParent, over: sftp)
+                try await sftp.createDirectory(
+                    at: remoteDirectory,
+                    permissions: 0o700,
+                    timeout: requestTimeout)
+            }
+            if cacheParentOnSuccess {
+                cachedStageParentDirectory = resolvedParent
+            }
             try await enforcePermissions(0o700, at: remoteDirectory, over: sftp)
 
             guard let currentPartPath = partPath else {
@@ -2415,18 +2610,8 @@ actor HeelerSSHTransport: Transport {
                 to: finalPath,
                 timeout: requestTimeout)
             partPath = nil
-
-            let finalAttributes = try await sftp.attributes(
-                at: finalPath,
-                timeout: requestTimeout)
-            guard finalAttributes.size == UInt64(source.byteCount) else {
-                throw AttachmentStagingError.byteCountMismatch
-            }
-            guard finalAttributes.permissions == 0o600 else {
-                throw AttachmentStagingError.permissionEnforcementFailed
-            }
             imageStageClients[operationID] = nil
-            try await sftp.close(timeout: requestTimeout)
+            returnIdleStagingSFTPClient(sftp)
             return finalPath
         } catch {
             imageStageClients[operationID] = nil
@@ -2450,6 +2635,10 @@ actor HeelerSSHTransport: Transport {
         at path: String,
         over sftp: SSHSFTPClient
     ) async throws {
+        // Check current mode first so already-private directories and files
+        // created under `umask 077` / `0o600` skip a redundant `SETSTAT` RTT.
+        let initial = try await sftp.attributes(at: path, timeout: requestTimeout)
+        if initial.permissions == permissions { return }
         try await sftp.setPermissions(permissions, at: path, timeout: requestTimeout)
         let attributes = try await sftp.attributes(at: path, timeout: requestTimeout)
         guard attributes.permissions == permissions else {
@@ -2481,11 +2670,12 @@ actor HeelerSSHTransport: Transport {
 #if DEBUG
             await signalStagingPhaseForTesting(.payloadWriteReady)
 #endif
-            let chunkSize = 512 * 1_024
-            var transferred: Int64 = 0
-            while transferred < byteCount {
+            let chunkSize = 1_024 * 1_024
+            let transferred = Atomic<Int64>(0)
+            while transferred.load(ordering: .relaxed) < byteCount {
                 try Task.checkCancellation()
-                let remaining = byteCount - transferred
+                let current = transferred.load(ordering: .relaxed)
+                let remaining = byteCount - current
                 let requested = min(chunkSize, Int(remaining))
                 guard
                     let data = try localFile.read(upToCount: requested),
@@ -2493,11 +2683,12 @@ actor HeelerSSHTransport: Transport {
                 else {
                     throw AttachmentStagingError.byteCountMismatch
                 }
-                try await remoteFile.write(data, timeout: requestTimeout)
-                transferred += Int64(data.count)
-                await progress(AttachmentStageProgress(
-                    transferredBytes: transferred,
-                    totalBytes: byteCount))
+                try await remoteFile.write(data, timeout: requestTimeout) { written in
+                    let total = transferred.add(Int64(written), ordering: .relaxed).newValue
+                    await progress(AttachmentStageProgress(
+                        transferredBytes: total,
+                        totalBytes: byteCount))
+                }
             }
             guard try localFile.read(upToCount: 1)?.isEmpty != false else {
                 throw AttachmentStagingError.byteCountMismatch
@@ -2551,6 +2742,10 @@ actor HeelerSSHTransport: Transport {
     func close() async throws {
         guard connected else { return }
         connected = false
+        cachedStageParentDirectory = nil
+        if let idleStaging = takeIdleStagingSFTPClient() {
+            try? await idleStaging.close(timeout: .seconds(2))
+        }
         if PerfTrace.isEnabled {
             let m = await connection.metrics()
             let waitMs = Double(m.operationMutexWaitNanoseconds) / 1_000_000
@@ -3873,10 +4068,12 @@ actor HeelerSSHTransport: Transport {
                 }
                 do {
                     while !Task.isCancelled {
+                        await output.waitForBufferRoom()
+                        guard !Task.isCancelled else { break }
                         let bytes: Data?
                         do {
                             bytes = try await channel.read(
-                                maximumBytes: 16 * 1024,
+                                maximumBytes: 32 * 1024,
                                 timeout: .seconds(1))
                         } catch SSHError.timedOut {
                             continue

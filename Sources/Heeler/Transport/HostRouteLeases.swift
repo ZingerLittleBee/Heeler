@@ -38,6 +38,9 @@ actor HostRouteLeases {
     }
 
     private var leases: [HostMachine.Connection: Lease] = [:]
+    /// Last route that reached each Host, remembered across drops so a
+    /// reconnect does not pay the full deferred stagger before trying it again.
+    private var lastWinningRoutes: [HostMachine.Connection: Int] = [:]
     private let now: @Sendable () -> ContinuousClock.Instant
 
     init(now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now }) {
@@ -51,6 +54,12 @@ actor HostRouteLeases {
         return leases[host]?.route
     }
 
+    /// The route that most recently connected to `host`, or nil when none is
+    /// remembered (or `release` cleared it for a fresh race).
+    func lastWinningRoute(for host: HostMachine.Connection) -> Int? {
+        lastWinningRoutes[host]
+    }
+
     /// Records a connection that reached `route`, held for as long as
     /// `isAlive` says. Returns the Host's route: `route` when the connection
     /// now holds it, another when the Host settled there first and this
@@ -59,8 +68,12 @@ actor HostRouteLeases {
         _ route: Int, for host: HostMachine.Connection, while isAlive: @escaping Liveness
     ) async -> Int {
         await prune(host)
-        if let lease = leases[host], lease.route != route { return lease.route }
+        if let lease = leases[host], lease.route != route {
+            lastWinningRoutes[host] = lease.route
+            return lease.route
+        }
         leases[host, default: Lease(route: route)].holders[UUID()] = isAlive
+        lastWinningRoutes[host] = route
         return route
     }
 
@@ -68,11 +81,13 @@ actor HostRouteLeases {
     /// on the route it leaves, so they hold nothing until they redial.
     func move(_ host: HostMachine.Connection, to route: Int) {
         leases[host] = Lease(route: route, standsUntil: now().advanced(by: Self.moveGrace))
+        lastWinningRoutes[host] = route
     }
 
     /// Forgets the Host's route, so that its next dial races.
     func release(_ host: HostMachine.Connection) {
         leases[host] = nil
+        lastWinningRoutes[host] = nil
     }
 
     /// Dials the Host on its route. `dial` takes the route to follow, or nil
