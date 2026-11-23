@@ -82,9 +82,13 @@ final class HostRouteUpgrader {
         guard await leases.route(for: machine.id) == held else { return }
         Self.log.notice("Moving a Host to a direct route that came into reach")
         await leases.move(machine.id, to: faster)
-        // A Server that is dialing already follows the Host's route there.
-        for server in machine.servers where isConnected(server.id) {
-            await redial(server.id)
+        // A Server that is dialing already follows the Host's route there;
+        // redial connected Servers concurrently so multi-server Hosts move at once.
+        let serverIDs = machine.servers.map(\.id).filter(isConnected)
+        await withTaskGroup(of: Void.self) { group in
+            for serverID in serverIDs {
+                group.addTask { await self.redial(serverID) }
+            }
         }
     }
 }

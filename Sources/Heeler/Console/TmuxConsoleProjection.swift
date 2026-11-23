@@ -150,6 +150,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    func handleNetworkPathChange() async {
+        switch status {
+        case .connected:
+            await session.revalidate(timeout: TmuxHostSession.networkChangeProbeTimeout)
+        case .reconnecting:
+            beginNewActivation()
+            await session.retry()
+        default:
+            break
+        }
+    }
+
     func suspend() async {
         await session.suspend()
     }

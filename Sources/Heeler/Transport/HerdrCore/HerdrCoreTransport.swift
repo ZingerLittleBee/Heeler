@@ -119,9 +119,16 @@ protocol HerdrCoreTransport: HostHelperConnection {
 
     /// Closes the link, then the connection.
     func close() async throws
+
+    /// Tears down an unresponsive or superseded connection without waiting
+    /// for graceful protocol shutdown over a dead link.
+    func abandon() async
 }
 
 extension HerdrCoreTransport {
+    func abandon() async {
+        try? await close()
+    }
     func lastKernel() async -> String? {
         await lastLocation()?.kernel
     }
@@ -292,6 +299,14 @@ protocol HerdrCoreHostConnection: HostServices, HostHelperHost {
     func openCoreCallExec(command: String) async throws -> any WindowsTerminalExecChannel
 
     func close() async throws
+
+    func abandon() async
+}
+
+extension HerdrCoreHostConnection {
+    func abandon() async {
+        try? await close()
+    }
 }
 
 /// The framed transport: one locator exec, then one link to the core it found,
@@ -659,6 +674,14 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         if let opened = try? await opening?.value { await opened.link.close() }
         for link in callLinks { await link.close() }
         try await connection.close()
+    }
+
+    func abandon() async {
+        let opening = opening
+        self.opening = nil
+        opening?.cancel()
+        callLinks.removeAll()
+        await connection.abandon()
     }
 
     private func onLink<Value: Sendable>(

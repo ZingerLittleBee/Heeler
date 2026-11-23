@@ -649,6 +649,16 @@ public final class SSHConnection: Sendable {
         if let firstError { throw firstError }
     }
 
+    /// Immediately invalidates the session and underlying transport without
+    /// waiting for in-flight operations or an SSH disconnect round trip.
+    public func abort() async {
+        await driver.invalidate()
+        byteTransport?.abort()
+        if let parent {
+            await parent.abort()
+        }
+    }
+
     deinit {
         let driver = driver
         let byteTransport = byteTransport

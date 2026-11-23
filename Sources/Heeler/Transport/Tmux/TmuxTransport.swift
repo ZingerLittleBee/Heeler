@@ -80,6 +80,16 @@ protocol TmuxTransport: HostHelperConnection {
 
     /// Closes the connection.
     func close() async throws
+
+    /// Tears down an unresponsive or superseded connection without waiting
+    /// for graceful protocol shutdown over a dead link.
+    func abandon() async
+}
+
+extension TmuxTransport {
+    func abandon() async {
+        try? await close()
+    }
 }
 
 /// The parts of an SSH connection a tmux transport uses. Real SSH is
@@ -112,6 +122,14 @@ protocol TmuxHostConnection: HostServices, HostHelperHost {
     func openTmuxControlClient(_ script: Data) async throws -> any WindowsTerminalExecChannel
 
     func close() async throws
+
+    func abandon() async
+}
+
+extension TmuxHostConnection {
+    func abandon() async {
+        try? await close()
+    }
 }
 
 /// tmux over SSH exec: its command-line client and nothing else (ADR 0044).
@@ -370,5 +388,11 @@ actor TmuxSSHTransport: TmuxTransport {
         guard !closed else { return }
         closed = true
         try await connection.close()
+    }
+
+    func abandon() async {
+        guard !closed else { return }
+        closed = true
+        await connection.abandon()
     }
 }

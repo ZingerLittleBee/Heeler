@@ -603,7 +603,7 @@ actor HeelerSSHTransport: Transport {
                 try? await connection.close(timeout: .seconds(2))
             })
         guard let won else { return nil }
-        try? await won.value.close(timeout: .seconds(2))
+        Task { try? await won.value.close(timeout: .seconds(2)) }
         return candidates[won.index]
     }
 
@@ -2828,6 +2828,28 @@ actor HeelerSSHTransport: Transport {
         } catch {
             throw await mapOperationError(error)
         }
+    }
+
+    func abandon() async {
+        guard connected else { return }
+        connected = false
+        cachedStageParentDirectory = nil
+        if let idleStaging = takeIdleStagingSFTPClient() {
+            await idleStaging.lease.release()
+        }
+        let stagingClients = Array(imageStageClients.values)
+        imageStageClients.removeAll()
+        notificationFileClients.removeAll()
+        sessionFileClientIdleRelease?.cancel()
+        sessionFileClientIdleRelease = nil
+        sessionFileClient = nil
+        let fileReaderLease = sessionFileClientLease
+        sessionFileClientLease = nil
+        for staging in stagingClients {
+            await staging.lease.release()
+        }
+        await fileReaderLease?.release()
+        await connection.abort()
     }
 
     private func request<R: Decodable & Sendable>(

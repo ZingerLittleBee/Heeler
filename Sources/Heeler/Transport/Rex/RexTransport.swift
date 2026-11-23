@@ -56,9 +56,17 @@ protocol RexTransport: Sendable {
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
+
+    /// Tears down an unresponsive or superseded connection without waiting
+    /// for graceful protocol shutdown over a dead link.
+    func abandon() async
 }
 
 extension RexTransport {
+    func abandon() async {
+        await close()
+    }
+
     /// Replaces the control link, resuming its client.
     func reconnectControl() async throws -> RexControlLink {
         try await reconnectControl(resuming: true)
@@ -147,6 +155,14 @@ protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads, RexHost
 
     /// Runs a `RexSocketCheck` script in one bounded exec.
     func runRexSocketCheck(_ script: Data) async throws -> GitExecResult
+
+    func abandon() async
+}
+
+extension RexHostConnection {
+    func abandon() async {
+        try? await close()
+    }
 }
 
 /// A Rex Host over SSH: direct-streamlocal channels to the server's socket.
@@ -265,6 +281,11 @@ actor RexSSHTransport: RexTransport {
     func close() async {
         await control.close()
         try? await connection.close()
+    }
+
+    func abandon() async {
+        await control.disconnect()
+        await connection.abandon()
     }
 
     // MARK: Connecting

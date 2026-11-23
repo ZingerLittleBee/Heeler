@@ -64,6 +64,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func start(isActive: Bool)
     func resume() async
     func revalidate() async
+    /// Reacts to an OS network path change: probes a live link with a short
+    /// deadline, or wakes a `.reconnecting` session out of backoff immediately.
+    func handleNetworkPathChange() async
     func suspend() async
     func pauseHealthChecks() async
     func retry() async
@@ -331,6 +334,10 @@ extension ConsoleHostProjection {
     func dropChatPick(paneID _: String, scope _: String?, program _: ChatProgram) {}
 
     func settleChatPick(paneID _: String, program _: ChatProgram) {}
+
+    func handleNetworkPathChange() async {
+        await revalidate()
+    }
 
     func claudePermissionLaunch(paneID _: String) async throws -> ClaudePermissionMode.Launch? { nil }
 }

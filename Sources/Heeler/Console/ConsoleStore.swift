@@ -558,16 +558,24 @@ final class ConsoleStore {
     }
 
     /// The device's network changed while the app is in front. Every live
-    /// connection is asked whether it survived, as on a foreground return:
-    /// one that did not would otherwise go on holding its Host's route until
-    /// its keepalive noticed (ADR 0058). Stopped Hosts are left alone.
+    /// connection is probed with a short deadline so dead links release their
+    /// Host's route promptly, and every `.reconnecting` Host wakes out of
+    /// backoff immediately on the new path (ADR 0058). Stopped/failed Hosts
+    /// are left alone.
     func networkPathDidChange() async {
         await enqueueLifecycleTransition { [self] in
             guard isActive else { return }
-            let live = projections.values.filter { $0.status == .connected }
+            let active = projections.values.filter { projection in
+                switch projection.status {
+                case .connected, .reconnecting:
+                    return true
+                case .connecting, .failed, .suspended, .ended, nil:
+                    return false
+                }
+            }
             await withTaskGroup(of: Void.self) { group in
-                for projection in live {
-                    group.addTask { await projection.revalidate() }
+                for projection in active {
+                    group.addTask { await projection.handleNetworkPathChange() }
                 }
             }
         }

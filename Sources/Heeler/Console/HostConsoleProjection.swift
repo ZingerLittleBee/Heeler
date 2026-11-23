@@ -203,6 +203,18 @@ final class HostConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    func handleNetworkPathChange() async {
+        switch status {
+        case .connected:
+            await session.startRevalidation(timeout: EventsSession.networkChangeProbeTimeout)
+        case .reconnecting:
+            beginNewActivation()
+            await session.retry()
+        default:
+            break
+        }
+    }
+
     func suspend() async {
         await session.suspend()
     }

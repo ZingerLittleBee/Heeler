@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Socket candidate fallback", .serialized)
 struct SocketConnectorTests {
-    @Test("a timed-out candidate leaves budget for the next address")
+    @Test("a timed-out candidate falls back to the next address within the overall deadline")
     func timedOutCandidateFallsBackWithinOverallDeadline() async throws {
         let start = ContinuousClock.now
         let deadline = start + .seconds(12)
@@ -21,14 +21,35 @@ struct SocketConnectorTests {
             operations: fixture.operations)
 
         #expect(descriptor == 101)
-        #expect(fixture.snapshot == ScriptedSocketFixture.Snapshot(
-            openedFamilies: [AF_INET6, AF_INET],
-            waitDeadlines: [start + .seconds(6), deadline],
-            closedDescriptors: [100]))
+        #expect(fixture.snapshot.openedFamilies == [AF_INET6, AF_INET])
+        #expect(fixture.snapshot.waitDeadlines == [deadline, deadline])
+        #expect(fixture.snapshot.closedDescriptors == [100])
         #expect(fixture.snapshot.waitDeadlines.allSatisfy { $0 <= deadline })
     }
 
-    @Test("exhausting every candidate preserves the last connection failure")
+    @Test("a blackholed first address falls back after Happy Eyeballs stagger without waiting for deadline")
+    func blackholedCandidateFallsBackAfterStagger() async throws {
+        let start = ContinuousClock.now
+        let deadline = start + .seconds(12)
+        let fixture = ScriptedSocketFixture(
+            now: start,
+            outcomes: [.waitForCancellation, .connected],
+            cancellationWait: CancellationWait())
+
+        let descriptor = try await SocketConnector.connect(
+            to: SSHEndpoint(host: "example.test", port: 22),
+            until: deadline,
+            resolver: FixedSocketAddressResolver.twoCandidates,
+            operations: fixture.operations,
+            stagger: .milliseconds(30))
+
+        #expect(descriptor == 101)
+        #expect(start.duration(to: .now) < .seconds(2))
+        try await waitUntilClosed(fixture, descriptor: 100)
+        #expect(fixture.snapshot.openedFamilies == [AF_INET6, AF_INET])
+    }
+
+    @Test("exhausting every candidate preserves the last connection failure without waiting for stagger")
     func allCandidatesExhausted() async {
         let start = ContinuousClock.now
         let deadline = start + .seconds(12)
@@ -41,18 +62,19 @@ struct SocketConnectorTests {
                 to: SSHEndpoint(host: "example.test", port: 22),
                 until: deadline,
                 resolver: FixedSocketAddressResolver.twoCandidates,
-                operations: fixture.operations)
+                operations: fixture.operations,
+                stagger: .seconds(5))
         }
 
-        #expect(fixture.snapshot == ScriptedSocketFixture.Snapshot(
-            openedFamilies: [AF_INET6, AF_INET],
-            waitDeadlines: [start + .seconds(6), deadline],
-            closedDescriptors: [100, 101]))
+        #expect(start.duration(to: .now) < .seconds(2))
+        #expect(fixture.snapshot.openedFamilies == [AF_INET6, AF_INET])
+        #expect(fixture.snapshot.waitDeadlines == [deadline, deadline])
+        #expect(Set(fixture.snapshot.closedDescriptors) == [100, 101])
         #expect(fixture.snapshot.waitDeadlines.allSatisfy { $0 <= deadline })
     }
 
     @Test("caller cancellation stops the active candidate immediately")
-    func cancellationStopsWithoutTryingAnotherCandidate() async {
+    func cancellationStopsWithoutTryingAnotherCandidate() async throws {
         let cancellationWait = CancellationWait()
         let fixture = ScriptedSocketFixture(
             now: ContinuousClock.now,
@@ -63,7 +85,8 @@ struct SocketConnectorTests {
                 to: SSHEndpoint(host: "example.test", port: 22),
                 until: ContinuousClock.now + .seconds(30),
                 resolver: FixedSocketAddressResolver.twoCandidates,
-                operations: fixture.operations)
+                operations: fixture.operations,
+                stagger: .seconds(5))
         }
         await cancellationWait.waitUntilEntered()
 
@@ -72,8 +95,20 @@ struct SocketConnectorTests {
         await #expect(throws: SSHError.cancelled) {
             _ = try await task.value
         }
+        try await waitUntilClosed(fixture, descriptor: 100)
         #expect(fixture.snapshot.openedFamilies == [AF_INET6])
         #expect(fixture.snapshot.closedDescriptors == [100])
+    }
+
+    private func waitUntilClosed(
+        _ fixture: ScriptedSocketFixture, descriptor: Int32
+    ) async throws {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
+            if fixture.snapshot.closedDescriptors.contains(descriptor) { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("Expected descriptor \(descriptor) to close")
     }
 }
 
