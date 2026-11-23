@@ -188,8 +188,12 @@ struct ImageStagingE2ETests {
             transferredBytes: prepared.bytes.count,
             totalBytes: prepared.bytes.count))
         #expect(values.map(\.transferredBytes) == values.map(\.transferredBytes).sorted())
+        // The warm reusable staging SFTP client holds its ordinarySession
+        // admission lease until retired or the transport closes.
+        #expect(await transport.ordinarySessionChannelCountForTesting() == 1)
 
         try await transport.close()
+        #expect(await transport.ordinarySessionChannelCountForTesting() == 0)
     }
 
     private func exerciseConcurrentChannels(settings: SSHTransportSettings) async throws {

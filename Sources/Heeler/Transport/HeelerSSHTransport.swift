@@ -446,7 +446,12 @@ actor HeelerSSHTransport: Transport {
 
     private var terminalChannelStates: [TerminalAttachTarget: TerminalChannelState] = [:]
     private var nextTerminalReaderID: UInt64 = 0
-    private var imageStageClients: [UUID: SSHSFTPClient] = [:]
+    private struct AdmittedStagingSFTPClient {
+        let client: SSHSFTPClient
+        let lease: SSHChannelAdmissionLease
+    }
+
+    private var imageStageClients: [UUID: AdmittedStagingSFTPClient] = [:]
     private var notificationFileClients: [UUID: SSHSFTPClient] = [:]
     /// One SFTP channel held for ranged Host-file reads (#325). Sessions are
     /// followed, not staged, so this one outlives any single request — and so
@@ -473,9 +478,10 @@ actor HeelerSSHTransport: Transport {
     /// when `stageDirectoryCommand` uses the default command.
     private var cachedStageParentDirectory: String?
     /// Reusable dedicated SFTP client for attachment staging (separate from
-    /// Chat's `sessionFileClient`), retired after an idle grace window or on
-    /// error/cancellation/close so back-to-back uploads skip SFTP open/close RTTs.
-    private var idleStagingSFTPClient: SSHSFTPClient?
+    /// Chat's `sessionFileClient`), holding its `.ordinarySession` admission
+    /// lease until retired after an idle grace window or on error/close so
+    /// back-to-back uploads skip SFTP open/close RTTs within the channel budget.
+    private var idleStagingSFTPClient: AdmittedStagingSFTPClient?
     private var idleStagingSFTPTask: Task<Void, Never>?
 #if DEBUG
     private var stagingPhaseHoldsForTesting:
@@ -2400,16 +2406,17 @@ actor HeelerSSHTransport: Transport {
 #endif
         let parentDirectory: String
         let parentAlreadyVerified: Bool
-        var preopenedSFTP: SSHSFTPClient? = takeIdleStagingSFTPClient()
+        var preopenedSFTP: AdmittedStagingSFTPClient? = takeIdleStagingSFTPClient()
         if usesDefaultParentCommand, let cached = cachedStageParentDirectory {
             parentDirectory = cached
             parentAlreadyVerified = true
         } else if preopenedSFTP == nil, !hasRemoteParentHold {
             // Overlap the parent-directory `mktemp` exec with opening the
-            // dedicated staging SFTP channel (saving ~3 RTT on first upload).
+            // dedicated staging SFTP channel (saving ~3 RTT on first upload),
+            // acquiring its `.ordinarySession` lease before `openSFTP`.
             async let parentTask = createStageParentDirectory()
-            async let sftpTask: Result<SSHSFTPClient, any Error> = {
-                do { return .success(try await self.openSFTP(askingAgain: true)) }
+            async let sftpTask: Result<AdmittedStagingSFTPClient, any Error> = {
+                do { return .success(try await self.openAdmittedStagingSFTPClient()) }
                 catch { return .failure(error) }
             }()
             do {
@@ -2423,7 +2430,12 @@ actor HeelerSSHTransport: Transport {
             if case .success(let opened) = await sftpTask {
                 preopenedSFTP = opened
             } else if case .failure(let sftpError) = await sftpTask {
-                if Task.isCancelled { throw AttachmentStagingError.cancelled }
+                if Task.isCancelled || sftpError is CancellationError {
+                    throw AttachmentStagingError.cancelled
+                }
+                if let stagingError = sftpError as? AttachmentStagingError {
+                    throw stagingError
+                }
                 if sftpError as? SSHError == .sftpUnavailable {
                     throw AttachmentStagingError.sftpUnavailable
                 }
@@ -2431,7 +2443,14 @@ actor HeelerSSHTransport: Transport {
             }
             parentAlreadyVerified = false
         } else {
-            parentDirectory = try await createStageParentDirectory()
+            do {
+                parentDirectory = try await createStageParentDirectory()
+            } catch {
+                if let preopenedSFTP {
+                    returnIdleStagingSFTPClient(preopenedSFTP)
+                }
+                throw error
+            }
             parentAlreadyVerified = false
         }
 #if DEBUG
@@ -2448,17 +2467,17 @@ actor HeelerSSHTransport: Transport {
             // (#136). Cancellation reaches the blocked write on its own:
             // `checkProgress` and the socket wait the driver parks in are both
             // cancellable, so the write unwinds and the structured compensation
-            // below runs with the client it already owns.
-            return try await channelAdmission.withChannel(.ordinarySession) {
-                try await self.performStage(
-                    source,
-                    parentDirectory: parentDirectory,
-                    parentAlreadyVerified: parentAlreadyVerified,
-                    cacheParentOnSuccess: usesDefaultParentCommand,
-                    preopenedSFTP: sftpToUse,
-                    operationID: operationID,
-                    progress: progress)
-            }
+            // below runs with the client it already owns. Admission is held by
+            // `AdmittedStagingSFTPClient` for the entire lifetime of its SFTP
+            // channel, including idle reuse.
+            return try await self.performStage(
+                source,
+                parentDirectory: parentDirectory,
+                parentAlreadyVerified: parentAlreadyVerified,
+                cacheParentOnSuccess: usesDefaultParentCommand,
+                preopenedSFTP: sftpToUse,
+                operationID: operationID,
+                progress: progress)
         } catch let error as AttachmentStagingError {
             throw error
         } catch is CancellationError {
@@ -2496,20 +2515,40 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
-    private func takeIdleStagingSFTPClient() -> SSHSFTPClient? {
-        idleStagingSFTPTask?.cancel()
-        idleStagingSFTPTask = nil
-        let client = idleStagingSFTPClient
-        idleStagingSFTPClient = nil
-        return client
+    private func openAdmittedStagingSFTPClient() async throws -> AdmittedStagingSFTPClient {
+        let lease = try await channelAdmission.acquire(.ordinarySession)
+        let client: SSHSFTPClient
+        do {
+            client = try await openSFTP(askingAgain: true)
+        } catch {
+            await lease.release()
+            throw error
+        }
+        guard connected else {
+            try? await client.close(timeout: .seconds(2))
+            await lease.release()
+            throw AttachmentStagingError.transferFailed
+        }
+        return AdmittedStagingSFTPClient(client: client, lease: lease)
     }
 
-    private func returnIdleStagingSFTPClient(_ client: SSHSFTPClient) {
+    private func takeIdleStagingSFTPClient() -> AdmittedStagingSFTPClient? {
+        idleStagingSFTPTask?.cancel()
+        idleStagingSFTPTask = nil
+        let admitted = idleStagingSFTPClient
+        idleStagingSFTPClient = nil
+        return admitted
+    }
+
+    private func returnIdleStagingSFTPClient(_ admitted: AdmittedStagingSFTPClient) {
         guard connected, idleStagingSFTPClient == nil else {
-            Task { try? await client.close(timeout: .seconds(2)) }
+            Task {
+                try? await admitted.client.close(timeout: .seconds(2))
+                await admitted.lease.release()
+            }
             return
         }
-        idleStagingSFTPClient = client
+        idleStagingSFTPClient = admitted
         idleStagingSFTPTask?.cancel()
         idleStagingSFTPTask = Task { [weak self] in
             do {
@@ -2521,9 +2560,10 @@ actor HeelerSSHTransport: Transport {
 
     private func retireIdleStagingSFTPClient() async {
         idleStagingSFTPTask = nil
-        guard let client = idleStagingSFTPClient else { return }
+        guard let admitted = idleStagingSFTPClient else { return }
         idleStagingSFTPClient = nil
-        try? await client.close(timeout: .seconds(2))
+        try? await admitted.client.close(timeout: .seconds(2))
+        await admitted.lease.release()
     }
 
     private func performStage(
@@ -2531,16 +2571,20 @@ actor HeelerSSHTransport: Transport {
         parentDirectory: String,
         parentAlreadyVerified: Bool,
         cacheParentOnSuccess: Bool,
-        preopenedSFTP: SSHSFTPClient?,
+        preopenedSFTP: AdmittedStagingSFTPClient?,
         operationID: UUID,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
-        let sftp: SSHSFTPClient
+        let admitted: AdmittedStagingSFTPClient
         if let preopenedSFTP {
-            sftp = preopenedSFTP
+            admitted = preopenedSFTP
         } else {
             do {
-                sftp = try await openSFTP(askingAgain: true)
+                admitted = try await openAdmittedStagingSFTPClient()
+            } catch let error as AttachmentStagingError {
+                throw error
+            } catch is CancellationError {
+                throw AttachmentStagingError.cancelled
             } catch SSHError.sftpUnavailable {
                 throw AttachmentStagingError.sftpUnavailable
             } catch {
@@ -2548,7 +2592,8 @@ actor HeelerSSHTransport: Transport {
                 throw AttachmentStagingError.transferFailed
             }
         }
-        imageStageClients[operationID] = sftp
+        let sftp = admitted.client
+        imageStageClients[operationID] = admitted
 
         var resolvedParent = parentDirectory
         var stageID = UUID().uuidString.lowercased()
@@ -2611,7 +2656,7 @@ actor HeelerSSHTransport: Transport {
                 timeout: requestTimeout)
             partPath = nil
             imageStageClients[operationID] = nil
-            returnIdleStagingSFTPClient(sftp)
+            returnIdleStagingSFTPClient(admitted)
             return finalPath
         } catch {
             imageStageClients[operationID] = nil
@@ -2619,6 +2664,7 @@ actor HeelerSSHTransport: Transport {
                 await bestEffortRemoveRemoteFile(at: partPath, over: sftp)
             }
             try? await sftp.close(timeout: .seconds(2))
+            await admitted.lease.release()
             if Task.isCancelled { throw AttachmentStagingError.cancelled }
             if let stagingError = error as? AttachmentStagingError {
                 throw stagingError
@@ -2744,7 +2790,8 @@ actor HeelerSSHTransport: Transport {
         connected = false
         cachedStageParentDirectory = nil
         if let idleStaging = takeIdleStagingSFTPClient() {
-            try? await idleStaging.close(timeout: .seconds(2))
+            try? await idleStaging.client.close(timeout: .seconds(2))
+            await idleStaging.lease.release()
         }
         if PerfTrace.isEnabled {
             let m = await connection.metrics()
@@ -2765,8 +2812,9 @@ actor HeelerSSHTransport: Transport {
         sessionFileClient = nil
         let fileReaderLease = sessionFileClientLease
         sessionFileClientLease = nil
-        for sftp in stagingClients {
-            try? await sftp.close(timeout: .seconds(2))
+        for staging in stagingClients {
+            try? await staging.client.close(timeout: .seconds(2))
+            await staging.lease.release()
         }
         for sftp in notificationClients {
             try? await sftp.close(timeout: .seconds(2))

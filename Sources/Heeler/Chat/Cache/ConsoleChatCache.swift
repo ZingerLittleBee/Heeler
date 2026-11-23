@@ -40,6 +40,8 @@ final class ConsoleChatCache {
         let kind: String
         let snapshot: AgentSessionInfo?
         let current: AgentSessionInfo?
+        let fresh: Agent
+        let conversationTitle: String?
     }
 
     init(cache: any ChatTranscriptCache) { self.cache = cache }
@@ -153,13 +155,23 @@ final class ConsoleChatCache {
         confirmed = confirmed.filter { $0.key.hostID != host.id || ids.contains($0.key) }
         let next = agents.compactMap { agent -> ChatCachedAgent? in
             guard AgentChatAvailability.mayOfferChat(for: agent.agent) else { return nil }
-            var entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
+            var entry: ChatCachedAgent
             if let known = confirmed[agent.id], known.snapshot == agent.agent.agentSession,
                 known.terminalID == agent.agent.terminalID, known.workspaceID == agent.agent.workspaceID,
                 known.tabID == agent.agent.tabID, known.kind == agent.agent.kind {
-                entry.agentSession = known.current
+                if known.current != agent.agent.agentSession {
+                    // Preserve the newer session's own titles rather than carrying
+                    // the superseded snapshot's conversation title onto it.
+                    var source = agent
+                    source.agent = known.fresh
+                    entry = ChatCachedAgent(source, conversationTitle: known.conversationTitle)
+                } else {
+                    entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
+                    entry.agentSession = known.current
+                }
             } else {
                 confirmed[agent.id] = nil
+                entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
             }
             if entry.agentSession == nil {
                 entry.agentSession = savedBinding(for: agent, on: host)
@@ -186,7 +198,8 @@ final class ConsoleChatCache {
         }
         confirmed[snapshot.id] = ConfirmedSession(
             terminalID: fresh.terminalID, workspaceID: fresh.workspaceID, tabID: fresh.tabID, kind: fresh.kind,
-            snapshot: snapshot.agent.agentSession, current: fresh.agentSession)
+            snapshot: snapshot.agent.agentSession, current: fresh.agentSession,
+            fresh: fresh, conversationTitle: conversationTitle)
         var source = snapshot
         source.agent = fresh
         var entry = ChatCachedAgent(source, conversationTitle: conversationTitle)

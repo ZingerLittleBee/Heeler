@@ -2282,7 +2282,7 @@ final class AgentChatStore {
             sessionConcern = nil
         }
         blocked.update(transcript: next.transcript)
-        if program == .agy, case .following(let path) = next.phase,
+        if program == .agy, !hasUnresolvedAgySession, case .following(let path) = next.phase,
             let rootID = AgyTranscriptLocator.sessionID(ofTranscript: path)
         {
             agyRootSessionID = rootID

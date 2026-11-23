@@ -13,6 +13,14 @@ final class ChangesAutoRefresh {
     /// The connection the latest live status came over.
     @ObservationIgnored var liveConnection: UInt64?
     @ObservationIgnored var pending = false
+    /// Monotonic `@MainActor` sequence of the latest time this Agent was seen
+    /// in or exiting `.working`, so adopting a sibling read that started earlier
+    /// cannot clear `readWasWhileWorking`.
+    @ObservationIgnored var lastWorkingSequence: UInt64 = 0
+    /// Monotonic `@MainActor` sequence of the latest automatic refresh trigger
+    /// (exit from `.working` or reconnect), so a sibling read that started
+    /// earlier cannot cancel or drop this store's pending follow-up.
+    @ObservationIgnored var refreshRequestedSequence: UInt64 = 0
     @ObservationIgnored var statusTask: Task<Void, Never>?
     /// Screens following the stream; see `followAgentStatus()`.
     @ObservationIgnored var followers = 0
@@ -111,6 +119,7 @@ extension ChangesStore {
             // Once editing starts, the displayed snapshot stays suspect until
             // a read that never overlaps Working succeeds.
             autoRefresh.readWasWhileWorking = true
+            autoRefresh.lastWorkingSequence = Self.nextEventSequence()
             if activeRead != nil { autoRefresh.readSawWorking = true }
         }
         guard autoRefresh.hasBaseline else {
@@ -118,6 +127,10 @@ extension ChangesStore {
             return
         }
         guard previous == .working || reconnected, let status, status != .working else { return }
+        if previous == .working {
+            autoRefresh.lastWorkingSequence = Self.nextEventSequence()
+        }
+        autoRefresh.refreshRequestedSequence = Self.nextEventSequence()
         autoRefresh.pending = true
         autoRefresh.debounce?.cancel()
         let id = UUID()
@@ -139,11 +152,12 @@ extension ChangesStore {
             defersAutomaticRefresh?() != true
         else { return }
         autoRefresh.pending = false
+        let requestedSequence = autoRefresh.refreshRequestedSequence
         // No strong store capture until the bounded read starts.
         autoRefresh.debounce = Task { [weak self] in
             guard !Task.isCancelled, let self else { return }
             self.autoRefresh.debounce = nil
-            await self.refresh(automatic: true)
+            await self.refresh(automatic: true, requestedSequence: requestedSequence)
         }
     }
 
