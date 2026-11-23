@@ -80,6 +80,10 @@ struct ContentView: View {
             // route through the single-window rule, so it goes last.
             let draggedRoute = restoreRoute()
             app.console.sceneDidStart(sceneID)
+            // Set before registering, which may hand over a waiting tap.
+            notificationRouter.awaitsHostReport = { [console = app.console, hosts = app.hostStore] in
+                MissingAgentPresentation(agentID: $0, console: console, hosts: hosts).awaitsHost
+            }
             app.sceneDirectory.register(
                 sceneID: sceneID, router: notificationRouter, window: window,
                 activate: { activateWindow() })
@@ -107,8 +111,8 @@ struct ContentView: View {
             }
         }
         // Feeds the Console's Agent list to this window's router, so a
-        // notification tap that arrived before the Hosts synced (killed-state
-        // launch) routes the moment its pane appears.
+        // notification tap for a pane its Host does not list yet routes the
+        // moment the pane appears.
         .modifier(ConsoleAgentsFeed(console: app.console) { agents in
             notificationRouter.agentsDidChange(agents)
             app.sceneDirectory.sceneRouteDidChange(sceneID: sceneID)
