@@ -1,5 +1,48 @@
 import Foundation
 
+public struct SSHConnectionMetrics: Sendable, Equatable {
+    /// Encrypted bytes written to / read from the underlying socket by libssh2.
+    public let wireBytesSent: UInt64
+    public let wireBytesReceived: UInt64
+    public let sendCalls: UInt64
+    public let receiveCalls: UInt64
+    /// Contended waits on `SessionDriver`'s operation mutex.
+    public let operationMutexWaitCount: UInt64
+    public let operationMutexWaitNanoseconds: UInt64
+    public let operationMutexMaxWaitNanoseconds: UInt64
+
+    public init(
+        wireBytesSent: UInt64 = 0,
+        wireBytesReceived: UInt64 = 0,
+        sendCalls: UInt64 = 0,
+        receiveCalls: UInt64 = 0,
+        operationMutexWaitCount: UInt64 = 0,
+        operationMutexWaitNanoseconds: UInt64 = 0,
+        operationMutexMaxWaitNanoseconds: UInt64 = 0
+    ) {
+        self.wireBytesSent = wireBytesSent
+        self.wireBytesReceived = wireBytesReceived
+        self.sendCalls = sendCalls
+        self.receiveCalls = receiveCalls
+        self.operationMutexWaitCount = operationMutexWaitCount
+        self.operationMutexWaitNanoseconds = operationMutexWaitNanoseconds
+        self.operationMutexMaxWaitNanoseconds = operationMutexMaxWaitNanoseconds
+    }
+
+    public func delta(since baseline: SSHConnectionMetrics) -> SSHConnectionMetrics {
+        SSHConnectionMetrics(
+            wireBytesSent: wireBytesSent >= baseline.wireBytesSent ? wireBytesSent - baseline.wireBytesSent : 0,
+            wireBytesReceived: wireBytesReceived >= baseline.wireBytesReceived ? wireBytesReceived - baseline.wireBytesReceived : 0,
+            sendCalls: sendCalls >= baseline.sendCalls ? sendCalls - baseline.sendCalls : 0,
+            receiveCalls: receiveCalls >= baseline.receiveCalls ? receiveCalls - baseline.receiveCalls : 0,
+            operationMutexWaitCount: operationMutexWaitCount >= baseline.operationMutexWaitCount
+                ? operationMutexWaitCount - baseline.operationMutexWaitCount : 0,
+            operationMutexWaitNanoseconds: operationMutexWaitNanoseconds >= baseline.operationMutexWaitNanoseconds
+                ? operationMutexWaitNanoseconds - baseline.operationMutexWaitNanoseconds : 0,
+            operationMutexMaxWaitNanoseconds: operationMutexMaxWaitNanoseconds)
+    }
+}
+
 public struct SSHEndpoint: Sendable, Equatable {
     public let host: String
     public let port: UInt16

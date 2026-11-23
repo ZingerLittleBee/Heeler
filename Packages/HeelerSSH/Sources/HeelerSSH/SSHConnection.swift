@@ -41,6 +41,9 @@ public final class SSHConnection: Sendable {
     /// `SSH-2.0-OpenSSH_9.9`, without the trailing CR LF. Nil only if libssh2
     /// did not retain one.
     public let serverIdentification: String?
+    /// Negotiated server-to-client compression method (e.g. `zlib@openssh.com`
+    /// or `none`).
+    public let negotiatedInboundCompression: String?
 
     private let driver: SessionDriver
     private let parent: SSHConnection?
@@ -51,6 +54,7 @@ public final class SSHConnection: Sendable {
         driver: SessionDriver,
         hostKey: SSHHostKey,
         serverIdentification: String?,
+        negotiatedInboundCompression: String? = nil,
         parent: SSHConnection? = nil,
         byteTransport: (any SSHByteTransport)? = nil,
         teardownObserver: (@Sendable (SSHConnectionTeardownStep) -> Void)? = nil
@@ -58,6 +62,7 @@ public final class SSHConnection: Sendable {
         self.driver = driver
         self.hostKey = hostKey
         self.serverIdentification = serverIdentification
+        self.negotiatedInboundCompression = negotiatedInboundCompression
         self.parent = parent
         self.byteTransport = byteTransport
         self.teardownObserver = teardownObserver
@@ -72,13 +77,14 @@ public final class SSHConnection: Sendable {
 
     public static func connect(
         to endpoint: SSHEndpoint,
-        timeout: Duration
+        timeout: Duration,
+        compressInbound: Bool = true
     ) async throws -> SSHConnection {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         var attemptsLeft = handshakeAttemptLimit
         while true {
             attemptsLeft -= 1
-            let driver = SessionDriver()
+            let driver = SessionDriver(compressInbound: compressInbound)
             do {
                 let hostKey = try await driver.handshake(
                     endpoint: endpoint,
@@ -86,7 +92,8 @@ public final class SSHConnection: Sendable {
                 return SSHConnection(
                     driver: driver,
                     hostKey: hostKey,
-                    serverIdentification: await driver.serverIdentification)
+                    serverIdentification: await driver.serverIdentification,
+                    negotiatedInboundCompression: await driver.negotiatedInboundCompression)
             } catch {
                 let retryable = await driver.handshakeFailedInKeyExchange
                 let sinkDuration = await driver.handshakeFailureDiagnosticDuration
@@ -130,6 +137,7 @@ public final class SSHConnection: Sendable {
         to endpoint: SSHEndpoint,
         timeout: Duration,
         transportLabel: String,
+        compressInbound: Bool = true,
         openStream: @escaping @Sendable (Duration) async throws -> SSHExternalStream
     ) async throws -> SSHConnection {
         let deadline = ContinuousClock.now.advanced(by: timeout)
@@ -137,7 +145,7 @@ public final class SSHConnection: Sendable {
         while true {
             attemptsLeft -= 1
             let stream = try await openStream(ContinuousClock.now.duration(to: deadline))
-            let driver = SessionDriver()
+            let driver = SessionDriver(compressInbound: compressInbound)
             do {
                 let hostKey = try await driver.handshake(
                     transport: stream,
@@ -148,6 +156,7 @@ public final class SSHConnection: Sendable {
                     driver: driver,
                     hostKey: hostKey,
                     serverIdentification: await driver.serverIdentification,
+                    negotiatedInboundCompression: await driver.negotiatedInboundCompression,
                     byteTransport: stream)
             } catch {
                 let retryable = await driver.handshakeFailedInKeyExchange
@@ -208,6 +217,7 @@ public final class SSHConnection: Sendable {
                     driver: targetDriver,
                     hostKey: hostKey,
                     serverIdentification: await targetDriver.serverIdentification,
+                    negotiatedInboundCompression: await targetDriver.negotiatedInboundCompression,
                     parent: self,
                     byteTransport: transport,
                     teardownObserver: teardownObserver)
@@ -605,6 +615,12 @@ public final class SSHConnection: Sendable {
         get async { await driver.operationWaiterCountForTesting }
     }
 #endif
+
+    /// Socket-level encrypted byte counts and operation-mutex contention
+    /// counters accumulated on this connection so far.
+    public func metrics() async -> SSHConnectionMetrics {
+        await driver.metrics()
+    }
 
     public func close(timeout: Duration) async throws {
         var firstError: (any Error)?

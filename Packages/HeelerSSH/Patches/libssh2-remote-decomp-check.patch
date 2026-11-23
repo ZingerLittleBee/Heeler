@@ -1,0 +1,24 @@
+Fix asymmetric server-to-client decompression check in libssh2 transport.c.
+
+libssh2's receive path checked session->local.comp (client-to-server) instead
+of session->remote.comp (server-to-client) before calling
+session->remote.comp->decomp(...). When COMP_CS is "none" and COMP_SC is
+"zlib@openssh.com", session->local.comp->compress is 0, so incoming compressed
+packets from the server were never inflated.
+
+--- a/src/transport.c
++++ b/src/transport.c
+@@ -309,10 +309,10 @@
+         session->fullpacket_payload_len -= p->padding_length;
+ 
+         /* Check for and deal with decompression */
+-        compressed = session->local.comp &&
+-                     session->local.comp->compress &&
++        compressed = session->remote.comp &&
++                     session->remote.comp->compress &&
+                      ((session->state & SSH2_STATE_AUTHENTICATED) ||
+-                      session->local.comp->use_in_auth);
++                      session->remote.comp->use_in_auth);
+ 
+         if(compressed && session->remote.comp_abstract) {
+             /*

@@ -13,7 +13,7 @@ XCFRAMEWORK_SIGNING_IDENTITY="${HEELER_SSH_XCFRAMEWORK_SIGNING_IDENTITY:-}"
 # shellcheck source=../Sources.lock
 source "${SOURCE_LOCK}"
 
-for command in curl shasum tar perl make cmake xcodebuild xcrun codesign; do
+for command in curl shasum tar perl make cmake xcodebuild xcrun codesign patch; do
     command -v "${command}" >/dev/null || {
         echo "error: required command not found: ${command}" >&2
         exit 1
@@ -61,6 +61,9 @@ fi
 
 LIBSSH2_SOURCE="${WORK_DIR}/libssh2-${LIBSSH2_VERSION}"
 OPENSSL_SOURCE="${WORK_DIR}/openssl-${OPENSSL_VERSION}"
+
+patch -p1 --forward --batch -d "${LIBSSH2_SOURCE}" \
+    < "${PACKAGE_DIR}/Patches/libssh2-remote-decomp-check.patch"
 
 build_openssl() {
     local name="$1"
@@ -119,7 +122,7 @@ build_libssh2() {
             -DBUILD_STATIC_LIBS=ON \
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_TESTING=OFF \
-            -DENABLE_ZLIB_COMPRESSION=OFF \
+            -DENABLE_ZLIB_COMPRESSION=ON \
             -DENABLE_DEBUG_LOGGING=OFF \
             -DCRYPTO_BACKEND=OpenSSL \
             -DOPENSSL_USE_STATIC_LIBS=TRUE \
@@ -294,7 +297,10 @@ cat > "${GENERATED_ARTIFACTS}/PROVENANCE.md" <<EOF
 - OpenSSL privacy manifest: upstream os-dep/Apple/PrivacyInfo.xcprivacy
 - libssh2 crypto backend: OpenSSL; MD5, RIPEMD, RSA-SHA1, SHA-1 KEX/MACs,
   Blowfish, RC4, CAST, 3DES, and CBC are off (upstream defaults and
-  LIBSSH2_NO_AES_CBC); ML-KEM hybrid key exchanges available
+  LIBSSH2_NO_AES_CBC); ML-KEM hybrid key exchanges available; system libz
+  linked for delayed post-auth zlib@openssh.com compression (Host-to-App only);
+  patched src/transport.c via Patches/libssh2-remote-decomp-check.patch so
+  inbound decompression checks session->remote.comp instead of local.comp
 - Build command: make ssh-artifacts
 EOF
 
