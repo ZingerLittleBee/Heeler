@@ -200,6 +200,11 @@ private struct ClaudeFooter {
         self.extras = extras
     }
 
+    /// `n to add notes`, which only a question with previews shows.
+    var opensNotes: Bool {
+        hints.contains { $0.key == "n" && $0.action.hasPrefix("add notes") }
+    }
+
     /// A hint that binds an action the planner relies on to a key other
     /// than Claude's default: the user remapped it, so the planned keys
     /// would not do what the card says.
@@ -422,22 +427,26 @@ private struct ClaudeDialogReader {
             progress: nil, options: options, top: upper.top ?? lowerRule, scan: scan, subject: subject)
     }
 
-    private static let previewsReason = String(localized: "Heeler does not handle questions with previews yet.")
+    private static let previewsReason = String(localized: "Heeler could not read this question's previews.")
 
     private func readQuestion(top: Int, tabsRow: Int, tabs: QuestionTabs, firstOption: Int) -> DialogParseResult {
         let titleRows = (tabsRow + 1..<firstOption).drop { rows[$0].isBlank }.prefix { !rows[$0].isBlank }
-        let title = joinRows(titleRows.map { rows[$0] })
+        // Claude Code 2.1.330 draws a question that wraps with a quote bar.
+        let title = joinRows(titleRows.map { withoutQuoteBar(rows[$0]) })
         let isReview = title == ClaudeDialogParser.reviewPage || tabs.active == "Submit"
+        if !isReview, let column = previewBoxColumn(in: rows[firstOption]) {
+            return readPreviewQuestion(top: top, tabs: tabs, title: title, firstOption: firstOption, boxColumn: column)
+        }
         guard let scan = scanOptions(from: firstOption, isQuestionPage: !isReview) else {
-            // Claude Code 2.1.301 draws the previews beside the options,
-            // which no option scan reads; its notes hint still names them.
+            // The notes hint names the preview layout, whose box this read
+            // did not find.
             if rows[firstOption...].contains(where: { $0.text.contains("to add notes") }) {
                 return unrecognized(from: top, Self.previewsReason, offersDigits: false)
             }
             return unrecognized(from: top, String(localized: "The rows after the options are not a footer."))
         }
         if let problem = scan.problem { return unrecognized(from: top, problem, scan: scan) }
-        if let footer = scan.footer, footer.hints.contains(where: { $0.key == "n" && $0.action.hasPrefix("add notes") }) {
+        if let footer = scan.footer, footer.opensNotes {
             // The preview layout: digits only move focus there.
             return unrecognized(from: top, Self.previewsReason, scan: scan, offersDigits: false)
         }
@@ -518,6 +527,214 @@ private struct ClaudeDialogReader {
             progress: tabs.active, options: options, top: top, scan: scan, subject: subject)
     }
 
+    // MARK: Previews
+
+    /// The column of the box Claude Code draws beside a question's options
+    /// for the focused one's preview (2.1.301 on). Its top border starts on
+    /// the first option's row.
+    private func previewBoxColumn(in row: ScreenRow) -> Int? {
+        var column = 0
+        for character in row.text {
+            if character == "┌" {
+                let border = row.text(from: column).trimmingCharacters(in: .whitespaces)
+                let isBorder = border.count > 2 && border.last == "┐" && border.dropFirst().dropLast().allSatisfy { $0 == "─" }
+                return isBorder ? column : nil
+            }
+            column += TerminalCellWidth.width(of: character)
+        }
+        return nil
+    }
+
+    /// A question whose options have previews. The options keep to the
+    /// left of a box that holds the focused one's preview, under it comes
+    /// the question's notes field, and `Chat about this` follows a rule
+    /// without a number. A digit only moves the focus and Enter answers, so
+    /// a read that fails here offers the key pad alone.
+    private func readPreviewQuestion(
+        top: Int, tabs: QuestionTabs, title: String, firstOption: Int, boxColumn: Int
+    ) -> DialogParseResult {
+        func unreadable(_ scan: OptionScan? = nil) -> DialogParseResult {
+            unrecognized(from: top, Self.previewsReason, scan: scan, offersDigits: false)
+        }
+        let innerRule = (firstOption + 1..<rows.count).first {
+            rows[$0].indent == 0 && DialogRowScanner.isRule(rows[$0], of: "─", minimumWidth: fullWidth)
+        }
+        guard let innerRule, !title.isEmpty else { return unreadable() }
+
+        // The options, each row cut at the box.
+        var drafts: [OptionDraft] = []
+        var numbered = block.rows[...]
+        var optionsEnded = false
+        for index in firstOption..<innerRule {
+            let left = clipped(rows[index], before: boxColumn)
+            if let next = numbered.first, next.rowIndex == index {
+                guard !optionsEnded else { return unreadable() }
+                drafts.append(readNumbered(next, in: left, isQuestionPage: false, isChat: false))
+                numbered = numbered.dropFirst()
+            } else if left.isBlank {
+                optionsEnded = true
+            } else if !optionsEnded, var last = drafts.popLast(), let indent = left.indent,
+                indent >= last.labelColumn - 1, !isInactiveRow(left)
+            {
+                // A wrapped label, a cell left of where the label began.
+                last.label = DialogRowScanner.join(
+                    last.label, left.trimmedText, wrap: .claude, previousRow: last.lastRow, columns: boxColumn,
+                    boxColumn: last.labelColumn)
+                last.lastRow = left
+                drafts.append(last)
+            } else {
+                return unreadable()
+            }
+        }
+        guard numbered.isEmpty, !drafts.isEmpty,
+            drafts.allSatisfy({ $0.field == nil && !$0.labelIsInactive && !$0.droppedResidue && !$0.label.isEmpty })
+        else { return unreadable() }
+
+        // The box: the preview's lines between its borders.
+        var lines: [String] = []
+        var cutNote: String?
+        var bottom: Int?
+        for index in (firstOption + 1)..<innerRule {
+            let text = rightText(of: rows[index], from: boxColumn)
+            guard let first = text.first, let last = text.last, text.count > 1 else { return unreadable() }
+            if first == "└", last == "┘" {
+                bottom = index
+                break
+            }
+            if first == "├", last == "┤" {
+                // `├─── ✂ ─── 60 lines hidden ┤`
+                guard text.contains("✂") else { return unreadable() }
+                cutNote = text.filter { !"├┤─✂".contains($0) }.trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            guard first == "│", last == "│", cutNote == nil else { return unreadable() }
+            var line = text.dropFirst().dropLast()
+            if line.first == " " { line = line.dropFirst() }
+            while line.last == " " { line = line.dropLast() }
+            lines.append(String(line))
+        }
+        guard let bottom else { return unreadable() }
+        if lines == ["No preview available"] { lines = [] }
+
+        // The notes under the box, wrapped rows hanging under their text.
+        let label = "Notes:"
+        var notesRuns: [ScreenRun] = []
+        var notesRows: [String] = []
+        var notesEnded = false
+        for index in (bottom + 1)..<innerRule {
+            let text = rightText(of: rows[index], from: boxColumn)
+            if text.isEmpty {
+                notesEnded = !notesRows.isEmpty
+                continue
+            }
+            guard !notesEnded else { return unreadable() }
+            let isFirst = notesRows.isEmpty
+            guard text.hasPrefix(label) == isFirst else { return unreadable() }
+            let from = isFirst ? boxColumn + label.count : boxColumn
+            notesRuns.append(contentsOf: DialogRowScanner.runs(of: rows[index], from: from).filter { !DialogRowScanner.isBlank($0) })
+            notesRows.append(isFirst ? String(text.dropFirst(label.count)) : text)
+        }
+        guard !notesRows.isEmpty else { return unreadable() }
+        let notes = notesRows.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+        var openNotes: String?
+        var savedNotes: String?
+        if !notesRuns.isEmpty, notesRuns.allSatisfy(\.style.isItalic) {
+            // The field is closed: its hint, or the notes it keeps.
+            if DialogRowScanner.comparable(notes) != DialogRowScanner.comparable("press n to add notes") {
+                savedNotes = notes
+            }
+        } else if !notesRuns.isEmpty, notesRuns.allSatisfy(\.style.isDim) {
+            // Open and blank, showing its placeholder.
+            openNotes = ""
+        } else {
+            openNotes = notes
+        }
+
+        // `Chat about this` under the rule, with the pointer when focused.
+        // The option the focus left keeps its own pointer.
+        var chat: OptionDraft?
+        var end = innerRule + 1
+        if end < rows.count, !rows[end].isBlank {
+            let row = rows[end]
+            let text = row.trimmedText
+            let isPointed = text.hasPrefix("❯")
+            let chatLabel = isPointed ? text.dropFirst().trimmingCharacters(in: .whitespaces) : text
+            guard !chatLabel.isEmpty, DialogRowScanner.numberedOption(in: row, pointer: "❯") == nil else {
+                return unreadable()
+            }
+            chat = OptionDraft(
+                number: nil, rowIndex: end, labelColumn: row.indent ?? 0, isFocused: isPointed, label: chatLabel,
+                labelIsInactive: false, isChat: true, lastRow: row)
+            end += 1
+        }
+        guard let footerRows = footerRows(from: end), !footerRows.isEmpty else { return unreadable() }
+        let footer = ClaudeFooter(rows: footerRows)
+        let scan = OptionScan(drafts: drafts + (chat.map { [$0] } ?? []), end: end, footer: footer)
+        if let rebinding = footer.rebinding {
+            return unrecognized(
+                from: top,
+                String(localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys."),
+                scan: scan, offersDigits: false)
+        }
+        guard footer.opensNotes else { return unreadable(scan) }
+
+        var options: [DialogOption] = []
+        for draft in drafts {
+            options.append(
+                DialogOption(
+                    ordinal: options.count + 1, number: draft.number, label: draft.label, role: .answer,
+                    isFocused: draft.isFocused && chat?.isFocused != true, isChecked: draft.isChecked))
+        }
+        if let chat {
+            options.append(
+                DialogOption(
+                    ordinal: options.count + 1, number: nil, label: chat.label, role: .chat, isFocused: chat.isFocused))
+        }
+        guard options.filter(\.isFocused).count <= 1 else { return unreadable(scan) }
+
+        var subject = DialogSubject()
+        subject.questionHeaders = tabs.headers
+        subject.question = title
+        subject.showsPreviews = true
+        subject.previewLines = lines
+        subject.previewCutNote = cutNote
+        return dialog(
+            kind: .claudeQuestion, title: title, sourceSuffix: nil, positionLabel: nil, body: [], progress: tabs.active,
+            options: options, top: top, scan: scan, subject: subject, notesText: openNotes, savedNotes: savedNotes)
+    }
+
+    /// The part of `row` left of `column`, without the blanks that pad it.
+    private func clipped(_ row: ScreenRow, before column: Int) -> ScreenRow {
+        var runs: [ScreenRun] = []
+        for run in row.runs where run.column < column {
+            var text = ""
+            var position = run.column
+            for character in run.text {
+                let width = TerminalCellWidth.width(of: character)
+                guard position + width <= column else { break }
+                text.append(character)
+                position += width
+            }
+            if !text.isEmpty {
+                runs.append(ScreenRun(text: text, style: run.style, column: run.column, width: position - run.column))
+            }
+        }
+        while let last = runs.popLast() {
+            var text = Substring(last.text)
+            while let character = text.last, ScreenRow.isBlank(character) { text = text.dropLast() }
+            guard !text.isEmpty else { continue }
+            runs.append(
+                ScreenRun(text: String(text), style: last.style, column: last.column, width: TerminalCellWidth.width(of: text)))
+            break
+        }
+        return ScreenRow(index: row.index, runs: runs)
+    }
+
+    /// The text of `row` from `column` on, without the blanks around it.
+    private func rightText(of row: ScreenRow, from column: Int) -> String {
+        ScreenRow.normalizedSpaces(row.text(from: column)).trimmingCharacters(in: .whitespaces)
+    }
+
     // MARK: Options
 
     private struct OptionScan {
@@ -570,6 +787,25 @@ private struct ClaudeDialogReader {
             scan.problem = String(localized: "Option \(numbered.first?.number ?? 0) is not where the list continues.")
         }
 
+        guard let footerRows = footerRows(from: row) else { return nil }
+        if !footerRows.isEmpty {
+            let footer = ClaudeFooter(rows: footerRows)
+            scan.footer = footer
+            if scan.problem == nil, let rebinding = footer.rebinding {
+                scan.problem = String(
+                    localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys.")
+            }
+        }
+        if scan.problem == nil, let stray = drafts.firstIndex(where: \.hasStrayRow) {
+            scan.problem = String(localized: "Option \(stray + 1) has a row Heeler could not place.")
+        }
+        return scan
+    }
+
+    /// The footer's rows from `row` down, none when the dialog has no
+    /// footer. Nil when the rows there do not look like one, which means
+    /// the block is not a live dialog.
+    private func footerRows(from row: Int) -> [ScreenRow]? {
         var footerRows: [ScreenRow] = []
         var index = row
         var sawSessionRule = false
@@ -596,22 +832,14 @@ private struct ClaudeDialogReader {
         while index < rows.count, rows[index].isBlank { index += 1 }
         skipSessionRule()
         guard rows[index...].allSatisfy(\.isBlank) else { return nil }
-        if !footerRows.isEmpty {
-            let footer = ClaudeFooter(rows: footerRows)
-            scan.footer = footer
-            if scan.problem == nil, let rebinding = footer.rebinding {
-                scan.problem = String(
-                    localized: "The footer shows \u{201C}\(rebinding)\u{201D}; Heeler only sends Claude's default keys.")
-            }
-        }
-        if scan.problem == nil, let stray = drafts.firstIndex(where: \.hasStrayRow) {
-            scan.problem = String(localized: "Option \(stray + 1) has a row Heeler could not place.")
-        }
-        return scan
+        return footerRows
     }
 
-    private func readNumbered(_ numbered: NumberedOptionRow, isQuestionPage: Bool, isChat: Bool) -> OptionDraft {
-        let row = rows[numbered.rowIndex]
+    /// - Parameter shown: The option's row cut at a box beside the options.
+    private func readNumbered(
+        _ numbered: NumberedOptionRow, in shown: ScreenRow? = nil, isQuestionPage: Bool, isChat: Bool
+    ) -> OptionDraft {
+        let row = shown ?? rows[numbered.rowIndex]
         var runs = DialogRowScanner.runs(of: row, from: numbered.labelColumn)
         var isChecked: Bool?
         if isQuestionPage, let box = Self.checkbox(in: runs.map(\.text).joined()) {
@@ -1015,7 +1243,8 @@ private struct ClaudeDialogReader {
 
     private func dialog(
         kind: BlockedDialogKind, title: String, sourceSuffix: String?, positionLabel: String?, body: [String],
-        progress: String?, options: [DialogOption], top: Int, scan: OptionScan, subject: DialogSubject
+        progress: String?, options: [DialogOption], top: Int, scan: OptionScan, subject: DialogSubject,
+        notesText: String? = nil, savedNotes: String? = nil
     ) -> DialogParseResult {
         let focus = DialogFocusState(
             focusedOrdinal: options.first(where: \.isFocused)?.ordinal,
@@ -1024,6 +1253,7 @@ private struct ClaudeDialogReader {
                 if case .text(let text) = option.input { return text }
                 return nil
             },
+            notesText: notesText, savedNotes: savedNotes,
             feedbackOrdinal: zip(options, scan.drafts).first { $0.1.isFeedback }?.0.ordinal)
         let fingerprint = DialogFingerprint(
             program: .claude, kind: kind, title: title, sourceSuffix: sourceSuffix, body: body, progress: progress,
@@ -1036,8 +1266,8 @@ private struct ClaudeDialogReader {
     }
 
     /// The generic card for the rows from `top`. Without `offersDigits` it
-    /// offers no option buttons, only the key pad: in Claude's preview
-    /// layout a digit only moves the focus, so a button would never answer.
+    /// offers no option buttons, only the key pad: beside a preview a digit
+    /// only moves the focus, so a button would never answer.
     private func unrecognized(
         from top: Int?, _ reason: String, scan: OptionScan? = nil, offersDigits: Bool = true
     ) -> DialogParseResult {

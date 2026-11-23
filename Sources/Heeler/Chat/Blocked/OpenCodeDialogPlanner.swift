@@ -48,7 +48,7 @@ struct OpenCodeDialogPlanner {
         case .amend, .respond, .approvePlan:
             throw .unsupported(
                 String(localized: "OpenCode takes no note with a permission; reject, then tell OpenCode in the composer."))
-        case .submitSelection, .expandQuestions, .skipQuestion:
+        case .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
@@ -78,7 +78,7 @@ struct OpenCodeDialogPlanner {
             return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked)
         case .respond, .amend:
             throw Self.ownAnswer
-        case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The question has no such action."))
         }
     }

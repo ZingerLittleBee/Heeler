@@ -58,7 +58,7 @@ struct AgyDialogPlanner {
             return try amend(ordinal, note: note)
         case .respond, .approvePlan:
             throw .unsupported(String(localized: "Antigravity CLI takes a note only with a command's Yes or No."))
-        case .submitSelection, .expandQuestions, .skipQuestion:
+        case .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
@@ -120,7 +120,7 @@ struct AgyDialogPlanner {
         case .dismiss, .skipQuestion:
             try answerFieldClosed()
             return Self.plan([.keys(["esc"])] + nextPage())
-        case .amend, .approvePlan, .expandQuestions:
+        case .amend, .approvePlan, .expandQuestions, .focus:
             throw .unsupported(String(localized: "The question has no such action."))
         }
     }
@@ -245,7 +245,8 @@ struct AgyDialogPlanner {
             try builder.move(to: ordinal)
             builder.keys("enter")
             return Self.plan(builder.steps)
-        case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion,
+            .focus:
             throw .unsupported(String(localized: "The trust prompt has no such action."))
         }
     }

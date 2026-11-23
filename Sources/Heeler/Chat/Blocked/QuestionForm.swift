@@ -173,7 +173,9 @@ struct QuestionFormDraft: Equatable {
     init(form: QuestionForm, checked: Set<Int> = []) {
         self.form = form
         let count = form.questions.count
-        choices = Array(repeating: nil, count: count)
+        // Claude's page for a question with previews opens on its first
+        // option, whose preview shows; so does the form's.
+        choices = form.questions.map { $0.hasPreviews ? 0 : nil }
         selections = [checked] + Array(repeating: [], count: max(0, count - 1))
         texts = Array(repeating: "", count: count)
     }
@@ -209,12 +211,13 @@ struct QuestionFormDraft: Equatable {
     var text: String { texts[page] }
 
     /// An option answers a single-select question and moves on, as a digit
-    /// does in the terminal; the last page waits for Submit.
+    /// does in the terminal; the last page waits for Submit. Beside
+    /// previews a digit only shows the option's, so the page stays.
     mutating func choose(_ option: Int) {
         choices[page] = option
         texts[page] = ""
         skipped.remove(page)
-        if !isLastPage { page += 1 }
+        if !isLastPage, !question.hasPreviews { page += 1 }
     }
 
     mutating func toggle(_ option: Int) {

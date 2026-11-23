@@ -812,10 +812,14 @@ struct ChatQuestion: Equatable, Codable, Sendable {
         var label: String
         /// The call's `description`, shown under the label.
         var detail: String?
+        /// Claude's `preview`: what choosing the option gives, as text the
+        /// terminal draws in a box beside the options.
+        var preview: String?
 
-        init(label: String, detail: String? = nil) {
+        init(label: String, detail: String? = nil, preview: String? = nil) {
             self.label = label
             self.detail = detail
+            self.preview = preview
         }
 
         init(stringLiteral label: String) {
@@ -855,6 +859,13 @@ struct ChatQuestion: Equatable, Codable, Sendable {
         self.recommendedIndex = recommendedIndex
         self.answer = answer
         self.isSkipped = isSkipped
+    }
+
+    /// Claude draws a single-select question whose options have previews
+    /// with the focused option's preview beside them, and answers it on
+    /// Enter alone.
+    var hasPreviews: Bool {
+        !isMultiSelect && options.contains { $0.preview != nil }
     }
 
     // `queuedAnswer` is deliberately absent: decoding leaves it nil. An

@@ -178,10 +178,14 @@ struct DialogFocusState: Sendable, Hashable {
     /// The text in the focused input row; nil while it shows its
     /// placeholder or when no input row has focus.
     var inputText: String?
-    /// Codex: the notes typed for the highlighted answer. Empty while the
-    /// notes field is open but blank, nil while it is closed: keys then go
-    /// to the field rather than to the options.
+    /// Codex: the notes typed for the highlighted answer. Claude: the
+    /// notes of a question with previews. Empty while the notes field is
+    /// open but blank, nil while it is closed: keys then go to the field
+    /// rather than to the options.
     var notesText: String?
+    /// Claude: the notes a question with previews keeps while their field
+    /// is closed, which go with its answer.
+    var savedNotes: String?
     /// Claude: the option whose row Tab turned into a note field.
     var feedbackOrdinal: Int?
     /// Oh My Pi: the prompt below the question holds a draft, so keys go
@@ -194,13 +198,14 @@ struct DialogFocusState: Sendable, Hashable {
 
     init(
         focusedOrdinal: Int? = nil, checked: Set<Int> = [], inputText: String? = nil,
-        notesText: String? = nil, feedbackOrdinal: Int? = nil, composerDraftGuard: Bool = false,
-        keysMissOptions: Bool = false
+        notesText: String? = nil, savedNotes: String? = nil, feedbackOrdinal: Int? = nil,
+        composerDraftGuard: Bool = false, keysMissOptions: Bool = false
     ) {
         self.focusedOrdinal = focusedOrdinal
         self.checked = checked
         self.inputText = inputText
         self.notesText = notesText
+        self.savedNotes = savedNotes
         self.feedbackOrdinal = feedbackOrdinal
         self.composerDraftGuard = composerDraftGuard
         self.keysMissOptions = keysMissOptions
@@ -246,6 +251,17 @@ struct DialogSubject: Sendable, Hashable {
     /// Claude's question review page: question and answer pairs. Oh My
     /// Pi's names each question by its tab.
     var reviewAnswers: [ReviewAnswer] = []
+    /// Claude question: its options have previews, drawn in a box beside
+    /// them. A digit only moves the focus there, Enter answers, `n` opens
+    /// the question's notes, and no row takes a typed answer.
+    var showsPreviews = false
+    /// Claude question with previews: the focused option's preview as the
+    /// box shows it, wrapped at the box's width. The call has it as
+    /// written, but Claude Code 2.1.330 writes the call only once answered.
+    var previewLines: [String] = []
+    /// What the box says of the preview's last lines when it leaves them
+    /// out to fit the screen (`60 lines hidden`). No key shows them.
+    var previewCutNote: String?
     /// Claude plan: the plan file from the footer (`~/.claude/plans/…`).
     var planFilePath: String?
     /// Workspace trust: the folder.

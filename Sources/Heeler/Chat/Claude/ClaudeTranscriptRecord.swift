@@ -497,7 +497,9 @@ extension ClaudeToolInput {
                 return ChatQuestion(
                     header: question.header, text: text,
                     options: (question.options ?? []).compactMap { option in
-                        option.label.map { ChatQuestion.Option(label: $0, detail: option.description) }
+                        option.label.map {
+                            ChatQuestion.Option(label: $0, detail: option.description, preview: option.preview)
+                        }
                     },
                     isMultiSelect: question.multiSelect ?? false)
             },
@@ -811,13 +813,15 @@ private struct RawToolInput: Decodable {
         struct Option: Decodable {
             var label: String?
             var description: String?
+            var preview: String?
 
-            private enum CodingKeys: String, CodingKey { case label, description }
+            private enum CodingKeys: String, CodingKey { case label, description, preview }
 
             init(from decoder: any Decoder) throws {
                 if let c = try? decoder.container(keyedBy: CodingKeys.self) {
                     label = c.lenient(String.self, .label)
                     description = c.lenient(String.self, .description)
+                    preview = c.lenient(String.self, .preview)
                 } else {
                     label = try? decoder.singleValueContainer().decode(String.self)
                 }

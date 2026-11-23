@@ -7,7 +7,9 @@ enum DialogAction: Sendable, Hashable {
     /// Enter.
     case choose(ordinal: Int)
     /// Claude's Bash and file dialogs: Tab turns a `Yes` or `No` row into a
-    /// note field, then `note` goes in and Enter answers with it.
+    /// note field, then `note` goes in and Enter answers with it. Claude's
+    /// question with previews: `n` opens the question's notes, then `note`
+    /// goes in and Enter answers with the option and the notes.
     case amend(ordinal: Int, note: String)
     /// Types `text` into a text option and submits it: a question's Other
     /// row, the plan's feedback row, Codex's `None of the above` notes.
@@ -28,6 +30,9 @@ enum DialogAction: Sendable, Hashable {
     case expandQuestions
     /// Codex: skips the asynchronous question on screen.
     case skipQuestion
+    /// Claude's question with previews: moves the focus to an answer
+    /// without giving it, so the box draws that answer's preview.
+    case focus(ordinal: Int)
 }
 
 /// One thing a card does to the pane, in order.
@@ -51,8 +56,12 @@ enum DialogExpectation: Sendable, Hashable {
     case feedbackMode(ordinal: Int)
     /// The same dialog, its focused field holding this text.
     case inputText(String)
-    /// Codex: the same question, its notes holding this text.
+    /// Codex, and Claude's question with previews: the same question, its
+    /// notes field open and holding this text.
     case notes(String)
+    /// Claude's question with previews: the same question, its notes field
+    /// closed, so keys reach the options again.
+    case notesClosed
     /// The same dialog with exactly these options checked.
     case checked(Set<Int>)
     /// A dialog on this page: Claude's active question tab or `Review your
@@ -84,6 +93,9 @@ enum ConfirmationRule: Sendable, Hashable {
     /// 0.162.1 hands a waiting tool call the answer at once and draws no
     /// notice; 0.160.1 lists it until the next tool call.
     case queuedNotice(String)
+    /// The plan answers nothing, so its steps' own checks are all there is
+    /// to confirm: a focus moved to show another preview.
+    case stepsChecked
 }
 
 struct DialogActionPlan: Sendable, Hashable {
@@ -181,7 +193,7 @@ extension DialogExpectation {
                 == DialogRowScanner.comparable(page)
         case .queuedNotice(let title):
             return CodexQueuedNotice.shows(answerTo: title, in: observation.screen)
-        case .focus, .feedbackMode, .inputText, .notes, .checked:
+        case .focus, .feedbackMode, .inputText, .notes, .notesClosed, .checked:
             break
         }
         guard let dialog = observation.result.dialog, dialog.fingerprint.matches(fingerprint) else { return false }
@@ -203,6 +215,8 @@ extension DialogExpectation {
             return DialogRowScanner.comparable(shown) == expected
         case .notes(let text):
             return focus.notesText.map(DialogRowScanner.comparable) == DialogRowScanner.comparable(text)
+        case .notesClosed:
+            return focus.notesText == nil
         case .checked(let ordinals):
             return focus.checked == ordinals
         case .page, .queuedNotice:
@@ -225,6 +239,8 @@ extension ConfirmationRule {
             return dialogLeft || observation.activity == .idle || observation.activity == .working
         case .queuedNotice(let title):
             return CodexQueuedNotice.shows(answerTo: title, in: observation.screen) || dialogLeft
+        case .stepsChecked:
+            return true
         }
     }
 }

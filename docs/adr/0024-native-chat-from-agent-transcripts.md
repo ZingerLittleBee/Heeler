@@ -667,7 +667,43 @@ Labels are the program's own text. herdr reports Claude Code idle on some of
 its question pages, the review page of a question form and a question with
 previews, so while the transcript holds an open AskUserQuestion call, an idle
 Claude Code's screen is read for a card as a Blocked one is, though a screen
-with no dialog then shows no card rather than the unreadable one.
+with no dialog then shows no card rather than the unreadable one. Claude
+Code 2.1.330 writes a call to the transcript only once it is answered, so no
+open call says to read there, and herdr 0.9.5 reports its question with
+previews idle once the footer wraps, as on a phone's grid. An idle Claude
+Code is therefore also read once as herdr moves it to idle, or as Chat comes
+to show it idle, and on while a read names a dialog. A dialog's card stays
+through the change to idle for that read, so a pane made narrower keeps it;
+a screen Heeler cannot name shows no card while idle.
+
+Claude Code draws a single-select question whose options carry previews in a
+layout of its own: the options keep to the left of a box that holds the
+focused one's preview, the question's notes field sits under the box, and
+`Chat about this` has no number. A digit there only moves the focus, Enter
+answers with the focused option and the notes, and `n` opens the notes
+field, which then takes every key but Enter and Esc. The card lists the
+answers as a choice of one that follows the terminal's focus. Choosing an
+answer gives none, as in the terminal: it sends that option's digit with a
+focus check (arrow keys from `Chat about this`, where digits do nothing),
+the box draws that option's preview, and the card shows it under the answers
+as the box has it, in lines that scroll sideways rather than wrap. The box
+wraps a preview at its own width and cuts a long one to fit the screen
+(`✂ N lines hidden`), which no key shows, so the card quotes what the box
+says it left out. Where the transcript has the open call, as before Claude
+Code 2.1.330, the preview comes from the call instead, whole and as written,
+with each option's description, which that layout leaves out. Submit presses
+Enter after the same focus check, or with notes `n`, a check that the field
+opened, the pasted text, a check that the field shows it, and Enter. Notes
+the terminal already holds go with the answer, so the card shows them in
+place of its own field and adds none. While the terminal's notes field is
+open the card answers only the option it is on, closing a blank field with
+Enter first, moves no focus, and Stop presses Esc twice, the first to close
+the field. A form's page with previews is such a card of its own, whose
+button reads Next; in the question form Chat builds from an open call, that
+page shows the chosen option's preview and waits for Next rather than
+turning on a choice, and its notes stay in the terminal. A read that finds
+the notes hint but not this layout keeps the generic card with its key pad
+and no option buttons, since a button's digit would not answer.
 
 An answer compares a fingerprint of the dialog first and sends nothing if it
 changed, waits until the dialog has shown for 150 ms, presses keys through
@@ -1158,11 +1194,12 @@ no Attach at all.
     it yet.
   - Claude Code's session registry (`~/.claude/sessions/<pid>.json`) as a
     second Blocked signal. Cards follow herdr's Blocked, and an open
-    AskUserQuestion call for the question pages herdr reports idle. Its
-    `status` also reads `shell` while the session sits idle with a
-    background command still running, and `idle` once none is, which would
-    confirm or retire a listed command; a Herdr TUI Host names no pid to
-    read the file by, and the folder is never listed.
+    AskUserQuestion call or a read as Claude Code turns idle for the
+    question pages herdr reports idle. Its `status` also reads `shell`
+    while the session sits idle with a background command still running,
+    and `idle` once none is, which would confirm or retire a listed
+    command; a Herdr TUI Host names no pid to read the file by, and the
+    folder is never listed.
   - Skill sources the Skills probe misses: Claude Code's `.claude/commands`,
     Codex's built-in, `/etc/codex/skills`, plugin and nested `.agents/skills`
     skills. Claude Code's built-in skills are compiled into the program and

@@ -60,7 +60,7 @@ struct GrokDialogPlanner {
             return try press(reject)
         case .amend, .respond:
             throw .unsupported(String(localized: "Heeler doesn't type feedback into Grok Build's permissions. Add it in the terminal."))
-        case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The permission has no such action."))
         }
     }
@@ -87,7 +87,7 @@ struct GrokDialogPlanner {
         case .skipQuestion:
             // Shift+X skips, unconfirmed on 1.0.62.
             throw .unsupported(String(localized: "Skip Grok Build's question in the terminal."))
-        case .dismiss, .approvePlan, .submitSelection, .expandQuestions:
+        case .dismiss, .approvePlan, .submitSelection, .expandQuestions, .focus:
             throw .unsupported(String(localized: "The question has no such action."))
         }
     }
@@ -108,7 +108,7 @@ struct GrokDialogPlanner {
             return try press(option)
         case .respond, .amend:
             throw Self.typedAnswer
-        case .dismiss, .skipQuestion, .approvePlan, .submitSelection, .expandQuestions:
+        case .dismiss, .skipQuestion, .approvePlan, .submitSelection, .expandQuestions, .focus:
             throw .unsupported(String(localized: "The fork question has no such action."))
         }
     }

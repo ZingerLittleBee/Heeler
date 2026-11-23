@@ -50,7 +50,7 @@ struct OMPDialogPlanner {
             return Self.deny
         case .amend, .respond, .approvePlan:
             throw .unsupported(String(localized: "Oh My Pi takes no note with an approval."))
-        case .submitSelection, .expandQuestions, .skipQuestion:
+        case .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The approval has no such action."))
         }
     }
@@ -89,7 +89,7 @@ struct OMPDialogPlanner {
             }
         case .respond, .amend:
             throw Self.typedAnswer
-        case .dismiss, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .dismiss, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The question has no such action."))
         }
     }
