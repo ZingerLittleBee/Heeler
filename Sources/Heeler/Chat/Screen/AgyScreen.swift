@@ -739,6 +739,9 @@ struct AgyScreen: Sendable {
                             evidence[item.id] = ChatBackgroundWorkEvidence(endedState: .stopped, endedAt: now)
                         }
                     }
+                } else if item.kind == .timer, !showsRunningTurn, let newest = matches.first, newest.hasEnded {
+                    evidence[item.id] = ChatBackgroundWorkEvidence(
+                        endedState: Self.endedState(forPanelStatus: newest.status), endedAt: now)
                 } else {
                     evidence[item.id] = ChatBackgroundWorkEvidence(lastSeenAt: now)
                 }
@@ -793,7 +796,10 @@ struct AgyScreen: Sendable {
     private static func matchesTaskItem(
         screenCommand: String, isTruncated: Bool, item: ChatBackgroundWorkItem
     ) -> Bool {
-        let candidates = [item.title, item.subtitle].compactMap(\.self)
+        var candidates = [item.title, item.subtitle].compactMap(\.self)
+        if item.kind == .timer, let subtitle = item.subtitle, !subtitle.isEmpty {
+            candidates.append("\(subtitle) timer")
+        }
         return candidates.contains {
             taskTextMatches(screenCommand: screenCommand, isTruncated: isTruncated, candidate: $0)
         }

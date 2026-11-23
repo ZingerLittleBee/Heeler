@@ -761,9 +761,9 @@ struct AgyTranscriptReducerTests {
         #expect(restartNotice.notice.title == "Background task stopped")
     }
 
-    /// Non-daemon background commands and `run_workflow` calls populate
-    /// Background Work, while `IsDaemon: true` servers, `schedule` waits,
-    /// and held cancels before a new prompt do not linger.
+    /// Non-daemon background commands, `run_workflow` calls, and `schedule`
+    /// timers/crons populate Background Work, while `IsDaemon: true` servers
+    /// and daemon crons, plus held cancels before a new prompt, do not linger.
     @Test func backgroundCommandsAndWorkflowsReportBackgroundWorkAndSkipDaemonsAndWaits() throws {
         let taskLines = try Self.lines("tasks-question-compact.jsonl", steps: 39...45)
         let whileRunning = Self.transcript(Array(taskLines.prefix(4)), windowStart: 1)
@@ -791,6 +791,10 @@ struct AgyTranscriptReducerTests {
                     1, "MODEL", "PLANNER_RESPONSE",
                     calls: [
                         "run_command": .object(["CommandLine": .string("npm run dev"), "IsDaemon": .bool(true)]),
+                        "schedule": .object([
+                            "CronExpression": .string("*/5 * * * *"), "Prompt": .string("daemon monitor"),
+                            "IsDaemon": .bool(true),
+                        ]),
                         "schedule": .object(["DurationSeconds": .number(30), "Prompt": .string("check")]),
                         "run_workflow": .object([
                             "ScriptPath": .string("/work/scripts/audit.py"),
@@ -807,48 +811,211 @@ struct AgyTranscriptReducerTests {
                     content: AgyToolActivityTests.background(conversation, task: 2, "npm run dev")),
                 AgyToolActivityTests.step(
                     3, "MODEL", "GENERIC", status: "RUNNING",
-                    content: AgyToolActivityTests.background(conversation, task: 3, "Timer")),
+                    content: AgyToolActivityTests.background(conversation, task: 3, "Cron: */5 * * * *, Prompt: daemon monitor")),
                 AgyToolActivityTests.step(
                     4, "MODEL", "GENERIC", status: "RUNNING",
-                    content: AgyToolActivityTests.background(conversation, task: 4, "Audit modules")),
+                    content: AgyToolActivityTests.background(conversation, task: 4, "Timer: 30s, Prompt: check")),
                 AgyToolActivityTests.step(
                     5, "MODEL", "GENERIC", status: "RUNNING",
-                    content: AgyToolActivityTests.background(conversation, task: 5, "pytest -q")),
+                    content: AgyToolActivityTests.background(conversation, task: 5, "Audit modules")),
                 AgyToolActivityTests.step(
                     6, "MODEL", "GENERIC", status: "RUNNING",
-                    content: AgyToolActivityTests.background(conversation, task: 6, "sleep 120")),
+                    content: AgyToolActivityTests.background(conversation, task: 6, "pytest -q")),
                 AgyToolActivityTests.step(
-                    7, "SYSTEM", "SYSTEM_MESSAGE",
+                    7, "MODEL", "GENERIC", status: "RUNNING",
+                    content: AgyToolActivityTests.background(conversation, task: 7, "sleep 120")),
+                AgyToolActivityTests.step(
+                    8, "SYSTEM", "SYSTEM_MESSAGE",
                     content: Self.systemMessage(
-                        timestamp: "2026-11-07T16:27:30Z", sender: "\(conversation)/task-5",
-                        content: "Task id \"\(conversation)/task-5\" finished with result:\nCommand exited with code 2.\n\nOutput:\n1 failed")),
+                        timestamp: "2026-11-07T16:27:30Z", sender: "\(conversation)/task-6",
+                        content: "Task id \"\(conversation)/task-6\" finished with result:\nCommand exited with code 2.\n\nOutput:\n1 failed")),
                 AgyToolActivityTests.step(
-                    8, "MODEL", "PLANNER_RESPONSE",
+                    9, "MODEL", "PLANNER_RESPONSE",
                     calls: [
                         "manage_task": .object([
                             "Action": .string("kill"),
-                            "TaskId": .string("\(conversation)/task-6"),
+                            "TaskId": .string("\(conversation)/task-7"),
                         ])
                     ]),
-                AgyToolActivityTests.step(9, "MODEL", "GENERIC", content: "Killed task."),
+                AgyToolActivityTests.step(10, "MODEL", "GENERIC", content: "Killed task."),
             ]))
 
-        #expect(mixed.backgroundWork.map(\.kind) == [.workflow, .command, .command])
-        #expect(mixed.backgroundWork.map(\.title) == ["Audit modules", "pytest -q", "sleep 120"])
-        #expect(mixed.backgroundWork.map(\.subtitle) == ["audit.py", "Run unit tests", nil])
-        #expect(mixed.backgroundWork.map(\.state) == [.running, .failed, .stopped])
-        let workflowTool = try #require(AgyToolActivityTests.tool("agy:1:tool:2", in: mixed))
+        #expect(mixed.backgroundWork.map(\.kind) == [.timer, .workflow, .command, .command])
+        #expect(mixed.backgroundWork.map(\.title) == ["check", "Audit modules", "pytest -q", "sleep 120"])
+        #expect(mixed.backgroundWork.map(\.subtitle) == ["30s", "audit.py", "Run unit tests", nil])
+        #expect(mixed.backgroundWork.map(\.state) == [.running, .running, .failed, .stopped])
+        #expect(!mixed.openTurnBackgroundCommands.contains { $0.callID == "agy:1:tool:2" })
+        let workflowTool = try #require(AgyToolActivityTests.tool("agy:1:tool:3", in: mixed))
         #expect(workflowTool.kind == .agent)
         #expect(workflowTool.title == "Audit modules")
         #expect(workflowTool.subtitle == "audit.py")
-        let killedCommand = try #require(AgyToolActivityTests.tool("agy:1:tool:4", in: mixed))
+        let killedCommand = try #require(AgyToolActivityTests.tool("agy:1:tool:5", in: mixed))
         #expect(killedCommand.status == .interrupted)
         #expect(killedCommand.note == "Stopped in the background")
     }
 
+    /// `schedule` timers and non-daemon crons track launch, firing,
+    /// `TimerCondition` cancellation, `MaxIterations`, `manage_task(kill)`,
+    /// and server restarts while skipping `IsDaemon: true` crons.
+    @Test func scheduledTimersAndCronsTrackLifecycleAndSkipDaemonCrons() throws {
+        let conversation = "00000000-0000-4000-8000-000000000077"
+
+        // 1. One-shot timer fires via `SYSTEM_MESSAGE` from `sender == taskID`,
+        //    then clears on the next user prompt.
+        let oneShotLines = AgyToolActivityTests.lines([
+            AgyToolActivityTests.step(0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nWatch build\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "schedule": .object([
+                        "DurationSeconds": .number(240),
+                        "Prompt": .string("Check DockerManager implementation\nSecond line detail"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(
+                    conversation, task: 2, "Timer: 4m, Prompt: Check DockerManager implementation")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Waiting 4 minutes."),
+            AgyToolActivityTests.step(
+                4, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:26:00Z", sender: "\(conversation)/task-2",
+                    content: "Check DockerManager implementation")),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", content: "Checking now."),
+            AgyToolActivityTests.step(6, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nThanks\n</USER_REQUEST>"),
+        ])
+
+        let whileWaiting = Self.transcript(Array(oneShotLines.prefix(4)))
+        #expect(whileWaiting.backgroundWork.count == 1)
+        #expect(whileWaiting.backgroundWork[0].id == "agy:task:\(conversation)/task-2")
+        #expect(whileWaiting.backgroundWork[0].kind == .timer)
+        #expect(whileWaiting.backgroundWork[0].title == "Check DockerManager implementation")
+        #expect(whileWaiting.backgroundWork[0].subtitle == "4m")
+        #expect(whileWaiting.backgroundWork[0].state == .running)
+        #expect(whileWaiting.openTurnBackgroundCommands.isEmpty)
+
+        let afterFire = Self.transcript(Array(oneShotLines.prefix(6)))
+        #expect(afterFire.backgroundWork.map(\.state) == [.completed])
+        #expect(afterFire.backgroundWork[0].endedAt == (try Self.date("2026-11-07T16:26:00Z")))
+        #expect(afterFire.listedBackgroundWork.count == 1)
+
+        let afterNextPrompt = Self.transcript(oneShotLines)
+        #expect(afterNextPrompt.listedBackgroundWork.isEmpty)
+
+        // 2. `TimerCondition` cancels early on matching sender or `"any"`.
+        let conditionalLines = AgyToolActivityTests.lines([
+            AgyToolActivityTests.step(0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nWait on task\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "run_command": .object(["CommandLine": .string("make test")]),
+                    "schedule": .object([
+                        "DurationSeconds": .number(120), "Prompt": .string("Check make test"),
+                        "TimerCondition": .string("\(conversation)/task-2"),
+                    ]),
+                    "schedule": .object([
+                        "DurationSeconds": .number(180), "Prompt": .string("Any update"),
+                        "TimerCondition": .string("any"),
+                    ]),
+                    "schedule": .object([
+                        "DurationSeconds": .number(300), "Prompt": .string("Independent timer"),
+                        "TimerCondition": .string("never"),
+                    ]),
+                ]),
+            AgyToolActivityTests.step(2, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 2, "make test")),
+            AgyToolActivityTests.step(3, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 3, "Timer: 2m, Prompt: Check make test")),
+            AgyToolActivityTests.step(4, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 4, "Timer: 3m, Prompt: Any update")),
+            AgyToolActivityTests.step(5, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 5, "Timer: 5m, Prompt: Independent timer")),
+            AgyToolActivityTests.step(
+                6, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:26:30Z", sender: "system",
+                    content: "Task id \"\(conversation)/task-2\" finished with result:\nCommand exited with code 0.")),
+            AgyToolActivityTests.step(
+                7, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:28:00Z", sender: "system",
+                    content: AgyTranscriptReducer.restartNotice + ".")),
+        ])
+
+        let afterCondition = Self.transcript(Array(conditionalLines.prefix(7)))
+        #expect(afterCondition.backgroundWork.map(\.state) == [.completed, .stopped, .stopped, .running])
+
+        let afterRestart = Self.transcript(conditionalLines)
+        #expect(afterRestart.backgroundWork.map(\.state) == [.completed, .stopped, .stopped, .stopped])
+        let restartNotice = try #require(Self.notices(afterRestart).last)
+        #expect(restartNotice.notice.title == "Background task stopped")
+
+        // 3. Non-daemon recurring cron updates `lastActivityAt` per firing and
+        //    completes on `MaxIterations`; unbounded cron stops on `manage_task(kill)`.
+        let cronLines = AgyToolActivityTests.lines([
+            AgyToolActivityTests.step(0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nPoll CI\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "schedule": .object([
+                        "CronExpression": .string("*/5 * * * *"), "Prompt": .string("Check CI"),
+                        "MaxIterations": .number(2),
+                    ]),
+                    "schedule": .object([
+                        "CronExpression": .string("*/10 * * * *"), "Prompt": .string("Heartbeat"),
+                    ]),
+                    "schedule": .object([
+                        "CronExpression": .string("*/3 * * * *"), "Prompt": .string("Standing monitor"),
+                        "IsDaemon": .bool(true),
+                    ]),
+                ]),
+            AgyToolActivityTests.step(2, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 2, "Cron: */5 * * * *, Prompt: Check CI")),
+            AgyToolActivityTests.step(3, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 3, "Cron: */10 * * * *, Prompt: Heartbeat")),
+            AgyToolActivityTests.step(4, "MODEL", "GENERIC", status: "RUNNING", content: AgyToolActivityTests.background(conversation, task: 4, "Cron: */3 * * * *, Prompt: Standing monitor")),
+            AgyToolActivityTests.step(
+                5, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:28:00Z", sender: "\(conversation)/task-2",
+                    content: "Check CI (iteration 1)")),
+            AgyToolActivityTests.step(
+                6, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:33:00Z", sender: "\(conversation)/task-2",
+                    content: "Check CI (iteration 2)")),
+            AgyToolActivityTests.step(
+                7, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "manage_task": .object(["Action": .string("kill"), "TaskId": .string("\(conversation)/task-3")])
+                ]),
+            AgyToolActivityTests.step(8, "MODEL", "GENERIC", content: "Killed task."),
+            AgyToolActivityTests.step(
+                9, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:40:00Z", sender: "system",
+                    content: AgyTranscriptReducer.restartNotice + ".")),
+        ])
+
+        let afterFirstCronFire = Self.transcript(Array(cronLines.prefix(6)))
+        #expect(afterFirstCronFire.backgroundWork.map(\.kind) == [.timer, .timer])
+        #expect(afterFirstCronFire.backgroundWork.map(\.title) == ["Check CI", "Heartbeat"])
+        #expect(afterFirstCronFire.backgroundWork.map(\.subtitle) == ["*/5 * * * *", "*/10 * * * *"])
+        #expect(afterFirstCronFire.backgroundWork.map(\.state) == [.running, .running])
+        #expect(afterFirstCronFire.backgroundWork[0].lastActivityAt == (try Self.date("2026-11-07T16:28:00Z")))
+
+        let afterCronEnd = Self.transcript(cronLines)
+        #expect(afterCronEnd.backgroundWork.map(\.state) == [.completed, .stopped])
+        // Daemon cron was never tracked, so the trailing restart notice emits nothing.
+        #expect(Self.notices(afterCronEnd).isEmpty)
+
+        // 4. `AgySubagentState` stays non-idle while a subagent waits on a non-daemon timer,
+        //    then becomes idle once the timer fires or is cancelled by `TimerCondition`.
+        var subState = AgySubagentState()
+        subState.apply(Array(oneShotLines.prefix(4)))
+        #expect(!subState.isIdle)
+        subState.apply(Array(oneShotLines[4...5]))
+        #expect(subState.isIdle)
+    }
+
     /// In a tail window (`windowStart > 0`), `manage_subagents(list)` and
     /// `manage_task(list)` discover running work launched above the window,
-    /// and `manage_task(status)` refreshes `lastActivityAt`.
+    /// skipping daemon tasks, and `manage_task(status)` refreshes `lastActivityAt`.
     @Test func listAndStatusCallsDiscoverAndRefreshBackgroundWorkInATailWindow() throws {
         let subID = "55555555-5555-4000-8000-000000000005"
         let conversation = "00000000-0000-4000-8000-000000000088"
@@ -878,9 +1045,10 @@ struct AgyTranscriptReducerTests {
                 content: """
                     Created At: 2026-11-08T00:32:00+08:00
                     Completed At: 2026-11-08T00:32:00+08:00
-                    Running tasks [3]:
+                    Running tasks [4]:
                     [
-                      {"taskId": "\(conversation)/task-2", "toolName": "schedule", "description": "Timer"},
+                      {"taskId": "\(conversation)/task-1", "toolName": "schedule", "description": "Cron: */3 * * * *, Prompt: Daemon monitor", "isDaemon": true},
+                      {"taskId": "\(conversation)/task-2", "toolName": "schedule", "description": "Timer: 4m, Prompt: Check status", "startTime": "2026-11-07T16:20:00Z"},
                       {"taskId": "\(conversation)/task-3", "toolName": "run_command", "description": "cargo test", "toolSummary": "Run cargo test", "startTime": "2026-11-07T16:21:00Z"},
                       {"taskId": "\(conversation)/task-4", "toolName": "run_workflow", "description": "Fan-out review", "startTime": "2026-11-07T16:22:00Z"}
                     ]
@@ -888,16 +1056,25 @@ struct AgyTranscriptReducerTests {
             AgyToolActivityTests.step(
                 13, "MODEL", "GENERIC",
                 content: "Created At: 2026-11-08T00:33:00+08:00\nCompleted At: 2026-11-08T00:33:00+08:00\nStatus: RUNNING\nOutput: testing...\n"),
+            AgyToolActivityTests.step(
+                14, "SYSTEM", "SYSTEM_MESSAGE",
+                content: Self.systemMessage(
+                    timestamp: "2026-11-07T16:34:00Z", sender: "\(conversation)/task-2",
+                    content: "Check status")),
         ])
 
-        let transcript = Self.transcript(lines, windowStart: 4_096)
-        #expect(transcript.backgroundWork.map(\.kind) == [.subagent, .command, .workflow])
-        #expect(transcript.backgroundWork.map(\.title) == ["API Auditor", "cargo test", "Fan-out review"])
-        #expect(transcript.backgroundWork.map(\.subtitle) == ["self", "Run cargo test", nil])
-        #expect(transcript.backgroundWork.map(\.state) == [.running, .running, .running])
-        #expect(transcript.backgroundWork[0].lastActivityAt == (try Self.date("2026-11-07T16:31:00Z")))
-        #expect(transcript.backgroundWork[1].launchedAt == (try Self.date("2026-11-07T16:21:00Z")))
-        #expect(transcript.backgroundWork[1].lastActivityAt == (try Self.date("2026-11-07T16:33:00Z")))
+        let beforeFire = Self.transcript(Array(lines.prefix(4)), windowStart: 4_096)
+        #expect(beforeFire.backgroundWork.map(\.kind) == [.subagent, .timer, .command, .workflow])
+        #expect(beforeFire.backgroundWork.map(\.title) == ["API Auditor", "Check status", "cargo test", "Fan-out review"])
+        #expect(beforeFire.backgroundWork.map(\.subtitle) == ["self", "4m", "Run cargo test", nil])
+        #expect(beforeFire.backgroundWork.map(\.state) == [.running, .running, .running, .running])
+        #expect(beforeFire.backgroundWork[0].lastActivityAt == (try Self.date("2026-11-07T16:31:00Z")))
+        #expect(beforeFire.backgroundWork[1].launchedAt == (try Self.date("2026-11-07T16:20:00Z")))
+        #expect(beforeFire.backgroundWork[2].launchedAt == (try Self.date("2026-11-07T16:21:00Z")))
+        #expect(beforeFire.backgroundWork[2].lastActivityAt == (try Self.date("2026-11-07T16:33:00Z")))
+
+        let afterFire = Self.transcript(lines, windowStart: 4_096)
+        #expect(afterFire.backgroundWork.map(\.state) == [.running, .completed, .running, .running])
     }
 
     // MARK: Windows and forks

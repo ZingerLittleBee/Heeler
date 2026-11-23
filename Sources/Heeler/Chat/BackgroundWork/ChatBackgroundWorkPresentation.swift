@@ -110,7 +110,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 guard let detail else { return nil }
                 let clean = Self.singleLine(detail)
                 return clean.isEmpty ? nil : clean
-            case .subagent:
+            case .subagent, .timer:
                 let clean = Self.singleLine(title)
                 return clean.isEmpty ? title : clean
             case .workflow:
@@ -135,7 +135,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 let cleanTitle = Self.singleLine(title)
                 guard !cleanDetail.isEmpty, !cleanTitle.isEmpty, cleanDetail != cleanTitle else { return nil }
                 return cleanTitle
-            case .subagent:
+            case .subagent, .timer:
                 return nil
             }
         }
@@ -148,7 +148,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 return trimmed.isEmpty ? nil : "$ \(trimmed)"
             case .workflow:
                 return terminalPreview
-            case .subagent:
+            case .subagent, .timer:
                 return nil
             }
         }
@@ -173,6 +173,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             switch kind {
             case .command, .workflow: caption
             case .subagent: String(localized: "Subagent")
+            case .timer: kindBadge
             }
         }
 
@@ -185,6 +186,9 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
             case .workflow:
                 let base = String(localized: "Workflow")
+                return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
+            case .timer:
+                let base = String(localized: "Timer")
                 return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
             }
         }
@@ -297,6 +301,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 case .workflow:
                     (started.last { $0.state == .running } ?? started.last)?.phase ?? String(localized: "Workflow")
                 case .command: String(localized: "Command")
+                case .timer: item.subtitle ?? String(localized: "Timer")
                 }
             var spoken = [item.title, kindPhrase(item), statePhrase(status, lastSeen: lastSeen)]
             if let fraction { spoken.append(String(localized: "\(fraction.done) of \(fraction.total) agents done")) }
@@ -379,6 +384,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             case .subagent: item.subtitle.map { String(localized: "\($0) subagent") } ?? String(localized: "Subagent")
             case .workflow: String(localized: "Workflow")
             case .command: String(localized: "Command")
+            case .timer: item.subtitle.map { String(localized: "Timer \($0)") } ?? String(localized: "Timer")
             }
         }
 

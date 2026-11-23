@@ -17,7 +17,7 @@ import Foundation
 /// ended, so turns record when they started only, and Chat shows no time
 /// worked rather than one that leaves out the reply.
 struct AgyTranscriptReducer: ChatTranscriptReducer {
-    static let revision = 8
+    static let revision = 9
 
     private var steps: [UInt64: AgyStep] = [:]
     private var invalid: Set<UInt64> = []
@@ -236,6 +236,14 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         var hasSettled: Bool { hasReply || isParkedOnSwarmWait }
     }
 
+    private struct ActiveSchedule {
+        let callIndex: Int?
+        let isCron: Bool
+        let maxIterations: Int?
+        let timerCondition: String?
+        var firedCount = 0
+    }
+
     private struct Projection {
         let activity: ChatAgentActivity
         let windowStart: UInt64
@@ -246,6 +254,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
         /// first in line first.
         var pending: [Int] = []
         var tasks: [String: Int] = [:]
+        var schedules: [String: ActiveSchedule] = [:]
         var subagents: [String: Int] = [:]
         var backgroundIndexByID: [String: Int] = [:]
         /// Waits sent to the background (`AgyToolCall.waitTools`) no step
@@ -412,9 +421,28 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             let index = pending.removeFirst()
             calls[index].result = step
             if step.status == .running {
-                // A wait gets no task end, so it is no task a restart stops.
-                if AgyToolCall.waitTools.contains(calls[index].name) {
+                if calls[index].name == "schedule" {
                     waits.append(index)
+                    if let taskID = Self.backgroundTaskID(in: step.resultBody) {
+                        calls[index].taskID = taskID
+                        tasks[taskID] = index
+                        // Standing daemon crons (`IsDaemon: true`) are meant to
+                        // keep firing after the current task is done, so Chat
+                        // skips them just like daemon background commands.
+                        if !calls[index].isDaemon {
+                            let (title, subtitle) = calls[index].scheduleBackgroundTitles(resultBody: step.resultBody)
+                            schedules[taskID] = ActiveSchedule(
+                                callIndex: index,
+                                isCron: calls[index].isCronSchedule,
+                                maxIterations: calls[index].scheduleMaxIterations,
+                                timerCondition: calls[index].timerCondition)
+                            addBackgroundWork(
+                                ChatBackgroundWorkItem(
+                                    id: Self.taskWorkID(taskID), kind: .timer, title: title, subtitle: subtitle,
+                                    state: .running, launchOffset: calls[index].callOffset,
+                                    launchedAt: step.createdAt ?? calls[index].callCreatedAt))
+                        }
+                    }
                 } else if let taskID = Self.backgroundTaskID(in: step.resultBody) {
                     calls[index].taskID = taskID
                     tasks[taskID] = index
@@ -562,6 +590,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             switch args?["Action"]?.stringValue {
             case "kill":
                 guard let taskID = args?["TaskId"]?.stringValue, !taskID.isEmpty else { return }
+                schedules.removeValue(forKey: taskID)
                 if let taskCall = tasks[taskID], calls[taskCall].taskEnd == nil, !calls[taskCall].stoppedByRestart {
                     calls[taskCall].killedByManageTask = true
                 }
@@ -583,8 +612,8 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             case "list":
                 for entry in Self.jsonArray(in: result.resultBody) {
                     guard let taskID = entry["taskId"]?.stringValue, !taskID.isEmpty else { continue }
+                    guard entry["isDaemon"] != .bool(true) else { continue }
                     let toolName = entry["toolName"]?.stringValue ?? ""
-                    guard !AgyToolCall.waitTools.contains(toolName) else { continue }
                     let workID = Self.taskWorkID(taskID)
                     if let workIndex = backgroundIndexByID[workID] {
                         if transcript.backgroundWork[workIndex].state == .running, let seenAt = result.createdAt {
@@ -592,17 +621,36 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                                 [transcript.backgroundWork[workIndex].lastActivityAt, seenAt].compactMap(\.self).max()
                         }
                     } else if windowStart > 0 {
-                        let kind: ChatBackgroundWorkItem.Kind = toolName == "run_workflow" ? .workflow : .command
                         let desc = entry["description"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
                         let summary = entry["toolSummary"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
-                        let fallback = kind == .workflow ? String(localized: "Workflow") : String(localized: "Command")
-                        let title = desc ?? summary ?? fallback
                         let startTime = entry["startTime"]?.stringValue.flatMap(AgyStep.date)
-                        addBackgroundWork(
-                            ChatBackgroundWorkItem(
-                                id: workID, kind: kind, title: title, subtitle: summary == title ? nil : summary,
-                                state: .running, launchOffset: 0, launchedAt: startTime ?? result.createdAt,
-                                lastActivityAt: result.createdAt))
+                        if toolName == "schedule" {
+                            let parsed =
+                                desc.map { AgyToolCall.scheduleDescriptionParts($0) }
+                                ?? (isCron: false, spec: nil, prompt: nil)
+                            let isCron = parsed.isCron || (summary?.localizedCaseInsensitiveContains("cron") == true)
+                            let promptLine = AgyToolCall.firstLine(of: parsed.prompt)
+                            let fallbackDesc = desc == "Timer" ? nil : desc
+                            let title = promptLine ?? parsed.spec ?? summary ?? fallbackDesc ?? String(localized: "Timer")
+                            let rawSubtitle = parsed.spec ?? summary
+                            let subtitle = rawSubtitle.flatMap { $0.isEmpty || $0 == title ? nil : $0 }
+                            schedules[taskID] = ActiveSchedule(
+                                callIndex: nil, isCron: isCron, maxIterations: nil, timerCondition: nil)
+                            addBackgroundWork(
+                                ChatBackgroundWorkItem(
+                                    id: workID, kind: .timer, title: title, subtitle: subtitle,
+                                    state: .running, launchOffset: 0, launchedAt: startTime ?? result.createdAt,
+                                    lastActivityAt: result.createdAt))
+                        } else {
+                            let kind: ChatBackgroundWorkItem.Kind = toolName == "run_workflow" ? .workflow : .command
+                            let fallback = kind == .workflow ? String(localized: "Workflow") : String(localized: "Command")
+                            let title = desc ?? summary ?? fallback
+                            addBackgroundWork(
+                                ChatBackgroundWorkItem(
+                                    id: workID, kind: kind, title: title, subtitle: summary == title ? nil : summary,
+                                    state: .running, launchOffset: 0, launchedAt: startTime ?? result.createdAt,
+                                    lastActivityAt: result.createdAt))
+                        }
                     }
                 }
             default:
@@ -616,6 +664,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 return
             }
             if let error = AgyTranscriptReducer.subagentError(in: step) {
+                cancelTimers(
+                    triggeredBy: [error.subagentID, step.systemMessage?.sender].compactMap(\.self),
+                    offset: step.offset, step: step)
                 let line = ChatOutputReference(offset: step.offset, length: step.length)
                 if let subCall = subagents[error.subagentID] {
                     calls[subCall].subagentEnd = .init(outcome: .failed, text: error.detail, line: line)
@@ -625,8 +676,37 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 return
             }
             if let message = step.systemMessage, let sender = message.sender {
+                if var active = schedules[sender] {
+                    cancelTimers(triggeredBy: [sender], excluding: sender, offset: step.offset, step: step)
+                    let workID = Self.taskWorkID(sender)
+                    if active.isCron {
+                        active.firedCount += 1
+                        if let workIndex = backgroundIndexByID[workID] {
+                            let seenAt = Self.endDate(of: step, launchedAt: transcript.backgroundWork[workIndex].launchedAt)
+                            transcript.backgroundWork[workIndex].lastActivityAt =
+                                [transcript.backgroundWork[workIndex].lastActivityAt, seenAt].compactMap(\.self).max()
+                        }
+                        if let maxIterations = active.maxIterations, active.firedCount >= maxIterations {
+                            schedules.removeValue(forKey: sender)
+                            if let callIndex = active.callIndex {
+                                calls[callIndex].scheduleEnded = true
+                            }
+                            endBackgroundWork(id: workID, state: .completed, offset: step.offset, step: step)
+                        } else {
+                            schedules[sender] = active
+                        }
+                    } else {
+                        schedules.removeValue(forKey: sender)
+                        if let callIndex = active.callIndex {
+                            calls[callIndex].scheduleEnded = true
+                        }
+                        endBackgroundWork(id: workID, state: .completed, offset: step.offset, step: step)
+                    }
+                    return
+                }
                 let workID = Self.subagentWorkID(sender)
                 if subagents[sender] != nil || backgroundIndexByID[workID] != nil {
+                    cancelTimers(triggeredBy: [sender], offset: step.offset, step: step)
                     let line = ChatOutputReference(offset: step.offset, length: step.length)
                     if let subCall = subagents[sender] {
                         calls[subCall].subagentEnd = .init(outcome: .completed, text: message.text, line: line)
@@ -636,6 +716,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 }
             }
             guard let text = step.systemMessageText, text.hasPrefix(AgyTranscriptReducer.restartNotice) else {
+                if let sender = step.systemMessage?.sender {
+                    cancelTimers(triggeredBy: [sender], offset: step.offset, step: step)
+                }
                 if let text = step.systemMessageText,
                     text.hasPrefix("[swarm] ") || text.hasPrefix("[board] ")
                         || text.hasPrefix("You have just started. Your assignment")
@@ -655,10 +738,12 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             // something only when a task or subagent was still running.
             let stoppedTasks = tasks.values.filter {
                 calls[$0].taskEnd == nil && !calls[$0].killedByManageTask && !calls[$0].stoppedByRestart
+                    && !calls[$0].scheduleEnded && !(calls[$0].name == "schedule" && calls[$0].isDaemon)
             }
             let stoppedSubagents = subagents.values.filter {
                 calls[$0].subagentEnd == nil && !calls[$0].stoppedByRestart
             }
+            schedules.removeAll()
             var stoppedWork = 0
             for workIndex in transcript.backgroundWork.indices where transcript.backgroundWork[workIndex].state == .running {
                 let launchedAt = transcript.backgroundWork[workIndex].launchedAt
@@ -689,11 +774,37 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 step)
         }
 
+        /// Cancels active one-shot timers whose `TimerCondition` (`"any"` or a
+        /// specific sender id) matches an arriving `[Message]` notification.
+        private mutating func cancelTimers(
+            triggeredBy senders: [String], excluding selfTaskID: String? = nil, offset: UInt64, step: AgyStep
+        ) {
+            guard !schedules.isEmpty, !senders.isEmpty else { return }
+            let senderSet = Set(senders)
+            let cancelled = schedules.compactMap { taskID, active -> (String, ActiveSchedule)? in
+                guard !active.isCron, taskID != selfTaskID,
+                    let condition = active.timerCondition, condition != "never"
+                else { return nil }
+                guard condition == "any" || senderSet.contains(condition) else { return nil }
+                return (taskID, active)
+            }
+            for (taskID, active) in cancelled {
+                schedules.removeValue(forKey: taskID)
+                if let callIndex = active.callIndex {
+                    calls[callIndex].scheduleEnded = true
+                }
+                endBackgroundWork(id: Self.taskWorkID(taskID), state: .stopped, offset: offset, step: step)
+            }
+        }
+
         /// A background task ended. Its end comes as a system message, and
         /// after the turn's reply it starts a turn of its own: the agent
         /// replies to it. One agy held for the next prompt ends the turn
         /// before that prompt.
         private mutating func readTaskEnd(_ step: AgyStep, _ end: (taskID: String, wasCanceled: Bool, result: String)) {
+            if let active = schedules.removeValue(forKey: end.taskID), let callIndex = active.callIndex {
+                calls[callIndex].scheduleEnded = true
+            }
             var command: String?
             if let index = tasks[end.taskID] {
                 calls[index].taskEnd = AgyToolCall.TaskEnd(
@@ -725,12 +836,18 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 let prompt = transcript.entries.lastIndex(where: { $0.id == transcript.turns[turn].firstEntryID })
             {
                 let promptOffset = transcript.entries[prompt].sourceOffset
+                cancelTimers(
+                    triggeredBy: [end.taskID, step.systemMessage?.sender].compactMap(\.self),
+                    excluding: end.taskID, offset: promptOffset, step: step)
                 endBackgroundWork(
                     id: Self.taskWorkID(end.taskID), state: workState, offset: promptOffset, step: step)
                 transcript.entries.insert(
                     ChatEntry(id: Self.id(step), sourceOffset: step.offset, content: .notice(notice)), at: prompt)
                 return
             }
+            cancelTimers(
+                triggeredBy: [end.taskID, step.systemMessage?.sender].compactMap(\.self),
+                excluding: end.taskID, offset: step.offset, step: step)
             endBackgroundWork(id: Self.taskWorkID(end.taskID), state: workState, offset: step.offset, step: step)
             if open?.hasReply ?? true {
                 if let open { close(open, ending: .completed, interruptedNotice: false) }

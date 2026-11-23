@@ -4338,8 +4338,9 @@ struct AgentChatStoreTests {
                         "IsDaemon": .bool(true),
                     ]),
                     "schedule": .object([
-                        "DurationSeconds": .number(30),
+                        "CronExpression": .string("*/5 * * * *"),
                         "Prompt": .string("Check status"),
+                        "IsDaemon": .bool(true),
                     ]),
                 ]),
             AgyToolActivityTests.step(
@@ -4347,7 +4348,7 @@ struct AgentChatStoreTests {
                 content: AgyToolActivityTests.background(rootID, task: 2, "npm run dev")),
             AgyToolActivityTests.step(
                 3, "MODEL", "GENERIC", status: "RUNNING",
-                content: "Timer scheduled for 30s."),
+                content: AgyToolActivityTests.background(rootID, task: 3, "Cron: */5 * * * *, Prompt: Check status")),
             AgyToolActivityTests.step(4, "MODEL", "PLANNER_RESPONSE", content: "Dev server running."),
         ]
         await fixture.files.write(AgyToolActivityTests.jsonl(daemonOnly), at: path)
@@ -4390,6 +4391,74 @@ struct AgentChatStoreTests {
         await fixture.store.step()
         #expect(!fixture.store.hasRunningBackgroundWork)
         #expect(reported == [true, false, true, false])
+    }
+
+    @Test func agyScheduledTimerActivatesBackgroundWorkAndEndsOnFire() async throws {
+        let rootID = "82f562e4-129f-4e43-87dc-be2f661d5635"
+        let path = "/home/dev/.gemini/antigravity-cli/brain/\(rootID)/.system_generated/logs/transcript_full.jsonl"
+        let rule = String(repeating: "\u{2500}", count: 62)
+        let timerScreen = ScreenFixture.synthetic([
+            rule,
+            ">",
+            rule,
+            "  \u{25CF} [01:56:32] 4m timer running",
+            rule,
+            "? for shortcuts       Gemini 3.1 Pro \u{00B7} high \u{00B7} 1 task(s) \u{00B7} /tasks",
+        ])
+        let screenIO = BlockedScreenIO(
+            readScreen: { timerScreen },
+            sendKeys: { _ in },
+            paste: { _ in })
+
+        var reported: [Bool] = []
+        let fixture = Fixture(
+            session: rootID, program: .agy,
+            adapter: ChatTranscriptAdapter.standard(for: .agy),
+            screen: screenIO,
+            onRunningBackgroundWorkChanged: { reported.append($0) })
+        fixture.clock.now = try #require(ISO8601DateFormatter().date(from: "2026-11-07T16:25:00Z"))
+
+        let launchSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                0, "USER_EXPLICIT", "USER_INPUT", content: "<USER_REQUEST>\nWait 4m then check\n</USER_REQUEST>"),
+            AgyToolActivityTests.step(
+                1, "MODEL", "PLANNER_RESPONSE",
+                calls: [
+                    "schedule": .object([
+                        "DurationSeconds": .number(240),
+                        "Prompt": .string("Check DockerManager progress"),
+                    ])
+                ]),
+            AgyToolActivityTests.step(
+                2, "MODEL", "GENERIC", status: "RUNNING",
+                content: AgyToolActivityTests.background(
+                    rootID, task: 2, "Timer: 4m, Prompt: Check DockerManager progress")),
+            AgyToolActivityTests.step(3, "MODEL", "PLANNER_RESPONSE", content: "Timer armed for 4m."),
+        ]
+        await fixture.files.write(AgyToolActivityTests.jsonl(launchSteps), at: path)
+
+        await fixture.store.step()
+        #expect(fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true])
+        #expect(fixture.store.backgroundWork.rows.map(\.item.kind) == [.timer])
+        #expect(fixture.store.backgroundWork.rows.map(\.item.title) == ["Check DockerManager progress"])
+        #expect(fixture.store.backgroundWork.rows.map(\.item.subtitle) == ["4m"])
+
+        // When the timer fires, the row completes and running background work clears.
+        let fireSteps: [JSONValue] = [
+            AgyToolActivityTests.step(
+                4, "SYSTEM", "SYSTEM_MESSAGE",
+                content: "The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n"
+                    + "[Message] timestamp=2026-11-07T16:29:00Z sender=\(rootID)/task-2 priority=MESSAGE_PRIORITY_HIGH content=Check DockerManager progress\n</SYSTEM_MESSAGE>"),
+            AgyToolActivityTests.step(5, "MODEL", "PLANNER_RESPONSE", content: "Checking now."),
+        ]
+        await fixture.files.append(AgyToolActivityTests.jsonl(fireSteps), to: path)
+        fixture.advance(240)
+        await fixture.store.step()
+
+        #expect(!fixture.store.hasRunningBackgroundWork)
+        #expect(reported == [true, false])
+        #expect(fixture.store.backgroundWork.rows.map(\.item.state) == [.completed])
     }
 
     @Test func agyLongRunningBackgroundCommandStaysActiveViaScreenAndTaskLogAndRetiresCleanly() async throws {

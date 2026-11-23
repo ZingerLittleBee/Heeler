@@ -251,8 +251,36 @@ struct ChatBackgroundWorkPresentationTests {
             item: ChatBackgroundWorkItem(
                 id: "sub-1", kind: .subagent, title: "Codebase Researcher", subtitle: "research",
                 state: .running, launchOffset: 5))
+        let timer = ChatBackgroundWork.Row(
+            item: ChatBackgroundWorkItem(
+                id: "timer-1", kind: .timer, title: "Check build status", subtitle: "4m",
+                state: .running, launchOffset: 6))
 
-        let rows = Self.present([singleLineCmd, multiLineCmd, emptyWorkflow, populatedWorkflow, subagent]).rows
-        #expect(rows.map(\.hasIntrinsicExpandableContent) == [false, true, false, true, false])
+        let rows = Self.present([singleLineCmd, multiLineCmd, emptyWorkflow, populatedWorkflow, subagent, timer]).rows
+        #expect(rows.map(\.hasIntrinsicExpandableContent) == [false, true, false, true, false, false])
+    }
+
+    @Test func timerRowShowsPromptTitleAndDurationBadgeWithoutTerminalBox() {
+        let timerWithDuration = Self.row(
+            "Check DockerManager status", kind: .timer, subtitle: "4m", launchedAgo: 72)
+        let bareTimer = Self.row("4m", kind: .timer, subtitle: nil, launchedAgo: 10)
+        let cronTimer = Self.row("Poll CI", kind: .timer, subtitle: "*/5 * * * *", launchedAgo: 30)
+
+        let rows = Self.present([timerWithDuration, bareTimer, cronTimer]).rows
+        #expect(rows[0].stripHeadline == "Check DockerManager status")
+        #expect(rows[0].cardHeadline == "Check DockerManager status")
+        #expect(rows[0].stripKind == "Timer · 4m")
+        #expect(rows[0].kindBadge == "Timer · 4m")
+        #expect(rows[0].terminalPreview == nil)
+        #expect(rows[0].fullTerminalText == nil)
+        #expect(rows[0].detail == nil)
+        #expect(rows[0].accessibilityLabel == "Check DockerManager status, Timer 4m, running, 1 minute, 12 seconds")
+
+        #expect(rows[1].stripKind == "Timer")
+        #expect(rows[1].kindBadge == "Timer")
+        #expect(rows[1].accessibilityLabel == "4m, Timer, running, 10 seconds")
+
+        #expect(rows[2].stripKind == "Timer · */5 * * * *")
+        #expect(rows[2].kindBadge == "Timer · */5 * * * *")
     }
 }

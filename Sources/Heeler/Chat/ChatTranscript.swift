@@ -1166,16 +1166,17 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     }
 }
 
-/// One piece of Background Work: a Subagent, Workflow or background command
-/// the program started beside the conversation, as the transcript records its
-/// launch and its end. Saved with the conversation only to carry a launch
-/// above a later read's window into it, where that read's records can still
-/// end it.
+/// One piece of Background Work: a Subagent, Workflow, background command, or
+/// scheduled timer/cron the program started beside the conversation, as the
+/// transcript records its launch and its end. Saved with the conversation only
+/// to carry a launch above a later read's window into it, where that read's
+/// records can still end it.
 struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     enum Kind: Equatable, Codable, Sendable {
         case subagent
         case workflow
         case command
+        case timer
     }
 
     enum State: Equatable, Codable, Sendable {

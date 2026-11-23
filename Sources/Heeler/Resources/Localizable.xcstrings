@@ -69926,6 +69926,8 @@
         }
       }
     },
+    "Timer" : {},
+    "Timer %@" : {},
     "Title" : {
       "localizations" : {
         "ja" : {
