@@ -384,17 +384,46 @@ actor HerdrCoreHostSession {
                 }
                 guard activationIsCurrent(generation) else { break }
                 if !isAnnouncedConnected {
-                    let latency = try await measureLatency(on: transport)
-                    guard activationIsCurrent(generation) else { break }
+                    // Run initial latency probe and events subscription in
+                    // parallel on the open link (saving 1 RTT on cold connect)
+                    // while still publishing `.connected` ahead of `.snapshot`.
+                    async let latencyProbe = measureLatency(on: transport)
+                    async let subscribeAttempt: Result<HerdrCoreEventStream, any Error> = {
+                        do { return .success(try await transport.subscribeEvents()) }
+                        catch { return .failure(error) }
+                    }()
+                    let latency: Duration
+                    do {
+                        latency = try await latencyProbe
+                    } catch {
+                        if case .success(let orphaned) = await subscribeAttempt {
+                            await orphaned.end()
+                        }
+                        throw error
+                    }
+                    guard activationIsCurrent(generation) else {
+                        if case .success(let orphaned) = await subscribeAttempt {
+                            await orphaned.end()
+                        }
+                        break
+                    }
                     await noteKernel()
-                    guard activationIsCurrent(generation) else { break }
+                    guard activationIsCurrent(generation) else {
+                        if case .success(let orphaned) = await subscribeAttempt {
+                            await orphaned.end()
+                        }
+                        break
+                    }
                     latencyBox.withLock { $0 = latency }
                     latencyContinuation.yield()
                     routeIDBox.withLock { $0 = transport.routeID }
                     yieldUpdate(.status(.connected))
+                    checkLeakedEnvironment(on: transport, generation: generation)
+                    stream = try await subscribeAttempt.get()
+                } else {
+                    checkLeakedEnvironment(on: transport, generation: generation)
+                    stream = try await transport.subscribeEvents()
                 }
-                checkLeakedEnvironment(on: transport, generation: generation)
-                stream = try await transport.subscribeEvents()
             } catch {
                 await noteKernel()
                 guard activationIsCurrent(generation) else { break }

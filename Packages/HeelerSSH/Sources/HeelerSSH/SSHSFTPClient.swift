@@ -223,12 +223,17 @@ public final class SSHSFTPFile: Sendable {
         self.driver = driver
     }
 
-    public func write(_ data: Data, timeout: Duration) async throws {
+    public func write(
+        _ data: Data,
+        timeout: Duration,
+        onProgress: (@Sendable (Int) async -> Void)? = nil
+    ) async throws {
         try await driver.writeSFTPFile(
             sftpID: sftpID,
             fileID: fileID,
             data: data,
-            timeout: timeout)
+            timeout: timeout,
+            onProgress: onProgress)
     }
 
     /// Closes only this file handle. Idempotent.

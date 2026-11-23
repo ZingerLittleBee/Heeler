@@ -1178,6 +1178,42 @@ struct AgentAttachStoreTests {
         await store.leave().value
     }
 
+    @Test func outputGateCoalescesBufferedBurstsAndAppliesBackpressure() async throws {
+        let (stream, gate) = HeelerSSHAttachOutputGate.makeStream()
+        let chunk = Data(repeating: UInt8(ascii: "z"), count: 1_024)
+        for _ in 0..<300 {
+            gate.yield(chunk)
+        }
+        // Buffered bytes (300 KiB) exceed the 256 KiB high-water mark, so
+        // `waitForBufferRoom` suspends until the consumer drains below 128 KiB.
+        let resumed = LockedFlag()
+        let producer = Task {
+            await gate.waitForBufferRoom()
+            resumed.set()
+        }
+        for _ in 0..<20 { await Task.yield() }
+        #expect(!resumed.value)
+
+        gate.finish()
+        var turns = 0
+        var totalBytes = 0
+        for try await batch in stream {
+            turns += 1
+            totalBytes += batch.count
+        }
+        await producer.value
+        #expect(resumed.value)
+        #expect(totalBytes == 300 * 1_024)
+        #expect(turns <= 10)
+    }
+
+    private final class LockedFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var flag = false
+        var value: Bool { lock.withLock { flag } }
+        func set() { lock.withLock { flag = true } }
+    }
+
     @Test func plainWebURLsBecomeAttachLinksInMostRecentOrder() async throws {
         let transport = ScriptedTransport()
         let store = makeStore(transport: transport, generation: 0)

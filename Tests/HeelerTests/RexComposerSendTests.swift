@@ -48,10 +48,14 @@ struct RexComposerSendTests {
         let methods = await rig.server.requests.dropFirst(before).map(\.method)
             .filter { $0.hasPrefix(terminal) || $0 == "block.event" }
         let modes = RexInventoryWire.terminalMethod("modes")
-        #expect(methods == [
-            process, RexInventoryWire.terminalMethod("format"), RexInventoryWire.terminalMethod("blob_read"),
-            modes, process, modes, "block.event", process, RexChatRig.write,
-        ])
+        let format = RexInventoryWire.terminalMethod("format")
+        let blobRead = RexInventoryWire.terminalMethod("blob_read")
+        let pasteIndex = try #require(methods.firstIndex(of: "block.event"))
+        // Pre-lane and in-lane reads run concurrently before the paste, then
+        // a fresh process read confirms the holder before Enter.
+        let beforePaste = Array(methods[..<pasteIndex])
+        #expect(beforePaste.sorted() == [process, format, blobRead, modes, process, modes].sorted())
+        #expect(Array(methods[pasteIndex...]) == ["block.event", process, RexChatRig.write])
         await rig.tookNothing()
     }
 

@@ -2553,7 +2553,8 @@ actor SessionDriver {
         sftpID: UInt64,
         fileID: UInt64,
         data: Data,
-        timeout: Duration
+        timeout: Duration,
+        onProgress: (@Sendable (Int) async -> Void)? = nil
     ) async throws {
         try await withDiagnosticPhase("SFTP write file \(fileID)") {
             guard !data.isEmpty else { return }
@@ -2629,6 +2630,9 @@ actor SessionDriver {
 
                     if progress.written > 0 {
                         offset += progress.written
+                        if let onProgress {
+                            await onProgress(progress.written)
+                        }
                         await Task.yield()
                     } else {
                         #if DEBUG
@@ -2707,11 +2711,29 @@ actor SessionDriver {
         deadline: ContinuousClock.Instant
     ) async throws {
         let owner = allocateTransportSendOwner()
-        try await waitForTransportSendAdmission(
-            owner: owner,
-            deadline: deadline,
-            cancellable: false)
+        func drive() -> Int32? {
+            guard let file = sftpClients[sftpID]?.files[fileID] else { return nil }
+            let result = libssh2_sftp_close_handle(file)
+            if result == 0 {
+                sftpClients[sftpID]?.files[fileID] = nil
+            }
+            return result
+        }
         while true {
+            try await checkProgressFinishingOwnedSend(
+                owner: owner,
+                deadline: deadline,
+                cancellable: false,
+                drive: drive)
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: deadline,
+                    cancellable: false)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                throw error
+            }
             guard let file = sftpClients[sftpID]?.files[fileID] else { return }
             let session = try requireSession()
             let result = libssh2_sftp_close_handle(file)
@@ -2722,7 +2744,12 @@ actor SessionDriver {
                 sftpClients[sftpID]?.files[fileID] = nil
                 return
             }
-            try await waitForSessionYielding(session, deadline: deadline, cancellable: false)
+            do {
+                try await waitForSessionYielding(session, deadline: deadline, cancellable: false)
+            } catch {
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                throw error
+            }
         }
     }
 
@@ -5394,15 +5421,6 @@ actor SessionDriver {
             guard let sftp = sftpClients[id]?.handle else { return nil }
             return operation(sftp)
         }
-        do {
-            try await waitForTransportSendAdmission(
-                owner: owner,
-                deadline: deadline,
-                cancellable: cancellable)
-        } catch {
-            await finishOwnedSendIfNeeded(owner: owner, drive: drive)
-            throw error
-        }
         while true {
             if isOnSFTP, cancellable, abandonedUntil == nil, Task.isCancelled { abandon() }
             if let abandonedUntil {
@@ -5418,7 +5436,25 @@ actor SessionDriver {
                     cancellable: cancellable,
                     drive: drive)
             }
+            do {
+                try await waitForTransportSendAdmission(
+                    owner: owner,
+                    deadline: abandonedUntil ?? deadline,
+                    cancellable: cancellable && abandonedUntil == nil)
+            } catch {
+                if isOnSFTP, cancellable, abandonedUntil == nil, error as? SSHError == .cancelled {
+                    abandon()
+                    continue
+                }
+                await finishOwnedSendIfNeeded(owner: owner, drive: drive)
+                if abandonedUntil != nil {
+                    retireDesyncedSFTPClient(id: id)
+                    throw SSHError.channelFailed
+                }
+                throw error
+            }
             guard let sftp = sftpClients[id]?.handle else {
+                if transportSendOwner == owner { invalidateResources() }
                 throw SSHError.connectionInvalidated
             }
             let session = try requireSession()

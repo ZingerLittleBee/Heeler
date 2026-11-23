@@ -157,6 +157,22 @@ final class HostStore {
         var order: [Host.ID]?
     }
 
+    /// Fast single-pass shape for the common case where every persisted Host is
+    /// known to this build. Falls back to `PersistedCatalog` whenever an entry
+    /// carries an unrecognized `authMethod`, `serverKind`, or `herdrEndpoint`.
+    private struct FastPersistedCatalog: Decodable {
+        let version: Int
+        let hosts: [Host]
+        var order: [Host.ID]?
+
+        func asPersistedCatalog() -> PersistedCatalog {
+            PersistedCatalog(
+                version: version,
+                hosts: PersistedHosts(entries: hosts.map(PersistedHosts.Entry.known)),
+                order: order)
+        }
+    }
+
     private(set) var hosts: [Host]
     /// The shared catalog could not be read, so no Host is shown or written.
     private(set) var catalogLoadError: HostStoreError?
@@ -221,6 +237,12 @@ final class HostStore {
     ) throws -> [PersistedHosts.Entry] {
         guard let data = defaults.data(forKey: defaultsKey) else { return [] }
         let decoder = JSONDecoder()
+        if let fast = try? decoder.decode(FastPersistedCatalog.self, from: data) {
+            guard fast.version == catalogVersion else {
+                throw HostStoreError.catalogUnreadable
+            }
+            return fast.hosts.map(PersistedHosts.Entry.known)
+        }
         if let catalog = try? decoder.decode(PersistedCatalog.self, from: data) {
             guard catalog.version == catalogVersion else {
                 throw HostStoreError.catalogUnreadable
@@ -238,7 +260,14 @@ final class HostStore {
         _ catalog: KindCatalog, from defaults: UserDefaults
     ) throws -> PersistedCatalog? {
         guard let data = defaults.data(forKey: catalog.defaultsKey) else { return nil }
-        let decoded = try JSONDecoder().decode(PersistedCatalog.self, from: data)
+        let decoder = JSONDecoder()
+        if let fast = try? decoder.decode(FastPersistedCatalog.self, from: data) {
+            guard fast.version == catalogVersion else {
+                throw HostStoreError.catalogUnreadable
+            }
+            return fast.asPersistedCatalog()
+        }
+        let decoded = try decoder.decode(PersistedCatalog.self, from: data)
         guard decoded.version == catalogVersion else {
             throw HostStoreError.catalogUnreadable
         }

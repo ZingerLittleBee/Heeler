@@ -213,4 +213,23 @@ struct HostRouteLeasesTests {
         #expect(settings.routeLease?.host == host)
         #expect(settings.routeLease?.leases === leases)
     }
+
+    @Test func lastWinningRouteRemembersRouteAcrossDropsAndClearsOnRelease() async throws {
+        let leases = HostRouteLeases()
+        let dials = Dials()
+
+        #expect(await leases.lastWinningRoute(for: host) == nil)
+        let first = try await connect(leases, racingTo: 1, dials: dials)
+        #expect(await leases.lastWinningRoute(for: host) == 1)
+
+        // Dropping the last connection clears the active lease so the next dial
+        // races again, while remembering route 1 so it skips the deferred stagger.
+        first.end()
+        #expect(await leases.route(for: host) == nil)
+        #expect(await leases.lastWinningRoute(for: host) == 1)
+
+        // Explicit release (e.g. user tapping Reconnect) clears the hint too.
+        await leases.release(host)
+        #expect(await leases.lastWinningRoute(for: host) == nil)
+    }
 }

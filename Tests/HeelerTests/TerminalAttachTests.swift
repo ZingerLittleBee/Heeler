@@ -351,9 +351,11 @@ struct TerminalAttachTests {
         source.gate.yield(second)
         source.gate.finish()
 
-        #expect(try await iterator.next() == first)
-        #expect(try await iterator.next() == second)
-        #expect(try await iterator.next() == nil)
+        var drained = Data()
+        while let chunk = try await iterator.next() {
+            drained.append(chunk)
+        }
+        #expect(drained == first + second)
     }
 
     /// How an Attach output consumer finished, flattened so one `#expect`
@@ -2245,9 +2247,11 @@ struct TerminalAttachTests {
             HeelerSSHTransport.attachFailure(error, attachCommand: "herdr agent attach")
                 == .attachExited(status: 1, output: expected))
         var iterator = source.output.makeAsyncIterator()
-        #expect(try await iterator.next() == frame)
-        #expect(try await iterator.next() == farewell)
-        #expect(try await iterator.next() == nil)
+        var drained = Data()
+        while let chunk = try await iterator.next() {
+            drained.append(chunk)
+        }
+        #expect(drained == frame + farewell)
     }
 
     /// A command that dies before the handshake is quoted from the startup

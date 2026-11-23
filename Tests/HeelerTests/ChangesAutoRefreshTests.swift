@@ -406,6 +406,233 @@ struct ChangesAutoRefreshTests {
         updates.finish()
     }
 
+    @Test func siblingRowsInSameCheckoutShareFreshReadWithoutDuplicateExecs() async throws {
+        let hostID = UUID()
+        let transport = ScriptedTransport()
+        let firstRead = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let secondRead = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: firstRead.changes.checkout,
+                head: firstRead.changes.head,
+                files: []),
+            directoryPrefix: Data())
+        await transport.scriptChangesReads([
+            .success(firstRead), .success(firstRead), .success(secondRead),
+        ])
+        let gate = GitExecGate()
+        let agents: [ConsoleAgent] = [
+            ("/home/dev/src/app", "w1:p1"),
+            ("/home/dev/src/app/sub", "w1:p2"),
+            ("/home/dev/src/app", "w1:p3"),
+        ].map { dir, paneID in
+            ConsoleAgent(
+                hostID: hostID,
+                hostName: "box",
+                agent: Agent(
+                    AgentInfo(
+                        agentStatus: .idle, focused: false, paneID: paneID, revision: 1,
+                        tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                        agent: "claude", cwd: dir, terminalTitleStripped: paneID)),
+                workspaceLabel: "ws",
+                repositoryCheckout: nil)
+        }
+        let rows = AgentRowChanges { agent in
+            ChangesStore(
+                directory: { agent.directory },
+                read: { try await transport.readChanges($0) },
+                gate: gate,
+                sleep: { _ in })
+        }
+        for agent in agents { rows.rowAppeared(agent) }
+        defer { for agent in agents { rows.rowDisappeared(agent.id) } }
+        await Self.waitUntil {
+            agents.allSatisfy { rows.store(for: $0)?.phase == .loaded(firstRead.changes) }
+        }
+        // p1 and p3 share the exact directory, so cold appearance runs 2 execs (root + sub), not 3.
+        #expect(await transport.changesReadRequests.count == 2)
+
+        // Now all 3 rows proved the same Checkout topLevel; gate the first
+        // refresh read on the wire so the sibling rows queue behind the Host
+        // gate, then verify all 3 adopt the single completed read.
+        let refreshGate = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: refreshGate)
+        let refreshTasks = agents.compactMap { rows.store(for: $0)?.startRead(automatic: true) }
+        await refreshGate.waitForEntry()
+        await Self.drain()
+        await refreshGate.open()
+        for task in refreshTasks { await task.value }
+        #expect(await transport.changesReadRequests.count == 3)
+        #expect(agents.allSatisfy { rows.store(for: $0)?.phase == .loaded(secondRead.changes) })
+    }
+
+    @Test func siblingReadStartedBeforeWorkingExitDoesNotCancelPostWorkingRefreshOrClearFreshness() async throws {
+        let hostID = UUID()
+        let transport = ScriptedTransport()
+        let firstRead = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let secondRead = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: firstRead.changes.checkout,
+                head: firstRead.changes.head,
+                files: Array(firstRead.changes.files.prefix(1))),
+            directoryPrefix: Data())
+        let thirdRead = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: firstRead.changes.checkout,
+                head: firstRead.changes.head,
+                files: []),
+            directoryPrefix: Data())
+        await transport.scriptChangesReads([
+            .success(firstRead), .success(secondRead), .success(thirdRead),
+        ])
+        let gate = GitExecGate()
+        let clockA = ChangesManualSleeper()
+        let clockB = ChangesManualSleeper()
+        let statusA = AsyncStream.makeStream(of: ConsoleStore.AgentStatusUpdate.self)
+        let statusB = AsyncStream.makeStream(of: ConsoleStore.AgentStatusUpdate.self)
+        statusA.continuation.yield(.init(status: .idle, liveUpdatesAvailable: true))
+        statusB.continuation.yield(.init(status: .working, liveUpdatesAvailable: true))
+        defer {
+            statusA.continuation.finish()
+            statusB.continuation.finish()
+        }
+        let makeAgent = { (paneID: String) in
+            ConsoleAgent(
+                hostID: hostID,
+                hostName: "box",
+                agent: Agent(
+                    AgentInfo(
+                        agentStatus: .idle, focused: false, paneID: paneID, revision: 1,
+                        tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                        agent: "claude", cwd: "/home/dev/src/app", terminalTitleStripped: paneID)),
+                workspaceLabel: "ws",
+                repositoryCheckout: nil)
+        }
+        let agentA = makeAgent("w1:p1")
+        let agentB = makeAgent("w1:p2")
+        let rows = AgentRowChanges { agent in
+            let isA = agent.agent.paneID == "w1:p1"
+            return ChangesStore(
+                directory: { agent.directory },
+                read: { try await transport.readChanges($0) },
+                gate: gate,
+                agentStatus: { isA ? statusA.stream : statusB.stream },
+                sleep: { try await (isA ? clockA : clockB).sleep($0) })
+        }
+        rows.rowAppeared(agentA)
+        rows.rowAppeared(agentB)
+        defer {
+            rows.rowDisappeared(agentA.id)
+            rows.rowDisappeared(agentB.id)
+        }
+        await Self.drain()
+        await clockA.fireAll()
+        await clockB.fireAll()
+        await Self.waitUntil {
+            rows.store(for: agentA)?.phase == .loaded(firstRead.changes)
+                && rows.store(for: agentB)?.phase == .loaded(firstRead.changes)
+        }
+        #expect(await transport.changesReadRequests.count == 1)
+
+        // Start a read on A and hold it in flight on the wire.
+        let readAGate = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: readAGate)
+        let readATask = rows.store(for: agentA)?.startRead(automatic: true)
+        await readAGate.waitForEntry()
+
+        // While A's read is in flight, B exits Working and its debounce queues
+        // a post-Working refresh behind the Host gate.
+        statusB.continuation.yield(.init(status: .done, liveUpdatesAvailable: true))
+        await Self.drain()
+        await clockB.fireAll()
+        await Self.drain()
+
+        // Hold B's post-Working read too so we can observe B's state right
+        // after A's older snapshot finishes.
+        let readBGate = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: readBGate)
+        await readAGate.open()
+        await readATask?.value
+
+        // B's queued post-Working read must NOT have been cancelled by A's
+        // earlier-dispatched snapshot, and B must keep its working freshness
+        // warning until its own post-Working read completes.
+        await readBGate.waitForEntry()
+        #expect(rows.store(for: agentB)?.freshness != nil)
+        await readBGate.open()
+        await Self.waitUntil {
+            rows.store(for: agentB)?.phase == .loaded(thirdRead.changes)
+                && rows.store(for: agentB)?.freshness == nil
+        }
+        #expect(await transport.changesReadRequests.count == 3)
+    }
+
+    @Test func siblingReadCopiesDirectoryPrefixForSameDirectoryAndPreservesOtherSubdirectoryPrefix() async throws {
+        let hostID = UUID()
+        let transport = ScriptedTransport()
+        let base = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        let subRead = CheckoutChangesRead(
+            changes: base.changes,
+            directoryPrefix: Data("sub/".utf8))
+        let otherRead = CheckoutChangesRead(
+            changes: base.changes,
+            directoryPrefix: Data("other/".utf8))
+        let newerSubRead = CheckoutChangesRead(
+            changes: CheckoutChanges(
+                checkout: base.changes.checkout,
+                head: base.changes.head,
+                files: []),
+            directoryPrefix: Data("sub/".utf8))
+        await transport.scriptChangesReads([
+            .success(subRead), .success(otherRead), .success(newerSubRead),
+        ])
+        let gate = GitExecGate()
+        let makeAgent = { (dir: String, paneID: String) in
+            ConsoleAgent(
+                hostID: hostID,
+                hostName: "box",
+                agent: Agent(
+                    AgentInfo(
+                        agentStatus: .idle, focused: false, paneID: paneID, revision: 1,
+                        tabID: "w1:t1", terminalID: "term_\(paneID)", workspaceID: "w1",
+                        agent: "claude", cwd: dir, terminalTitleStripped: paneID)),
+                workspaceLabel: "ws",
+                repositoryCheckout: nil)
+        }
+        let sub1 = makeAgent("/home/dev/src/app/sub", "w1:p1")
+        let sub2 = makeAgent("/home/dev/src/app/sub", "w1:p2")
+        let other = makeAgent("/home/dev/src/app/other", "w1:p3")
+        let rows = AgentRowChanges { agent in
+            ChangesStore(
+                directory: { agent.directory },
+                read: { try await transport.readChanges($0) },
+                gate: gate,
+                sleep: { _ in })
+        }
+        for agent in [sub1, sub2, other] { rows.rowAppeared(agent) }
+        defer { for agent in [sub1, sub2, other] { rows.rowDisappeared(agent.id) } }
+        await Self.waitUntil {
+            [sub1, sub2, other].allSatisfy { rows.store(for: $0)?.phase == .loaded(base.changes) }
+        }
+        #expect(await transport.changesReadRequests.count == 2)
+        #expect(rows.store(for: sub2)?.directoryPrefix == Data("sub/".utf8))
+        #expect(rows.store(for: other)?.directoryPrefix == Data("other/".utf8))
+
+        // Opening Changes detail from the sibling row that adopted without
+        // running git must inherit the subdirectory prefix immediately.
+        let detail = ChangesStore(
+            directory: { sub2.directory },
+            read: { try await transport.readChanges($0) })
+        rows.changesOpened(detail, for: sub2.id, startsFromRow: true)
+        #expect(detail.directoryPrefix == Data("sub/".utf8))
+        rows.changesClosed(detail, for: sub2.id)
+
+        // When sub1 reads again, `other` adopts the newer Checkout totals but
+        // preserves its own `other/` directory prefix.
+        await rows.store(for: sub1)?.refresh(automatic: true)
+        #expect(rows.store(for: other)?.phase == .loaded(newerSubRead.changes))
+        #expect(rows.store(for: other)?.directoryPrefix == Data("other/".utf8))
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }

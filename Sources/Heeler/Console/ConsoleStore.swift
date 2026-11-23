@@ -264,6 +264,10 @@ final class ConsoleStore {
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var terminalTransportGenerations: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var isRebuilding = false
+    @ObservationIgnored private var rebuildCoalesceTask: Task<Void, Never>?
+    #if DEBUG
+    @ObservationIgnored private(set) var rebuildCountForTesting = 0
+    #endif
     @ObservationIgnored private lazy var agyTitles = AgyAnnotationTitleStore(
         retryDelay: chatPrefetchRetryDelay
     ) { [weak self] in
@@ -534,6 +538,7 @@ final class ConsoleStore {
                     group.addTask { await projection.suspend() }
                 }
             }
+            flushScheduledRebuild()
         }
     }
 
@@ -824,7 +829,9 @@ final class ConsoleStore {
     func startTemplate(
         _ request: TemplateLaunchRequest, on hostID: Host.ID
     ) async throws -> Agent {
-        try await projection(for: hostID).startTemplate(request)
+        let agent = try await projection(for: hostID).startTemplate(request)
+        flushScheduledRebuild()
+        return agent
     }
 
     /// See `ConsoleHostProjection.launchDirectory(ofWorkspace:asked:)`.
@@ -1188,6 +1195,14 @@ final class ConsoleStore {
                 guard let self, let projection = self.projections[hostID],
                     let current = projection.agentsByPane[paneID] ?? projection.departedAgentsByPane[paneID]
                 else { return }
+                // Ignore a binding reported by a Chat store whose `agentSession`
+                // has not yet caught up with a newer snapshot on the projection,
+                // so the previous conversation never aliases the new session id.
+                if let chat = self.chatStores[agent.id],
+                    chat.agent.agentSession != current.agent.agentSession
+                {
+                    return
+                }
                 self.agyTitles.noteChatBinding(
                     for: agent.id, agent: current.agent,
                     generation: projection.transportGeneration,
@@ -1500,11 +1515,14 @@ final class ConsoleStore {
         _ request: AgentLaunchRequest,
         on hostID: Host.ID
     ) async throws -> Agent {
-        try await projection(for: hostID).startAgent(request)
+        let agent = try await projection(for: hostID).startAgent(request)
+        flushScheduledRebuild()
+        return agent
     }
 
     func refreshTerminalInventory(on hostID: Host.ID) async {
         await projections[hostID]?.refreshTerminalInventory()
+        flushScheduledRebuild()
         agyTitles.bumpRefreshEpoch(for: hostID)
         reconcileAgyAnnotationTitles()
     }
@@ -1513,13 +1531,18 @@ final class ConsoleStore {
         _ request: ShellTerminalCreationRequest,
         on hostID: Host.ID
     ) async throws -> ShellTerminalIdentity {
-        try await projection(for: hostID).createShellTerminal(request)
+        let identity = try await projection(for: hostID).createShellTerminal(request)
+        flushScheduledRebuild()
+        return identity
     }
 
     func createShellWorkspace(
         _ workspace: NewWorkspaceSpec, tabLabel: String?, on hostID: Host.ID
     ) async throws -> ShellTerminalIdentity {
-        try await projection(for: hostID).createShellWorkspace(workspace, tabLabel: tabLabel)
+        let identity = try await projection(for: hostID).createShellWorkspace(
+            workspace, tabLabel: tabLabel)
+        flushScheduledRebuild()
+        return identity
     }
 
     func recallShellTerminal(
@@ -1555,7 +1578,10 @@ final class ConsoleStore {
         worktree: WorktreeSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
-        try await projection(for: hostID).startAgentInNewWorktree(request, worktree: worktree)
+        let agent = try await projection(for: hostID).startAgentInNewWorktree(
+            request, worktree: worktree)
+        flushScheduledRebuild()
+        return agent
     }
 
     @discardableResult
@@ -1564,8 +1590,10 @@ final class ConsoleStore {
         workspace: NewWorkspaceSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
-        try await projection(for: hostID).startAgentInNewWorkspace(
+        let agent = try await projection(for: hostID).startAgentInNewWorkspace(
             request, workspace: workspace)
+        flushScheduledRebuild()
+        return agent
     }
 
     /// Suspends until `id` is reported by its Host's sync machinery, its program
@@ -1611,6 +1639,7 @@ final class ConsoleStore {
     ) async throws {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).closePane(paneID)
+        flushScheduledRebuild()
     }
 
     /// Moves an Agent's or a Terminal's Pane to another Workspace of its Host
@@ -1735,6 +1764,7 @@ final class ConsoleStore {
             hostID: terminal.hostID,
             identity: ShellTerminalIdentity(
                 paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID))
+        flushScheduledRebuild()
     }
 
     /// A close nobody answered may have happened, so it is left to the user to
@@ -1775,7 +1805,9 @@ final class ConsoleStore {
         _ request: WorktreeRemovalRequest, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws -> WorktreeRemovalReceipt {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
-        return try await projection(for: hostID).removeWorktree(request)
+        let receipt = try await projection(for: hostID).removeWorktree(request)
+        flushScheduledRebuild()
+        return receipt
     }
 
     /// Where a core Host's close or removal says how it ended once the screen that
@@ -1824,6 +1856,7 @@ final class ConsoleStore {
         for hostID in Set([previous?.hostID, shown?.hostID].compactMap(\.self)) {
             projections[hostID]?.setShownAgents(shownAgents(on: hostID))
         }
+        flushScheduledRebuild()
     }
 
     private func shownAgents(on hostID: Host.ID) -> Set<String> {
@@ -2216,18 +2249,21 @@ final class ConsoleStore {
         _ paneID: String, name: String?, on hostID: Host.ID
     ) async throws {
         try await projection(for: hostID).renameAgent(paneID, name: name)
+        flushScheduledRebuild()
     }
 
     func renameWorkspace(
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
+        flushScheduledRebuild()
     }
 
     /// Asks a core Host whether its desktop app is running now, for a surface
     /// about to offer a name.
     func checkDesktopApp(on hostID: Host.ID) async {
         await (projections[hostID] as? HerdrCoreConsoleProjection)?.checkDesktopApp()
+        flushScheduledRebuild()
     }
 
     /// What New Agent offers a core Host waits on its platform (Worktrees) and
@@ -2240,7 +2276,7 @@ final class ConsoleStore {
 
     /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
-        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.rebuild() }
+        let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.scheduleRebuild() }
         let projection: any ConsoleHostProjection =
             if let makeProjection {
                 makeProjection(host)
@@ -2288,7 +2324,37 @@ final class ConsoleStore {
         projection.start(isActive: isActive)
     }
 
+    #if DEBUG
+    func requestRebuildForBench() {
+        scheduleRebuild()
+    }
+    #endif
+
+    /// Coalesces bursts of projection updates arriving in the same main-actor
+    /// turn into a single `rebuild()` pass.
+    private func scheduleRebuild() {
+        guard rebuildCoalesceTask == nil else { return }
+        rebuildCoalesceTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.rebuildCoalesceTask = nil
+            self.rebuild()
+        }
+    }
+
+    /// Runs any coalesced projection rebuild immediately, used after explicit
+    /// user-initiated mutations so callers observe updated state on return.
+    private func flushScheduledRebuild() {
+        guard rebuildCoalesceTask != nil else { return }
+        rebuild()
+    }
+
     private func rebuild() {
+        rebuildCoalesceTask?.cancel()
+        rebuildCoalesceTask = nil
+        #if DEBUG
+        rebuildCountForTesting += 1
+        #endif
         let span = PerfTrace.begin("console.rebuild")
         isRebuilding = true
         defer {
@@ -2616,6 +2682,7 @@ final class ConsoleStore {
                 group.addTask { await projection.refreshSidebarMetadata() }
             }
         }
+        flushScheduledRebuild()
         agyTitles.bumpRefreshEpoch()
         reconcileAgyAnnotationTitles()
         await sidebarSnapshots.refresh(transports: self) { [weak self] in

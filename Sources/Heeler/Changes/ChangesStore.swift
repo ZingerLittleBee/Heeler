@@ -71,6 +71,18 @@ final class ChangesStore {
     /// The read that has entered the Transport, which an Agent leaving the
     /// catalog lets finish rather than stacking another git process.
     @ObservationIgnored var dispatchedReadID: UUID?
+    /// Monotonic `@MainActor` sequence when the latest loaded read entered the
+    /// Transport, used to check whether a sibling read started after a refresh
+    /// trigger or Working period on another row.
+    @ObservationIgnored private(set) var readDispatchedSequence: UInt64 = 0
+    @ObservationIgnored private var activeReadIsAutomatic = false
+    @ObservationIgnored private var activeReadRequestedSequence: UInt64 = 0
+    @ObservationIgnored private static var eventSequence: UInt64 = 0
+
+    static func nextEventSequence() -> UInt64 {
+        eventSequence &+= 1
+        return eventSequence
+    }
     /// The list's current following, so a stale one never stops it.
     @ObservationIgnored var rowFollowID: UUID?
     /// Gates "Checkout Changes updated."; false for a list row's store,
@@ -84,6 +96,9 @@ final class ChangesStore {
     /// Told of each document this store takes, from its own read or from
     /// another store's.
     @ObservationIgnored var onLoaded: (@MainActor (CheckoutChanges) -> Void)?
+    /// Invoked after a successful read finishes so `AgentRowChanges` can share
+    /// the fresh snapshot with sibling rows on the same Host and Checkout.
+    @ObservationIgnored var onReadCompleted: (@MainActor (ChangesStore) -> Void)?
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,
@@ -161,8 +176,9 @@ final class ChangesStore {
         await refresh(automatic: false)
     }
 
-    func refresh(automatic: Bool) async {
-        guard let task = startRead(automatic: automatic) else { return }
+    func refresh(automatic: Bool, requestedSequence: UInt64? = nil) async {
+        guard let task = startRead(automatic: automatic, requestedSequence: requestedSequence)
+        else { return }
         await withTaskCancellationHandler {
             await task.value
         } onCancel: {
@@ -172,7 +188,7 @@ final class ChangesStore {
 
     /// Starts a read owned by the store; nil while one is running.
     @discardableResult
-    func startRead(automatic: Bool = false) -> Task<Void, Never>? {
+    func startRead(automatic: Bool = false, requestedSequence: UInt64? = nil) -> Task<Void, Never>? {
         guard activeRead == nil, !Task.isCancelled else { return nil }
         guard let directory = directory() ?? lastDirectory else {
             phase = .failed(String(localized: "This Agent has no working directory."))
@@ -181,6 +197,8 @@ final class ChangesStore {
         lastDirectory = directory
         let id = UUID()
         readID = id
+        activeReadIsAutomatic = automatic
+        activeReadRequestedSequence = requestedSequence ?? Self.nextEventSequence()
         isRefreshing = phase != .loading
         let task = Task { [weak self, gate] in
             guard let self else { return }
@@ -211,6 +229,7 @@ final class ChangesStore {
         guard !Task.isCancelled, readID == id else { return }
         autoRefresh.readSawWorking = autoRefresh.status == .working
         dispatchedReadID = id
+        let dispatchedSequence = Self.nextEventSequence()
         let trace = PerfTrace.beginInterval("changes.read", "automatic=\(automatic)")
         defer { PerfTrace.endInterval(trace) }
         do {
@@ -228,9 +247,11 @@ final class ChangesStore {
             timedOutKeepingContent = false
             hasRead = true
             readAt = now()
+            readDispatchedSequence = dispatchedSequence
             autoRefresh.readWasWhileWorking = autoRefresh.readSawWorking || autoRefresh.status == .working
             fileDiff.listDidRefresh(result.changes)
             onLoaded?(result.changes)
+            onReadCompleted?(self)
             if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
@@ -317,19 +338,58 @@ final class ChangesStore {
     /// Closing Changes hands their read to the list row's store. When it is
     /// a newer successful read of the Checkout this store would read now,
     /// this store takes the document, whatever it showed before, keeping its
-    /// own directory prefix: the totals are the whole Checkout's either way.
+    /// own directory prefix when reading a different subdirectory: the totals
+    /// are the whole Checkout's either way.
     func adoptNewerRead(of other: ChangesStore) {
         guard case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
             otherReadAt > readAt ?? .distantPast, readsSameCheckout(as: other)
         else { return }
+        let ownDirectory = directory() ?? lastDirectory
         untrackedDirectories.collapseAll()
         phase = .loaded(changes)
-        readDirectory = other.readDirectory
+        // Preserve this store's own directory so future `readsSameCheckout`
+        // checks keep matching `readDirectory == directory()` when adopting
+        // from a sibling store in another subdirectory of the same Checkout.
+        // When both stores read the same directory, copy `directoryPrefix` so
+        // seeding Changes from an initially unread row keeps relative paths.
+        readDirectory = ownDirectory ?? other.readDirectory
+        if let ownDirectory, other.readDirectory == ownDirectory {
+            directoryPrefix = other.directoryPrefix
+        }
         readAt = otherReadAt
+        readDispatchedSequence = max(readDispatchedSequence, other.readDispatchedSequence)
+        hasRead = true
         timedOutKeepingContent = false
-        autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
+        let selfWasWorkingDuringRead =
+            autoRefresh.status == .working
+            || (other.readDispatchedSequence > 0
+                && autoRefresh.lastWorkingSequence >= other.readDispatchedSequence)
+        autoRefresh.readWasWhileWorking =
+            other.autoRefresh.readWasWhileWorking || selfWasWorkingDuringRead
         fileDiff.listDidRefresh(changes)
         onLoaded?(changes)
+    }
+
+    /// Adopts a fresh read just completed by a sibling row on the same Host
+    /// and Checkout, cancelling any queued-but-undispatched automatic read or
+    /// pending refresh that was requested before the sibling read started.
+    func adoptFreshSiblingRead(of other: ChangesStore) {
+        guard other !== self else { return }
+        let beforeReadAt = readAt
+        adoptNewerRead(of: other)
+        guard readAt != beforeReadAt else { return }
+        let otherDispatched = other.readDispatchedSequence
+        let satisfiesQueuedRead = otherDispatched > activeReadRequestedSequence
+        let satisfiesPendingRefresh = otherDispatched > autoRefresh.refreshRequestedSequence
+        if satisfiesPendingRefresh {
+            dropPendingAutomaticRefresh()
+        }
+        if activeRead != nil, !isReadDispatched, activeReadIsAutomatic, satisfiesQueuedRead {
+            cancelRead()
+            if !satisfiesPendingRefresh {
+                runPendingAutomaticRefresh()
+            }
+        }
     }
 
     /// Opening Changes starts from the list row's latest read of the same
