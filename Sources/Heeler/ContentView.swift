@@ -82,7 +82,7 @@ struct ContentView: View {
             app.console.sceneDidStart(sceneID)
             // Set before registering, which may hand over a waiting tap.
             notificationRouter.awaitsHostReport = { [console = app.console, hosts = app.hostStore] in
-                MissingAgentPresentation.awaitsHost(of: $0, console: console, hosts: hosts)
+                MissingAgentPresentation(agentID: $0, console: console, hosts: hosts).awaitsHost
             }
             app.sceneDirectory.register(
                 sceneID: sceneID, router: notificationRouter, window: window,

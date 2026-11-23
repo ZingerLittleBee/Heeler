@@ -103,22 +103,3 @@ final class AgentNotificationRouter {
         pendingTarget = nil
     }
 }
-
-extension MissingAgentPresentation {
-    /// Whether an Agent the Console does not list is one its Host has yet to
-    /// report, rather than one a reporting Host no longer holds: the Host is
-    /// paused, dialing, failed, or connected with its inventory on the way.
-    /// A link to such an Agent opens its detail, which shows that state.
-    ///
-    /// A launch routes its tap before the Console has taken its Hosts, when
-    /// no Host has a status yet, so a saved Host without one counts too.
-    @MainActor
-    static func awaitsHost(
-        of agentID: ConsoleAgent.ID, console: ConsoleStore, hosts: HostStore
-    ) -> Bool {
-        let presentation = MissingAgentPresentation(agentID: agentID, console: console, hosts: hosts)
-        if presentation.cause != .paneGone { return true }
-        return console.hostStatuses[agentID.hostID] == nil
-            && hosts.consoleHosts.contains { $0.id == agentID.hostID }
-    }
-}
