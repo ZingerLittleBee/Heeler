@@ -14,7 +14,7 @@ FEATURES
 • Live terminal rendered by libghostty, with native scrollback and touch scrolling
 • Chat for Claude Code, Codex, Antigravity CLI, Pi, Oh My Pi, Grok Build and OpenCode, with buttons for Blocked prompts
 • Composer with the full iOS keyboard, Agent control keys and Agent Skills
-• Voice Input on the device from iOS 26, or with your own OpenAI, DeepInfra, SiliconFlow or compatible speech service
+• Voice Input on the device from iOS 26, or with your own OpenAI, DeepInfra, ElevenLabs, SiliconFlow or compatible speech service
 • Changes: every uncommitted file in the Agent's checkout
 • Files: browse the Host from an Agent, read-only, and preview, share or save what you find
 • Hand Off: give an Agent's work to another Agent, to take over or for a second opinion
