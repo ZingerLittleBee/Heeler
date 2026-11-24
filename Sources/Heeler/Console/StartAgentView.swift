@@ -340,16 +340,18 @@ struct StartAgentView: View {
                     }
                 }
 
-                if case .failed(let message) = store.state {
+                if let message = startFailure {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(.red)
+                            .id(Self.startFailureID)
                     }
                 }
             }
             // The last footer ends clear of the sheet's rounded corners
             // when the form fits it.
             .contentMargins(.bottom, 20, for: .scrollContent)
+            .modifier(RevealsStartFailure(message: startFailure, id: Self.startFailureID))
             // The form grows as a Host adds its Agent and argument rows; a
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
@@ -397,6 +399,13 @@ struct StartAgentView: View {
         }
     }
 
+    private static let startFailureID = "startAgent.failure"
+
+    /// Why Start failed, shown at the form's end.
+    private var startFailure: String? {
+        if case .failed(let message) = store.state { message } else { nil }
+    }
+
     private var agentPicker: some View {
         Picker("Agent", selection: $store.selectedAgent) {
             ForEach(store.availableAgentKinds) { @Sendable kind in
@@ -429,6 +438,23 @@ struct StartAgentView: View {
         directoryBrowser = RemoteDirectoryBrowser(
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+    }
+}
+
+/// Scrolls a failed Start's message into view as it appears. It sits at the
+/// form's end, below the Worktree, Agent and Arguments rows or under the
+/// keyboard, where Start would otherwise seem to have done nothing.
+private struct RevealsStartFailure: ViewModifier {
+    let message: String?
+    let id: String
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content.onChange(of: message) { _, message in
+                guard message != nil else { return }
+                withAnimation { proxy.scrollTo(id, anchor: .bottom) }
+            }
+        }
     }
 }
 
