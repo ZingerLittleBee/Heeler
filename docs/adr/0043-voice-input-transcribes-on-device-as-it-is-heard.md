@@ -10,6 +10,9 @@ take the text once. Voice Input now also offers On Device, Apple's dictation
 model from iOS 26, whose text arrives while the user speaks. This amends
 ADR 0036's "Upload, not streaming" and its rejection of live partials: the
 partials show in a recorder, not the draft, which still takes the text once.
+Amended by
+[ADR 0064](0064-voice-input-recognizes-as-a-stream-where-the-service-offers-it.md):
+the recorder serves any service that streams, starting with Volcengine.
 The rest of ADR 0036 stands.
 
 ## Decision

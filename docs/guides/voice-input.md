@@ -2,12 +2,12 @@
 
 Tap the microphone beside **Send** in the Composer to speak, and tap again to stop. The transcribed text lands at the cursor in your Agent terminal or [Chat](chat.md) draft.
 
-You need your own API key for OpenAI, DeepInfra, ElevenLabs, SiliconFlow (China), or a compatible speech service. Heeler keeps no copy of your recordings.
+You need your own API key for OpenAI, DeepInfra, ElevenLabs, SiliconFlow (China), Volcengine (China), or a compatible speech service. Heeler keeps no copy of your recordings.
 
 ## Set up Voice Input
 
 1. Open **Settings > Voice Input**, or tap the microphone in the Composer before Voice Input is set up.
-2. In **Service**, choose **OpenAI** (`gpt-transcribe`), **DeepInfra** or **SiliconFlow (China)** (`Qwen/Qwen3-ASR-1.7B`), **ElevenLabs** (`scribe_v3`), or **Custom**.
+2. In **Service**, choose **OpenAI** (`gpt-transcribe`), **DeepInfra** or **SiliconFlow (China)** (`Qwen/Qwen3-ASR-1.7B`), **ElevenLabs** (`scribe_v3`), **Volcengine (China)** (Doubao speech recognition 2.0), or **Custom**.
 3. For **Custom**, fill in:
    - **Base URL**: an `https://` URL compatible with OpenAI's `audio/transcriptions` endpoint.
    - **Model**: the model name the service expects.
@@ -29,6 +29,15 @@ Tap the microphone beside **Send** to speak, then tap it again to stop. The text
 - Each recording lasts up to 2 minutes, then stops and transcribes automatically.
 - Backgrounding Heeler or leaving the Composer ends the recording and transcribes it into that draft. Entering Direct Input, leaving the Agent, or a Blocked Card replacing the Composer in Chat cancels it.
 
+## As You Speak or After Recording
+
+**Volcengine (China)** offers two ways under **Recognition**:
+
+- **As You Speak**, the default: the text appears in place of the input while you talk, and **Stop** or **Send** adds it to the draft, as with On Device. If the connection drops while you talk, Heeler sends the whole recording once you stop.
+- **After Recording**: the recording is sent once you stop, and the text lands at the cursor, as with the other services.
+
+Use the **API Key** from **API Key Management** in the Volcengine console, for a project with Doubao streaming speech recognition 2.0 enabled. The older console's App ID and Access Token are not supported.
+
 ## Languages
 
 Languages start at **Automatic**, regardless of the device's preferred language.
@@ -38,6 +47,7 @@ Chinese and English. With **DeepInfra**, choose one **Language**, or keep
 its effect on hosted Qwen3-ASR has not been verified with a real key. SiliconFlow
 stays automatic because its API does not document a language parameter.
 With **ElevenLabs**, leave **Languages** on **Automatic** or select the main language first, then any others you expect in the recording.
+**Volcengine** recognizes Mandarin, Chinese dialects, and English, including speech that mixes them, without a language setting.
 Selections belong to each service and take effect on **Save**.
 
 ## Custom request fields
@@ -77,6 +87,8 @@ In **Settings > Voice Input**, two fields shared across compatible services stay
 after you turn on **Send Keywords** under it. A keyword longer than 50 characters or with
 more than four spaces is left out. ElevenLabs takes no **Prompt**; your saved Prompt
 remains available when you switch services. [ElevenLabs transcription API](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
+
+**Volcengine** reads **Keywords** as hotwords at no extra charge and takes no **Prompt**. **As You Speak** uses the first Keywords, up to about 100 characters in all; **After Recording** uses up to 5000. A long list of Keywords helps less than a short one.
 
 ## Choose a microphone
 

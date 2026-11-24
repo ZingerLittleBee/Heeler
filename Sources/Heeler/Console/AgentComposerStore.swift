@@ -358,24 +358,24 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     /// Voice Input's one insertion, at the caret like a Snippet. Send waited
     /// all along, so the draft it lands in is the one the user is editing.
-    /// On Device's recorder shows its text after the whole draft, so it
+    /// The streaming recorder shows its text after the whole draft, so it
     /// lands there, with the caret after it (ADR 0043). A recording stopped
     /// with Send then sends the draft through the policy its Send was tapped
-    /// with; one stopped with Stop on the device asks for the input's focus,
+    /// with; one stopped with Stop while streaming asks for the input's focus,
     /// so typing carries on.
     private func insertVoiceTextIfReady() {
         guard !isEditorComposing, let landed = voice.takeDraftText() else { return }
         let sendPolicy = voiceSendPolicy
         voiceSendPolicy = nil
         if !landed.text.isEmpty {
-            if voice.isOnDevice {
+            if voice.streams {
                 draftSelection = NSRange(location: (draft as NSString).length, length: 0)
             }
             insertVoiceText(landed.text)
         }
         if landed.sends, let sendPolicy {
             Task { await send(policy: sendPolicy) }
-        } else if voice.isOnDevice, !landed.text.isEmpty {
+        } else if voice.streams, !landed.text.isEmpty {
             voiceFocusRequests += 1
         }
     }

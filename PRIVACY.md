@@ -160,15 +160,18 @@ ask in Settings.
 
 With a speech service, when you tap the microphone in the Composer, Heeler
 records until you tap again, for at most two minutes, and uploads the
-recording over HTTPS to the
+recording over HTTPS (a secure WebSocket for Volcengine) to the
 service you chose: OpenAI (`api.openai.com`), DeepInfra (`api.deepinfra.com`),
-ElevenLabs (`api.elevenlabs.io`), SiliconFlow (`api.siliconflow.cn`), or a
-Custom URL you enter. The upload
+ElevenLabs (`api.elevenlabs.io`), SiliconFlow (`api.siliconflow.cn`),
+Volcengine (`openspeech.bytedance.com`), or a Custom URL you enter. With
+Volcengine's **As You Speak**, the default, Heeler sends the audio while you
+speak and shows its text as it arrives; if that connection fails, it sends the
+whole recording to Volcengine once you stop. The upload
 carries the audio, the model name, your API key, any language hints you select,
 and any Custom request fields you configure. OpenAI, DeepInfra, SiliconFlow,
 and Custom also receive the Keywords and Prompt you enter in Settings.
 ElevenLabs receives the Keywords only while **Send Keywords** is on, and
-never the Prompt.
+never the Prompt. Volcengine receives the Keywords, never the Prompt.
 Heeler puts the returned text in your Composer draft. You choose when to send
 it to your Agent. The service processes the
 recording, and bills your key, under its own privacy terms. A Custom URL sends

@@ -10,6 +10,7 @@ Entries reference the pull request that made the change.
 ### Added
 
 - Show Antigravity CLI (`agy`) non-daemon `schedule` timers and recurring crons in Chat's Background Work strip and sheet with their prompt and duration or cron badge, keeping the Agent in **Working** while they run until they fire, hit `MaxIterations`, are cancelled early by `TimerCondition`, or stop, while continuing to skip standing `IsDaemon: true` crons. (PR #831)
+- Choose **Volcengine (China)** in Settings › Voice Input to transcribe Composer recordings with Doubao speech recognition 2.0 and your own Volcengine API Key. **As You Speak** shows the text while you talk and sends the whole recording instead if the connection drops; **After Recording** sends it once you stop. Your Keywords go along as hotwords at no extra charge.
 - Choose **ElevenLabs** in Settings › Voice Input to transcribe Composer recordings with Scribe v3 and your own API key. Turn on **Send Keywords** there to have it spell your Keywords, which ElevenLabs bills extra. (PR #810)
 
 ### Changed

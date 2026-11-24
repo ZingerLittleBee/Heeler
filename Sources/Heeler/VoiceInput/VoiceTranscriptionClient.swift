@@ -22,6 +22,9 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
     /// A redirect is refused rather than followed: it would resend the
     /// recording to a host the user never confirmed.
     case redirected(to: String?)
+    /// An error the service names by its own code rather than an HTTP
+    /// status, such as one in a Volcengine error frame.
+    case failed(code: Int, message: String?)
     case emptyTranscript
     case unreadableResponse
     case timedOut
@@ -43,6 +46,8 @@ enum VoiceTranscriptionError: Error, Equatable, Sendable {
             } else {
                 String(localized: "The speech service redirected the request. Voice Input does not follow redirects; check the URL.")
             }
+        case .failed(let code, let detail):
+            Self.joined(String(localized: "The speech service returned error \(code)."), detail)
         case .emptyTranscript:
             String(localized: "No speech was recognized.")
         case .unreadableResponse:
@@ -148,10 +153,10 @@ struct VoiceTranscriptionClient: Sendable {
         _ request: VoiceTranscriptionRequest,
         boundary: String = "heeler-\(UUID().uuidString)"
     ) throws -> (URLRequest, Data) {
-        var urlRequest = URLRequest(url: request.endpoint.transcriptionURL)
+        let (format, url) = try upload(of: request.endpoint)
+        var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 90
-        let format = request.endpoint.uploadFormat
         urlRequest.setValue(format.keyPrefix + request.apiKey, forHTTPHeaderField: format.keyHeader)
         urlRequest.setValue(
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -166,7 +171,7 @@ struct VoiceTranscriptionClient: Sendable {
         do { try request.options.validate(for: request.endpoint) } catch {
             throw VoiceTranscriptionError.invalidSettings(error.message)
         }
-        let format = request.endpoint.uploadFormat
+        let format = try upload(of: request.endpoint).format
         var fields: [(name: String, value: String)] = [(format.modelField, request.endpoint.model)] + format.fixedFields
         switch request.endpoint.languageField {
         case .none:
@@ -196,6 +201,15 @@ struct VoiceTranscriptionClient: Sendable {
             fields += field.values.map { (field.name, $0) }
         }
         return fields
+    }
+
+    /// Only an upload service has a multipart shape.
+    private static func upload(of endpoint: VoiceInputEndpoint) throws -> (format: VoiceInputUploadFormat, url: URL) {
+        guard let upload = endpoint.upload else {
+            throw VoiceTranscriptionError.invalidSettings(
+                String(localized: "This service doesn't take uploaded recordings."))
+        }
+        return upload
     }
 
     static func multipartBody(
@@ -233,16 +247,26 @@ struct VoiceTranscriptionClient: Sendable {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { throw VoiceTranscriptionError.emptyTranscript }
             return trimmed
+        default:
+            throw failure(of: response, body: data)
+        }
+    }
+
+    /// Why a response that is not a success failed. A WebSocket handshake
+    /// that is refused answers the same way.
+    static func failure(of response: HTTPURLResponse, body data: Data) -> VoiceTranscriptionError {
+        let status = response.statusCode
+        switch status {
         case 300..<400:
             let location = response.value(forHTTPHeaderField: "Location")
                 .flatMap { URL(string: $0, relativeTo: response.url)?.host() }
-            throw VoiceTranscriptionError.redirected(to: location)
+            return .redirected(to: location)
         case 401, 403:
-            throw VoiceTranscriptionError.unauthorized(errorMessage(in: data))
+            return .unauthorized(errorMessage(in: data))
         case 408, 429, 500..<600:
-            throw VoiceTranscriptionError.unavailable(status: status, message: errorMessage(in: data))
+            return .unavailable(status: status, message: errorMessage(in: data))
         default:
-            throw VoiceTranscriptionError.rejected(status: status, message: errorMessage(in: data))
+            return .rejected(status: status, message: errorMessage(in: data))
         }
     }
 

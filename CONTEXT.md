@@ -735,11 +735,11 @@ name the user gives it, shown above its text wherever Snippets are listed.
 _Avoid_: macro, template, shortcut, quick reply, tip
 
 **Voice Input**:
-The Composer's mic. With On Device (iOS 26 and later) the phone turns speech
-into text: a recorder outlined in red takes the input's place and shows the
-text as it is heard after the draft, and its Stop adds the text to the end of
-the draft the recording started in, while its Send does that and sends the
-draft. Otherwise
+The Composer's mic. A service that streams (On Device on iOS 26 and later,
+or Volcengine's As You Speak) turns speech into text as it is heard: a
+recorder outlined in red takes the input's place and shows the text after the
+draft, and its Stop adds the text to the end of the draft the recording
+started in, while its Send does that and sends the draft. Otherwise
 a tap records and a second tap stops; the recording goes to the speech service
 the user chose with their own API key, a built-in service or a Custom URL that
 speaks OpenAI's `audio/transcriptions` request, and the text lands once at

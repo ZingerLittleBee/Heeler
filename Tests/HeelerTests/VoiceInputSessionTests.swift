@@ -30,7 +30,8 @@ struct VoiceInputSessionTests {
 
     private func makeFixture(
         ready: Bool = true,
-        results: [Result<String, VoiceTranscriptionError>] = []
+        results: [Result<String, VoiceTranscriptionError>] = [],
+        sockets: FakeVoiceWebSocketConnector = FakeVoiceWebSocketConnector([])
     ) throws -> Fixture {
         let suite = "hm-voice-session-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -48,12 +49,31 @@ struct VoiceInputSessionTests {
         let live = FakeLiveTranscriber()
         let session = VoiceInputSession(
             settings: settings, recorder: recorder,
-            transcribe: { try await transcriber.transcribe($0) },
-            makeLiveTranscriber: { live },
+            recognizers: VoiceRecognizers(
+                upload: { try await transcriber.transcribe($0) },
+                connect: { try await sockets.connect($0) },
+                onDevice: { language, keywords in
+                    live.listen(language: language, keywords: keywords)
+                    return live
+                },
+                installOnDeviceModel: { language, progress in
+                    try await live.downloadModel(language: language, progress: progress)
+                }),
             sleep: { _ in try await Task.sleep(for: .milliseconds(1)) })
         return Fixture(
             session: session, recorder: recorder, transcriber: transcriber, live: live,
             settings: settings, defaults: defaults, suite: suite)
+    }
+
+    private func makeVolcengineFixture(
+        _ sockets: [FakeVoiceWebSocket], mode: VoiceRecognitionMode? = nil
+    ) throws -> (Fixture, FakeVoiceWebSocketConnector) {
+        let connector = FakeVoiceWebSocketConnector(sockets)
+        let fixture = try makeFixture(ready: false, sockets: connector)
+        try fixture.settings.save(
+            service: .preset(.volcengine), custom: .init(), apiKey: "volc-key", consented: true,
+            options: .init(mode: mode))
+        return (fixture, connector)
     }
 
     private func makeOnDeviceFixture() throws -> Fixture {
@@ -121,6 +141,66 @@ struct VoiceInputSessionTests {
         #expect(store.voice.phase == .idle)
     }
 
+    @Test func volcengineStreamsThenSendsTheWholeRecordingWhenTheStreamFails() async throws {
+        let stream = FakeVoiceWebSocket(
+            answering: [
+                VolcengineServerFrame.acknowledgement,
+                VolcengineServerFrame.result("先把", utterances: [("先把", false)], sequence: 1),
+            ],
+            answerLast: .failure(VoiceTranscriptionError.network("lost")))
+        let batch = FakeVoiceWebSocket(answering: [
+            VolcengineServerFrame.result("先把分支同步一下。", sequence: 2, isLast: true)
+        ])
+        let (fixture, connector) = try makeVolcengineFixture([stream, batch])
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        #expect(store.voice.showsRecorder, "Volcengine streams by default")
+        try await waitUntil("recording") { store.voice.isRecording }
+        #expect(fixture.recorder.hasAudioSink)
+        try await waitUntil("heard") { store.voice.heard.text == "先把" }
+
+        fixture.session.stop(store.voice)
+        try await waitUntil("landed") { store.draft == "先把分支同步一下。" }
+        #expect(store.voice.phase == .idle)
+        #expect(
+            connector.requests.compactMap { $0.url?.lastPathComponent } == ["bigmodel_async", "bigmodel_nostream"],
+            "the kept recording goes to the batch route")
+        let recording = fixture.recorder.nextRecording.audio
+        #expect(batch.sent.last?.suffix(recording.count) == recording)
+        #expect(await fixture.transcriber.requests.isEmpty, "nothing goes to an upload service")
+    }
+
+    @Test func volcengineAfterRecordingSendsTheFinishedRecordingWithoutTheRecorder() async throws {
+        let batch = FakeVoiceWebSocket(answering: [
+            VolcengineServerFrame.result("运行测试。", sequence: 2, isLast: true)
+        ])
+        let (fixture, connector) = try makeVolcengineFixture([batch], mode: .batch)
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        #expect(!store.voice.showsRecorder)
+        try await waitUntil("recording") { store.voice.isRecording }
+        #expect(!fixture.recorder.hasAudioSink)
+        fixture.session.stop(store.voice)
+        try await waitUntil("landed") { store.draft == "运行测试。" }
+        #expect(connector.requests.compactMap { $0.url?.lastPathComponent } == ["bigmodel_nostream"])
+    }
+
+    @Test func aStreamThatCannotConnectFailsBeforeRecording() async throws {
+        let (fixture, _) = try makeVolcengineFixture([])
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("failed") { store.voice.failure != nil }
+        #expect(fixture.recorder.starts == 0)
+        #expect(store.voice.failure?.canRetry == false, "nothing was recorded")
+        #expect(store.voice.failure?.restarts == true)
+    }
+
     @Test func stopBeforeRecordingBeginsDropsTheStart() async throws {
         let fixture = try makeOnDeviceFixture()
         defer { fixture.tearDown() }
@@ -148,7 +228,7 @@ struct VoiceInputSessionTests {
 
         fixture.session.toggle(store.voice)
         try await waitUntil("failed") { store.voice.failure != nil }
-        #expect(store.voice.failure == LiveVoiceTranscriberError.modelNotInstalled.failure)
+        #expect(store.voice.failure == DeviceVoiceTranscriberError.modelNotInstalled.failure)
         #expect(store.voice.failure?.downloadsModel == true)
         #expect(store.voice.showsRecorder, "the failure shows in the recorder")
         #expect(!store.voice.isInRecordingMode)
@@ -181,7 +261,7 @@ struct VoiceInputSessionTests {
     @Test func settlingThatFailsKeepsWhatWasHeard() async throws {
         let fixture = try makeOnDeviceFixture()
         defer { fixture.tearDown() }
-        fixture.live.finishError = LiveVoiceTranscriberError.failed
+        fixture.live.finishError = DeviceVoiceTranscriberError.failed
         let store = fixture.makeStore()
 
         fixture.session.toggle(store.voice)
@@ -567,8 +647,8 @@ private final class FakeVoiceRecorder: VoiceRecorder {
 }
 
 @MainActor
-private final class FakeLiveTranscriber: LiveVoiceTranscriber {
-    var startError: LiveVoiceTranscriberError?
+private final class FakeLiveTranscriber: VoiceStreamRecognizer {
+    var startError: DeviceVoiceTranscriberError?
     var finalText = ""
     var finishError: (any Error)?
     var downloadGate: ScriptedTransportCallGate?
@@ -576,11 +656,17 @@ private final class FakeLiveTranscriber: LiveVoiceTranscriber {
     private(set) var downloads: [String] = []
     private(set) var cancels = 0
     private var onText: (@MainActor (VoiceHeard) -> Void)?
+    private var language = ""
+    private var keywords: [String] = []
 
-    func start(
-        locale: String, keywords: [String], onText: @escaping @MainActor (VoiceHeard) -> Void
-    ) async throws -> VoiceAudioSink {
-        started.append((locale, keywords))
+    /// What the factory built this recognizer for.
+    func listen(language: String, keywords: [String]) {
+        self.language = language
+        self.keywords = keywords
+    }
+
+    func start(onText: @escaping @MainActor (VoiceHeard) -> Void) async throws -> VoiceAudioSink {
+        started.append((language, keywords))
         if let startError { throw startError }
         self.onText = onText
         return { _ in }
@@ -600,8 +686,8 @@ private final class FakeLiveTranscriber: LiveVoiceTranscriber {
         cancels += 1
     }
 
-    func downloadModel(locale: String, progress: @escaping @MainActor (Double) -> Void) async throws {
-        downloads.append(locale)
+    func downloadModel(language: String, progress: @escaping @MainActor (Double) -> Void) async throws {
+        downloads.append(language)
         progress(0.5)
         await downloadGate?.waitUntilOpen()
     }

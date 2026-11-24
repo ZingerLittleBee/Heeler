@@ -919,7 +919,7 @@ struct AgentComposerView: View {
             keyboardIsLeaving: keyboardIsLeaving)
     }
 
-    /// On Device Voice Input in the input's place, from the first tap until
+    /// Streaming Voice Input in the input's place, from the first tap until
     /// its text lands in the draft (ADR 0043).
     private var liveVoiceRecorder: AnyView? {
         guard let voiceInput, inputMode == .composer, store.voice.showsRecorder else { return nil }
@@ -931,6 +931,7 @@ struct AgentComposerView: View {
                 send: { store.sendVoice(using: voiceInput, policy: sendPolicy) },
                 downloadModel: { voiceInput.downloadModel(store.voice) },
                 restart: { voiceInput.start(store.voice) },
+                retry: { voiceInput.retry(store.voice) },
                 openVoiceInputSettings: { isVoiceSetupPresented = true }))
     }
 
