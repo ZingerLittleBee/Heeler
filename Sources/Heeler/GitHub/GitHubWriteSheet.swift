@@ -34,6 +34,7 @@ struct GitHubWriteSheet: View {
     let item: GitHubItem
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         switch request.kind {
@@ -43,9 +44,10 @@ struct GitHubWriteSheet: View {
         case .merge:
             let detail = store.detailState(of: item, on: host).detail
             let warns = GitHubWriteWords.mergeWarning(item: detail?.item ?? item, pull: detail?.pullRequest) != nil
-            // A warning pushes the button below a partial sheet.
+            // A warning, or text larger than the default, pushes the button
+            // below a partial sheet.
             GitHubMergeSheet(store: store, host: host, item: item)
-                .presentationDetents(warns ? [.large] : [.fraction(0.7), .large])
+                .presentationDetents(warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
         case .closeResult(let result):
             NavigationStack {
                 GitHubWriteResultView(host: host, result: result, typed: nil) { dismiss() }
