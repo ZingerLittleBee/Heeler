@@ -135,8 +135,10 @@ Close.
   `refs/heads/<default>` for an issue, and answers with that commit. On the
   pull request's own branch the script also makes the branch at that commit,
   tracking the remote's branch for a pull request from the repository itself,
-  or moves an existing branch forward to it; a branch with commits the pull
-  request lacks is left alone and the Start fails, asking for another name.
+  or moves an existing branch forward to it. A branch ahead of the pull
+  request, holding its commits and more, is checked out as it is, as
+  `gh pr checkout` leaves it; only a branch that has diverged from the pull
+  request is left alone and fails the Start, asking for another name.
   For a fork's pull request the same refusal covers a name that belongs to
   the checkout's remote, a local branch with an upstream or a name among the
   remote's branches (`refs/remotes/<remote>/<branch>`), since moving or
