@@ -6,7 +6,8 @@ struct GitCommand: Equatable, Sendable {
     let directory: String
     /// A read goes through the neutralized `g`, so it runs nothing the repository
     /// configured and changes nothing. A mutation runs plain `git`, as the user's
-    /// own would, hooks included, and has a longer bound. It is never sent twice.
+    /// own would, hooks included and objects a partial clone has yet to fetch,
+    /// and has a longer bound. It is never sent twice.
     let isMutation: Bool
 }
 
@@ -33,6 +34,9 @@ extension GitProbe {
         var body = Data("dir=".utf8)
         body.append(singleQuoted(Data(command.directory.utf8)))
         let git = command.isMutation ? "git" : "g"
+        // The preamble keeps reads from fetching a partial clone's missing
+        // objects; a Worktree's checkout needs them.
+        if command.isMutation { body.append(Data("\nunset GIT_NO_LAZY_FETCH".utf8)) }
         body.append(Data("\nsec \(Cap.command) \(commandSection) \(git) -C \"$dir\"".utf8))
         for argument in command.arguments {
             body.append(0x20)

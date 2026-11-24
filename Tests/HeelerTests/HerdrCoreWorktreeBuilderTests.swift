@@ -159,6 +159,9 @@ struct GitCommandScriptTests {
 
         #expect(mutation.contains(#" git -C "$dir" 'worktree' 'prune'"#))
         #expect(read.contains(#" g -C "$dir" 'status'"#))
+        // A partial clone's checkout fetches what it lacks; a read never does.
+        #expect(mutation.contains("\nunset GIT_NO_LAZY_FETCH\nsec "))
+        #expect(!read.contains("unset GIT_NO_LAZY_FETCH"))
     }
 
     @Test func theAnswerCarriesGitsStatusOutputAndFirstError() throws {
