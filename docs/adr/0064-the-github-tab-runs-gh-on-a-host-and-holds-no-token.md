@@ -93,6 +93,41 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   them unmarked after 8 seconds or a failure. Choosing an Agent puts the
   message below any draft in its Composer, by Hand Off's rules
   (`ConsoleStore.deliverDraft`), and opens the Agent. Nothing is sent.
+  The read also lists each checkout's Worktrees (`git worktree list`), so
+  New Agent knows every branch checked out in that repository.
+- **New Agent from Send to Agent is the New Agent form, opened preset.** The
+  sheet's last row, shown while one of the Host's connected Servers starts
+  Agents, opens `StartAgentView` with a `StartAgentStore.GitHubLaunch`: the
+  Server and Workspace of the first Agent working in a checkout of the item's
+  repository, or neither when no Agent works in one. The new Agent gets the
+  message the way an existing one does, once it is listed, and nothing is
+  sent. The Worktree toggle stays off by default. Turned on while the
+  Workspace is such a checkout, it names the branch from the item: a pull
+  request's head branch when no Worktree of the repository on the Host has it
+  checked out, else a generated name (`GitBranchName.generatedWorktreeBranch`),
+  as for an issue. A branch checked out on the Host is refused in the
+  footer, as git would refuse it. A fork's pull request whose head branch is
+  named as the repository's default branch always gets a generated name,
+  since that name is the user's own branch on the Host.
+- **The Worktree starts from the item's commit on every Server Kind.** Before
+  the Worktree is made, one script through the gh seam
+  (`GitHubWorktreeStart`, via `GitHubStore.worktreeStart`) runs git in the
+  Agent's checkout, on the Server the Agent starts on. It checks the branch is
+  not checked out in a Worktree of that repository, then fetches, from the
+  checkout's remote that names the repository, `refs/pull/<n>/head` for a pull
+  request (GitHub keeps it for a fork's pull request too) or
+  `refs/heads/<default>` for an issue, and answers with that commit. On the
+  pull request's own branch the script also makes the branch at that commit,
+  tracking the remote's branch for a pull request from the repository itself,
+  or moves an existing branch forward to it; a branch with commits the pull
+  request lacks is left alone and the Start fails, asking for another name.
+  The commit becomes the Worktree's start point (`WorktreeSpec.base`): herdr's
+  `worktree.create` takes it as `base` on Herdr TUI, and herdr-core and tmux
+  run `git worktree add -b <branch> <path> <commit>` in place of `HEAD`
+  (ADR 0032, ADR 0045). A branch that exists is checked out as it is, as
+  before. The fetch is the only network step, bounded by the seam's 60
+  seconds, and writes only `FETCH_HEAD`, the branch the script makes or moves,
+  and that branch's tracking settings; nothing is pushed.
 - **The tab can be turned off.** Settings has a GitHub switch under Usage's,
   on by default. Off hides the tab, runs no gh and removes the saved lists.
 - **Six tabs fit by moving Settings.** The tab follows Terminals: Agents,
@@ -124,6 +159,12 @@ issue's detail, and Send to Agent; later actions build on the same seam.
 - **Sending the message for the user.** Placing it as a draft lets the user
   read, reword or drop it, as Hand Off does, and keeps a mistaken tap from
   starting work.
+- **Fetching with `gh pr checkout` or `gh repo sync`.** Both act on the
+  checkout's own HEAD, which belongs to the Agent working there. A fetch of
+  the pull request's ref leaves that checkout as it is.
+- **Fetching the fork's branch from the fork's URL.** It needs a remote or a
+  URL per fork, and a private fork may not be reachable from the Host.
+  `refs/pull/<n>/head` on the repository's own remote has the same commits.
 - **Matching Agents to a repository by directory name.** A clone can have
   any name and a fork any owner. git's own answer, read in one script, also
   gives the branch.
@@ -162,3 +203,10 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   read their own.
 - Each section shows at most 30 items. A section with more says how many it
   shows of how many.
+- The Worktree is made in the Workspace's checkout, and its commit is
+  fetched in the checkout of the Agent the form matched in that Workspace.
+  When a Workspace holds two clones, the fetched commit may be missing from
+  the one the Worktree is made in, and git refuses it with its own message.
+- The checked-out rule in the form counts the Worktrees of the checkouts the
+  Agents work in. A branch checked out in a separate clone no Agent works in
+  is caught by the script, at Start, not in the footer.

@@ -338,8 +338,12 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [HandOffStore](../../Sources/Heeler/HandOff/HandOffStore.swift)). Targets
   come from `ConsoleStore.gitHubSendTargets(on:)`; checkouts from
   [GitHubCheckoutRead](../../Sources/Heeler/GitHub/GitHubCheckoutRead.swift)
-  through `GitHubStore.readCheckouts(_:on:)` and the gh seam. No focused
-  tests yet.
+  through `GitHubStore.readCheckouts(_:on:)` and the gh seam. The sheet's
+  New Agent row opens [StartAgentView](../../Sources/Heeler/Console/StartAgentView.swift)
+  with a `StartAgentStore.GitHubLaunch`; the Worktree's start commit comes
+  from [GitHubWorktreeStart](../../Sources/Heeler/GitHub/GitHubWorktreeStart.swift)
+  through `GitHubStore.worktreeStart(_:on:)` in `StartAgentStore.submit()`,
+  and reaches each kind as `WorktreeSpec.base`. No focused tests yet.
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
   Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`

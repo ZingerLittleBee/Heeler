@@ -308,6 +308,10 @@ Terminals, and the branch survives. On tmux Heeler creates it the same way at
 `~/.heeler/worktrees/<repository>/<branch>`, opened as a new Workspace named
 after the branch, numbered when that name is taken; removing it first ends that
 Workspace's Panes, never those of a Workspace that only shares its name.
+A new branch starts from the Workspace's HEAD, except when New Agent opens from
+a pull request or an issue: then it starts from the pull request's head commit,
+or the repository's default branch, fetched first, and a pull request's own
+branch is made or moved forward to it.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
