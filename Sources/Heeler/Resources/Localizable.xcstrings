@@ -1149,12 +1149,12 @@
         }
       }
     },
-    "%@ is checked out in %@, so the worktree gets a new branch that starts from it." : {
+    "%@ is checked out in %@, so the worktree gets a new branch that starts from the pull request's latest commits." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ is checked out in %2$@, so the worktree gets a new branch that starts from it."
+            "value" : "%1$@ is checked out in %2$@, so the worktree gets a new branch that starts from the pull request's latest commits."
           }
         }
       }
@@ -6362,6 +6362,7 @@
         }
       }
     },
+    "A fresh checkout of %@ on a new branch that starts from the pull request's latest commits." : {},
     "A fresh checkout of %@ on this pull request's branch." : {},
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {

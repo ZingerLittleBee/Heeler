@@ -582,10 +582,12 @@ final class StartAgentStore {
             if branch == gitHubPullRequestBranch {
                 return String(localized: "A fresh checkout of \(repository) on this pull request's branch.")
             }
+            // The new branch starts from the commits fetched at Start, never
+            // from a local branch of the same name, which may have diverged.
             if let holder = gitHubHolder(of: head) {
-                return String(localized: "\(head) is checked out in \(holder), so the worktree gets a new branch that starts from it.")
+                return String(localized: "\(head) is checked out in \(holder), so the worktree gets a new branch that starts from the pull request's latest commits.")
             }
-            return String(localized: "A fresh checkout of \(repository) on a new branch that starts from \(head).")
+            return String(localized: "A fresh checkout of \(repository) on a new branch that starts from the pull request's latest commits.")
         case .defaultBranch(let name):
             return String(localized: "A fresh checkout of \(repository) on a new branch that starts from \(name).")
         }
