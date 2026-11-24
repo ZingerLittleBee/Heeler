@@ -10,6 +10,10 @@ struct GitHubHost: Identifiable, Hashable, Sendable {
     let name: String
     /// The records of its Servers that are on, in catalog order.
     let records: [Host.ID]
+    /// Each record's Server label, as New Agent's Server picker names it
+    /// (`tmux`, `herdr-core`, ADR 0047), for Send to Agent's rows when more
+    /// than one Server's Agents are listed.
+    var serverLabels: [Host.ID: String] = [:]
 }
 
 /// What the GitHub tab needs of the Console's connections.
@@ -116,7 +120,10 @@ final class GitHubStore {
         machines = HostMachine.grouped(catalogHosts).compactMap { machine in
             let records = machine.servers.map(\.id)
             guard let first = machine.members.first, !records.isEmpty else { return nil }
-            return GitHubHost(id: first.id, name: machine.name, records: records)
+            let labels = machine.servers.map { ($0.id, LaunchHostChoice.serverLabel(for: $0)) }
+            return GitHubHost(
+                id: first.id, name: machine.name, records: records,
+                serverLabels: Dictionary(labels) { first, _ in first })
         }
         let ids = Set(machines.map(\.id))
         let moves = Self.moves(from: previous, to: machines)

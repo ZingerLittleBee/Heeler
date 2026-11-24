@@ -254,6 +254,7 @@ struct GitHubSendSheet: View {
         let kind = AgentKindMark(kind: agent.agent.kind)
         let title = AgentTerminalView.displayTitle(for: agent)
         let detail = agent.directory.map(agent.displayPath) ?? kind.label
+        let server = serverLabel(of: agent)
         return Button {
             Task { await store.send(message, to: agent.id) }
         } label: {
@@ -264,11 +265,19 @@ struct GitHubSendSheet: View {
                         .foregroundStyle(Color(uiColor: .label))
                         .lineLimit(1)
                     // A Button's label tints `.secondary`, so name the color.
-                    Text(verbatim: detail)
-                        .font(.footnote)
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                        .lineLimit(1)
-                        .truncationMode(.head)
+                    HStack(spacing: 0) {
+                        if let server {
+                            // The Server stays whole; the directory gives way.
+                            Text(verbatim: "\(server) · ")
+                                .layoutPriority(1)
+                                .accessibilityLabel(Text(verbatim: server))
+                        }
+                        Text(verbatim: detail)
+                            .truncationMode(.head)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if store.state == .working(agent.id) {
@@ -282,6 +291,14 @@ struct GitHubSendSheet: View {
             .contentShape(.rect)
         }
         .disabled(store.isWorking)
+    }
+
+    /// The Server an Agent is on, when the sheet lists Agents of more than
+    /// one of the Host's Servers; nil leaves the row as a one-Server Host's.
+    private func serverLabel(of agent: ConsoleAgent) -> String? {
+        let host = store.request.host
+        let servers = Set(console.gitHubSendTargets(on: host.records).map(\.hostID))
+        return servers.count > 1 ? host.serverLabels[agent.hostID] : nil
     }
 }
 
