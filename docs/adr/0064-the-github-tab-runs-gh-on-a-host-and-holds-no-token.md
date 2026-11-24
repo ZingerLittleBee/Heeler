@@ -143,7 +143,11 @@ Close.
   (ADR 0032, ADR 0045). A branch that exists is checked out as it is, as
   before. The fetch is the only network step, bounded by the seam's 60
   seconds, and writes only `FETCH_HEAD`, the branch the script makes or moves,
-  and that branch's tracking settings; nothing is pushed.
+  and that branch's tracking settings; nothing is pushed. In a repository
+  over its auto-gc limit the fetch starts git's detached maintenance, which
+  would keep the script's answer open until it ends, so git fetches with the
+  answer's descriptors closed; the repository's maintenance settings stay as
+  they are.
 - **Writes are gh's porcelain commands.** The detail's "⋯" menu ends with
   Comment… (any item), Approve… (an open pull request that is not the
   account's own), Merge… (an open pull request that is not a draft) and
@@ -338,6 +342,14 @@ Close.
 - The checked-out rule in the form counts the Worktrees of the checkouts the
   Agents work in. A branch checked out in a separate clone no Agent works in
   is caught by the script, at Start, not in the footer.
+- Over git's auto-gc limits a fetch starts `git maintenance run --auto
+  --detach` (git 2.47 and 2.55), which keeps the descriptors it was given.
+  Measured through sshd on 2026-11-25, before the fetch closed them the
+  start script's answer waited for the detached maintenance: 6 to 16
+  seconds for the repack of a full clone of this repository over
+  `gc.autoPackLimit` on a Mac, 31 seconds on Debian 13 with a `pre-auto-gc`
+  hook drawing it out. With them closed the answer came in 0.9 to 2.6
+  seconds, and a Start from the app answered while maintenance went on.
 - Writes were measured on 2026-11-24 against a stand-in gh that records what
   it was given and answers as told, never against GitHub. A body with
   quotes, `$(...)`, backticks, newlines, CJK and emoji arrived byte for byte,

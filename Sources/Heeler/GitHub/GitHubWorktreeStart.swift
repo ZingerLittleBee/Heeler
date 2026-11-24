@@ -52,8 +52,11 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         // A branch checked out in a Worktree of this repository first: git
         // refuses to check it out twice, and moving it would move that
         // checkout's HEAD under it. Then the fetch, from the remote by name
-        // so its own settings apply. A branch that exists keeps commits the
-        // pull request does not have: it is moved only forward.
+        // so its own settings apply. Over the repository's auto-gc limit it
+        // starts git's detached maintenance, which would hold the frame's
+        // descriptors open until it ends, so the fetch runs without them. A
+        // branch that exists keeps commits the pull request does not have:
+        // it is moved only forward.
         var body = Data(
             """
             wt() {
@@ -61,7 +64,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
               list=$(g -C "$d" worktree list --porcelain) || return 3
               p=$(printf '%s\\n' "$list" | awk -v want="branch refs/heads/$b" 'index($0, "worktree ") == 1 { p = substr($0, 10) } $0 == want { print p; exit }')
               if [ -n "$p" ]; then printf 'busy %s\\n' "$p"; return 0; fi
-              git -C "$d" fetch --quiet --no-tags "$r" "$ref" </dev/null || return 4
+              git -C "$d" fetch --quiet --no-tags "$r" "$ref" </dev/null 3>&- 4>&- || return 4
               s=$(g -C "$d" rev-parse -q --verify 'FETCH_HEAD^{commit}') || return 5
               if [ "$own" = 1 ]; then
                 if c=$(g -C "$d" rev-parse -q --verify "refs/heads/$b^{commit}"); then
