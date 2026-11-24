@@ -31,6 +31,7 @@ struct GitHubTabView: View {
                     GitHubItemScreen(store: store, host: link.host, item: link.item, send: send)
                 }
         }
+        .modifier(GitHubWriteReports(store: store))
     }
 }
 

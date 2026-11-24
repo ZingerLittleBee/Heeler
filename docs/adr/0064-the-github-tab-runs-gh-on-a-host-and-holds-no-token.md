@@ -148,8 +148,8 @@ Close.
   Comment… (any item), Approve… (an open pull request that is not the
   account's own), Merge… (an open pull request that is not a draft) and
   Close… (anything open). Each runs one command through the same script
-  (`GitHubWrite`, `GitHubStore.write(_:on:host:)`): `gh pr comment` or
-  `gh issue comment` with `--body-file`, `gh pr review --approve` with an
+  (`GitHubWrite`, `GitHubStore.write(_:on:host:shownBy:)`): `gh pr comment`
+  or `gh issue comment` with `--body-file`, `gh pr review --approve` with an
   optional `--body-file`, `gh pr merge` with `--squash`, `--merge` or
   `--rebase`, `--match-head-commit` and optionally `--delete-branch`,
   `gh pr close`, and `gh issue close --reason "completed"` or
@@ -204,6 +204,13 @@ Close.
   without a page when gh exits 0 (Close when the read shows the item
   closed), and otherwise show gh's output under a title that says what
   happened.
+- **A result is shown once, wherever the user went.** A write outlives the
+  sheet or detail it began on. When that screen has gone by the time the
+  result comes (the user went back, picked another row, or left the tab),
+  a result that is anything but a plain success waits in
+  `GitHubStore.reports`, and the tab's root shows the same page once the
+  tab is on screen, after any sheet already up. Turning GitHub off drops
+  what waits.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged

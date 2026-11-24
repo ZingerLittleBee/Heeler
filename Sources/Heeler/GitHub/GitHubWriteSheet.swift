@@ -71,6 +71,7 @@ private struct GitHubComposeSheet: View {
 
     @State private var text = ""
     @State private var phase = GitHubWritePhase.editing(notRun: nil)
+    @State private var presence = UUID()
     @FocusState private var isEditing: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -110,6 +111,8 @@ private struct GitHubComposeSheet: View {
             }
         }
         .interactiveDismissDisabled(phase.isWorking)
+        .onAppear { store.present(presence) }
+        .onDisappear { store.leave(presence) }
     }
 
     private var canSubmit: Bool {
@@ -154,7 +157,7 @@ private struct GitHubComposeSheet: View {
         let write: GitHubWrite = action == .comment ? .comment(text) : .approve(text)
         phase = .working
         Task {
-            guard let result = await store.write(write, on: item, host: host) else {
+            guard let result = await store.write(write, on: item, host: host, shownBy: presence) else {
                 phase = .editing(notRun: GitHubWriteWords.busy)
                 return
             }
@@ -182,6 +185,7 @@ private struct GitHubMergeSheet: View {
     @State private var chosenMethod: GitHubMergeMethod?
     @State private var deletesBranch = true
     @State private var phase = GitHubWritePhase.editing(notRun: nil)
+    @State private var presence = UUID()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -209,6 +213,8 @@ private struct GitHubMergeSheet: View {
             }
         }
         .interactiveDismissDisabled(phase.isWorking)
+        .onAppear { store.present(presence) }
+        .onDisappear { store.leave(presence) }
     }
 
     private func method(in settings: GitHubMergeSettings?) -> GitHubMergeMethod? {
@@ -323,7 +329,8 @@ private struct GitHubMergeSheet: View {
         Task {
             guard
                 let result = await store.write(
-                    .merge(method, deleteBranch: deleteBranch, headCommit: headCommit), on: item, host: host)
+                    .merge(method, deleteBranch: deleteBranch, headCommit: headCommit), on: item, host: host,
+                    shownBy: presence)
             else {
                 phase = .editing(notRun: GitHubWriteWords.busy)
                 return
@@ -419,8 +426,9 @@ struct GitHubWriteResultView: View {
                         .multilineTextAlignment(page.style == .merged ? .center : .leading)
                         .padding(.horizontal, 4)
                 }
-                // Kept on screen so a refused or lost comment can be copied.
-                if page.style == .unknown || page.style == .refused, let typed, !typed.isEmpty {
+                // Kept on screen so a refused, lost or unsent comment can be
+                // copied; the tab shows an unsent one after its sheet has gone.
+                if [.unknown, .refused, .notRun].contains(page.style), let typed, !typed.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("What you wrote")
                             .font(.footnote.weight(.semibold))
@@ -500,6 +508,42 @@ struct GitHubWriteResultView: View {
                     .padding(.horizontal, 4)
             }
         }
+    }
+}
+
+/// Shows, once each, the results that came after their screen had gone:
+/// from the GitHub tab's root, while the tab is on screen (ADR 0064).
+struct GitHubWriteReports: ViewModifier {
+    let store: GitHubStore
+
+    @State private var shown: GitHubWriteReport?
+    @State private var isVisible = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                isVisible = true
+                showNext()
+            }
+            .onDisappear { isVisible = false }
+            .onChange(of: store.reports) { showNext() }
+            .sheet(item: $shown, onDismiss: showNext) { report in
+                NavigationStack {
+                    let result = report.result
+                    GitHubWriteResultView(host: report.host, result: result, typed: result.write.typed) { shown = nil }
+                    .navigationTitle(GitHubWriteWords.sheetTitle(report.result.write.action))
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .presentationDetents([.medium, .large])
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+            }
+    }
+
+    private func showNext() {
+        guard isVisible, shown == nil, let report = store.takeReport() else { return }
+        shown = report
     }
 }
 

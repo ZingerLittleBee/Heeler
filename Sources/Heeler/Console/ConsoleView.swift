@@ -697,6 +697,7 @@ struct ConsoleView: View {
                 }
                 .readableColumn()
             }
+            .modifier(GitHubWriteReports(store: console.gitHub))
             .background {
                 ConsoleTabBarBridge(chromeScheme: nil, hidesBar: true, request: tabBarRequest)
             }

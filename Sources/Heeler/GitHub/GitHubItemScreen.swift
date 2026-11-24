@@ -18,6 +18,8 @@ struct GitHubItemScreen: View {
     let send: GitHubSendLink?
 
     @State private var writeSheet: GitHubWriteSheetRequest?
+    /// Shows a Close's result while the detail is on screen.
+    @State private var presence = UUID()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -62,9 +64,11 @@ struct GitHubItemScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 GitHubItemMenu(
                     store: store, host: host, item: item, current: current, detail: detail,
-                    sheet: $writeSheet)
+                    presence: presence, sheet: $writeSheet)
             }
         }
+        .onAppear { store.present(presence) }
+        .onDisappear { store.leave(presence) }
         .sheet(item: $writeSheet) { request in
             GitHubWriteSheet(request: request, store: store, host: host, item: item)
                 .modifier(ConsoleSheetPresentationModifier(
@@ -380,6 +384,8 @@ private struct GitHubItemMenu: View {
     /// As the detail shows it now.
     let current: GitHubItem
     let detail: GitHubItemDetail?
+    /// The detail's, while it is on screen.
+    let presence: UUID
     @Binding var sheet: GitHubWriteSheetRequest?
 
     @State private var isConfirmingClose = false
@@ -448,17 +454,14 @@ private struct GitHubItemMenu: View {
     }
 
     /// The detail shows the item closed when it is; anything else opens a
-    /// page that says what happened.
+    /// page that says what happened, here or, once the detail has gone, from
+    /// the tab.
     private func close(_ reason: GitHubCloseReason?) {
         Task {
-            guard let result = await store.write(.close(reason), on: item, host: host) else { return }
-            let isClosed = result.detail.map { $0.item.state == .closed || $0.item.state == .merged } ?? false
-            switch result.outcome {
-            case .finished(exitStatus: 0, _) where isClosed, .unknown where isClosed:
-                return
-            default:
-                sheet = GitHubWriteSheetRequest(kind: .closeResult(result))
-            }
+            guard let result = await store.write(.close(reason), on: item, host: host, shownBy: presence),
+                !result.isPlainSuccess
+            else { return }
+            sheet = GitHubWriteSheetRequest(kind: .closeResult(result))
         }
     }
 }

@@ -28,6 +28,14 @@ enum GitHubWrite: Sendable, Equatable {
         }
     }
 
+    /// What the user wrote, for a comment or an approval.
+    var typed: String? {
+        switch self {
+        case .comment(let text), .approve(let text): text
+        case .merge, .close: nil
+        }
+    }
+
     /// The command as the sheets name it: "gh pr merge".
     static func command(_ action: Action, for kind: GitHubItem.Kind) -> String {
         let noun = kind == .pullRequest ? "pr" : "issue"
@@ -169,4 +177,30 @@ struct GitHubWriteResult: Sendable, Equatable {
     let detail: GitHubItemDetail?
     /// Why the read after failed.
     let readFailure: GitHubReadFailure?
+
+    /// Nothing to say beyond what the detail and its row show: a comment or
+    /// approval gh finished without an error, a merge it finished that the
+    /// read after shows merged, and a close the read after shows closed
+    /// unless gh stopped with an error.
+    var isPlainSuccess: Bool {
+        let state = detail?.item.state
+        switch (write.action, outcome) {
+        case (.comment, .finished(exitStatus: 0, _)), (.approve, .finished(exitStatus: 0, _)):
+            return true
+        case (.merge, .finished(exitStatus: 0, _)):
+            return state == .merged
+        case (.close, .finished(exitStatus: 0, _)), (.close, .unknown):
+            return state == .closed || state == .merged
+        default:
+            return false
+        }
+    }
+}
+
+/// A write's result that came after the screen it began on had gone, for
+/// the tab to show once (ADR 0064).
+struct GitHubWriteReport: Identifiable, Equatable {
+    let id = UUID()
+    let host: GitHubHost
+    let result: GitHubWriteResult
 }

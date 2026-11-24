@@ -82,6 +82,9 @@ final class GitHubStore {
     private(set) var details: [DetailKey: DetailState] = [:]
     /// Items with a write running, one write per item at a time.
     private(set) var writing: Set<DetailKey> = []
+    /// Results that are not plain successes and came after their screen had
+    /// gone, oldest first, until the tab shows them.
+    private(set) var reports: [GitHubWriteReport] = []
 
     @ObservationIgnored weak var access: (any GitHubHostAccess)?
     @ObservationIgnored private let cache: any GitHubListCache
@@ -95,6 +98,8 @@ final class GitHubStore {
     /// Bumped when the switch goes off, so a read already running keeps
     /// nothing it finds.
     @ObservationIgnored private var generation = 0
+    /// The screens that can show a write's result, while they are on screen.
+    @ObservationIgnored private var presenters: Set<UUID> = []
 
     init(
         settings: GitHubSettings = GitHubSettings(),
@@ -247,6 +252,7 @@ final class GitHubStore {
         detailReads = [:]
         states = [:]
         details = [:]
+        reports = []
         loadedCaches = []
         unsupported = []
         Task { [cache] in await cache.removeAll() }
@@ -408,8 +414,12 @@ final class GitHubStore {
     /// on the Server whose read just answered and on no other, then reads
     /// the item again so the detail, its list row and the saved list follow.
     /// Nil when a write on the item is already running. The write outlives
-    /// the caller: a sheet closing under it does not stop it.
-    func write(_ write: GitHubWrite, on item: GitHubItem, host: GitHubHost) async -> GitHubWriteResult? {
+    /// the caller: a sheet closing under it does not stop it. When
+    /// `presenter` has left the screen by the end, the result is nil too, and
+    /// one that is not a plain success waits in `reports` for the tab.
+    func write(
+        _ write: GitHubWrite, on item: GitHubItem, host: GitHubHost, shownBy presenter: UUID
+    ) async -> GitHubWriteResult? {
         let key = DetailKey(host: host.id, item: item.id)
         guard isEnabled, !writing.contains(key) else { return nil }
         writing.insert(key)
@@ -418,7 +428,27 @@ final class GitHubStore {
             writing.remove(key)
             return result
         }
-        return await task.value
+        let result = await task.value
+        guard presenters.contains(presenter) else {
+            if isEnabled, !result.isPlainSuccess { reports.append(GitHubWriteReport(host: host, result: result)) }
+            return nil
+        }
+        return result
+    }
+
+    /// A screen that can show a write's result came on screen.
+    func present(_ presenter: UUID) {
+        presenters.insert(presenter)
+    }
+
+    /// That screen left; a result that comes now goes to `reports`.
+    func leave(_ presenter: UUID) {
+        presenters.remove(presenter)
+    }
+
+    /// The oldest result the tab has not shown, which it now shows.
+    func takeReport() -> GitHubWriteReport? {
+        reports.isEmpty ? nil : reports.removeFirst()
     }
 
     private func performWrite(_ write: GitHubWrite, on item: GitHubItem, host: GitHubHost) async -> GitHubWriteResult {
