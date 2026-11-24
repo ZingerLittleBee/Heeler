@@ -214,6 +214,7 @@ Close.
   no flag, so the page after reports what GitHub did.
 - **The tab can be turned off.** Settings has a GitHub switch under Usage's,
   on by default. Off hides the tab, runs no gh and removes the saved lists.
+  A write whose read before is still running when it goes off runs nothing.
 - **Six tabs fit by moving Settings.** The tab follows Terminals: Agents,
   Terminals, GitHub, Usage, Hosts and Settings. With both GitHub and Usage on,
   Settings leaves the tab bar and opens from a gear on the Hosts tab, pushed

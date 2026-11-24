@@ -27833,6 +27833,28 @@
         }
       }
     },
+    "GitHub was turned off, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub がオフになったため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 功能已关闭，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 功能已關閉，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
     "GitHub's Rate Limit Was Reached" : {
       "localizations" : {
         "ja" : {

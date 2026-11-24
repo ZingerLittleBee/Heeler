@@ -421,6 +421,7 @@ final class GitHubStore {
         {
             GitHubWriteResult(write: write, item: item, outcome: outcome, detail: detail, readFailure: failure)
         }
+        let generation = generation
         let before: DetailAnswer
         switch await freshAnswer(item, on: host) {
         case .success(let answer):
@@ -428,6 +429,10 @@ final class GitHubStore {
         case .failure(let failure):
             let reason = GitHubBannerText.message(for: failure)
             return result(.notRun(String(localized: "Heeler could not read it again first, so it ran nothing. \(reason)")), nil, failure)
+        }
+        // The switch went off while the read before ran.
+        guard generation == self.generation, isEnabled else {
+            return result(.notRun(String(localized: "GitHub was turned off, so Heeler ran nothing.")), before.detail)
         }
         if let refusal = write.refusal(by: before.detail) {
             return result(.notRun(refusal), before.detail)
