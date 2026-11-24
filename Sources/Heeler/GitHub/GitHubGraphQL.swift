@@ -64,6 +64,11 @@ enum GitHubGraphQL {
         if rateLimited {
             return .rateLimited(retryAt: retryTime(response.headers, now: now))
         }
+        // gh exits 1 whenever GitHub lists errors, even beside `data`. Errors
+        // that each name a field leave the rest answered: the field comes back
+        // null, as a node that is gone, hidden or behind SAML does, and the
+        // read deals with that.
+        if hasData, !errors.isEmpty, errors.allSatisfy(\.namesField) { return nil }
         guard run.exitStatus != 0 || !hasData else { return nil }
         if let message, !message.isEmpty { return .failed(message) }
         let words = run.errorOutput.split(whereSeparator: \.isNewline)
@@ -106,6 +111,27 @@ enum GitHubGraphQL {
     private struct GraphQLError: Decodable {
         let type: String?
         let message: String?
+        /// Whether the error names the field it is about (`path`), as a
+        /// field error does and a request error does not.
+        let namesField: Bool
+
+        private enum CodingKeys: String, CodingKey { case type, message, path }
+
+        /// A `path` entry: a field name or a list index.
+        private struct PathEntry: Decodable {
+            init(from decoder: any Decoder) throws {
+                let value = try decoder.singleValueContainer()
+                if (try? value.decode(String.self)) == nil { _ = try value.decode(Int.self) }
+            }
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try container.decodeIfPresent(String.self, forKey: .type)
+            message = try container.decodeIfPresent(String.self, forKey: .message)
+            let path = (try? container.decodeIfPresent([PathEntry].self, forKey: .path)) ?? nil
+            namesField = !(path ?? []).isEmpty
+        }
     }
 
     struct Viewer: Decodable {

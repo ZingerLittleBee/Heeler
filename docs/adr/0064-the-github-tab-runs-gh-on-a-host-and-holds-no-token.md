@@ -63,8 +63,14 @@ Close.
   recently updated first. Pull requests that request the user's review, pull
   requests the user opened, issues assigned to the user, and issues the user
   opened that are not assigned to them. The headers give each section's full
-  count and say when a rate limit ends. Writes are not GraphQL: they are
-  gh's porcelain commands, below.
+  count and say when a rate limit ends. gh exits 1 whenever GitHub's answer
+  lists errors, even beside its data. When every error names a field
+  (`path`), the read takes the data: a search result GitHub will not show,
+  behind SAML or an OAuth App restriction, comes back null and is left out
+  of its section, and an item that is gone or hidden reads as GitHub no
+  longer showing it. An error that names no field fails the read with
+  GitHub's message; not signed in and a rate limit are told apart first.
+  Writes are not GraphQL: they are gh's porcelain commands, below.
 - **The list is kept for display, never watched.** Each Host's list is saved
   on the device (`FileGitHubListCache`) by the rules
   [FileChatTranscriptCache](../../Sources/Heeler/Chat/Cache/FileChatTranscriptCache.swift)
@@ -262,6 +268,12 @@ Close.
   ask without a token, `403 API rate limit exceeded for <address>` with
   "Authenticated requests get a higher rate limit". Both read as Not Signed
   In and start the desktop route.
+- Asked on 2026-11-24 for a node id that resolves to nothing, gh 2.105
+  exited 1 with `data` holding the viewer and a null `node` beside a
+  `NOT_FOUND` error whose `path` is `["node"]`; the detail then said GitHub no
+  longer shows the item. A list whose answer had one search node null with a
+  `FORBIDDEN` error on its path (as SAML gives, made by the stand-in) showed
+  the section's other items.
 - The desktop route was measured on a Mac with an sshd started in a separate
   security session (`SessionCreate`), which could not read the login keychain,
   as an SSH login cannot. `launchctl bootstrap gui/<uid>` worked from inside
