@@ -72,7 +72,8 @@ struct GitHubWriteSheet: View {
                 close: close)
         case .result(let result):
             NavigationStack {
-                GitHubWriteResultView(host: request.host, result: result, typed: result.write.typed, done: close)
+                GitHubWriteResultView(
+                    host: request.host, result: result, typed: result.write.typed, namesItem: true, done: close)
                     .navigationTitle(GitHubWriteWords.sheetTitle(result.write.action))
                     .navigationBarTitleDisplayMode(.inline)
             }
@@ -459,6 +460,9 @@ struct GitHubWriteResultView: View {
     let result: GitHubWriteResult
     /// What the user wrote, kept in sight when it may not have been posted.
     let typed: String?
+    /// Names the item above the page. A result shown after its sheet has
+    /// gone can land over another item's detail, or over no item at all.
+    var namesItem = false
     let done: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -467,6 +471,10 @@ struct GitHubWriteResultView: View {
         let page = GitHubWriteWords.page(for: result)
         ScrollView {
             VStack(alignment: page.style == .merged ? .center : .leading, spacing: 12) {
+                if namesItem {
+                    GitHubWriteItemLine(item: result.detail?.item ?? result.item)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 header(page)
                 if let printed = page.printed {
                     Text(verbatim: printed)
