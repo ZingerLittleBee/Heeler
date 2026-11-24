@@ -468,9 +468,11 @@ struct ConsoleView: View {
         .onChange(of: usesSidebarNavigation) { _, usesSidebar in
             guard usesSidebar else { return }
             if isHostsTabSelected, isSettingsShownUnderHosts {
-                // Settings under Hosts was the screen on show.
+                // Settings under Hosts was the screen on show. The rebuilt
+                // Hosts tab opens on its list, and says so only once shown.
                 hostsTabRequest = nil
                 hostsTabGeneration += 1
+                isSettingsShownUnderHosts = false
                 isShowingSettingsSheet = true
                 isHostsTabSelected = false
             } else if isHostsTabSelected {
@@ -924,7 +926,10 @@ struct ConsoleView: View {
             || connectionDetailRequest != nil || isShowingHostIssues
             || isShowingHostsSheet || isShowingSettingsSheet
         if isPresentingOverConsole, !ownsPresentation {
-            if isHostsTabSelected { hostsTabGeneration += 1 }
+            if isHostsTabSelected {
+                hostsTabGeneration += 1
+                isSettingsShownUnderHosts = false
+            }
             if isSettingsTabSelected { settingsTabGeneration += 1 }
         }
         showAgentsList(parking: parked)
