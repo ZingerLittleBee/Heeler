@@ -300,6 +300,8 @@ private struct GitHubReadingView: View {
                     ProgressView()
                     Text("Reading from \(host.name)…")
                 }
+                // One heading: the spinner alone read as an unnamed one.
+                .accessibilityElement(children: .combine)
                 .textCase(nil)
             }
         }
@@ -331,9 +333,11 @@ private struct GitHubSetupView: View {
                         .font(.system(size: 44))
                         .foregroundStyle(.secondary)
                         .padding(.bottom, 4)
+                        .accessibilityHidden(true)
                     Text(title)
                         .font(.title2.bold())
                         .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
                     Text(message)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

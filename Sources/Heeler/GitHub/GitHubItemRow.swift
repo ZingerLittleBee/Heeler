@@ -239,6 +239,9 @@ struct GitHubItemRow: View {
                 additions: nil, deletions: nil, labels: []),
             section: .authored)
             .redacted(reason: .placeholder)
+            // Redacted, its label reads as a run of blank glyphs; the
+            // section's "Reading from…" heading says what is happening.
+            .accessibilityHidden(true)
     }
 }
 
