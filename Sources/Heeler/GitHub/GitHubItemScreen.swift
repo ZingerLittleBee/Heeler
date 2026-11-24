@@ -214,16 +214,16 @@ private struct GitHubItemFacts: View {
             if item.labels.isEmpty {
                 Text("None")
             } else {
+                // A value too long to sit beside its label goes under it,
+                // where its lines start at the left like the label's.
                 Text(verbatim: item.labels.map(\.name).joinedAsPhrases())
                     .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
             }
         }
         LabeledContent("Assignees") {
             if let detail {
                 Text(GitHubItemWords.assignees(detail.assignees, viewer: detail.viewer))
                     .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
             } else {
                 pending
             }
