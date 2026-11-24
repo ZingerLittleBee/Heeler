@@ -295,6 +295,31 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   Process coverage is `plugin/test/usage-*.test.js`; the worker test produces
   the shared [usage-v1 vector](../../plugin/test-vectors/usage-v1.json).
   Price-table maintenance is in the [plugin README](../../plugin/README.md#maintaining-the-price-table).
+- **GitHub List (the GitHub tab):** `ConsoleView.gitHubTab()` hosts
+  [GitHubTabView and GitHubListScreen](../../Sources/Heeler/GitHub/GitHubTabView.swift),
+  the latter also the iPad sidebar's list, with
+  [GitHubItemRow](../../Sources/Heeler/GitHub/GitHubItemRow.swift).
+  [GitHubStore](../../Sources/Heeler/GitHub/GitHubStore.swift), owned by
+  `ConsoleStore.gitHub`, keeps each Host's list and read state and picks the
+  Host's connected Servers through `GitHubHostAccess`, which `ConsoleStore`
+  implements (`runGitHub(_:on:)`, the remembered desktop route in
+  `gitHubDesktopRoutes`). The exec is
+  [GitHubCLIScript](../../Sources/Heeler/GitHub/GitHubCLI.swift), framed back
+  as `GitHubCLIOutcome`, through `ConsoleHostProjection.runGitHubScript`:
+  `HostServices.runGitHubScript` (a bounded exec in
+  [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift))
+  on herdr and tmux, `RexTransport.gitHub` on Rex.
+  [GitHubListRead](../../Sources/Heeler/GitHub/GitHubListRead.swift) owns the
+  GraphQL query and turns gh's answer into
+  [GitHubList](../../Sources/Heeler/GitHub/GitHubModels.swift) or a
+  `GitHubReadFailure`. Saved lists:
+  [FileGitHubListCache](../../Sources/Heeler/GitHub/GitHubListCache.swift).
+  Settings' switch: [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift)
+  through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
+  moves under the Hosts tab (`ConsoleView.settingsUnderHosts`,
+  `HostListSettingsLink`). Read
+  [ADR 0064](../adr/0064-the-github-tab-runs-gh-on-a-host-and-holds-no-token.md).
+  No focused tests yet.
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
   Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`
