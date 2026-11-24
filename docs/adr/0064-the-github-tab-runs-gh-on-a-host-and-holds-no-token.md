@@ -153,10 +153,13 @@ Close.
   run `git worktree add -b <branch> <path> <commit>` in place of `HEAD`
   (ADR 0032, ADR 0045). A branch that exists is checked out as it is, as
   before. The fetch is the only network step, bounded by the seam's 60
-  seconds. It writes `FETCH_HEAD` and, for an issue, the remote's
-  `refs/remotes/<remote>/<default>` too, as any fetch of a branch the
-  remote's refspec maps does; the script also writes the branch it makes or
-  moves and that branch's tracking settings. Nothing is pushed. In a repository
+  seconds. It fetches into `refs/heeler/start/<nonce>`, which the script
+  reads and deletes at once, on its failure paths too: an Agent fetching in
+  the same checkout could replace `FETCH_HEAD` before the script read it.
+  git still writes `FETCH_HEAD` and, for an issue, the remote's
+  `refs/remotes/<remote>/<default>`, as any fetch of a branch the remote's
+  refspec maps does; the script also writes the branch it makes or moves and
+  that branch's tracking settings. Nothing is pushed. In a repository
   over its auto-gc limit the fetch starts git's detached maintenance, which
   would keep the script's answer open until it ends, so git fetches with the
   answer's descriptors closed; the repository's maintenance settings stay as

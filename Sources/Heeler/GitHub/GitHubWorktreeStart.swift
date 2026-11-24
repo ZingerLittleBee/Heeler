@@ -63,7 +63,10 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         // a later push to the repository. Then the fetch, from the remote by
         // name so its own settings apply. Over the repository's auto-gc limit
         // it starts git's detached maintenance, which would hold the frame's
-        // descriptors open until it ends, so the fetch runs without them. A
+        // descriptors open until it ends, so the fetch runs without them. It
+        // fetches into a ref of this request's own, not FETCH_HEAD, which an
+        // Agent fetching in the same checkout could replace before it is
+        // read; the ref goes as soon as it is read, whatever happened. A
         // branch that exists keeps commits the pull request does not have:
         // it is moved only forward, by `git branch -f`, which git 2.35 and
         // later refuse for a branch a Worktree is rebasing or bisecting on a
@@ -71,7 +74,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         var body = Data(
             """
             wt() {
-              d=$1 r=$2 ref=$3 b=$4 own=$5 track=$6 fork=$7
+              d=$1 r=$2 ref=$3 b=$4 own=$5 track=$6 fork=$7 tmp=$8
               list=$(g -C "$d" worktree list --porcelain) || return 3
               p=$(printf '%s\\n' "$list" | awk -v want="branch refs/heads/$b" 'index($0, "worktree ") == 1 { p = substr($0, 10) } $0 == want { print p; exit }')
               if [ -n "$p" ]; then printf 'busy %s\\n' "$p"; return 0; fi
@@ -82,8 +85,11 @@ struct GitHubWorktreeStart: Sendable, Equatable {
                   printf 'remote\\n'; return 0
                 fi
               fi
-              git -C "$d" fetch --quiet --no-tags "$r" "$ref" </dev/null 3>&- 4>&- || return 4
-              s=$(g -C "$d" rev-parse -q --verify 'FETCH_HEAD^{commit}') || return 5
+              git -C "$d" fetch --quiet --no-tags "$r" "+$ref:$tmp" </dev/null 3>&- 4>&-; e=$?
+              s=$(g -C "$d" rev-parse -q --verify "$tmp^{commit}")
+              g -C "$d" update-ref -d "$tmp"
+              [ "$e" = 0 ] || return 4
+              [ -n "$s" ] || return 5
               if [ "$own" = 1 ]; then
                 if c=$(g -C "$d" rev-parse -q --verify "refs/heads/$b^{commit}"); then
                   if [ "$c" != "$s" ] && ! g -C "$d" merge-base --is-ancestor "$s" "$c"; then
@@ -108,7 +114,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         body.append(Data("sec \(Self.cap) start wt ".utf8))
         let arguments = [
             directory, remote, fetchedRef, branch, isPullRequestBranch ? "1" : "0", trackedBranch ?? "",
-            isFromFork ? "1" : "0",
+            isFromFork ? "1" : "0", "refs/heeler/start/\(nonce)",
         ]
         for argument in arguments {
             body.append(GitProbe.singleQuoted(Data(argument.utf8)))
