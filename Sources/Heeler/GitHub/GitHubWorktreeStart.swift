@@ -65,7 +65,9 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         // it starts git's detached maintenance, which would hold the frame's
         // descriptors open until it ends, so the fetch runs without them. A
         // branch that exists keeps commits the pull request does not have:
-        // it is moved only forward.
+        // it is moved only forward, by `git branch -f`, which git 2.35 and
+        // later refuse for a branch a Worktree is rebasing or bisecting on a
+        // detached HEAD, where `worktree list` names no branch.
         var body = Data(
             """
             wt() {
@@ -86,7 +88,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
                 if c=$(g -C "$d" rev-parse -q --verify "refs/heads/$b^{commit}"); then
                   if [ "$c" != "$s" ] && ! g -C "$d" merge-base --is-ancestor "$s" "$c"; then
                     if g -C "$d" merge-base --is-ancestor "$c" "$s"; then
-                      git -C "$d" update-ref "refs/heads/$b" "$s" "$c" || return 6
+                      git -C "$d" branch -f --no-track "$b" "$s" >/dev/null || return 7
                     else
                       printf 'diverged\\n'; return 0
                     fi
@@ -137,6 +139,8 @@ struct GitHubWorktreeStart: Sendable, Equatable {
             return .failure(.incomplete)
         case 4:
             return .failure(.fetchFailed(ref: fetchedRef, remote: remote, reason: section.firstMessageLine))
+        case 7:
+            return .failure(.notMoved(branch: branch, reason: section.firstMessageLine))
         default:
             return .failure(.gitFailed(
                 section.firstMessageLine ?? String(localized: "git exited with status \(section.status).")))
@@ -152,6 +156,9 @@ enum GitHubWorktreeStartFailure: Error, Equatable {
     /// A fork's pull request named a branch that follows the checkout's
     /// remote, or one the remote has.
     case remoteBranch(branch: String)
+    /// git would not move the branch forward, as when a Worktree is
+    /// rebasing it.
+    case notMoved(branch: String, reason: String?)
     case fetchFailed(ref: String, remote: String, reason: String?)
     case gitFailed(String)
     /// The script's answer did not arrive whole.
@@ -167,6 +174,10 @@ enum GitHubWorktreeStartFailure: Error, Equatable {
             String(localized: "\(branch) on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request.")
         case .remoteBranch(let branch):
             String(localized: "\(branch) on the Host belongs to a remote, and this pull request comes from a fork, so Heeler left it as it is. Name another branch to start one from the pull request.")
+        case .notMoved(let branch, let reason?):
+            String(localized: "git would not move \(branch) on the Host to the pull request's commits, so Heeler left it as it is: \(reason)")
+        case .notMoved(let branch, nil):
+            String(localized: "git would not move \(branch) on the Host to the pull request's commits, so Heeler left it as it is.")
         case .fetchFailed(let ref, let remote, let reason?):
             String(localized: "git could not fetch \(ref) from \(remote): \(reason)")
         case .fetchFailed(let ref, let remote, nil):

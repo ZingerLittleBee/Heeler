@@ -135,7 +135,10 @@ Close.
   `refs/heads/<default>` for an issue, and answers with that commit. On the
   pull request's own branch the script also makes the branch at that commit,
   tracking the remote's branch for a pull request from the repository itself,
-  or moves an existing branch forward to it. A branch ahead of the pull
+  or moves an existing branch forward to it with `git branch -f`. git 2.35
+  and later refuse that for a branch a Worktree is rebasing or bisecting,
+  which `git worktree list` shows only as a detached HEAD, and the Start
+  fails with git's words; older git moves it. A branch ahead of the pull
   request, holding its commits and more, is checked out as it is, as
   `gh pr checkout` leaves it; only a branch that has diverged from the pull
   request is left alone and fails the Start, asking for another name.
@@ -358,6 +361,11 @@ Close.
   `gc.autoPackLimit` on a Mac, 31 seconds on Debian 13 with a `pre-auto-gc`
   hook drawing it out. With them closed the answer came in 0.9 to 2.6
   seconds, and a Start from the app answered while maintenance went on.
+- A Start for a branch a Worktree was rebasing left the branch where it
+  was, with git's line "cannot force update the branch '<branch>' used by
+  worktree at '<path>'", on a Mac (git 2.54 and 2.55) and on Debian 13 (git
+  2.47.3) on 2026-11-25. git's source has the same refusal from 2.35, worded
+  "checked out at" before 2.42.
 - Writes were measured on 2026-11-24 against a stand-in gh that records what
   it was given and answers as told, never against GitHub. A body with
   quotes, `$(...)`, backticks, newlines, CJK and emoji arrived byte for byte,

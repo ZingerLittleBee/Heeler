@@ -81124,6 +81124,17 @@
         }
       }
     },
+    "git would not move %@ on the Host to the pull request's commits, so Heeler left it as it is." : {},
+    "git would not move %@ on the Host to the pull request's commits, so Heeler left it as it is: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "git would not move %1$@ on the Host to the pull request's commits, so Heeler left it as it is: %2$@"
+          }
+        }
+      }
+    },
     "herdr %@ · protocol %lld" : {
       "comment" : "Preflight footer; herdr version and protocol",
       "localizations" : {
