@@ -213,6 +213,8 @@ final class GitHubStore {
         guard let host = selectedHost else { return }
         let state = state(of: host)
         guard !state.isReading else { return }
+        // Until a rate limit ends, only a pull or Check Again asks again.
+        if case .rateLimited(let retryAt?) = state.failure, now() < retryAt { return }
         if let list = state.list, state.failure == nil,
             now().timeIntervalSince(list.readAt) < Self.staleAfter
         {
