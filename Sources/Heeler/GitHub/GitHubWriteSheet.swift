@@ -250,7 +250,10 @@ private struct GitHubMergeSheet: View {
             } header: {
                 VStack(alignment: .leading, spacing: 14) {
                     if warning == nil { GitHubWriteItemLine(item: current) }
+                    // Under the item line it lost the header trait the
+                    // section gives a header of its own.
                     Text("Method")
+                        .accessibilityAddTraits(.isHeader)
                 }
             }
             if let pull, !pull.isCrossRepository {
@@ -473,6 +476,7 @@ struct GitHubWriteResultView: View {
                 .accessibilityHidden(true)
             Text(page.title)
                 .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
             if let summary = page.summary {
                 Text(summary)
                     .foregroundStyle(.secondary)
@@ -487,6 +491,7 @@ struct GitHubWriteResultView: View {
                     .foregroundStyle(page.style.tint)
                     .font(.title3)
             }
+            .accessibilityAddTraits(.isHeader)
             if let summary = page.summary {
                 Text(summary)
                     .padding(.horizontal, 4)
