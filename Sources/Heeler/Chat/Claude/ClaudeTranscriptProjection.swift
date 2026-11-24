@@ -50,6 +50,7 @@ enum ClaudeTranscriptProjection {
             transcript.model = index.model
             transcript.effort = index.effort
             transcript.permissionMode = index.permissionMode
+            transcript.teammateEvents = builder.teammateEvents
         }
         return transcript
     }
@@ -456,6 +457,8 @@ private struct Builder {
     /// The newest record that placed a message the user sent.
     private(set) var latestPromptOffset: UInt64?
     private(set) var backgroundWorkTurnCaps: [ChatTurnPendingAllowance] = []
+    /// What the loaded records say about teammates, in file order.
+    private(set) var teammateEvents: [ChatTeammateEvent] = []
 
     private var selected: [String: ClaudeRecord] = [:]
     private var children: [String: [ClaudeRecord]] = [:]
@@ -648,6 +651,8 @@ private struct Builder {
 
         guard role == .main else { return }
 
+        teammateEvents = Self.teammateEvents(in: mainRecords, answers: allAnswers)
+
         var chainLaunches: [BackgroundLaunch] = []
         for record in chain.records where !record.isSidechain && record.teamName == nil {
             for use in record.toolUses where !use.id.isEmpty {
@@ -737,6 +742,58 @@ private struct Builder {
                 ChatTurnPendingAllowance(
                     kind: kind, carriedSlots: max(0, allowed - remainingInWindow), end: end))
         }
+    }
+
+    /// What `records` say about teammates (Claude Code 2.1.331): a spawn, a
+    /// message the lead sent, what a teammate wrote back (an idle
+    /// notification ends its turn), and `agents_killed`, which stops them
+    /// all. Teammates write no `turn_duration` and no task notification:
+    /// the lead's `turn_duration` waits until none runs.
+    private static func teammateEvents(in records: [ClaudeRecord], answers: [String: Answer]) -> [ChatTeammateEvent] {
+        var events: [ChatTeammateEvent] = []
+        for record in records {
+            let at = ClaudeTranscriptProjection.date(record.timestamp)
+            if record.kind == .system("agents_killed") {
+                events.append(ChatTeammateEvent(name: nil, kind: .stopped, offset: record.byteOffset, at: at))
+            }
+            for use in record.toolUses where !use.id.isEmpty {
+                guard let answer = answers[use.id], case .succeeded = answer.outcome else { continue }
+                if let result = answer.record.toolResult?.result, result.status == "teammate_spawned",
+                    let name = teammateName(of: use, result: result)
+                {
+                    events.append(ChatTeammateEvent(name: name, kind: .spawned, offset: record.byteOffset, at: at))
+                } else if use.name == "SendMessage", let recipient = use.input.messageRecipient?.nonEmpty {
+                    // A name from an agent listing can carry its ` [ref]`.
+                    let name = recipient.components(separatedBy: " [").first ?? recipient
+                    events.append(
+                        ChatTeammateEvent(
+                            name: name == "*" ? nil : name, kind: .messaged, offset: answer.record.byteOffset,
+                            at: ClaudeTranscriptProjection.date(answer.record.timestamp)))
+                }
+            }
+            guard record.kind == .user else { continue }
+            for message in ClaudeTeammateMessage.messages(in: record.texts.joined(separator: "\n")) {
+                let kind: ChatTeammateEvent.Kind =
+                    switch message.kind {
+                    case .message: .wrote
+                    case .idle(reason: "failed"?): .idled(.failed)
+                    case .idle(reason: "interrupted"?): .idled(.stopped)
+                    case .idle: .idled(.completed)
+                    case .ended: .stopped
+                    }
+                events.append(
+                    ChatTeammateEvent(
+                        name: message.sender, kind: kind, offset: record.byteOffset,
+                        at: ClaudeTranscriptProjection.date(message.timestamp) ?? at))
+            }
+        }
+        return events.sorted { $0.offset < $1.offset }
+    }
+
+    /// The name a spawn's result says the teammate took, else the one the
+    /// call asked for.
+    private static func teammateName(of use: ClaudeToolUse, result: ClaudeToolUseResult) -> String? {
+        (result.teammateName ?? use.input.teammateName).flatMap(\.nonEmpty)
     }
 
     /// `answeredAt` is when the call's result was recorded, which a Monitor's
@@ -1102,16 +1159,25 @@ private struct Builder {
         use.name == "Workflow" || result?.taskType == "local_workflow"
     }
 
-    /// A Subagent, Workflow, background command or Monitor the call started
-    /// in the background, with how it ended once its notification arrived.
-    /// Teammates are left out: nothing in the transcript says when one is
-    /// done.
+    /// A Subagent, teammate, Workflow, background command or Monitor the
+    /// call started in the background, with how it ended once its
+    /// notification arrived, or for a teammate, how its latest run went.
     private func backgroundWorkItem(
         for use: ClaudeToolUse, in record: ClaudeRecord, result: ClaudeToolUseResult?
     ) -> ChatBackgroundWorkItem? {
         guard role == .main, !use.id.isEmpty, let result else { return nil }
         var item: ChatBackgroundWorkItem
-        if let taskID = commandTasks[use.id] {
+        if result.status == "teammate_spawned" {
+            guard let name = Self.teammateName(of: use, result: result) else { return nil }
+            item = ChatBackgroundWorkItem(
+                id: use.id, kind: .teammate,
+                title: use.input.description.flatMap(\.nonEmpty) ?? String(localized: "Teammate @\(name)"),
+                subtitle: name, launchOffset: record.byteOffset,
+                launchedAt: ClaudeTranscriptProjection.date(record.timestamp))
+            item.taskID = result.agentID?.nonEmpty
+            item.follow(teammateEvents)
+            return item
+        } else if let taskID = commandTasks[use.id] {
             // The command is the row's terminal line and what the model
             // said it does its headline; a Monitor on a WebSocket has only
             // the latter.
