@@ -345,15 +345,22 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   through `GitHubStore.worktreeStart(_:on:)` in `StartAgentStore.submit()`,
   and reaches each kind as `WorktreeSpec.base`. No focused tests yet.
 - **GitHub writes (Comment, Approve, Merge, Close):** `GitHubItemMenu`'s
-  last section opens
+  last section hands a `GitHubWriteSheetRequest` to the Console through
+  `GitHubWriteLink`, or asks Close's confirmation.
+  `GitHubWriteSheetPresenter`, on ConsoleView beside Send to Agent's, shows
   [GitHubWriteSheet](../../Sources/Heeler/GitHub/GitHubWriteSheet.swift)
-  (compose, merge and result pages, wording in `GitHubWriteWords`) or Close's
-  confirmation. [GitHubWrite](../../Sources/Heeler/GitHub/GitHubWrite.swift)
-  says which actions an item allows, builds the gh command and refuses one
-  the fresh read no longer allows; `GitHubWriteOutcome` reads what came back.
-  `GitHubStore.write(_:on:host:)` reads the item again, runs the command once
-  on the Server that answered (`GitHubHostAccess.runGitHub` with
-  `isMutation`), then reads it again. Sent once:
+  (compose, merge and result pages, wording in `GitHubWriteWords`) and,
+  while the GitHub tab is shown with no Console sheet up, each result
+  waiting in `GitHubStore.reports`.
+  [GitHubWrite](../../Sources/Heeler/GitHub/GitHubWrite.swift) says which
+  actions an item allows, builds the gh command and refuses one the fresh
+  read no longer allows; `GitHubWriteOutcome` reads what came back.
+  `GitHubStore.write(_:on:host:shownBy:)` reads the item again, runs the
+  command once on the Server that answered (`GitHubHostAccess.runGitHub`
+  with `isMutation`), then reads it again. Its `GitHubWriteDelivery` says
+  whether nothing ran, the result is for the sheet named by `shownBy`
+  (`present`/`leave`), or that sheet had gone and the result went to
+  `reports`. Sent once:
   `HostConsoleProjection.runGitHubScript` uses
   `EventsSession.withTransportOnce` for a mutation, and
   `HeelerSSHTransport.runGitHubScript` turns a failure after the exec was

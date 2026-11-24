@@ -234,7 +234,9 @@ Close.
   `coreMutationOutcomeUnknown`, as a herdr-core mutation does. Heeler says
   the outcome is unknown, does not send it again, keeps what the user wrote
   on screen, and offers the item in the browser.
-- **The item is read before and after.** `GitHubStore.reread` runs first. If
+- **The item is read before and after.** A read that starts after the write
+  is asked for runs first (`GitHubStore.freshAnswer`), never one already
+  running, which may have begun before what the write needs to see. If
   the item is no longer open, is a draft again, or for Merge has a new head
   commit, Heeler says so and runs nothing; Merge passes the head it read as
   `--match-head-commit`, so GitHub refuses a merge of commits pushed since.
@@ -267,15 +269,16 @@ Close.
   end. In the last case a sheet still up closes rather than offer its form
   again, since the write may have gone through.
 - **A result is shown once, wherever the user went.** A write outlives the
-  sheet or detail it began on. When that screen has gone by the time the
-  result comes (the user went back, picked another row, or left the tab),
-  and always for Close, which has no sheet, a result that is anything but
-  a plain success waits in `GitHubStore.reports`. The Console's presenter
-  shows the same page once the GitHub tab is the one shown and none of the
-  Console's sheets is up, since one such as Send to Agent can end by
-  opening an Agent on another tab. It names the Host under the item, since
-  it can land over another item's detail. Turning GitHub off drops what
-  waits.
+  sheet or detail it began on. Comment, Approve and Merge hold their sheet
+  until the write ends, since it cannot be dismissed while working; Close
+  has no sheet, and the user can go back, pick another row or leave the
+  tab while it runs. A result with no sheet left to show it, every Close's
+  among them, waits in `GitHubStore.reports` unless it is a plain success.
+  The Console's presenter shows the same page once the GitHub tab is the
+  one shown and none of the Console's sheets is up, since one such as Send
+  to Agent can end by opening an Agent on another tab. It names the Host
+  under the item, since it can land over another item's detail. Turning
+  GitHub off drops what waits.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged
