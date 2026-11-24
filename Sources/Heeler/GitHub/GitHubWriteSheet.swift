@@ -230,7 +230,7 @@ private struct GitHubMergeSheet: View {
                         Text(warning)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(GitHubInk.amber)
                     }
                 } header: {
                     GitHubWriteItemLine(item: current)
@@ -370,7 +370,7 @@ private struct GitHubNotRunSection: View {
                 }
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(GitHubInk.red)
             }
         }
     }
@@ -464,7 +464,7 @@ struct GitHubWriteResultView: View {
         if page.style == .merged {
             Image(systemName: "arrow.triangle.merge")
                 .font(.system(size: 40, weight: .regular))
-                .foregroundStyle(.purple)
+                .foregroundStyle(GitHubInk.purple)
                 .accessibilityHidden(true)
             Text(page.title)
                 .font(.title2.bold())
@@ -563,12 +563,14 @@ enum GitHubWriteWords {
                 }
             }
 
+            /// The list's state colours: the system's yellow and orange
+            /// fall under 3:1 on a white sheet.
             var tint: Color {
                 switch self {
-                case .merged: .purple
-                case .refused, .notRun: .red
+                case .merged: GitHubInk.purple
+                case .refused, .notRun: GitHubInk.red
                 case .pending: .secondary
-                case .unknown: .orange
+                case .unknown: GitHubInk.amber
                 }
             }
         }
