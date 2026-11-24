@@ -65,13 +65,16 @@ enum GitHubCLIScript {
     static let errorCap = 4096
 
     /// Variables the desktop job takes from the exec: where gh, its
-    /// configuration and its tools are, and gh's own quiet settings. A token
-    /// in the exec's environment stays there.
+    /// configuration and its tools are, gh's own quiet settings, and the
+    /// proxy the SSH session reaches GitHub through. A token in the exec's
+    /// environment stays there.
     static let desktopVariables = [
         "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "PATH", "TMPDIR",
         "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "MISE_DATA_DIR",
         "GH_CONFIG_DIR", "GH_HOST", "GH_PROMPT_DISABLED", "GH_NO_UPDATE_NOTIFIER",
         "GH_NO_EXTENSION_UPDATE_NOTIFIER", "GH_SPINNER_DISABLED", "NO_COLOR", "CLICOLOR", "GH_PAGER",
+        "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
+        "https_proxy", "http_proxy", "all_proxy", "no_proxy",
         "HEELER_GH",
     ]
 
