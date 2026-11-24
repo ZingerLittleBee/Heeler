@@ -19,6 +19,7 @@ struct GitHubSendSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// New Agent for the message the sheet showed when it was chosen.
     private struct NewAgent: Identifiable {
@@ -215,14 +216,14 @@ struct GitHubSendSheet: View {
     }
 
     private func itemLine(_ item: GitHubItem) -> some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: GitHubItemRow.symbol(for: item))
                 .foregroundStyle(GitHubItemRow.tint(for: item))
-            Text(verbatim: "\(item.repositoryName) #\(item.number)")
-                .foregroundStyle(.secondary)
-            Text(item.title)
-                .foregroundStyle(Color(uiColor: .label))
-                .lineLimit(1)
+            // One Text: side by side, a long repository name wrapped in a
+            // narrow column and squeezed the title to a few letters.
+            (Text(verbatim: "\(item.repositoryName) #\(item.number)  ").foregroundStyle(.secondary)
+                + Text(item.title).foregroundStyle(Color(uiColor: .label)))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
         }
         .font(.subheadline)
         .textCase(nil)
