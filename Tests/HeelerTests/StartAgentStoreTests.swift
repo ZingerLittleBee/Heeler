@@ -174,6 +174,26 @@ struct StartAgentStoreTests {
         #expect(store.launchTarget == .newWorkspace)
     }
 
+    /// Opening the form picks a Host without remembering it; a pick someone
+    /// makes is remembered. Remembering the default wrote the defaults each
+    /// time the Console built the form again, which on iOS 27.3 invalidated
+    /// the Console and built the form again, without end.
+    @Test func remembersOnlyAHostSomeonePicks() throws {
+        let name = "recent-launch-test-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defaults.removePersistentDomain(forName: name)
+        let recents = RecentLaunchStore(defaults: defaults)
+        let only = Host.fixture()
+
+        let opened = makeStore(hosts: [only], recents: recents, recorder: StartRecorder())
+        #expect(opened.selectedHostID == only.id)
+        #expect(defaults.object(forKey: "recent-host-ids") == nil)
+
+        opened.selectedHostID = nil
+        opened.selectedHostID = only.id
+        #expect(recents.preferredHostID(in: [only]) == only.id)
+    }
+
     @Test func nameOnlyNewWorkspaceFallsBackToHomeDirectory() async {
         let host = Host.fixture()
         let recorder = StartRecorder()

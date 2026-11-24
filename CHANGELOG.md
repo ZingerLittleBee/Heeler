@@ -22,6 +22,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Open **New Agent** from the Agents list on iOS 27.3 without Heeler freezing. Opening it remembered the Host the form picks for you, and on iOS 27.3 that made the list build the form again without end, so the sheet never appeared and Heeler stopped responding until it was closed. The Host you pick yourself is still remembered. Tried on an iPhone with iOS 27.3 beta. (PR #839)
 - Keep a Host's shared SFTP connection in sync when an in-flight read or status check is cancelled, draining the pending reply (or retiring that SFTP handle after two seconds) so the next request cannot receive the cancelled request's response. (PR #833)
 - Open the Agent a notification is about when its Host is slow to reconnect. After Heeler had been in the background, tapping an Agent Notification went back to the list and waited up to 15 seconds for the Host, so a Host that took longer left you on the list, or on **No Agent Selected** on iPad, with the Agent you had open closed. The tap now opens the Agent at once, which shows **Connecting…** or **Reconnecting…** and picks the Agent up when the Host is back, however long that takes. A notification for an Agent that has gone since shows **Agent Gone** there. Tried in the Simulator on an iPhone and an iPad against a Herdr TUI Host; not yet on a device. (PR #832)
 
