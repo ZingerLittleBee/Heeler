@@ -188,6 +188,7 @@ struct GitHubListScreen: View {
                 if state.isReading {
                     ProgressView()
                         .controlSize(.mini)
+                        .accessibilityLabel(Text("Refreshing"))
                 }
                 Text(GitHubReadTime(list.readAt).footer(host: host.name))
                     .multilineTextAlignment(.center)
