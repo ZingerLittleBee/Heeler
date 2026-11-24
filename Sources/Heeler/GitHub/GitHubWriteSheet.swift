@@ -337,16 +337,19 @@ private struct GitHubMergeSheet: View {
 /// The item a sheet acts on, above its form.
 private struct GitHubWriteItemLine: View {
     let item: GitHubItem
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: GitHubItemRow.symbol(for: item))
                 .foregroundStyle(GitHubItemRow.tint(for: item))
-            Text(verbatim: "\(item.repositoryName) #\(item.number)")
-                .foregroundStyle(.secondary)
-            Text(item.title)
-                .foregroundStyle(Color(uiColor: .label))
-                .lineLimit(1)
+            // One Text, like Send to Agent's: side by side, the title kept
+            // one line and lost most of itself. The header is secondary
+            // already; `.secondary` again dimmed the repository to 1.8:1.
+            (Text(verbatim: "\(item.repositoryName) #\(item.number)  ")
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                + Text(item.title).foregroundStyle(Color(uiColor: .label)))
+                .lineLimit(dynamicTypeSize >= .xxxLarge ? 4 : 2)
         }
         .font(.subheadline)
         .textCase(nil)
