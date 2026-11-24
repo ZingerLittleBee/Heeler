@@ -7,6 +7,7 @@ struct GitHubSendSheet: View {
     @State private var store: GitHubSendStore
     /// New Agent's form, opened from this sheet.
     @State private var newAgent: NewAgent?
+    @State private var newAgentDetent = PresentationDetent.large
     /// The Agent New Agent started, which takes the message once the form
     /// has gone and the Agent is listed.
     @State private var startedAgent: StartedAgent?
@@ -88,6 +89,7 @@ struct GitHubSendSheet: View {
                         newAgentRow {
                             // Only an Agent this form starts takes the message.
                             startedAgent = nil
+                            newAgentDetent = .large
                             newAgent = NewAgent(
                                 message: message,
                                 launch: launch(for: item, detail: detail, targets: targets, servers: servers))
@@ -136,6 +138,11 @@ struct GitHubSendSheet: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass),
                     fitsContent: true))
+                // This sheet's detents, opening at the large one this sheet
+                // takes on beneath it. Without them an iPad gave New Agent
+                // a form's height, and this sheet showed below it; with
+                // `.large` alone it still did.
+                .presentationDetents([.medium, .large], selection: $newAgentDetent)
             }
         }
         .presentationDetents([.medium, .large])
