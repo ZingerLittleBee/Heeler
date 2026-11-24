@@ -86,6 +86,8 @@ struct GitHubSendSheet: View {
                     }
                     if !servers.isEmpty {
                         newAgentRow {
+                            // Only an Agent this form starts takes the message.
+                            startedAgent = nil
                             newAgent = NewAgent(
                                 message: message,
                                 launch: launch(for: item, detail: detail, targets: targets, servers: servers))
