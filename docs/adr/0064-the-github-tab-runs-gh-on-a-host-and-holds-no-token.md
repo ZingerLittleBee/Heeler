@@ -199,11 +199,11 @@ Close.
   still open (auto-merge or a merge queue); GitHub Refused the Merge with
   gh's output when it did not exit 0. When gh exited 0 and the read after
   failed, nothing shows whether the change took, so a Merge or Close page
-  is titled gh Finished, says Heeler could not read the item again, shows
-  gh's output and offers the item in the browser. The other writes end
-  without a page when gh exits 0 (Close when the read shows the item
-  closed), and otherwise show gh's output under a title that says what
-  happened.
+  is titled gh Finished, says gh reported success but Heeler could not read
+  the item again to confirm it, shows gh's output and offers the item in
+  the browser. The other writes end without a page when gh exits 0 (Close
+  when the read shows the item closed), and otherwise show gh's output
+  under a title that says what happened.
 - **A result is shown once, wherever the user went.** A write outlives the
   sheet or detail it began on. When that screen has gone by the time the
   result comes (the user went back, picked another row, or left the tab),

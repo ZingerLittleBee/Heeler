@@ -682,17 +682,24 @@ enum GitHubWriteWords {
             return Page(style: .notRun, title: notRunTitle(action), summary: reason)
         case .finished(let status, let printed):
             let shown = printed.isEmpty ? nil : printed
-            let said =
-                shown == nil
-                ? String(localized: "gh printed nothing. It stopped with status \(Int(status)).")
-                : String(localized: "This is what gh printed.")
+            // Silence from a gh that succeeded needs no sentence.
+            let said: String? =
+                switch (shown, status) {
+                case (nil, 0): nil
+                case (nil, _): String(localized: "gh printed nothing. It stopped with status \(Int(status)).")
+                default: String(localized: "This is what gh printed.")
+                }
             // With no read after it, nothing says whether the change shows.
             if status == 0, result.detail == nil {
+                let unconfirmed =
+                    isPullRequest
+                    ? String(localized: "gh reported success, but Heeler could not read the pull request again to confirm it.")
+                    : String(localized: "gh reported success, but Heeler could not read the issue again to confirm it.")
                 return Page(
                     style: .unread, title: String(localized: "gh Finished"),
-                    summary: [readFailed, check].compactMap { $0 }.joinedAsSentences(),
-                    printed: shown,
-                    caption: [String(localized: "gh finished without an error."), said].joinedAsSentences())
+                    summary: [unconfirmed, result.readFailure.map(GitHubBannerText.message(for:)), check]
+                        .compactMap { $0 }.joinedAsSentences(),
+                    printed: shown, caption: said)
             }
             if status == 0 {
                 return Page(

@@ -80912,6 +80912,50 @@
         }
       }
     },
+    "gh reported success, but Heeler could not read the issue again to confirm it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は成功を報告しましたが、Heeler は Issue を再読み取りして確認できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 报告成功，但 Heeler 无法重新读取此 Issue 来确认。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 回報成功，但 Heeler 無法重新讀取此 Issue 來確認。"
+          }
+        }
+      }
+    },
+    "gh reported success, but Heeler could not read the pull request again to confirm it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は成功を報告しましたが、Heeler はプルリクエストを再読み取りして確認できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 报告成功，但 Heeler 无法重新读取此 Pull Request 来确认。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 回報成功，但 Heeler 無法重新讀取此 Pull Request 來確認。"
+          }
+        }
+      }
+    },
     "gh stopped with an error after the merge. This is what it printed." : {
       "localizations" : {
         "ja" : {
