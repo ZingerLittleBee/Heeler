@@ -17,8 +17,19 @@ extension GitHubHostCLI {
     }
 }
 
-/// One gh command line, as its arguments after `gh`.
+/// One gh command line, as its arguments after `gh`, or one git fetch that
+/// needs the credentials gh's do.
 struct GitHubCLIRequest: Sendable, Equatable {
+    /// What runs the arguments.
+    enum Program: Sendable, Equatable {
+        case gh
+        /// git, with the Host user's own configuration and credential
+        /// helpers and never a prompt; then, once it succeeded, git again
+        /// with `andThen`, best effort: that run's output and exit status are
+        /// dropped. Only for a read, such as a fetch.
+        case git(andThen: [String]? = nil)
+    }
+
     var arguments: [String]
     /// A request that changes something on GitHub. It runs once in one exec
     /// and is never sent again, whatever came back.
@@ -27,6 +38,7 @@ struct GitHubCLIRequest: Sendable, Equatable {
     /// bytes to a file in its private folder as printf's octal escapes, so
     /// none of them is ever shell syntax, and the command names that file.
     var body: String?
+    var program: Program = .gh
 
     /// A GraphQL read through `gh api graphql`, with the response headers so
     /// a rate limit can say when it ends. Each variable goes as a string
@@ -57,7 +69,11 @@ enum GitHubCLIRoute: Sendable, Equatable {
 /// finding a checkout around it, so no gh command acts on a local
 /// repository (`gh pr merge --delete-branch` would delete a local branch).
 /// A write runs again in the desktop session only on proof that the first
-/// gh had no token (`writeHadNoToken`), when it could change nothing.
+/// gh had no token (`writeHadNoToken`), when it could change nothing. A git
+/// request needs no gh: on a Mac it runs again in the desktop session
+/// whenever it failed, since a fetch changes nothing on GitHub and its
+/// credential helper may need the keychain as gh does. Both runs see the
+/// same git environment, git's location and override variables unset.
 ///
 /// The folder holds what the user typed, gh's output and the desktop job's
 /// environment, so the script boots its job out and removes the folder on
@@ -98,12 +114,41 @@ enum GitHubCLIScript {
             .contains { $0.starts(with: "HTTP 401".utf8) }
     }
 
-    /// The script's test, after the exec's gh, for running the request in
-    /// the desktop session: `writeHadNoToken` for a write.
-    private static func noTokenTest(isMutation: Bool) -> String {
-        isMutation
+    /// The script's test, after the exec's run, for running the request in
+    /// the desktop session: `writeHadNoToken` for a write, any failure for
+    /// git.
+    private static func desktopTest(for request: GitHubCLIRequest) -> String {
+        if case .git = request.program { return #"[ "$rc" != 0 ]"# }
+        return request.isMutation
             ? #"[ "$rc" = 4 ] || { [ "$rc" != 0 ] && grep -q '^HTTP 401' "$D/err"; }"#
             : #"[ "$rc" = 4 ] || grep -q -e 'HTTP 401' -e '\#(unauthenticatedMark)' "$D/err""#
+    }
+
+    /// The command line the exec and the desktop job run, its standard
+    /// streams redirected where it is used.
+    private static func command(for request: GitHubCLIRequest) -> String {
+        switch request.program {
+        case .gh:
+            var words = ["\"$HEELER_GH\""] + request.arguments.map(GitProbe.singleQuoted)
+            if request.body != nil { words += ["--body-file", "\"$D/body\""] }
+            return words.joined(separator: " ")
+        case .git(let andThen):
+            func git(_ arguments: [String]) -> String {
+                (["GIT_TERMINAL_PROMPT=0", "git"] + arguments.map(GitProbe.singleQuoted)).joined(separator: " ")
+            }
+            guard let andThen else { return git(request.arguments) }
+            return "{ \(git(request.arguments)) && { \(git(andThen)) >/dev/null 2>&1 || :; }; }"
+        }
+    }
+
+    /// The lines that find gh, or end the script saying it is missing.
+    private static func programLookup(for request: GitHubCLIRequest) -> String {
+        guard request.program == .gh else { return ":" }
+        return """
+            HEELER_GH=$(command -v gh 2>/dev/null)
+            case $HEELER_GH in /*) ;; *) m missing; m done; exit 0 ;; esac
+            export HEELER_GH
+            """
     }
 
     /// How long the exec may run before the remote watchdog kills it, with
@@ -186,9 +231,8 @@ enum GitHubCLIScript {
         """#
 
     static func script(for request: GitHubCLIRequest, mode: Mode, nonce: String) -> Data {
-        var words = ["\"$HEELER_GH\""] + request.arguments.map(GitProbe.singleQuoted)
-        if request.body != nil { words += ["--body-file", "\"$D/body\""] }
-        let command = words.joined(separator: " ")
+        let command = command(for: request)
+        let unsetGit = "unset \(GitProbe.unsetEnvironment.joined(separator: " "))"
         let job = "__HEELER_GH_JOB_\(nonce)__"
         let plist = "__HEELER_GH_PLIST_\(nonce)__"
         return Data("""
@@ -202,7 +246,7 @@ enum GitHubCLIScript {
             GH_SPINNER_DISABLED=1 NO_COLOR=1 CLICOLOR=0 GH_PAGER=cat
             export GH_PROMPT_DISABLED GH_NO_UPDATE_NOTIFIER GH_NO_EXTENSION_UPDATE_NOTIFIER
             export GH_SPINNER_DISABLED NO_COLOR CLICOLOR GH_PAGER
-            unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+            \(unsetGit)
             m() { printf '\\n%s %s\\n' "$N" "$1"; }
             q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\\\\\''/g")"; }
             os=$(uname -s 2>/dev/null)
@@ -210,9 +254,7 @@ enum GitHubCLIScript {
             U=$(id -u)
             L=
             \(sweep)
-            HEELER_GH=$(command -v gh 2>/dev/null)
-            case $HEELER_GH in /*) ;; *) m missing; m done; exit 0 ;; esac
-            export HEELER_GH
+            \(programLookup(for: request))
             D=$(mktemp -d "${TMPDIR:-/tmp}/heeler-gh.$N.XXXXXXXX") || { m 'route failed'; m done; exit 0; }
             c() {
                 [ -n "$L" ] && launchctl bootout "gui/$U/$L" >/dev/null 2>&1
@@ -235,7 +277,7 @@ enum GitHubCLIScript {
                 \(command) >"$D/out" 2>"$D/err" </dev/null
                 rc=$?
                 if [ "$os" = Darwin ] && [ \(mode.rawValue) = auto ]; then
-                    if \(noTokenTest(isMutation: request.isMutation)); then
+                    if \(desktopTest(for: request)); then
                         route=desktop
                     fi
                 fi
@@ -254,6 +296,7 @@ enum GitHubCLIScript {
                 done >"$D/env"
                 cat >"$D/job" <<'\(job)'
             . "$1/env"
+            \(unsetGit)
             D=$1
             cd "$D" || exit 1
             \(command) >"$D/gout" 2>"$D/gerr" </dev/null
@@ -328,10 +371,12 @@ enum GitHubCLIScript {
 struct GitHubCLIOutcome: Sendable, Equatable {
     enum Route: Sendable, Equatable {
         case ran(GitHubCLIRoute)
-        /// gh in the exec had no usable token and the Mac has no desktop
-        /// session to run it in: no one is logged in at the desktop.
+        /// gh in the exec had no usable token, or git in the exec failed,
+        /// and the Mac has no desktop session to run it in: no one is
+        /// logged in at the desktop. The run is the exec's, when one ran.
         case desktopUnavailable
-        /// The desktop job did not finish in its time.
+        /// The desktop job did not finish in its time. The run is the
+        /// exec's, when one ran.
         case desktopTimedOut
         /// The script could not make its private temporary folder.
         case failed
@@ -344,7 +389,7 @@ struct GitHubCLIOutcome: Sendable, Equatable {
 
     struct Run: Sendable, Equatable {
         let route: Route
-        /// gh's exit status, nil when gh never finished.
+        /// gh's or git's exit status, nil when it never finished.
         let exitStatus: Int32?
         let output: Data
         let errorOutput: String

@@ -4096,18 +4096,22 @@ extension ConsoleStore: GitHubHostAccess {
     }
 
     /// Straight to the desktop session on a connection whose gh needed it
-    /// before; the exec first otherwise. A write is sent once.
+    /// before; the exec first otherwise. A write is sent once. git always
+    /// tries the exec first and leaves the route as it was: a fetch over
+    /// ssh, or of a public repository, needs no desktop session where gh
+    /// does.
     func runGitHub(_ request: GitHubCLIRequest, on recordID: Host.ID) async throws -> GitHubCLIOutcome {
         let projection = try projection(for: recordID)
         let generation = projection.transportGeneration
-        let mode: GitHubCLIScript.Mode = gitHubDesktopRoutes[recordID] == generation ? .desktop : .auto
+        let isGH = request.program == .gh
+        let mode: GitHubCLIScript.Mode = isGH && gitHubDesktopRoutes[recordID] == generation ? .desktop : .auto
         let nonce = GitProbe.makeNonce()
         let result = try await projection.runGitHubScript(
             GitHubCLIScript.script(for: request, mode: mode, nonce: nonce), isMutation: request.isMutation)
         guard let outcome = GitHubCLIOutcome(stdout: result.stdout, nonce: nonce) else {
             throw GitHubCLIError.unreadableOutput
         }
-        guard projections[recordID] === projection else { return outcome }
+        guard isGH, projections[recordID] === projection else { return outcome }
         switch outcome.run?.route {
         case .ran(.desktop):
             gitHubDesktopRoutes[recordID] = generation
