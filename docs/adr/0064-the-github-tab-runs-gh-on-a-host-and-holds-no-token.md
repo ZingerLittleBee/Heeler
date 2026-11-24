@@ -426,6 +426,15 @@ Close.
   exec answered in 2.8 seconds, and `launchctl bootout` did not stop it; one
   the exec's fetch started went on 2.7 seconds after that exec answered in
   1.2.
+- In a blobless clone `git worktree add` fetches the blobs its checkout
+  needs, and that fetch starts the same detached maintenance, so the
+  Worktree command closes the frame's descriptors for git as well.
+  Measured on 2026-11-25 with a blobless clone of this repository over its
+  auto-gc limits, the command answered in 75.2 seconds before and 15.2
+  after on Debian 13 (git 2.47.3), where a `pre-auto-gc` hook sleeping 30
+  seconds ran twice; through the `SessionCreate` sshd on a Mac (git 2.55),
+  36.4 seconds before, waiting for a 22-second repack, and 16.7 after, the
+  repack going on 21.5 seconds past the answer.
 - Measured on 2026-11-25 through the `SessionCreate` sshd, with a private
   repository's https remote whose credential helper was `gh auth
   git-credential`, the exec's fetch failed in 0.6 seconds (`could not read
