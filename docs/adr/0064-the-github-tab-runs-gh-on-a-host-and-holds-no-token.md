@@ -203,7 +203,8 @@ Close.
   the item again to confirm it, shows gh's output and offers the item in
   the browser. The other writes end without a page when gh exits 0 (Close
   when the read shows the item closed), and otherwise show gh's output
-  under a title that says what happened.
+  under a title that says what happened. A result page opens at full
+  height, so its Done is in view once the keyboard has gone.
 - **A write's sheet belongs to the Console.** Comment, Approve and Merge
   open from the Console, as Send to Agent does (`GitHubWriteSheetPresenter`),
   and their request holds the sheet's state: the text, the method, the

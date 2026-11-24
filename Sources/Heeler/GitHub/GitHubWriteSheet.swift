@@ -76,7 +76,8 @@ struct GitHubWriteSheet: View {
                     .navigationTitle(GitHubWriteWords.sheetTitle(result.write.action))
                     .navigationBarTitleDisplayMode(.inline)
             }
-            .presentationDetents([.medium, .large])
+            // A result page at full height, its Done in sight.
+            .presentationDetents([.large])
         }
     }
 }
@@ -164,7 +165,9 @@ private struct GitHubComposeSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        // The result page at full height: without the keyboard a partial
+        // sheet would put its Done below the fold.
+        .presentationDetents(state.phase.isDone ? [.large] : [.medium, .large])
         .interactiveDismissDisabled(state.phase.isWorking)
         .onAppear { store.present(presence) }
         .onDisappear { store.leave(presence) }
@@ -269,8 +272,9 @@ private struct GitHubMergeSheet: View {
             }
         }
         // A warning, or text larger than the default, pushes the button
-        // below a partial sheet.
-        .presentationDetents(warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
+        // below a partial sheet; a result page shows at full height.
+        .presentationDetents(
+            state.phase.isDone || warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
         .interactiveDismissDisabled(state.phase.isWorking)
         .onAppear { store.present(presence) }
         .onDisappear { store.leave(presence) }
