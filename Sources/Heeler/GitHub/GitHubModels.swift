@@ -131,6 +131,54 @@ struct GitHubList: Codable, Sendable, Equatable {
     }
 }
 
+/// What a pull request's or an issue's detail shows beyond its list row: a
+/// second read of the one item, made when the detail opens and kept in
+/// memory only.
+struct GitHubItemDetail: Sendable, Equatable {
+    /// The row as this read found it, which replaces the list's copy.
+    let item: GitHubItem
+    /// The account gh is signed in to, which "You" stands for.
+    let viewer: String
+    /// Markdown, as its author wrote it.
+    let body: String
+    /// Nil for an issue.
+    let pullRequest: GitHubPullRequestDetail?
+    /// Who an issue is assigned to; empty for a pull request.
+    let assignees: [String]
+    let readAt: Date
+
+    /// The account opened it.
+    var isViewers: Bool {
+        pullRequest?.isViewers ?? (item.author == viewer)
+    }
+}
+
+struct GitHubPullRequestDetail: Sendable, Equatable {
+    let headBranch: String
+    let baseBranch: String
+    let changedFiles: Int
+    let isViewers: Bool
+    /// The head branch is in a fork, owned by `headOwner`.
+    let isCrossRepository: Bool
+    let headOwner: String?
+    let review: GitHubReviewState
+    /// GitHub's `mergeable` (MERGEABLE, CONFLICTING, UNKNOWN), for merging.
+    let mergeable: String?
+    /// GitHub's `mergeStateStatus` (CLEAN, BLOCKED, BEHIND, DIRTY, ...).
+    let mergeState: String?
+}
+
+/// Where a pull request's review stands, and with whom.
+enum GitHubReviewState: Sendable, Equatable {
+    /// The account's review is asked for, of it or of a team it is in.
+    case requestedOfViewer
+    case changesRequested(by: [String])
+    case approved(by: [String])
+    /// Asked of someone else, who has not answered yet.
+    case requested(of: [String])
+    case notRequested
+}
+
 /// Why a Host's lists could not be read.
 enum GitHubReadFailure: Error, Sendable, Equatable {
     /// gh is not on the Host's PATH. `isMac` picks the install command.

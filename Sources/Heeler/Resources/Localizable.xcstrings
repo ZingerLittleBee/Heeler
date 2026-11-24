@@ -2245,6 +2245,16 @@
         }
       }
     },
+    "%@ wants to merge into %@ · updated %@ ago" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ wants to merge into %2$@ · updated %3$@ ago"
+          }
+        }
+      }
+    },
     "%@ was not updated." : {
       "comment" : "Argument: Heeler Plugin or Host Helper.",
       "localizations" : {
@@ -4481,6 +4491,29 @@
         }
       }
     },
+    "%lld passed" : {
+      "comment" : "How many of a pull request's checks passed, in its detail.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功 %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项通过"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個通過"
+          }
+        }
+      }
+    },
     "%lld paused" : {
       "comment" : "Chip counting Hosts that are paused.",
       "localizations" : {
@@ -6161,6 +6194,7 @@
         }
       }
     },
+    "A deleted account" : {},
     "A fixed address is a private IPv4 address with a prefix, such as 10.144.144.7/24 (not 0.x, 127.x, or 224 and up)." : {
       "localizations" : {
         "ja" : {
@@ -8403,6 +8437,7 @@
         }
       }
     },
+    "Address the Review Comments" : {},
     "Address to fill in" : {
       "localizations" : {
         "ja" : {
@@ -10542,6 +10577,7 @@
       }
     },
     "Approved" : {},
+    "Approved by %@" : {},
     "Archive channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -10786,6 +10822,7 @@
         }
       }
     },
+    "Ask the Agent To" : {},
     "Ask the Agent to" : {
       "localizations" : {
         "ja" : {
@@ -10855,6 +10892,7 @@
       }
     },
     "Assigned to You" : {},
+    "Assignees" : {},
     "Assignment (#%lld)" : {
       "localizations" : {
         "ja" : {
@@ -13303,6 +13341,7 @@
       }
     },
     "Changes requested" : {},
+    "Changes requested by %@" : {},
     "Changes totals of the Agent's Checkout" : {
       "localizations" : {
         "ja" : {
@@ -14446,6 +14485,7 @@
         }
       }
     },
+    "Checks" : {},
     "Chinese (Hong Kong)" : {
       "localizations" : {
         "ja" : {
@@ -15671,6 +15711,7 @@
         }
       }
     },
+    "Closed without merging · updated %@ ago" : {},
     "Closes %@ in %@." : {
       "localizations" : {
         "ja" : {
@@ -16587,6 +16628,7 @@
         }
       }
     },
+    "Comments" : {},
     "Compaction cancelled" : {
       "localizations" : {
         "ja" : {
@@ -25297,6 +25339,7 @@
         }
       }
     },
+    "Fix the Failing Checks" : {},
     "Fixed IPv4" : {
       "localizations" : {
         "ja" : {
@@ -26096,6 +26139,30 @@
     "GitHub CLI Isn't Installed" : {},
     "GitHub CLI not installed" : {},
     "GitHub Host" : {},
+    "GitHub no longer shows this issue to your account." : {},
+    "GitHub no longer shows this pull request to your account." : {},
+    "GitHub state Closed" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Closed"
+          }
+        }
+      }
+    },
+    "GitHub state Open" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open"
+          }
+        }
+      }
+    },
     "GitHub's Rate Limit Was Reached" : {},
     "GitHub's answer could not be read." : {},
     "GitHub's default palettes for each appearance" : {
@@ -29337,6 +29404,7 @@
         }
       }
     },
+    "Heeler puts this message in that Agent's Composer. Nothing is sent until you send it." : {},
     "Heeler reaches the Jump Host through this network without turning on a VPN." : {
       "localizations" : {
         "ja" : {
@@ -32327,6 +32395,7 @@
         }
       }
     },
+    "Investigate First" : {},
     "Issues" : {},
     "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows" : {
       "localizations" : {
@@ -32884,6 +32953,7 @@
         }
       }
     },
+    "Just Read It" : {},
     "Just now" : {
       "localizations" : {
         "ja" : {
@@ -33175,6 +33245,7 @@
         }
       }
     },
+    "Labels" : {},
     "Language" : {
       "localizations" : {
         "ja" : {
@@ -35187,6 +35258,16 @@
       }
     },
     "Merged" : {},
+    "Merged into %@ · updated %@ ago" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Merged into %1$@ · updated %2$@ ago"
+          }
+        }
+      }
+    },
     "Message" : {
       "comment" : "Notice title for a peer message with no sender",
       "localizations" : {
@@ -36851,6 +36932,7 @@
         }
       }
     },
+    "No Agent on %@ can take a message now." : {},
     "No Agents" : {
       "localizations" : {
         "ja" : {
@@ -37695,6 +37777,7 @@
         }
       }
     },
+    "No description provided." : {},
     "No directory" : {
       "comment" : "Label of a derived Workspace with no directory",
       "localizations" : {
@@ -38696,6 +38779,9 @@
         }
       }
     },
+    "None yet" : {
+      "comment" : "A pull request with no checks, in its detail."
+    },
     "Not Available" : {
       "localizations" : {
         "ja" : {
@@ -39360,6 +39446,7 @@
         }
       }
     },
+    "Not requested yet" : {},
     "Not running" : {
       "localizations" : {
         "ja" : {
@@ -40471,6 +40558,7 @@
         }
       }
     },
+    "On this branch" : {},
     "One Dark" : {
       "shouldTranslate" : false
     },
@@ -40985,6 +41073,7 @@
         }
       }
     },
+    "Open in Browser" : {},
     "Open in New Window" : {
       "localizations" : {
         "ja" : {
@@ -42013,6 +42102,17 @@
         }
       }
     },
+    "Opened by %@ · updated %@ ago" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Opened by %1$@ · updated %2$@ ago"
+          }
+        }
+      }
+    },
+    "Opened by you · updated %@ ago" : {},
     "Opening Browser…" : {
       "localizations" : {
         "ja" : {
@@ -48944,6 +49044,7 @@
         }
       }
     },
+    "Requested from %@" : {},
     "Require Encryption" : {
       "localizations" : {
         "ja" : {
@@ -49481,6 +49582,8 @@
         }
       }
     },
+    "Review" : {},
+    "Review It" : {},
     "Review Paste" : {
       "localizations" : {
         "ja" : {
@@ -51630,6 +51733,9 @@
         }
       }
     },
+    "Send To" : {},
+    "Send to Agent" : {},
+    "Send to Agent…" : {},
     "Sending once the last words settle" : {
       "localizations" : {
         "ja" : {
@@ -64381,6 +64487,7 @@
         }
       }
     },
+    "The message could not be put in that Agent's Composer: %@" : {},
     "The message could not be sent. Check the connection and retry." : {
       "localizations" : {
         "ja" : {
@@ -69791,6 +69898,7 @@
         }
       }
     },
+    "This repository" : {},
     "This route's overlay network was removed. Choose another network or Direct." : {
       "localizations" : {
         "ja" : {
@@ -72399,6 +72507,7 @@
         }
       }
     },
+    "Updated %@ ago" : {},
     "Updated at #%lld" : {
       "localizations" : {
         "ja" : {
@@ -75137,6 +75246,7 @@
         }
       }
     },
+    "Work on It" : {},
     "Worked for %@" : {
       "comment" : "The argument is a spelled-out duration that already carries units",
       "localizations" : {
@@ -75739,6 +75849,9 @@
         }
       }
     },
+    "You" : {
+      "comment" : "The signed-in GitHub account, among people."
+    },
     "You can add this folder as a %@ Account." : {
       "localizations" : {
         "ja" : {
@@ -75779,6 +75892,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你可以選擇此資料夾作為新的工作區。"
+          }
+        }
+      }
+    },
+    "You want to merge into %@ · updated %@ ago" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You want to merge into %1$@ · updated %2$@ ago"
           }
         }
       }
@@ -75984,6 +76107,7 @@
         }
       }
     },
+    "Your review was requested" : {},
     "ZeroTier default" : {
       "comment" : "ZeroTier planet value when none is set",
       "localizations" : {

@@ -22,11 +22,16 @@ struct GitHubCLIRequest: Sendable, Equatable {
     var isMutation: Bool
 
     /// A GraphQL read through `gh api graphql`, with the response headers so
-    /// a rate limit can say when it ends.
-    static func graphQL(_ query: String) -> GitHubCLIRequest {
+    /// a rate limit can say when it ends. Each variable goes as a string
+    /// (`-f`), as GitHub's node ids are.
+    static func graphQL(_ query: String, variables: [String: String] = [:]) -> GitHubCLIRequest {
         // One line keeps the script small; GraphQL ignores the whitespace.
         let compact = query.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return GitHubCLIRequest(arguments: ["api", "graphql", "-i", "-f", "query=\(compact)"], isMutation: false)
+        var arguments = ["api", "graphql", "-i", "-f", "query=\(compact)"]
+        for (name, value) in variables.sorted(by: { $0.key < $1.key }) {
+            arguments += ["-f", "\(name)=\(value)"]
+        }
+        return GitHubCLIRequest(arguments: arguments, isMutation: false)
     }
 }
 

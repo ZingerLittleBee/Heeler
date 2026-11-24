@@ -4119,7 +4119,19 @@ extension ConsoleStore: GitHubHostAccess {
         return outcome
     }
 
+    func runGitHubSeamScript(_ script: Data, on recordID: Host.ID) async throws -> GitExecResult {
+        try await projection(for: recordID).runGitHubScript(script)
+    }
+
     func forgetGitHubRoutes(_ recordIDs: [Host.ID]) {
         for id in recordIDs { gitHubDesktopRoutes[id] = nil }
+    }
+
+    /// The Agents GitHub's Send to Agent offers on a Host: the live ones on
+    /// any of its Servers whose Composer can send.
+    func gitHubSendTargets(on records: [Host.ID]) -> [ConsoleAgent] {
+        agents.filter { agent in
+            records.contains(agent.hostID) && !isSavedChat(agent.id) && capabilities(for: agent.hostID).composerSend
+        }
     }
 }

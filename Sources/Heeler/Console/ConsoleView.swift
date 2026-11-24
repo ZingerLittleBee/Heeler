@@ -60,6 +60,10 @@ struct ConsoleView: View {
     /// The Host whose Terminal the GitHub tab asked for, over the New
     /// Terminal sheet's own choice.
     @State private var gitHubTerminalHostID: Host.ID?
+    /// Beside an iPad's sidebar, the pull request or issue in the GitHub
+    /// tab's detail column.
+    @State private var gitHubSelection: GitHubItemLink?
+    @State private var gitHubSendRequest: GitHubSendRequest?
     /// The Host the Usage tab reads; nil reads every Host.
     @State private var usageScopeHostID: Host.ID?
     @State private var usageMetric = AgentUsageMetric.cost
@@ -307,6 +311,11 @@ struct ConsoleView: View {
                     listsTerminals: false, capabilities: { console.capabilities(for: $0) })
             ) { id in
                 // The Agent that got the Hand Off opens, with it in its Composer.
+                selectAgent(id)
+            })
+        .modifier(
+            GitHubSendSheetPresenter(request: $gitHubSendRequest, console: console) { id in
+                // The Agent opens with the message in its Composer.
                 selectAgent(id)
             })
         .sheet(item: $startAgentRequest) { request in
@@ -653,28 +662,66 @@ struct ConsoleView: View {
     @ViewBuilder
     private func gitHubTab() -> some View {
         if usesSidebarNavigation {
+            let shown = gitHubSelection.flatMap { $0.host.id == console.gitHub.selectedHost?.id ? $0 : nil }
             NavigationSplitView {
-                GitHubListScreen(store: console.gitHub, terminals: gitHubTerminals)
+                GitHubListScreen(store: console.gitHub, terminals: gitHubTerminals, selection: gitHubSelectionID)
+                    // The column reports a compact size class beside a
+                    // detail, so the list is told it is the sidebar.
+                    .environment(\.isSidebarColumn, true)
                     .modifier(SidebarListChrome(
                         shown: .github, lists: shownSidebarLists,
                         isPresented: $isShowingGitHubListMenu, titleFrame: $gitHubListMenuTitleFrame,
                         select: { selectedTab.wrappedValue = $0 }, footer: tabSidebarFooter))
             } detail: {
                 NavigationStack {
-                    ContentUnavailableView {
-                        Label(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol)
-                    } description: {
-                        Text("The pull requests and issues that involve you, as gh reads them on your Hosts.")
+                    if let shown {
+                        GitHubItemScreen(store: console.gitHub, host: shown.host, item: shown.item, send: gitHubSend)
+                            .id(shown.item.id)
+                    } else {
+                        ContentUnavailableView {
+                            Label(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol)
+                        } description: {
+                            Text("The pull requests and issues that involve you, as gh reads them on your Hosts.")
+                        }
                     }
                 }
+                .readableColumn()
             }
             .background {
                 ConsoleTabBarBridge(chromeScheme: nil, hidesBar: true, request: tabBarRequest)
             }
             .toolbarVisibility(.hidden, for: .tabBar)
         } else {
-            GitHubTabView(store: console.gitHub, terminals: gitHubTerminals)
+            GitHubTabView(store: console.gitHub, terminals: gitHubTerminals, send: gitHubSend)
         }
+    }
+
+    /// The sidebar row of the item in the detail column, on the Host shown.
+    /// The column keeps the item as it was picked, so a read that drops it
+    /// from the list leaves it on screen.
+    private var gitHubSelectionID: Binding<GitHubItem.ID?> {
+        Binding(
+            get: {
+                guard let selection = gitHubSelection, selection.host.id == console.gitHub.selectedHost?.id else {
+                    return nil
+                }
+                return selection.item.id
+            },
+            set: { id in
+                guard let id else {
+                    gitHubSelection = nil
+                    return
+                }
+                guard let host = console.gitHub.selectedHost, let item = console.gitHub.listItem(id, on: host) else {
+                    return
+                }
+                gitHubSelection = GitHubItemLink(host: host, item: item)
+            })
+    }
+
+    /// Send to Agent, from a pull request's or an issue's detail.
+    private var gitHubSend: GitHubSendLink {
+        GitHubSendLink { gitHubSendRequest = $0 }
     }
 
     /// The GitHub tab's way to a Terminal on a Host: the New Terminal sheet,
@@ -695,6 +742,8 @@ struct ConsoleView: View {
     private func leaveGitHub() {
         if isGitHubTabSelected { selectedTab.wrappedValue = shownListTab }
         isShowingGitHubListMenu = false
+        gitHubSelection = nil
+        gitHubSendRequest = nil
     }
 
     /// Every Host the Usage tab can read, in catalog order, each once.

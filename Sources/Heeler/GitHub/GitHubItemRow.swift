@@ -53,7 +53,7 @@ struct GitHubItemRow: View {
         if section == .reviewRequested, let additions = item.additions, let deletions = item.deletions {
             rest.append("+\(additions.formatted()) \u{2212}\(deletions.formatted())")
         } else if let review = item.review, item.state != .draft {
-            rest.append(Self.title(for: review))
+            rest.append(GitHubItemWords.decision(review))
         }
         return HStack(spacing: 4) {
             if item.state == .merged {
@@ -135,16 +135,8 @@ struct GitHubItemRow: View {
         }
     }
 
-    private static func title(for review: GitHubReviewDecision) -> String {
-        switch review {
-        case .approved: String(localized: "Approved")
-        case .changesRequested: String(localized: "Changes requested")
-        case .reviewRequired: String(localized: "Review required")
-        }
-    }
-
     /// "5m", "2h", "3d": the largest whole unit since the last update.
-    static func age(of date: Date, now: Date = Date()) -> String {
+    nonisolated static func age(of date: Date, now: Date = Date()) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(date)))
         let duration: Duration =
             switch seconds {

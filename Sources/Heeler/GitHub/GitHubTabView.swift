@@ -7,15 +7,27 @@ struct GitHubTerminalLink {
     let open: @MainActor (Host.ID) -> Void
 }
 
-/// The GitHub tab on an iPhone, or an iPad window too narrow for a sidebar.
+/// A row's way into its detail on an iPhone: the item, on the Host whose
+/// list showed it.
+struct GitHubItemLink: Hashable {
+    let host: GitHubHost
+    let item: GitHubItem
+}
+
+/// The GitHub tab on an iPhone, or an iPad window too narrow for a sidebar:
+/// a row pushes its detail.
 struct GitHubTabView: View {
     let store: GitHubStore
     let terminals: GitHubTerminalLink?
+    let send: GitHubSendLink?
 
     var body: some View {
         NavigationStack {
-            GitHubListScreen(store: store, terminals: terminals)
+            GitHubListScreen(store: store, terminals: terminals, selection: nil)
                 .navigationTitle(ConsoleTab.github.title)
+                .navigationDestination(for: GitHubItemLink.self) { link in
+                    GitHubItemScreen(store: store, host: link.host, item: link.item, send: send)
+                }
         }
     }
 }
@@ -25,6 +37,9 @@ struct GitHubTabView: View {
 struct GitHubListScreen: View {
     let store: GitHubStore
     let terminals: GitHubTerminalLink?
+    /// Beside an iPad's detail column, the row whose detail it shows; nil
+    /// where a row pushes its detail instead.
+    let selection: Binding<GitHubItem.ID?>?
     @SceneStorage("github.kind") private var kind = GitHubItem.Kind.pullRequest
 
     var body: some View {
@@ -111,51 +126,101 @@ struct GitHubListScreen: View {
     ) -> some View {
         let sections = list.sections(of: kind).filter { !$0.items.isEmpty }
         let isOffline = !isConnected || state.failure == .offline
-        return List {
-            Section {
-                if let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list) {
-                    GitHubBanner(text: banner)
+        return Group {
+            if let selection {
+                List(selection: selection) {
+                    listRows(list, sections: sections, host: host, state: state, isOffline: isOffline)
                 }
-            } header: {
-                GitHubKindPicker(kind: $kind)
-            }
-            ForEach(sections) { section in
-                Section {
-                    ForEach(section.items) { item in
-                        GitHubItemRow(item: item, section: section.kind)
-                            .opacity(isOffline ? 0.55 : 1)
-                    }
-                } header: {
-                    GitHubSectionHeader(title: section.kind.title, count: section.totalCount)
-                } footer: {
-                    if section.totalCount > section.items.count {
-                        Text(
-                            "The \(section.items.count) most recently updated of \(section.totalCount).",
-                            comment: "Under a GitHub list section that shows only part of what GitHub found.")
-                    }
+            } else {
+                List {
+                    listRows(list, sections: sections, host: host, state: state, isOffline: isOffline)
                 }
-            }
-            Section {
-            } footer: {
-                HStack(spacing: 6) {
-                    // A read on its way over the list read earlier.
-                    if state.isReading {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-                    Text(GitHubReadTime(list.readAt).footer(host: host.name))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
             }
         }
-        .listStyle(.insetGrouped)
+        .modifier(GitHubListStyle())
         .overlay {
             if sections.isEmpty {
                 GitHubNothingView(kind: kind)
             }
         }
         .refreshable { await store.refresh() }
+    }
+
+    @ViewBuilder
+    private func listRows(
+        _ list: GitHubList, sections: [GitHubListSection], host: GitHubHost, state: GitHubStore.HostState,
+        isOffline: Bool
+    ) -> some View {
+        Section {
+            if let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list) {
+                GitHubBanner(text: banner)
+            }
+        } header: {
+            GitHubKindPicker(kind: $kind)
+        }
+        ForEach(sections) { section in
+            Section {
+                ForEach(section.items) { item in
+                    row(item, in: section.kind, host: host, isOffline: isOffline)
+                }
+            } header: {
+                GitHubSectionHeader(title: section.kind.title, count: section.totalCount)
+            } footer: {
+                if section.totalCount > section.items.count {
+                    Text(
+                        "The \(section.items.count) most recently updated of \(section.totalCount).",
+                        comment: "Under a GitHub list section that shows only part of what GitHub found.")
+                }
+            }
+        }
+        Section {
+        } footer: {
+            HStack(spacing: 6) {
+                // A read on its way over the list read earlier.
+                if state.isReading {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
+                Text(GitHubReadTime(list.readAt).footer(host: host.name))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// A row opens its detail, except from a list shown while the Host is
+    /// offline, which has nothing to read it with.
+    @ViewBuilder
+    private func row(
+        _ item: GitHubItem, in section: GitHubListSection.Kind, host: GitHubHost, isOffline: Bool
+    ) -> some View {
+        let row = GitHubItemRow(item: item, section: section)
+            .opacity(isOffline ? 0.55 : 1)
+        if selection != nil {
+            row
+                .tag(item.id)
+                .selectionDisabled(isOffline)
+        } else if isOffline {
+            row
+        } else {
+            NavigationLink(value: GitHubItemLink(host: host, item: item)) { row }
+        }
+    }
+}
+
+/// Cards on an iPhone; beside an iPad's detail column, the sidebar's
+/// selectable rows, as the Agents list has.
+private struct GitHubListStyle: ViewModifier {
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+
+    func body(content: Content) -> some View {
+        if isSidebarColumn {
+            content
+                .listStyle(.sidebar)
+                .modifier(ConsoleSidebarListTint())
+        } else {
+            content.listStyle(.insetGrouped)
+        }
     }
 }
 
@@ -351,24 +416,45 @@ struct GitHubBannerText: Equatable {
     let title: String
     let message: String
 
+    private init(kind: Kind, title: String, message: String) {
+        self.kind = kind
+        self.title = title
+        self.message = message
+    }
+
+    /// Over a list read earlier. gh missing or signed out takes the list's
+    /// place instead.
     init?(failure: GitHubReadFailure?, isOffline: Bool, host: GitHubHost, list: GitHubList) {
-        let read = GitHubReadTime(list.readAt).showing
+        switch failure {
+        case .notInstalled, .notSignedIn, .unsupported:
+            guard isOffline else { return nil }
+        default:
+            break
+        }
+        self.init(failure: failure, isOffline: isOffline, host: host, readAt: list.readAt)
+    }
+
+    /// Over a pull request's or an issue's detail: whatever stopped its read.
+    init?(detailFailure failure: GitHubReadFailure?, isOffline: Bool, host: GitHubHost, readAt: Date?) {
+        self.init(failure: failure, isOffline: isOffline, host: host, readAt: readAt)
+    }
+
+    private init?(failure: GitHubReadFailure?, isOffline: Bool, host: GitHubHost, readAt: Date?) {
+        let read = readAt.map { GitHubReadTime($0).showing } ?? ""
         if isOffline {
-            kind = .offline
-            title = String(localized: "\(host.name) is offline")
-            message = read
+            self.init(kind: .offline, title: String(localized: "\(host.name) is offline"), message: read)
             return
         }
         switch failure {
         case .rateLimited(let retryAt):
-            kind = .rateLimited(retryAt: retryAt)
-            title = String(localized: "GitHub's rate limit was reached")
-            message = read
-        case .timedOut, .failed:
-            kind = .failed
-            title = String(localized: "Could not read GitHub")
-            message = failure.map(Self.message(for:)) ?? ""
-        case .notInstalled, .notSignedIn, .offline, .unsupported, nil:
+            self.init(
+                kind: .rateLimited(retryAt: retryAt), title: String(localized: "GitHub's rate limit was reached"),
+                message: read)
+        case .timedOut, .failed, .notInstalled, .notSignedIn, .unsupported:
+            self.init(
+                kind: .failed, title: String(localized: "Could not read GitHub"),
+                message: failure.map(Self.message(for:)) ?? "")
+        case .offline, nil:
             return nil
         }
     }
@@ -386,7 +472,7 @@ struct GitHubBannerText: Equatable {
     }
 }
 
-private struct GitHubBanner: View {
+struct GitHubBanner: View {
     let text: GitHubBannerText
 
     var body: some View {
