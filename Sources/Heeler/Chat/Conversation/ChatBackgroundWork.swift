@@ -27,9 +27,10 @@ struct ChatWorkflowProgress: Equatable, Sendable {
     var started: Int { agents.count }
 }
 
-/// Live Host signs of one listed Background Work item outside the main
+/// Live Host signs of one Background Work item outside the main
 /// transcript, such as Antigravity CLI's background-task strip, `/tasks`
-/// panel, task log, subagent transcript, or Claude Code's workflow run file.
+/// panel, task log, subagent transcript, or Claude Code's workflow run file
+/// and teammate transcripts.
 struct ChatBackgroundWorkEvidence: Equatable, Sendable {
     /// When the Host last showed the work still running or writing.
     var lastSeenAt: Date?
@@ -41,6 +42,10 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
     /// `latestPromptOffset` when `endedState` was observed, so a subsequent
     /// user prompt clears evidence-retired work just like `endOffset`.
     var endPromptOffset: UInt64?
+    /// When work that can run again, a teammate, started the turn it runs,
+    /// as the Host shows: after the start or end the transcript records,
+    /// it runs since then.
+    var resumedAt: Date?
 
     /// Combines another live source's evidence with this one, keeping the
     /// newest activity timestamp and preserving an already-known terminal
@@ -48,6 +53,7 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
     func merging(_ other: ChatBackgroundWorkEvidence) -> ChatBackgroundWorkEvidence {
         var merged = self
         merged.lastSeenAt = [lastSeenAt, other.lastSeenAt].compactMap(\.self).max()
+        merged.resumedAt = [resumedAt, other.resumedAt].compactMap(\.self).max()
         if merged.endedState == nil, let otherEnded = other.endedState {
             merged.endedState = otherEnded
             merged.endedAt = other.endedAt
@@ -58,7 +64,7 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
 }
 
 /// The Background Work Chat lists above its Composer (ADR 0024): the
-/// transcript's Subagents, Workflows and background commands, each Workflow
+/// transcript's Subagents, teammates, Workflows and background commands, each Workflow
 /// with its journal's progress, running work first. Built afresh after every
 /// read and never saved, so nothing read from the device can claim to be
 /// running.
@@ -87,6 +93,10 @@ struct ChatBackgroundWork: Equatable, Sendable {
         /// A Subagent or background command records nothing until it ends
         /// unless a status tool checks on it.
         var subagentRun: TimeInterval = 3 * 3_600
+        /// A teammate's own transcript gains a line with each step it
+        /// takes. When the Host shows when it last did, a turn that wrote
+        /// nothing for this long has stopped.
+        var teammateQuiet: TimeInterval = 30 * 60
     }
 
     var rows: [Row] = []
@@ -103,11 +113,32 @@ struct ChatBackgroundWork: Equatable, Sendable {
     ) {
         self.isLive = isLive
         let prompt = transcript.latestPromptOffset ?? 0
-        let rows = transcript.listedBackgroundWork.compactMap { rawItem -> Row? in
+        let listed = Set(transcript.listedBackgroundWork.map(\.id))
+        let rows = transcript.backgroundWork.compactMap { rawItem -> Row? in
             var item = rawItem
             let itemEvidence = evidence[item.id]
+            // The Host shows a turn that started after the latest one the
+            // transcript records.
+            if let resumedAt = itemEvidence?.resumedAt,
+                resumedAt > (item.state == .running ? item.launchedAt : item.endedAt) ?? .distantPast
+            {
+                if item.state != .running {
+                    item.state = .running
+                    item.endOffset = nil
+                    item.endedAt = nil
+                    item.usage = nil
+                }
+                item.launchedAt = resumedAt
+                if let last = item.lastActivityAt, last < resumedAt { item.lastActivityAt = nil }
+            } else if !listed.contains(item.id) {
+                return nil
+            }
             if item.state == .running, let itemEvidence, let endedState = itemEvidence.endedState {
-                let latestStart = [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
+                // What a teammate wrote can reach the transcript after it
+                // went idle.
+                let latestStart =
+                    item.kind == .teammate
+                    ? item.launchedAt : [item.launchedAt, item.lastActivityAt].compactMap(\.self).max()
                 let postdatesStart: Bool =
                     switch (latestStart, itemEvidence.endedAt) {
                     case (let start?, let endedAt?): endedAt >= start
@@ -129,7 +160,12 @@ struct ChatBackgroundWork: Equatable, Sendable {
                 item.launchedAt, item.lastActivityAt, row.progress?.updatedAt, itemEvidence?.lastSeenAt,
             ].compactMap(\.self).max()
             if item.state == .running, let lastActivity = row.lastActivity {
-                let limit = item.kind == .workflow ? staleness.workflowQuiet : staleness.subagentRun
+                let limit =
+                    switch item.kind {
+                    case .workflow: staleness.workflowQuiet
+                    case .teammate where itemEvidence?.lastSeenAt != nil: staleness.teammateQuiet
+                    default: staleness.subagentRun
+                    }
                 row.isStale = now.timeIntervalSince(lastActivity) > limit
             }
             return row

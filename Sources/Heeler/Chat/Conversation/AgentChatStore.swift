@@ -482,6 +482,8 @@ final class AgentChatStore {
     /// When each running Claude Code background command last wrote its
     /// output file, from SFTP.
     @ObservationIgnored private var claudeCommandEvidence: [String: ChatBackgroundWorkEvidence] = [:]
+    /// What each Claude Code teammate's own transcript shows, from SFTP.
+    @ObservationIgnored private var claudeTeammateEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     /// Live SFTP and screen evidence for Antigravity CLI Background Work.
     @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
@@ -1217,6 +1219,10 @@ final class AgentChatStore {
         {
             let commandOutputs = await engine.followClaudeCommandOutputs()
             if engine === self.engine { claudeCommandEvidence = commandOutputs }
+            let teammates = await engine.followClaudeTeammates()
+            if engine === self.engine {
+                claudeTeammateEvidence = stampingEndPromptOffsets(teammates, previous: claudeTeammateEvidence)
+            }
         }
         if olderRequest == nil, program == .agy, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
@@ -1822,6 +1828,7 @@ final class AgentChatStore {
         workflowProgress = [:]
         claudeWorkflowEvidence = [:]
         claudeCommandEvidence = [:]
+        claudeTeammateEvidence = [:]
         agyFileEvidence = [:]
         agyScreenEvidence = [:]
         rawAgySwarm = nil
@@ -2367,9 +2374,10 @@ final class AgentChatStore {
     private func mergedBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
         switch program {
         case .claude:
-            // A Workflow's run file and a command's output file never share
-            // an id.
+            // A Workflow's run file, a command's output file and a
+            // teammate's transcript never share an id.
             return claudeWorkflowEvidence.merging(claudeCommandEvidence) { $0.merging($1) }
+                .merging(claudeTeammateEvidence) { $0.merging($1) }
         case .agy:
             var merged = agyFileEvidence
             for (id, screen) in agyScreenEvidence {

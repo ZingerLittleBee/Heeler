@@ -399,7 +399,12 @@ fixture captures them yet.
   the background by default. A `remote_launched` result carries `taskId`,
   `sessionUrl`, `description`, `prompt` and `outputFile` (2.1.292, the Agent
   tool's result text); it was not observed. A `teammate_spawned` result is a
-  teammate on a mailbox, not background work, and Chat does not list it.
+  teammate on a mailbox: `{status, agentId, teammate_id: "<name>@<team>",
+  name, color, team_name, outputFile, …}` (2.1.331, four spawns in one local
+  transcript; its transcript is
+  `subagents/agent-<agentId>.jsonl` with `taskKind: "in_process_teammate"`
+  in the `.meta.json` beside it). Chat lists it as Background Work and
+  follows its runs (ADR 0024).
   Its messages reach the lead as user records (2.1.301): the line
   "Another Claude session sent a message:", one `<teammate-message
   teammate_id="w2" …>` block per message, then a paragraph of advice to the
@@ -411,6 +416,42 @@ fixture captures them yet.
   sent a message while you were working:" and "A peer session sent a
   message while you were working:" (not observed). A record that is only
   `<teammate-message>` blocks, with no header, reads the same way.
+- **Teammate runs (2.1.331).** A teammate stays alive between turns of its
+  own. When one ends it writes an `idle_notification` whose `idleReason` is
+  `available`, `failed` or `interrupted` (the binary's `inProcessRunner`)
+  and whose own `timestamp` says when it went idle; the record carrying it
+  can follow the lead's next `SendMessage` (live: idle 11:59:41, the lead's
+  message 12:00:08, the record 12:00:14). A `SendMessage` whose `message` is
+  text and whose `to` is the name wakes it; its result is
+  `toolUseResult{success, message: "Message sent to <name>'s inbox",
+  msg_id, routing}`. The binary's mailbox types also include
+  `shutdown_approved` and `teammate_terminated` (not observed). No
+  `turn_duration` is written while any teammate lives, idle ones included
+  (`_deferTeamDuration`): across four local sessions the lead recorded no
+  `turn_duration` after a spawn, except one written in the same millisecond
+  as the `agents_killed` that stopped the session's teammates. The lead
+  records idle notifications only when its own turn ends: a busy lead wrote
+  none for a teammate that went idle minutes before.
+- **Teammate files (2.1.331).** A teammate's id is `a<name>-<16 hex>`
+  (`agh-t1-074cdf21c9a8b630`), an unnamed Subagent's `a<hex>` with no hyphen.
+  Its `.meta.json` holds `{agentType, description, name, taskKind:
+  "in_process_teammate", teamName, color, model, …}`. Across 22 local
+  teammate transcripts a turn ends only with an assistant record whose
+  `stop_reason` is `end_turn`, or `stop_sequence` on an
+  `isApiErrorMessage` record, or with a user text "[Request interrupted …";
+  every other assistant record calls a tool. A prompt is a user record
+  holding `<teammate-message …>`, its first or one from its mailbox, and
+  appears only at the file's start or right after an end, never mid-turn:
+  the mailbox is read between turns, so a lead message sent while one runs
+  opens the next one as it ends (live: idle 11:59:41.708, the next prompt
+  .725). The `queued_command` attachments seen mid-turn are task
+  notifications only. `isMeta` reminders and compaction summaries sit among
+  the records and start nothing. A teammate asked to shut down (a prompt
+  whose `<teammate-message>` body is `{"type":"shutdown_request",
+  "requestId",…}`) that agrees calls `SendMessage` with `message:
+  {"type":"shutdown_response","request_id","approve":true}` and exits: that
+  call, with no result after it, is its transcript's last record (once
+  locally). A teammate whose Claude Code stopped leaves its turn open.
 - **Workflow.** The `Workflow` call's input is `{script}`. Its result is
   `toolUseResult{status: "async_launched", taskId, taskType:
   "local_workflow", workflowName, runId, summary, transcriptDir,

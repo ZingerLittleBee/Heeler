@@ -206,7 +206,7 @@ Attachment or used a Staged File.
 _Avoid_: attach image, send image, upload image
 
 **Agent Status**:
-The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI (whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running) and Claude Code (whose Host status reports Idle or Done once a foreground turn finishes even while Subagents, Workflows, background commands, or Monitors continue running), Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript and its side files or screen checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the foreground that held the terminal when it was reported still holds it, and is Unknown otherwise, Done included; Rex keeps no turn count, so a finished turn is the report that ended it, and the connection that hears the reports counts the turns that end (ADR 0054). A Claude Code there keeps reporting working after its turn ended while commands it put in the background still run; Heeler reads that report as done, so the turn counts as finished. Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
+The state of an Agent: Idle, Working, Blocked, Done, Error, or Unknown. On Herdr TUI it is herdr's detection, and Done is herdr's unseen completion. On herdr-core it follows the Agent's Program Status, Unknown until the Agent reports one, except Done: the Agent finished a turn this device was not showing, since it last opened it, and now reports idle or done; opening it clears Done on this device only. A turn finishes when the Agent goes from working to done, or, for a program not known to report done, from working to idle (ADR 0033). On tmux it follows the Program Status recorded on the Agent's Pane the same way, Done included; whatever records it also counts finished turns, so a turn that starts and finishes between two looks is still a finished turn. For Antigravity CLI (whose `PreInvocation` hook reports Idle once a foreground turn replies or parks on `swarm_wait` even while Subagents, Workflows, Swarm task workers, or non-daemon background commands continue running) and Claude Code (whose Host status reports Idle or Done once a foreground turn finishes even while Subagents, teammates, Workflows, background commands, or Monitors continue running), Heeler presents Idle or Done as Working while a live connected read (backed by the Transcript and its side files or screen checks) confirms non-stale running work, without replacing Chat's underlying foreground activity. On Rex it follows the terminal's Program Status while the foreground that held the terminal when it was reported still holds it, and is Unknown otherwise, Done included; Rex keeps no turn count, so a finished turn is the report that ended it, and the connection that hears the reports counts the turns that end (ADR 0054). A Claude Code there keeps reporting working after its turn ended while commands it put in the background still run; Heeler reads that report as done, so the turn counts as finished. Blocked means the agent is waiting for human input; Error, herdr-core, tmux and Rex only, shares Blocked's place in sort order and notifications.
 _Avoid_: agent state, activity
 
 **Program Status**:
@@ -620,15 +620,19 @@ _Avoid_: approval sheet, permission prompt (the program's own dialog), alert
 
 **Background Work**:
 The Subagents, Workflows and background commands an Agent runs in the
-background (Claude Code Subagents, Workflows, background commands and
-Monitors; Antigravity CLI Subagents, Workflows and non-daemon background
+background (Claude Code Subagents, teammates, Workflows, background commands
+and Monitors; Antigravity CLI Subagents, Workflows and non-daemon background
 commands), which Chat lists over the Composer from their launch and end
 records in the Transcript and, for a Claude Code Workflow, its journal and run
-file beside it. Claude Code records nothing that tells a server from a command
+file beside it, and for a teammate, its own transcript there. Claude Code records nothing that tells a server from a command
 that will end, so each of its background commands is listed. Running work comes first; finished work
 stays listed until the user's next prompt, and the strip over the Composer hides
 once both the foreground turn and all Background Work have ended. Chat only
-shows it and stops none of it. A Subagent is one background agent; a Workflow is
+shows it and stops none of it. A Subagent is one background agent; a teammate
+is one Claude Code spawned with a name, which waits on its mailbox when a turn
+of its own ends and runs again when the Agent or another teammate messages
+it, so its row reads
+done between runs and running again with a fresh clock; a Workflow is
 a script that runs many and is listed as one row with its agents done when its
 journal records them. An Antigravity CLI native **Swarm** (`brain/<id>/.system_generated/swarm`)
 leads that strip with a row of its own, the Swarm Live Bar, and opens a three-tab sheet
