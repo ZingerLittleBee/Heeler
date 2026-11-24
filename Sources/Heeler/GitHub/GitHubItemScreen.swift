@@ -337,7 +337,26 @@ private struct GitHubItemBody: View {
     static func markdown(_ text: String) -> String {
         text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression)
+            .replacing(/<img\b[^>]*>/.ignoresCase()) { imageMarkdown(String($0.output)) }
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// An HTML image, as GitHub writes an uploaded one, as the Markdown
+    /// image it stands for, which the body shows as its alt text. Left as
+    /// HTML it showed as the raw tag.
+    static func imageMarkdown(_ tag: String) -> String {
+        func attribute(_ name: String) -> String? {
+            let pattern = "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')"
+            guard let match = tag.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
+                return nil
+            }
+            let value = tag[match].drop { $0 != "\"" && $0 != "'" }.dropFirst().dropLast()
+            return String(value)
+        }
+        let alt = attribute("alt").flatMap { $0.isEmpty ? nil : $0 }
+            ?? String(localized: "Image")
+        let escaped = alt.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+        return "![\(escaped)](\(attribute("src") ?? ""))"
     }
 
     static var placeholder: some View {
