@@ -221,7 +221,10 @@ struct GitHubSendSheet: View {
                 .foregroundStyle(GitHubItemRow.tint(for: item))
             // One Text: side by side, a long repository name wrapped in a
             // narrow column and squeezed the title to a few letters.
-            (Text(verbatim: "\(item.repositoryName) #\(item.number)  ").foregroundStyle(.secondary)
+            // The header is secondary already; `.secondary` again dimmed
+            // the repository to 1.8:1.
+            (Text(verbatim: "\(item.repositoryName) #\(item.number)  ")
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
                 + Text(item.title).foregroundStyle(Color(uiColor: .label)))
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
         }
