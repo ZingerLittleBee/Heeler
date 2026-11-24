@@ -626,7 +626,10 @@ _Avoid_: inbox, notifications, feed, dashboard
 One pull request or issue from the GitHub List, read again on its own when it
 opens and on a pull: its description, and a pull request's branches, checks,
 review, changes and comments, or an issue's labels, assignees and comments.
-Kept in memory only; its row replaces the list's copy (ADR 0064).
+Kept in memory only; its row replaces the list's copy. Its "⋯" offers
+Comment, Approve, Merge and Close, each one run of gh's own command on the
+Host, sent once, between a read of the item before, which can stop it, and
+one after, which says what came of it (ADR 0064).
 _Avoid_: item page, PR view
 
 **Send to Agent**:
