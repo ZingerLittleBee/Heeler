@@ -251,9 +251,11 @@ private struct GitHubSectionHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(title)
+            // The header's grey, set apart by weight: secondary on top of
+            // the header's own dimmed it to 1.7:1.
             Text(count, format: .number)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .fontWeight(.regular)
         }
         .accessibilityElement(children: .combine)
     }
