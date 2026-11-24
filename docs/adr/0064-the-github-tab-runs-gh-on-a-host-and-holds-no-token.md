@@ -258,9 +258,14 @@ Close.
 - **A write's sheet belongs to the Console.** Comment, Approve and Merge
   open from the Console, as Send to Agent does (`GitHubWriteSheetPresenter`),
   and their request holds the sheet's state: the text, the method, the
-  branch switch and the write's progress. When an iPad window crosses size
-  classes, SwiftUI builds the sheet again and the new one carries on with
-  the draft or the write in flight, then shows its result.
+  branch switch and the write's progress. A sheet keeps the presentation it
+  opened with (`ConsoleSheetContent`), so when an iPad window crosses size
+  classes it is not built again and carries on with the draft or the write
+  in flight, then shows its result. `GitHubStore.write` says which of
+  three things happened: nothing ran (another write on the item was
+  running), the result is the sheet's to show, or the sheet had gone by the
+  end. In the last case a sheet still up closes rather than offer its form
+  again, since the write may have gone through.
 - **A result is shown once, wherever the user went.** A write outlives the
   sheet or detail it began on. When that screen has gone by the time the
   result comes (the user went back, picked another row, or left the tab),

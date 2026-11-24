@@ -98,10 +98,8 @@ final class GitHubStore {
     /// Bumped when the switch goes off, so a read already running keeps
     /// nothing it finds.
     @ObservationIgnored private var generation = 0
-    /// The screens that can show a write's result, while they are on screen,
-    /// each with how many views show it: SwiftUI can build a sheet again
-    /// and show the new one before the old one leaves.
-    @ObservationIgnored private var presenters: [UUID: Int] = [:]
+    /// The screens that can show a write's result, while they are on screen.
+    @ObservationIgnored private var presenters: Set<UUID> = []
 
     init(
         settings: GitHubSettings = GitHubSettings(),
@@ -415,17 +413,16 @@ final class GitHubStore {
     /// runs nothing if it no longer takes the write; otherwise runs gh once,
     /// on the Server whose read just answered and on no other, then reads
     /// the item again so the detail, its list row and the saved list follow.
-    /// Nil when a write on the item is already running. The write outlives
-    /// the caller: a sheet closing under it does not stop it. When
-    /// `presenter` is nil or has left the screen by the end, the result is
-    /// nil too, and one that is not a plain success waits in `reports` for
-    /// the tab.
+    /// Runs nothing when a write on the item is already running. The write
+    /// outlives the caller: a sheet closing under it does not stop it. When
+    /// `presenter` is nil or has left the screen by the end, a result that
+    /// is not a plain success waits in `reports` for the tab.
     @discardableResult
     func write(
         _ write: GitHubWrite, on item: GitHubItem, host: GitHubHost, shownBy presenter: UUID?
-    ) async -> GitHubWriteResult? {
+    ) async -> GitHubWriteDelivery {
         let key = DetailKey(host: host.id, item: item.id)
-        guard isEnabled, !writing.contains(key) else { return nil }
+        guard isEnabled, !writing.contains(key) else { return .ranNothing }
         writing.insert(key)
         let task = Task {
             let result = await performWrite(write, on: item, host: host)
@@ -433,21 +430,21 @@ final class GitHubStore {
             return result
         }
         let result = await task.value
-        guard let presenter, presenters[presenter] != nil else {
+        guard let presenter, presenters.contains(presenter) else {
             if isEnabled, !result.isPlainSuccess { reports.append(GitHubWriteReport(host: host, result: result)) }
-            return nil
+            return .screenGone
         }
-        return result
+        return .result(result)
     }
 
     /// A screen that can show a write's result came on screen.
     func present(_ presenter: UUID) {
-        presenters[presenter, default: 0] += 1
+        presenters.insert(presenter)
     }
 
     /// That screen left; a result that comes now goes to `reports`.
     func leave(_ presenter: UUID) {
-        presenters[presenter] = presenters[presenter].flatMap { $0 > 1 ? $0 - 1 : nil }
+        presenters.remove(presenter)
     }
 
     /// The oldest result the tab has not shown, which it now shows.

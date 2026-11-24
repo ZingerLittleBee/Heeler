@@ -204,3 +204,16 @@ struct GitHubWriteReport: Identifiable, Equatable {
     let host: GitHubHost
     let result: GitHubWriteResult
 }
+
+/// What `GitHubStore.write` came to, for the screen that asked.
+enum GitHubWriteDelivery: Equatable {
+    /// Nothing ran: a write on the item was already running, or GitHub is
+    /// off.
+    case ranNothing
+    /// What the write came to, for the screen that asked, still on screen.
+    case result(GitHubWriteResult)
+    /// The write ended after its screen had gone. Whatever ran is done: a
+    /// result that is not a plain success waits in `GitHubStore.reports`,
+    /// and a screen still up closes rather than offer its form again.
+    case screenGone
+}

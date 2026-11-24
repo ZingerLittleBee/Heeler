@@ -16,9 +16,8 @@ struct GitHubWriteSheetRequest: Identifiable {
     /// The item as the detail showed it, which keys its reads.
     let item: GitHubItem
     let kind: Kind
-    /// The sheet's state, kept with the request: SwiftUI builds the sheet
-    /// again when the window crosses size classes, and the new one carries
-    /// on with the draft, the choices and a write in flight.
+    /// The sheet's state, kept with the request above the tab rather than
+    /// in the sheet's views: the draft, the choices and a write in flight.
     let state = GitHubWriteSheetState()
 }
 
@@ -53,8 +52,8 @@ private enum GitHubWritePhase: Equatable {
     }
 }
 
-/// One write sheet, by its request. `close` ends the request, whichever
-/// sheet SwiftUI built for it.
+/// One write sheet, by its request. `close` ends that request, and no
+/// other one shown since.
 struct GitHubWriteSheet: View {
     let request: GitHubWriteSheetRequest
     let store: GitHubStore
@@ -99,13 +98,17 @@ struct GitHubWriteSheetPresenter: ViewModifier {
             .onChange(of: isTabShown) { showNext() }
             .onChange(of: store.reports) { showNext() }
             .sheet(item: $request, onDismiss: showNext) { shown in
-                GitHubWriteSheet(request: shown, store: store) {
-                    // A write that ends after its sheet gave way to another
-                    // leaves that one open.
-                    if request?.id == shown.id { request = nil }
+                // The presentation it opened with: following a size class
+                // that changes under it would build the sheet again.
+                ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) {
+                    presentation in
+                    GitHubWriteSheet(request: shown, store: store) {
+                        // A write that ends after its sheet gave way to
+                        // another leaves that one open.
+                        if request?.id == shown.id { request = nil }
+                    }
+                    .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
                 }
-                .modifier(ConsoleSheetPresentationModifier(
-                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
             }
     }
 
@@ -216,9 +219,17 @@ private struct GitHubComposeSheet: View {
         let write: GitHubWrite = action == .comment ? .comment(state.text) : .approve(state.text)
         state.phase = .working
         Task {
-            guard let result = await store.write(write, on: item, host: host, shownBy: presence) else {
+            let result: GitHubWriteResult
+            switch await store.write(write, on: item, host: host, shownBy: presence) {
+            case .ranNothing:
                 state.phase = .editing(notRun: GitHubWriteWords.busy)
                 return
+            case .screenGone:
+                // It may have posted: the form never comes back for a second tap.
+                close()
+                return
+            case .result(let shown):
+                result = shown
             }
             switch result.outcome {
             case .notRun(let reason):
@@ -389,13 +400,20 @@ private struct GitHubMergeSheet: View {
         let deleteBranch = !pull.isCrossRepository && !pull.mergeSettings.deletesBranch && state.deletesBranch
         state.phase = .working
         Task {
-            guard
-                let result = await store.write(
-                    .merge(method, deleteBranch: deleteBranch, headCommit: headCommit), on: item, host: host,
-                    shownBy: presence)
-            else {
+            let result: GitHubWriteResult
+            switch await store.write(
+                .merge(method, deleteBranch: deleteBranch, headCommit: headCommit), on: item, host: host,
+                shownBy: presence)
+            {
+            case .ranNothing:
                 state.phase = .editing(notRun: GitHubWriteWords.busy)
                 return
+            case .screenGone:
+                // It may have merged: the form never comes back for a second tap.
+                close()
+                return
+            case .result(let shown):
+                result = shown
             }
             if case .notRun(let reason) = result.outcome {
                 state.phase = .editing(notRun: reason)
