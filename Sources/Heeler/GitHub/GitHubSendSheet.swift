@@ -259,6 +259,14 @@ struct GitHubSendSheet: View {
         let title = AgentTerminalView.displayTitle(for: agent)
         let detail = agent.directory.map(agent.displayPath) ?? kind.label
         let server = serverLabel(of: agent)
+        let markText = target.mark.map { mark in
+            Text(mark == .onBranch ? String(localized: "On this branch") : String(localized: "This repository"))
+                .font(.footnote)
+                .foregroundStyle(GitHubInk.green)
+        }
+        // From the largest standard size the mark goes under the path,
+        // which beside it was cut to a few characters.
+        let marksBelow = dynamicTypeSize >= .xxxLarge
         return Button {
             Task { await store.send(message, to: agent.id) }
         } label: {
@@ -282,14 +290,15 @@ struct GitHubSendSheet: View {
                     .font(.footnote)
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
                     .lineLimit(1)
+                    if marksBelow, let markText {
+                        markText
+                    }
                 }
                 Spacer(minLength: 0)
                 if store.state == .working(agent.id) {
                     ProgressView()
-                } else if let mark = target.mark {
-                    Text(mark == .onBranch ? String(localized: "On this branch") : String(localized: "This repository"))
-                        .font(.footnote)
-                        .foregroundStyle(GitHubInk.green)
+                } else if !marksBelow, let markText {
+                    markText
                 }
             }
             .contentShape(.rect)
