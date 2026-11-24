@@ -60,11 +60,10 @@ struct ConsoleView: View {
     /// The Host whose Terminal the GitHub tab asked for, over the New
     /// Terminal sheet's own choice.
     @State private var gitHubTerminalHostID: Host.ID?
-    /// Beside an iPad's sidebar, the pull request or issue in the GitHub
-    /// tab's detail column.
+    /// The pull request or issue the GitHub tab shows: in the detail column
+    /// beside an iPad's sidebar, pushed on the tab's stack without one.
+    /// One value for both, so resizing the window keeps what it shows.
     @State private var gitHubSelection: GitHubItemLink?
-    /// Where the GitHub tab's stack is pushed to, without a sidebar.
-    @State private var gitHubPath: [GitHubItemLink] = []
     @State private var gitHubSendRequest: GitHubSendRequest?
     /// The Host the Usage tab reads; nil reads every Host.
     @State private var usageScopeHostID: Host.ID?
@@ -671,7 +670,7 @@ struct ConsoleView: View {
     @ViewBuilder
     private func gitHubTab() -> some View {
         if usesSidebarNavigation {
-            let shown = gitHubSelection.flatMap { $0.host.id == console.gitHub.selectedHost?.id ? $0 : nil }
+            let shown = gitHubShownSelection
             NavigationSplitView {
                 GitHubListScreen(store: console.gitHub, terminals: gitHubTerminals, selection: gitHubSelectionID)
                     // The column reports a compact size class beside a
@@ -701,7 +700,7 @@ struct ConsoleView: View {
             }
             .toolbarVisibility(.hidden, for: .tabBar)
         } else {
-            GitHubTabView(store: console.gitHub, path: $gitHubPath, terminals: gitHubTerminals, send: gitHubSend)
+            GitHubTabView(store: console.gitHub, path: gitHubPath, terminals: gitHubTerminals, send: gitHubSend)
                 // A pushed detail hides the bar as an Agent's does.
                 .background {
                     ConsoleTabBarBridge(chromeScheme: nil, hidesBar: hidesTabBar, request: tabBarRequest)
@@ -710,17 +709,24 @@ struct ConsoleView: View {
         }
     }
 
+    /// The selected item, while its Host is the one the GitHub tab shows.
+    private var gitHubShownSelection: GitHubItemLink? {
+        gitHubSelection.flatMap { $0.host.id == console.gitHub.selectedHost?.id ? $0 : nil }
+    }
+
+    /// The GitHub tab's stack without a sidebar: the selection, pushed.
+    private var gitHubPath: Binding<[GitHubItemLink]> {
+        Binding(
+            get: { gitHubShownSelection.map { [$0] } ?? [] },
+            set: { gitHubSelection = $0.last })
+    }
+
     /// The sidebar row of the item in the detail column, on the Host shown.
     /// The column keeps the item as it was picked, so a read that drops it
     /// from the list leaves it on screen.
     private var gitHubSelectionID: Binding<GitHubItem.ID?> {
         Binding(
-            get: {
-                guard let selection = gitHubSelection, selection.host.id == console.gitHub.selectedHost?.id else {
-                    return nil
-                }
-                return selection.item.id
-            },
+            get: { gitHubShownSelection?.item.id },
             set: { id in
                 guard let id else {
                     gitHubSelection = nil
@@ -757,7 +763,6 @@ struct ConsoleView: View {
         if isGitHubTabSelected { selectedTab.wrappedValue = shownListTab }
         isShowingGitHubListMenu = false
         gitHubSelection = nil
-        gitHubPath = []
         gitHubSendRequest = nil
     }
 
@@ -1029,7 +1034,7 @@ struct ConsoleView: View {
     /// its list in every width, so it hides the bar in every width.
     private var hidesTabBar: Bool {
         if usesSidebarNavigation { return true }
-        if currentTab == .github { return !gitHubPath.isEmpty }
+        if currentTab == .github { return gitHubShownSelection != nil }
         return horizontalSizeClass == .compact && selectedItem.wrappedValue != nil
     }
 
