@@ -1,18 +1,41 @@
 import SwiftUI
 
-/// A sheet the detail's "⋯" opens: Comment, Approve or Merge, or what a
-/// Close came to when there is something to read.
+/// A sheet the detail's "⋯" opens, Comment, Approve or Merge, or a write's
+/// result for the tab to show: a Close's that did not plainly close the
+/// item, or one whose sheet had gone.
 struct GitHubWriteSheetRequest: Identifiable {
     enum Kind {
         /// Comment or Approve.
         case compose(GitHubWrite.Action)
         case merge
-        /// A Close that did not plainly close the item.
-        case closeResult(GitHubWriteResult)
+        case result(GitHubWriteResult)
     }
 
     let id = UUID()
+    let host: GitHubHost
+    /// The item as the detail showed it, which keys its reads.
+    let item: GitHubItem
     let kind: Kind
+    /// The sheet's state, kept with the request: SwiftUI builds the sheet
+    /// again when the window crosses size classes, and the new one carries
+    /// on with the draft, the choices and a write in flight.
+    let state = GitHubWriteSheetState()
+}
+
+/// What a write sheet holds while it is open.
+@Observable
+final class GitHubWriteSheetState {
+    /// What the user has typed in a Comment or Approve sheet.
+    var text = ""
+    var chosenMethod: GitHubMergeMethod?
+    var deletesBranch = true
+    fileprivate var phase = GitHubWritePhase.editing(notRun: nil)
+}
+
+/// Where the detail opens its write sheets: above the detail, where Send to
+/// Agent's request lives, so a sheet and its draft outlive a layout change.
+struct GitHubWriteLink {
+    let present: @MainActor (GitHubWriteSheetRequest) -> Void
 }
 
 /// Where a sheet's write stands.
@@ -24,38 +47,69 @@ private enum GitHubWritePhase: Equatable {
     case done(GitHubWriteResult)
 
     var isWorking: Bool { self == .working }
+
+    var isDone: Bool {
+        if case .done = self { true } else { false }
+    }
 }
 
-/// Presents the detail's write sheets with the Console's sheet sizing.
+/// One write sheet, by its request. `close` ends the request, whichever
+/// sheet SwiftUI built for it.
 struct GitHubWriteSheet: View {
     let request: GitHubWriteSheetRequest
     let store: GitHubStore
-    let host: GitHubHost
-    let item: GitHubItem
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let close: () -> Void
 
     var body: some View {
         switch request.kind {
         case .compose(let action):
-            GitHubComposeSheet(store: store, host: host, item: item, action: action)
-                .presentationDetents([.medium, .large])
+            GitHubComposeSheet(
+                store: store, host: request.host, item: request.item, action: action, presence: request.id,
+                state: request.state, close: close)
         case .merge:
-            let detail = store.detailState(of: item, on: host).detail
-            let warns = GitHubWriteWords.mergeWarning(item: detail?.item ?? item, pull: detail?.pullRequest) != nil
-            // A warning, or text larger than the default, pushes the button
-            // below a partial sheet.
-            GitHubMergeSheet(store: store, host: host, item: item)
-                .presentationDetents(warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
-        case .closeResult(let result):
+            GitHubMergeSheet(
+                store: store, host: request.host, item: request.item, presence: request.id, state: request.state,
+                close: close)
+        case .result(let result):
             NavigationStack {
-                GitHubWriteResultView(host: host, result: result, typed: nil) { dismiss() }
-                    .navigationTitle(GitHubWriteWords.sheetTitle(.close))
+                GitHubWriteResultView(host: request.host, result: result, typed: result.write.typed, done: close)
+                    .navigationTitle(GitHubWriteWords.sheetTitle(result.write.action))
                     .navigationBarTitleDisplayMode(.inline)
             }
             .presentationDetents([.medium, .large])
         }
+    }
+}
+
+/// Presents the GitHub tab's write sheets from above the tab, as Send to
+/// Agent is, and then, once each, the results that came after their screen
+/// had gone, while the tab is on screen and no write sheet is (ADR 0064).
+struct GitHubWriteSheetPresenter: ViewModifier {
+    @Binding var request: GitHubWriteSheetRequest?
+    let store: GitHubStore
+    let isTabShown: Bool
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: showNext)
+            .onChange(of: isTabShown) { showNext() }
+            .onChange(of: store.reports) { showNext() }
+            .sheet(item: $request, onDismiss: showNext) { shown in
+                GitHubWriteSheet(request: shown, store: store) {
+                    // A write that ends after its sheet gave way to another
+                    // leaves that one open.
+                    if request?.id == shown.id { request = nil }
+                }
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+            }
+    }
+
+    private func showNext() {
+        guard isTabShown, request == nil, let report = store.takeReport() else { return }
+        request = GitHubWriteSheetRequest(host: report.host, item: report.result.item, kind: .result(report.result))
     }
 }
 
@@ -68,20 +122,20 @@ private struct GitHubComposeSheet: View {
     let item: GitHubItem
     /// `.comment` or `.approve`.
     let action: GitHubWrite.Action
+    /// The request's: shows the result while the sheet is open.
+    let presence: UUID
+    @Bindable var state: GitHubWriteSheetState
+    let close: () -> Void
 
-    @State private var text = ""
-    @State private var phase = GitHubWritePhase.editing(notRun: nil)
-    @State private var presence = UUID()
     @FocusState private var isEditing: Bool
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let detail = store.detailState(of: item, on: host).detail
         let current = detail?.item ?? item
         NavigationStack {
             Group {
-                if case .done(let result) = phase {
-                    GitHubWriteResultView(host: host, result: result, typed: text) { dismiss() }
+                if case .done(let result) = state.phase {
+                    GitHubWriteResultView(host: host, result: result, typed: state.text) { close() }
                 } else {
                     form(current, login: detail?.viewer)
                 }
@@ -91,17 +145,17 @@ private struct GitHubComposeSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // A result page ends with its own Done.
-                    if case .done = phase {
+                    if case .done = state.phase {
                         EmptyView()
                     } else {
-                        Button("Cancel") { dismiss() }
-                            .disabled(phase.isWorking)
+                        Button("Cancel") { close() }
+                            .disabled(state.phase.isWorking)
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if phase.isWorking {
+                    if state.phase.isWorking {
                         ProgressView()
-                    } else if case .editing = phase {
+                    } else if case .editing = state.phase {
                         Button(action == .comment ? String(localized: "Post") : String(localized: "Approve")) {
                             submit()
                         }
@@ -110,27 +164,28 @@ private struct GitHubComposeSheet: View {
                 }
             }
         }
-        .interactiveDismissDisabled(phase.isWorking)
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(state.phase.isWorking)
         .onAppear { store.present(presence) }
         .onDisappear { store.leave(presence) }
     }
 
     private var canSubmit: Bool {
-        action == .approve || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        action == .approve || !state.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func form(_ current: GitHubItem, login: String?) -> some View {
         List {
-            if case .editing(let reason?) = phase {
+            if case .editing(let reason?) = state.phase {
                 GitHubNotRunSection(action: action, reason: reason)
             }
             Section {
-                TextEditor(text: $text)
+                TextEditor(text: $state.text)
                     .focused($isEditing)
                     .frame(minHeight: 140)
-                    .disabled(phase.isWorking)
+                    .disabled(state.phase.isWorking)
                     .overlay(alignment: .topLeading) {
-                        if text.isEmpty {
+                        if state.text.isEmpty {
                             (action == .comment ? Text("Leave a comment") : Text("Leave a comment (optional)"))
                                 .foregroundStyle(.tertiary)
                                 .padding(.top, 8)
@@ -153,21 +208,21 @@ private struct GitHubComposeSheet: View {
     /// One tap, one write: the phase turns before anything awaits, so a
     /// second tap finds the form working.
     private func submit() {
-        guard case .editing = phase, canSubmit else { return }
-        let write: GitHubWrite = action == .comment ? .comment(text) : .approve(text)
-        phase = .working
+        guard case .editing = state.phase, canSubmit else { return }
+        let write: GitHubWrite = action == .comment ? .comment(state.text) : .approve(state.text)
+        state.phase = .working
         Task {
             guard let result = await store.write(write, on: item, host: host, shownBy: presence) else {
-                phase = .editing(notRun: GitHubWriteWords.busy)
+                state.phase = .editing(notRun: GitHubWriteWords.busy)
                 return
             }
             switch result.outcome {
             case .notRun(let reason):
-                phase = .editing(notRun: reason)
+                state.phase = .editing(notRun: reason)
             case .finished(exitStatus: 0, _):
-                dismiss()
+                close()
             case .finished, .unknown:
-                phase = .done(result)
+                state.phase = .done(result)
             }
         }
     }
@@ -182,18 +237,19 @@ private struct GitHubMergeSheet: View {
     let host: GitHubHost
     let item: GitHubItem
 
-    @State private var chosenMethod: GitHubMergeMethod?
-    @State private var deletesBranch = true
-    @State private var phase = GitHubWritePhase.editing(notRun: nil)
-    @State private var presence = UUID()
-    @Environment(\.dismiss) private var dismiss
+    /// The request's: shows the result while the sheet is open.
+    let presence: UUID
+    @Bindable var state: GitHubWriteSheetState
+    let close: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let detail = store.detailState(of: item, on: host).detail
+        let warns = GitHubWriteWords.mergeWarning(item: detail?.item ?? item, pull: detail?.pullRequest) != nil
         NavigationStack {
             Group {
-                if case .done(let result) = phase {
-                    GitHubWriteResultView(host: host, result: result, typed: nil) { dismiss() }
+                if case .done(let result) = state.phase {
+                    GitHubWriteResultView(host: host, result: result, typed: nil) { close() }
                 } else {
                     form(detail)
                 }
@@ -203,22 +259,25 @@ private struct GitHubMergeSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     // A result page ends with its own Done.
-                    if case .done = phase {
+                    if case .done = state.phase {
                         EmptyView()
                     } else {
-                        Button("Cancel") { dismiss() }
-                            .disabled(phase.isWorking)
+                        Button("Cancel") { close() }
+                            .disabled(state.phase.isWorking)
                     }
                 }
             }
         }
-        .interactiveDismissDisabled(phase.isWorking)
+        // A warning, or text larger than the default, pushes the button
+        // below a partial sheet.
+        .presentationDetents(warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
+        .interactiveDismissDisabled(state.phase.isWorking)
         .onAppear { store.present(presence) }
         .onDisappear { store.leave(presence) }
     }
 
     private func method(in settings: GitHubMergeSettings?) -> GitHubMergeMethod? {
-        chosenMethod.flatMap { settings?.allowed.contains($0) == true ? $0 : nil } ?? settings?.initial
+        state.chosenMethod.flatMap { settings?.allowed.contains($0) == true ? $0 : nil } ?? settings?.initial
     }
 
     @ViewBuilder
@@ -229,7 +288,7 @@ private struct GitHubMergeSheet: View {
         let method = method(in: settings)
         let warning = GitHubWriteWords.mergeWarning(item: current, pull: pull)
         List {
-            if case .editing(let reason?) = phase {
+            if case .editing(let reason?) = state.phase {
                 GitHubNotRunSection(action: .merge, reason: reason)
             }
             if let warning {
@@ -268,8 +327,8 @@ private struct GitHubMergeSheet: View {
                         Toggle("Delete Branch", isOn: .constant(true))
                             .disabled(true)
                     } else {
-                        Toggle("Delete Branch", isOn: $deletesBranch)
-                            .disabled(phase.isWorking)
+                        Toggle("Delete Branch", isOn: $state.deletesBranch)
+                            .disabled(state.phase.isWorking)
                     }
                 } footer: {
                     if pull.mergeSettings.deletesBranch {
@@ -281,13 +340,13 @@ private struct GitHubMergeSheet: View {
                 Button {
                     merge(method, pull: pull)
                 } label: {
-                    Text(phase.isWorking ? String(localized: "Merging…") : (method?.title ?? String(localized: "Merge")))
+                    Text(state.phase.isWorking ? String(localized: "Merging…") : (method?.title ?? String(localized: "Merge")))
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(phase.isWorking || method == nil || pull?.headCommit == nil)
+                .disabled(state.phase.isWorking || method == nil || pull?.headCommit == nil)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             } footer: {
@@ -302,7 +361,7 @@ private struct GitHubMergeSheet: View {
 
     private func methodRow(_ candidate: GitHubMergeMethod, isSelected: Bool) -> some View {
         Button {
-            chosenMethod = candidate
+            state.chosenMethod = candidate
         } label: {
             HStack {
                 Text(candidate.title)
@@ -316,29 +375,29 @@ private struct GitHubMergeSheet: View {
             }
             .contentShape(.rect)
         }
-        .disabled(phase.isWorking)
+        .disabled(state.phase.isWorking)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// Merges the head the sheet showed, so a commit pushed since is not
     /// merged unseen.
     private func merge(_ method: GitHubMergeMethod?, pull: GitHubPullRequestDetail?) {
-        guard case .editing = phase, let method, let pull, let headCommit = pull.headCommit else { return }
-        let deleteBranch = !pull.isCrossRepository && !pull.mergeSettings.deletesBranch && deletesBranch
-        phase = .working
+        guard case .editing = state.phase, let method, let pull, let headCommit = pull.headCommit else { return }
+        let deleteBranch = !pull.isCrossRepository && !pull.mergeSettings.deletesBranch && state.deletesBranch
+        state.phase = .working
         Task {
             guard
                 let result = await store.write(
                     .merge(method, deleteBranch: deleteBranch, headCommit: headCommit), on: item, host: host,
                     shownBy: presence)
             else {
-                phase = .editing(notRun: GitHubWriteWords.busy)
+                state.phase = .editing(notRun: GitHubWriteWords.busy)
                 return
             }
             if case .notRun(let reason) = result.outcome {
-                phase = .editing(notRun: reason)
+                state.phase = .editing(notRun: reason)
             } else {
-                phase = .done(result)
+                state.phase = .done(result)
             }
         }
     }
@@ -508,42 +567,6 @@ struct GitHubWriteResultView: View {
                     .padding(.horizontal, 4)
             }
         }
-    }
-}
-
-/// Shows, once each, the results that came after their screen had gone:
-/// from the GitHub tab's root, while the tab is on screen (ADR 0064).
-struct GitHubWriteReports: ViewModifier {
-    let store: GitHubStore
-
-    @State private var shown: GitHubWriteReport?
-    @State private var isVisible = false
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    func body(content: Content) -> some View {
-        content
-            .onAppear {
-                isVisible = true
-                showNext()
-            }
-            .onDisappear { isVisible = false }
-            .onChange(of: store.reports) { showNext() }
-            .sheet(item: $shown, onDismiss: showNext) { report in
-                NavigationStack {
-                    let result = report.result
-                    GitHubWriteResultView(host: report.host, result: result, typed: result.write.typed) { shown = nil }
-                    .navigationTitle(GitHubWriteWords.sheetTitle(report.result.write.action))
-                    .navigationBarTitleDisplayMode(.inline)
-                }
-                .presentationDetents([.medium, .large])
-                .modifier(ConsoleSheetPresentationModifier(
-                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
-            }
-    }
-
-    private func showNext() {
-        guard isVisible, shown == nil, let report = store.takeReport() else { return }
-        shown = report
     }
 }
 

@@ -204,13 +204,19 @@ Close.
   the browser. The other writes end without a page when gh exits 0 (Close
   when the read shows the item closed), and otherwise show gh's output
   under a title that says what happened.
+- **A write's sheet belongs to the Console.** Comment, Approve and Merge
+  open from the Console, as Send to Agent does (`GitHubWriteSheetPresenter`),
+  and their request holds the sheet's state: the text, the method, the
+  branch switch and the write's progress. When an iPad window crosses size
+  classes, SwiftUI builds the sheet again and the new one carries on with
+  the draft or the write in flight, then shows its result.
 - **A result is shown once, wherever the user went.** A write outlives the
   sheet or detail it began on. When that screen has gone by the time the
   result comes (the user went back, picked another row, or left the tab),
-  a result that is anything but a plain success waits in
-  `GitHubStore.reports`, and the tab's root shows the same page once the
-  tab is on screen, after any sheet already up. Turning GitHub off drops
-  what waits.
+  and always for Close, which has no sheet, a result that is anything but
+  a plain success waits in `GitHubStore.reports`. The Console's presenter
+  shows the same page while the GitHub tab is shown, after any sheet
+  already up. Turning GitHub off drops what waits.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged

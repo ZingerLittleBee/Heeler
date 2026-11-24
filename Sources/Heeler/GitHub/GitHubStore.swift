@@ -98,8 +98,10 @@ final class GitHubStore {
     /// Bumped when the switch goes off, so a read already running keeps
     /// nothing it finds.
     @ObservationIgnored private var generation = 0
-    /// The screens that can show a write's result, while they are on screen.
-    @ObservationIgnored private var presenters: Set<UUID> = []
+    /// The screens that can show a write's result, while they are on screen,
+    /// each with how many views show it: SwiftUI can build a sheet again
+    /// and show the new one before the old one leaves.
+    @ObservationIgnored private var presenters: [UUID: Int] = [:]
 
     init(
         settings: GitHubSettings = GitHubSettings(),
@@ -415,10 +417,12 @@ final class GitHubStore {
     /// the item again so the detail, its list row and the saved list follow.
     /// Nil when a write on the item is already running. The write outlives
     /// the caller: a sheet closing under it does not stop it. When
-    /// `presenter` has left the screen by the end, the result is nil too, and
-    /// one that is not a plain success waits in `reports` for the tab.
+    /// `presenter` is nil or has left the screen by the end, the result is
+    /// nil too, and one that is not a plain success waits in `reports` for
+    /// the tab.
+    @discardableResult
     func write(
-        _ write: GitHubWrite, on item: GitHubItem, host: GitHubHost, shownBy presenter: UUID
+        _ write: GitHubWrite, on item: GitHubItem, host: GitHubHost, shownBy presenter: UUID?
     ) async -> GitHubWriteResult? {
         let key = DetailKey(host: host.id, item: item.id)
         guard isEnabled, !writing.contains(key) else { return nil }
@@ -429,7 +433,7 @@ final class GitHubStore {
             return result
         }
         let result = await task.value
-        guard presenters.contains(presenter) else {
+        guard let presenter, presenters[presenter] != nil else {
             if isEnabled, !result.isPlainSuccess { reports.append(GitHubWriteReport(host: host, result: result)) }
             return nil
         }
@@ -438,12 +442,12 @@ final class GitHubStore {
 
     /// A screen that can show a write's result came on screen.
     func present(_ presenter: UUID) {
-        presenters.insert(presenter)
+        presenters[presenter, default: 0] += 1
     }
 
     /// That screen left; a result that comes now goes to `reports`.
     func leave(_ presenter: UUID) {
-        presenters.remove(presenter)
+        presenters[presenter] = presenters[presenter].flatMap { $0 > 1 ? $0 - 1 : nil }
     }
 
     /// The oldest result the tab has not shown, which it now shows.

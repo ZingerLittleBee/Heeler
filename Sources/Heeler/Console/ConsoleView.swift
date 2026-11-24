@@ -65,6 +65,9 @@ struct ConsoleView: View {
     /// One value for both, so resizing the window keeps what it shows.
     @State private var gitHubSelection: GitHubItemLink?
     @State private var gitHubSendRequest: GitHubSendRequest?
+    /// The GitHub tab's open write sheet, kept here, as Send to Agent's is,
+    /// so the sheet and its draft outlive the tab's layout changing.
+    @State private var gitHubWriteRequest: GitHubWriteSheetRequest?
     /// The Host the Usage tab reads; nil reads every Host.
     @State private var usageScopeHostID: Host.ID?
     @State private var usageMetric = AgentUsageMetric.cost
@@ -323,6 +326,9 @@ struct ConsoleView: View {
                 // The Agent opens with the message in its Composer.
                 selectAgent(id)
             })
+        .modifier(
+            GitHubWriteSheetPresenter(
+                request: $gitHubWriteRequest, store: console.gitHub, isTabShown: currentTab == .github))
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -685,8 +691,11 @@ struct ConsoleView: View {
             } detail: {
                 NavigationStack {
                     if let shown {
-                        GitHubItemScreen(store: console.gitHub, host: shown.host, item: shown.item, send: gitHubSend)
-                            .id(shown.item.id)
+                        GitHubItemScreen(
+                            store: console.gitHub, host: shown.host, item: shown.item, send: gitHubSend,
+                            write: gitHubWrite
+                        )
+                        .id(shown.item.id)
                     } else {
                         ContentUnavailableView {
                             Label(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol)
@@ -697,13 +706,14 @@ struct ConsoleView: View {
                 }
                 .readableColumn()
             }
-            .modifier(GitHubWriteReports(store: console.gitHub))
             .background {
                 ConsoleTabBarBridge(chromeScheme: nil, hidesBar: true, request: tabBarRequest)
             }
             .toolbarVisibility(.hidden, for: .tabBar)
         } else {
-            GitHubTabView(store: console.gitHub, path: gitHubPath, terminals: gitHubTerminals, send: gitHubSend)
+            GitHubTabView(
+                store: console.gitHub, path: gitHubPath, terminals: gitHubTerminals, send: gitHubSend,
+                write: gitHubWrite)
                 // A pushed detail hides the bar as an Agent's does.
                 .background {
                     ConsoleTabBarBridge(chromeScheme: nil, hidesBar: hidesTabBar, request: tabBarRequest)
@@ -747,6 +757,11 @@ struct ConsoleView: View {
         GitHubSendLink { gitHubSendRequest = $0 }
     }
 
+    /// Comment, Approve or Merge, from a pull request's or an issue's detail.
+    private var gitHubWrite: GitHubWriteLink {
+        GitHubWriteLink { gitHubWriteRequest = $0 }
+    }
+
     /// The GitHub tab's way to a Terminal on a Host: the New Terminal sheet,
     /// on the Host's first Server that can start one.
     private var gitHubTerminals: GitHubTerminalLink {
@@ -767,6 +782,7 @@ struct ConsoleView: View {
         isShowingGitHubListMenu = false
         gitHubSelection = nil
         gitHubSendRequest = nil
+        gitHubWriteRequest = nil
     }
 
     /// Every Host the Usage tab can read, in catalog order, each once.

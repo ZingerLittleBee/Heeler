@@ -16,11 +16,7 @@ struct GitHubItemScreen: View {
     /// The item as the list showed it when the detail opened.
     let item: GitHubItem
     let send: GitHubSendLink?
-
-    @State private var writeSheet: GitHubWriteSheetRequest?
-    /// Shows a Close's result while the detail is on screen.
-    @State private var presence = UUID()
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    let write: GitHubWriteLink
 
     var body: some View {
         let state = store.detailState(of: item, on: host)
@@ -63,16 +59,8 @@ struct GitHubItemScreen: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 GitHubItemMenu(
-                    store: store, host: host, item: item, current: current, detail: detail,
-                    presence: presence, sheet: $writeSheet)
+                    store: store, host: host, item: item, current: current, detail: detail, write: write)
             }
-        }
-        .onAppear { store.present(presence) }
-        .onDisappear { store.leave(presence) }
-        .sheet(item: $writeSheet) { request in
-            GitHubWriteSheet(request: request, store: store, host: host, item: item)
-                .modifier(ConsoleSheetPresentationModifier(
-                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
         .modifier(GitHubSendBar(isShown: send != nil) {
             Button {
@@ -384,9 +372,7 @@ private struct GitHubItemMenu: View {
     /// As the detail shows it now.
     let current: GitHubItem
     let detail: GitHubItemDetail?
-    /// The detail's, while it is on screen.
-    let presence: UUID
-    @Binding var sheet: GitHubWriteSheetRequest?
+    let write: GitHubWriteLink
 
     @State private var isConfirmingClose = false
     @Environment(\.openURL) private var openURL
@@ -410,17 +396,17 @@ private struct GitHubItemMenu: View {
                         Section {
                             if actions.contains(.comment) {
                                 Button("Comment…", systemImage: "text.bubble") {
-                                    sheet = GitHubWriteSheetRequest(kind: .compose(.comment))
+                                    write.present(GitHubWriteSheetRequest(host: host, item: item, kind: .compose(.comment)))
                                 }
                             }
                             if actions.contains(.approve) {
                                 Button("Approve…", systemImage: "checkmark.circle") {
-                                    sheet = GitHubWriteSheetRequest(kind: .compose(.approve))
+                                    write.present(GitHubWriteSheetRequest(host: host, item: item, kind: .compose(.approve)))
                                 }
                             }
                             if actions.contains(.merge) {
                                 Button("Merge…", systemImage: "arrow.triangle.merge") {
-                                    sheet = GitHubWriteSheetRequest(kind: .merge)
+                                    write.present(GitHubWriteSheetRequest(host: host, item: item, kind: .merge))
                                 }
                             }
                             if actions.contains(.close) {
@@ -453,16 +439,10 @@ private struct GitHubItemMenu: View {
         }
     }
 
-    /// The detail shows the item closed when it is; anything else opens a
-    /// page that says what happened, here or, once the detail has gone, from
-    /// the tab.
+    /// The detail shows the item closed when it is; anything else is a page
+    /// the tab shows, wherever in it the user is by then.
     private func close(_ reason: GitHubCloseReason?) {
-        Task {
-            guard let result = await store.write(.close(reason), on: item, host: host, shownBy: presence),
-                !result.isPlainSuccess
-            else { return }
-            sheet = GitHubWriteSheetRequest(kind: .closeResult(result))
-        }
+        Task { await store.write(.close(reason), on: item, host: host, shownBy: nil) }
     }
 }
 

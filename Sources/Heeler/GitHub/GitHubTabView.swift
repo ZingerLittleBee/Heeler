@@ -22,16 +22,16 @@ struct GitHubTabView: View {
     @Binding var path: [GitHubItemLink]
     let terminals: GitHubTerminalLink?
     let send: GitHubSendLink?
+    let write: GitHubWriteLink
 
     var body: some View {
         NavigationStack(path: $path) {
             GitHubListScreen(store: store, terminals: terminals, selection: nil)
                 .navigationTitle(ConsoleTab.github.title)
                 .navigationDestination(for: GitHubItemLink.self) { link in
-                    GitHubItemScreen(store: store, host: link.host, item: link.item, send: send)
+                    GitHubItemScreen(store: store, host: link.host, item: link.item, send: send, write: write)
                 }
         }
-        .modifier(GitHubWriteReports(store: store))
     }
 }
 
