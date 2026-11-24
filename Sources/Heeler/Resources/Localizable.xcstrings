@@ -80692,6 +80692,28 @@
         }
       }
     },
+    "gh Finished" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh が終了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 已结束"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 已結束"
+          }
+        }
+      }
+    },
     "gh did not answer in time." : {
       "localizations" : {
         "ja" : {

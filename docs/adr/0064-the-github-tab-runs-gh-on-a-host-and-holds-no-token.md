@@ -196,9 +196,13 @@ Close.
   commit's parents match the method, and saying whether the branch is gone;
   Not Merged Yet with gh's output when gh exited 0 and the pull request is
   still open (auto-merge or a merge queue); GitHub Refused the Merge with
-  gh's output when it did not exit 0. The other writes end without a page
-  when gh exits 0 (Close when the read shows the item closed), and otherwise
-  show gh's output under a title that says what happened.
+  gh's output when it did not exit 0. When gh exited 0 and the read after
+  failed, nothing shows whether the change took, so a Merge or Close page
+  is titled gh Finished, says Heeler could not read the item again, shows
+  gh's output and offers the item in the browser. The other writes end
+  without a page when gh exits 0 (Close when the read shows the item
+  closed), and otherwise show gh's output under a title that says what
+  happened.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged

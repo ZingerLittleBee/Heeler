@@ -434,7 +434,9 @@ struct GitHubWriteResultView: View {
                 }
                 VStack(spacing: 10) {
                     // The row the write began from when the read after failed too.
-                    if page.style == .unknown, let url = URL(string: (result.detail?.item ?? result.item).url) {
+                    if page.style == .unknown || page.style == .unread,
+                        let url = URL(string: (result.detail?.item ?? result.item).url)
+                    {
                         Button {
                             openURL(url)
                         } label: {
@@ -560,6 +562,8 @@ enum GitHubWriteWords {
             case refused
             /// gh exited without one, and the read does not show the change.
             case pending
+            /// gh exited without one, and the item could not be read after.
+            case unread
             case unknown
             /// Nothing ran.
             case notRun
@@ -569,6 +573,7 @@ enum GitHubWriteWords {
                 case .merged: "arrow.triangle.merge"
                 case .refused: "xmark.circle"
                 case .pending: "clock"
+                case .unread: "info.circle"
                 case .unknown: "questionmark.circle"
                 case .notRun: "exclamationmark.triangle"
                 }
@@ -580,7 +585,7 @@ enum GitHubWriteWords {
                 switch self {
                 case .merged: GitHubInk.purple
                 case .refused, .notRun: GitHubInk.red
-                case .pending: .secondary
+                case .pending, .unread: .secondary
                 case .unknown: GitHubInk.amber
                 }
             }
@@ -621,6 +626,13 @@ enum GitHubWriteWords {
         let readFailed = result.readFailure.map {
             String(localized: "Heeler could not read it again afterward. \(GitHubBannerText.message(for: $0))")
         }
+        let check =
+            switch action {
+            case .comment, .approve:
+                String(localized: "Check the conversation on GitHub before you try again.")
+            case .merge, .close:
+                String(localized: "Check it on GitHub before you try again.")
+            }
         switch result.outcome {
         case .notRun(let reason):
             return Page(style: .notRun, title: notRunTitle(action), summary: reason)
@@ -630,25 +642,26 @@ enum GitHubWriteWords {
                 shown == nil
                 ? String(localized: "gh printed nothing. It stopped with status \(Int(status)).")
                 : String(localized: "This is what gh printed.")
+            // With no read after it, nothing says whether the change shows.
+            if status == 0, result.detail == nil {
+                return Page(
+                    style: .unread, title: String(localized: "gh Finished"),
+                    summary: [readFailed, check].compactMap { $0 }.joinedAsSentences(),
+                    printed: shown,
+                    caption: [String(localized: "gh finished without an error."), said].joinedAsSentences())
+            }
             if status == 0 {
                 return Page(
                     style: .pending,
                     title: action == .merge ? String(localized: "Not Merged Yet") : String(localized: "Not Closed Yet"),
                     printed: shown,
-                    caption: [String(localized: "gh finished without an error."), stillOpen ?? readFailed, said]
+                    caption: [String(localized: "gh finished without an error."), stillOpen, said]
                         .compactMap { $0 }.joinedAsSentences())
             }
             return Page(
                 style: .refused, title: refusedTitle(action, isPullRequest: isPullRequest), printed: shown,
                 caption: [said, stillOpen ?? readFailed].compactMap { $0 }.joinedAsSentences())
         case .unknown(let reason):
-            let check =
-                switch action {
-                case .comment, .approve:
-                    String(localized: "Check the conversation on GitHub before you try again.")
-                case .merge, .close:
-                    String(localized: "Check it on GitHub before you try again.")
-                }
             return Page(
                 style: .unknown, title: String(localized: "Outcome Unknown"),
                 summary: [
