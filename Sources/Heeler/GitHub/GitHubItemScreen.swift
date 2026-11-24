@@ -180,7 +180,8 @@ private struct GitHubItemFacts: View {
         let pull = detail?.pullRequest
         LabeledContent("Branch") {
             if let pull {
-                Text(verbatim: pull.isCrossRepository ? "\(pull.headOwner ?? ""):\(pull.headBranch)" : pull.headBranch)
+                // A deleted fork has no owner left to name.
+                Text(verbatim: pull.isCrossRepository ? pull.headOwner.map { "\($0):\(pull.headBranch)" } ?? pull.headBranch : pull.headBranch)
                     .font(.body.monospaced())
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
                     .truncationMode(.middle)
