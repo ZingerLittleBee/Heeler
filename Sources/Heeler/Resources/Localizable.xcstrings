@@ -1826,7 +1826,28 @@
         }
       }
     },
-    "%@ on the Host belongs to a remote, and this pull request comes from a fork, so Heeler left it as it is. Name another branch to start one from the pull request." : {},
+    "%@ on the Host belongs to a remote, and this pull request comes from a fork, so Heeler left it as it is. Name another branch to start one from the pull request." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上の %@ はリモートのブランチで、このプルリクエストはフォークから来ているため、Heeler はそのままにしました。プルリクエストから新しいブランチを始めるには、別のブランチ名を指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 %@ 属于一个远程仓库，而此 Pull Request 来自复刻仓库，因此 Heeler 未改动它。请另取一个分支名，以便从该 Pull Request 新建分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 %@ 屬於某個遠端存放庫，而此 Pull Request 來自 fork 的存放庫，因此 Heeler 沒有更動它。請改用其他分支名稱，從此 Pull Request 建立新分支。"
+          }
+        }
+      }
+    },
     "%@ on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request." : {
       "localizations" : {
         "ja" : {
@@ -39427,7 +39448,28 @@
         }
       }
     },
-    "No Host Can Run gh" : {},
+    "No Host Can Run gh" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh を実行できるホストがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可运行 gh 的主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可執行 gh 的主機"
+          }
+        }
+      }
+    },
     "No Host in this scope can report Usage right now." : {
       "localizations" : {
         "ja" : {
@@ -49395,7 +49437,27 @@
       }
     },
     "Rate limited" : {
-      "comment" : "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read."
+      "comment" : "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レート制限中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受速率限制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受速率限制"
+          }
+        }
+      }
     },
     "Reach a Mac outside your local network through Tailscale, ZeroTier, EasyTier, or tailcat. Heeler joins on its own, without a VPN." : {
       "localizations" : {
@@ -62787,7 +62849,28 @@
         }
       }
     },
-    "The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there." : {},
+    "The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「GitHub」タブには macOS または Linux のホストが必要です。Heeler はそのホストの gh コマンドでプルリクエストと Issue を読み取ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“GitHub”标签页需要 macOS 或 Linux 主机。Heeler 会通过该主机上的 gh 命令读取 Pull Request 和 Issue。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「GitHub」分頁需要 macOS 或 Linux 主機。Heeler 會透過該主機上的 gh 指令讀取 Pull Request 與 Issue。"
+          }
+        }
+      }
+    },
     "The Hand Off failed: %@" : {
       "localizations" : {
         "ja" : {
@@ -81124,13 +81207,52 @@
         }
       }
     },
-    "git would not move %@ on the Host to the pull request's commits, so Heeler left it as it is." : {},
+    "git would not move %@ on the Host to the pull request's commits, so Heeler left it as it is." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git がホスト上の %@ をプルリクエストのコミットへ移動しなかったため、Heeler はそのままにしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 无法将主机上的 %@ 移到该 Pull Request 的提交上，因此 Heeler 未改动它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 無法將主機上的 %@ 移到此 Pull Request 的提交上，因此 Heeler 沒有更動它。"
+          }
+        }
+      }
+    },
     "git would not move %@ on the Host to the pull request's commits, so Heeler left it as it is: %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "git would not move %1$@ on the Host to the pull request's commits, so Heeler left it as it is: %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git がホスト上の %1$@ をプルリクエストのコミットへ移動しなかったため、Heeler はそのままにしました: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 无法将主机上的 %@ 移到该 Pull Request 的提交上，因此 Heeler 未改动它：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 無法將主機上的 %@ 移到此 Pull Request 的提交上，因此 Heeler 沒有更動它：%@"
           }
         }
       }
