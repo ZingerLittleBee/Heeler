@@ -440,7 +440,7 @@ struct GitHubBannerText: Equatable {
     /// place instead.
     init?(failure: GitHubReadFailure?, isOffline: Bool, host: GitHubHost, list: GitHubList) {
         switch failure {
-        case .notInstalled, .notSignedIn, .unsupported:
+        case .unsupported:
             guard isOffline else { return nil }
         default:
             break

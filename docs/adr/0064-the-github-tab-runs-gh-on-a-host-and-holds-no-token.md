@@ -286,12 +286,14 @@ Close.
   session's environment reaches it, including any credentials in a proxy URL,
   through the private folder the job reads its environment from, which the
   script removes when it ends, or a later run once it is stale.
-- A Host that fails reads shows the last list it gave, dimmed when the Host is
-  offline, with a banner saying why. Without one, the tab says why in its
-  place: gh not installed (with `brew install gh` on macOS, and GitHub's
-  instructions on Linux), not signed in (with `gh auth login`, Open Terminal
-  on the Host where it can start Terminals, and Check Again), offline, rate
-  limited (with when to try again), or gh's own message.
+- gh not installed or not signed in takes the list's place, even when a list
+  was read before, so a signed-out gh does not sit under another account's
+  list: `brew install gh` on macOS and GitHub's instructions on Linux, or
+  `gh auth login` with Open Terminal on the Host where it can start Terminals,
+  each with Check Again. A Host that fails reads otherwise shows the last list
+  it gave, dimmed when the Host is offline, with a banner saying why. Without
+  one, the tab says why in its place: offline, rate limited (with when to try
+  again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and
   read their own.
 - The choice in the menu and the saved list are kept under the Host's first
