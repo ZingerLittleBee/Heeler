@@ -51,7 +51,28 @@
     " · %@" : {
       "shouldTranslate" : false
     },
-    "\"%@\" is not a commit to start from." : {},
+    "\"%@\" is not a commit to start from." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」は開始点にできるコミットではありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”不是可作为起点的提交。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」不是可作為起點的提交。"
+          }
+        }
+      }
+    },
     "\"%@\" leaves no folder name for the checkout. Use a branch with ASCII letters or digits in it." : {
       "localizations" : {
         "ja" : {
@@ -255,7 +276,28 @@
         }
       }
     },
-    "%@ Is Offline" : {},
+    "%@ Is Offline" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はオフラインです"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已离线"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已離線"
+          }
+        }
+      }
+    },
     "%@ See this Host's page in Hosts." : {
       "localizations" : {
         "ja" : {
@@ -1102,6 +1144,24 @@
             "state" : "new",
             "value" : "%1$@ is already checked out in %2$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ はすでに %2$@ でチェックアウトされています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 %2$@ 中检出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 %2$@ 中簽出。"
+          }
         }
       }
     },
@@ -1155,6 +1215,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ is checked out in %2$@, so the worktree gets a new branch that starts from the pull request's latest commits."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ は %2$@ でチェックアウトされているため、ワークツリーにはプルリクエストの最新コミットから始まる新しいブランチを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 %2$@ 中检出，因此工作树将使用一个从该 Pull Request 最新提交开始的新分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 %2$@ 中簽出，因此工作樹會改用一個從此 Pull Request 最新提交開始的新分支。"
           }
         }
       }
@@ -1270,7 +1348,28 @@
         }
       }
     },
-    "%@ is offline" : {},
+    "%@ is offline" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はオフラインです"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已离线"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已離線"
+          }
+        }
+      }
+    },
     "%@ is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it." : {
       "localizations" : {
         "ja" : {
@@ -1727,7 +1826,28 @@
         }
       }
     },
-    "%@ on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request." : {},
+    "%@ on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上の %@ にはプルリクエストにないコミットがあるため、Heeler はそのままにしました。プルリクエストから新しいブランチを始めるには、別のブランチ名を指定してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 %@ 包含该 Pull Request 中没有的提交，因此 Heeler 未改动它。请另取一个分支名，以便从该 Pull Request 新建分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 %@ 含有此 Pull Request 沒有的提交，因此 Heeler 沒有更動它。請改用其他分支名稱，從此 Pull Request 建立新分支。"
+          }
+        }
+      }
+    },
     "%@ over %@" : {
       "comment" : "Route label: address, Overlay Network name",
       "localizations" : {
@@ -2274,6 +2394,24 @@
             "state" : "new",
             "value" : "%1$@ wants to merge into %2$@ · updated %3$@ ago"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ が %2$@ へのマージを希望 · %3$@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 请求合并到 %2$@ · %3$@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 請求合併至 %2$@ · %3$@前更新"
+          }
         }
       }
     },
@@ -2284,10 +2422,49 @@
             "state" : "new",
             "value" : "%1$@ was merged into %2$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ は %2$@ にマージされました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已合并到 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已合併至 %2$@。"
+          }
         }
       }
     },
-    "%@ was merged." : {},
+    "%@ was merged." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はマージされました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已合并。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已合併。"
+          }
+        }
+      }
+    },
     "%@ was not updated." : {
       "comment" : "Argument: Heeler Plugin or Host Helper.",
       "localizations" : {
@@ -2318,6 +2495,24 @@
             "state" : "new",
             "value" : "%1$@ was rebased onto %2$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ は %2$@ にリベースしてマージされました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已变基合并到 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已透過 rebase 合併至 %2$@。"
+          }
         }
       }
     },
@@ -2327,6 +2522,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ was squashed into %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ は %2$@ にスカッシュしてマージされました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已压缩合并到 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已壓縮合併至 %2$@。"
           }
         }
       }
@@ -6329,7 +6542,28 @@
         }
       }
     },
-    "A deleted account" : {},
+    "A deleted account" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除されたアカウント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已删除的账户"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已刪除的帳號"
+          }
+        }
+      }
+    },
     "A fixed address is a private IPv4 address with a prefix, such as 10.144.144.7/24 (not 0.x, 127.x, or 224 and up)." : {
       "localizations" : {
         "ja" : {
@@ -6359,11 +6593,71 @@
             "state" : "new",
             "value" : "A fresh checkout of %1$@ on a new branch that starts from %2$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ の新しいチェックアウトです。%2$@ から始まる新しいブランチを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 的全新检出副本，使用从 %2$@ 开始的新分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 的全新簽出，使用從 %2$@ 開始的新分支。"
+          }
         }
       }
     },
-    "A fresh checkout of %@ on a new branch that starts from the pull request's latest commits." : {},
-    "A fresh checkout of %@ on this pull request's branch." : {},
+    "A fresh checkout of %@ on a new branch that starts from the pull request's latest commits." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の新しいチェックアウトです。プルリクエストの最新コミットから始まる新しいブランチを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的全新检出副本，使用从该 Pull Request 最新提交开始的新分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的全新簽出，使用從此 Pull Request 最新提交開始的新分支。"
+          }
+        }
+      }
+    },
+    "A fresh checkout of %@ on this pull request's branch." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の新しいチェックアウトです。このプルリクエストのブランチを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的全新检出副本，使用此 Pull Request 的分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的全新簽出，使用此 Pull Request 的分支。"
+          }
+        }
+      }
+    },
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {
         "ja" : {
@@ -7851,7 +8145,28 @@
         }
       }
     },
-    "Add a Host in Hosts. Heeler reads pull requests and issues through the gh command there." : {},
+    "Add a Host in Hosts. Heeler reads pull requests and issues through the gh command there." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ホスト」でホストを追加してください。Heeler はそのホストの gh コマンドでプルリクエストと Issue を読み取ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“主机”中添加主机。Heeler 会通过该主机上的 gh 命令读取 Pull Request 和 Issue。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「主機」中新增主機。Heeler 會透過該主機上的 gh 指令讀取 Pull Request 與 Issue。"
+          }
+        }
+      }
+    },
     "Add a Host to configure its Agent rows." : {
       "localizations" : {
         "ja" : {
@@ -8584,7 +8899,28 @@
         }
       }
     },
-    "Address the Review Comments" : {},
+    "Address the Review Comments" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レビューコメントに対応する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理审查意见"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "處理審查意見"
+          }
+        }
+      }
+    },
     "Address to fill in" : {
       "localizations" : {
         "ja" : {
@@ -10063,7 +10399,28 @@
         }
       }
     },
-    "Another change to this item is still running." : {},
+    "Another change to this item is still running." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この項目への別の変更がまだ実行中です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对此项目的另一项更改仍在进行中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對此項目的另一項變更仍在進行中。"
+          }
+        }
+      }
+    },
     "Another command ran in this repository at the same time; a change made by either may show under either result." : {
       "localizations" : {
         "ja" : {
@@ -10724,9 +11081,72 @@
         }
       }
     },
-    "Approved" : {},
-    "Approved by %@" : {},
-    "Approve…" : {},
+    "Approved" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已核准"
+          }
+        }
+      }
+    },
+    "Approved by %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が承認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已核准"
+          }
+        }
+      }
+    },
+    "Approve…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核准…"
+          }
+        }
+      }
+    },
     "Archive channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -10971,7 +11391,28 @@
         }
       }
     },
-    "Ask the Agent To" : {},
+    "Ask the Agent To" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントへの依頼"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Agent 做什么"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要 Agent 做什麼"
+          }
+        }
+      }
+    },
     "Ask the Agent to" : {
       "localizations" : {
         "ja" : {
@@ -11040,8 +11481,50 @@
         }
       }
     },
-    "Assigned to You" : {},
-    "Assignees" : {},
+    "Assigned to You" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに割り当て"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分配给你的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指派給你的"
+          }
+        }
+      }
+    },
+    "Assignees" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "担当者"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "负责人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "負責人"
+          }
+        }
+      }
+    },
     "Assignment (#%lld)" : {
       "localizations" : {
         "ja" : {
@@ -13489,8 +13972,50 @@
         }
       }
     },
-    "Changes requested" : {},
-    "Changes requested by %@" : {},
+    "Changes requested" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更を要求"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要求修改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要求修改"
+          }
+        }
+      }
+    },
+    "Changes requested by %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が変更を要求"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 要求修改"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 要求修改"
+          }
+        }
+      }
+    },
     "Changes totals of the Agent's Checkout" : {
       "localizations" : {
         "ja" : {
@@ -13513,7 +14038,28 @@
         }
       }
     },
-    "Changes were requested. GitHub may refuse this merge." : {},
+    "Changes were requested. GitHub may refuse this merge." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更が求められています。GitHub がこのマージを拒否する可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有人要求修改。GitHub 可能会拒绝这次合并。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有人要求修改。GitHub 可能會拒絕這次合併。"
+          }
+        }
+      }
+    },
     "Changes: %@" : {
       "comment" : "VoiceOver label of an Agent row's Changes totals",
       "localizations" : {
@@ -14171,7 +14717,28 @@
         }
       }
     },
-    "Check it on GitHub before you try again." : {},
+    "Check it on GitHub before you try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度試す前に GitHub で確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试前请先在 GitHub 上确认。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試一次之前，請先在 GitHub 上確認。"
+          }
+        }
+      }
+    },
     "Check its settings in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -14349,7 +14916,28 @@
       }
     },
     "Check the Rex version on the Host." : {},
-    "Check the conversation on GitHub before you try again." : {},
+    "Check the conversation on GitHub before you try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "もう一度試す前に GitHub で会話を確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试前请先在 GitHub 上查看对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試一次之前，請先在 GitHub 上查看對話。"
+          }
+        }
+      }
+    },
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -14637,7 +15225,28 @@
         }
       }
     },
-    "Checks" : {},
+    "Checks" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェック"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查"
+          }
+        }
+      }
+    },
     "Chinese (Hong Kong)" : {
       "localizations" : {
         "ja" : {
@@ -15661,7 +16270,28 @@
         }
       }
     },
-    "Close Pull Request" : {},
+    "Close Pull Request" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プルリクエストをクローズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭 Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉 Pull Request"
+          }
+        }
+      }
+    },
     "Close Tab" : {
       "comment" : "Action that closes a tab.",
       "localizations" : {
@@ -15774,8 +16404,50 @@
         }
       }
     },
-    "Close This Issue?" : {},
-    "Close This Pull Request?" : {},
+    "Close This Issue?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Issue をクローズしますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭此 Issue？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要關閉此 Issue 嗎？"
+          }
+        }
+      }
+    },
+    "Close This Pull Request?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプルリクエストをクローズしますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭此 Pull Request？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要關閉此 Pull Request 嗎？"
+          }
+        }
+      }
+    },
     "Close Workspace" : {
       "comment" : "Action that closes a Workspace with its last tab.",
       "localizations" : {
@@ -15844,8 +16516,50 @@
         }
       }
     },
-    "Close as Completed" : {},
-    "Close as Not Planned" : {},
+    "Close as Completed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了としてクローズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以“已完成”关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以「已完成」關閉"
+          }
+        }
+      }
+    },
+    "Close as Not Planned" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応予定なしとしてクローズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以“不计划处理”关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以「不予處理」關閉"
+          }
+        }
+      }
+    },
     "Close the other terminal before reconnecting." : {
       "localizations" : {
         "ja" : {
@@ -15868,7 +16582,28 @@
         }
       }
     },
-    "Closed without merging · updated %@ ago" : {},
+    "Closed without merging · updated %@ ago" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージせずにクローズ · %@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未合并即关闭 · %@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未合併即關閉 · %@前更新"
+          }
+        }
+      }
+    },
     "Closes %@ in %@." : {
       "localizations" : {
         "ja" : {
@@ -16003,7 +16738,28 @@
         }
       }
     },
-    "Close…" : {},
+    "Close…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クローズ…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉…"
+          }
+        }
+      }
+    },
     "Closing failed: %@" : {
       "comment" : "Error when closing a tab or pane failed. %@ is the underlying error.",
       "localizations" : {
@@ -16786,9 +17542,72 @@
         }
       }
     },
-    "Comment" : {},
-    "Comments" : {},
-    "Comment…" : {},
+    "Comment" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言"
+          }
+        }
+      }
+    },
+    "Comments" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言"
+          }
+        }
+      }
+    },
+    "Comment…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメント…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言…"
+          }
+        }
+      }
+    },
     "Compaction cancelled" : {
       "localizations" : {
         "ja" : {
@@ -18633,7 +19452,28 @@
         }
       }
     },
-    "Could Not Read GitHub" : {},
+    "Could Not Read GitHub" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub を読み取れませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 GitHub"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 GitHub"
+          }
+        }
+      }
+    },
     "Could Not Remove Host" : {
       "localizations" : {
         "ja" : {
@@ -18989,7 +19829,28 @@
         }
       }
     },
-    "Could not read GitHub" : {},
+    "Could not read GitHub" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub を読み取れませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 GitHub"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 GitHub"
+          }
+        }
+      }
+    },
     "Could not read Usage" : {
       "localizations" : {
         "ja" : {
@@ -19855,7 +20716,28 @@
     "Courier New" : {
       "shouldTranslate" : false
     },
-    "Create a Merge Commit" : {},
+    "Create a Merge Commit" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージコミットを作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建合并提交"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立合併提交"
+          }
+        }
+      }
+    },
     "Create channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -19989,7 +20871,28 @@
         }
       }
     },
-    "Created by You" : {},
+    "Created by You" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你创建的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你建立的"
+          }
+        }
+      }
+    },
     "Created when you first connect" : {
       "comment" : "ZeroTier Node ID value before the first connection",
       "localizations" : {
@@ -20950,7 +21853,28 @@
         }
       }
     },
-    "Delete Branch" : {},
+    "Delete Branch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブランチを削除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除分支"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除分支"
+          }
+        }
+      }
+    },
     "Delete Network" : {
       "localizations" : {
         "ja" : {
@@ -22130,7 +23054,28 @@
         }
       }
     },
-    "Draft" : {},
+    "Draft" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下書き"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "草稿"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "草稿"
+          }
+        }
+      }
+    },
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -25501,7 +26446,28 @@
         }
       }
     },
-    "Fix the Failing Checks" : {},
+    "Fix the Failing Checks" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗したチェックを修正する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修复失败的检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修正失敗的檢查"
+          }
+        }
+      }
+    },
     "Fixed IPv4" : {
       "localizations" : {
         "ja" : {
@@ -26297,22 +27263,358 @@
         }
       }
     },
-    "GitHub" : {},
-    "GitHub CLI Isn't Installed" : {},
-    "GitHub CLI not installed" : {},
-    "GitHub Host" : {},
-    "GitHub Refused the Approval" : {},
-    "GitHub Refused the Comment" : {},
-    "GitHub Refused the Merge" : {},
-    "GitHub Refused to Close the Issue" : {},
-    "GitHub Refused to Close the Pull Request" : {},
-    "GitHub did not say how this repository merges." : {},
-    "GitHub no longer offers this here, so Heeler ran nothing." : {},
-    "GitHub no longer shows this issue to your account." : {},
-    "GitHub no longer shows this pull request to your account." : {},
-    "GitHub now shows this issue as closed, so Heeler ran nothing." : {},
-    "GitHub now shows this pull request as closed, so Heeler ran nothing." : {},
-    "GitHub now shows this pull request as merged, so Heeler ran nothing." : {},
+    "GitHub" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub"
+          }
+        }
+      }
+    },
+    "GitHub CLI Isn't Installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub CLI がインストールされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装 GitHub CLI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未安裝 GitHub CLI"
+          }
+        }
+      }
+    },
+    "GitHub CLI not installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub CLI 未インストール"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装 GitHub CLI"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安裝 GitHub CLI"
+          }
+        }
+      }
+    },
+    "GitHub Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub のホスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 主機"
+          }
+        }
+      }
+    },
+    "GitHub Refused the Approval" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub が承認を拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒绝了批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒絕了核准"
+          }
+        }
+      }
+    },
+    "GitHub Refused the Comment" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub がコメントを拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒绝了评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒絕了留言"
+          }
+        }
+      }
+    },
+    "GitHub Refused the Merge" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub がマージを拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒绝了合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒絕了合併"
+          }
+        }
+      }
+    },
+    "GitHub Refused to Close the Issue" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub が Issue のクローズを拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒绝关闭此 Issue"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒絕關閉此 Issue"
+          }
+        }
+      }
+    },
+    "GitHub Refused to Close the Pull Request" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub がプルリクエストのクローズを拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒绝关闭此 Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 拒絕關閉此 Pull Request"
+          }
+        }
+      }
+    },
+    "GitHub did not say how this repository merges." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub はこのリポジトリのマージ方法を返しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 未告知此仓库允许的合并方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 沒有說明此存放庫的合併方式。"
+          }
+        }
+      }
+    },
+    "GitHub no longer offers this here, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこの操作を行えなくなったため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再提供此操作，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再提供此操作，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
+    "GitHub no longer shows this issue to your account." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub はこの Issue をあなたのアカウントに表示しなくなりました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再向你的账户显示此 Issue。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再向你的帳號顯示此 Issue。"
+          }
+        }
+      }
+    },
+    "GitHub no longer shows this pull request to your account." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub はこのプルリクエストをあなたのアカウントに表示しなくなりました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再向你的账户显示此 Pull Request。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 已不再向你的帳號顯示此 Pull Request。"
+          }
+        }
+      }
+    },
+    "GitHub now shows this issue as closed, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこの Issue がクローズ済みになっているため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 现在显示此 Issue 已关闭，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 現在顯示此 Issue 已關閉，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
+    "GitHub now shows this pull request as closed, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこのプルリクエストがクローズ済みになっているため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 现在显示此 Pull Request 已关闭，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 現在顯示此 Pull Request 已關閉，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
+    "GitHub now shows this pull request as merged, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこのプルリクエストがマージ済みになっているため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 现在显示此 Pull Request 已合并，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 現在顯示此 Pull Request 已合併，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
     "GitHub sheet Approve" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -26320,6 +27622,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Approve"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核准"
           }
         }
       }
@@ -26332,6 +27652,24 @@
             "state" : "new",
             "value" : "Close"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クローズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉"
+          }
         }
       }
     },
@@ -26342,6 +27680,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Comment"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言"
           }
         }
       }
@@ -26354,6 +27710,24 @@
             "state" : "new",
             "value" : "Merge"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合併"
+          }
         }
       }
     },
@@ -26364,6 +27738,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Closed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クローズ済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已關閉"
           }
         }
       }
@@ -26376,13 +27768,115 @@
             "state" : "new",
             "value" : "Open"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オープン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟"
+          }
         }
       }
     },
-    "GitHub still shows the issue open." : {},
-    "GitHub still shows the pull request open." : {},
-    "GitHub's Rate Limit Was Reached" : {},
-    "GitHub's answer could not be read." : {},
+    "GitHub still shows the issue open." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこの Issue はまだオープンのままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 仍显示此 Issue 处于开启状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 仍顯示此 Issue 為開啟狀態。"
+          }
+        }
+      }
+    },
+    "GitHub still shows the pull request open." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub ではこのプルリクエストはまだオープンのままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 仍显示此 Pull Request 处于开启状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub 仍顯示此 Pull Request 為開啟狀態。"
+          }
+        }
+      }
+    },
+    "GitHub's Rate Limit Was Reached" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub のレート制限に達しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已达到 GitHub 的速率限制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已達到 GitHub 的速率限制"
+          }
+        }
+      }
+    },
+    "GitHub's answer could not be read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub の応答を読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 GitHub 的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取 GitHub 的回應。"
+          }
+        }
+      }
+    },
     "GitHub's default palettes for each appearance" : {
       "localizations" : {
         "ja" : {
@@ -26405,8 +27899,50 @@
         }
       }
     },
-    "GitHub's rate limit was reached" : {},
-    "GitHub's rate limit was reached." : {},
+    "GitHub's rate limit was reached" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub のレート制限に達しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已达到 GitHub 的速率限制"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已達到 GitHub 的速率限制"
+          }
+        }
+      }
+    },
+    "GitHub's rate limit was reached." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub のレート制限に達しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已达到 GitHub 的速率限制。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已達到 GitHub 的速率限制。"
+          }
+        }
+      }
+    },
     "Global" : {
       "localizations" : {
         "ja" : {
@@ -28416,8 +29952,50 @@
         }
       }
     },
-    "Heeler could not read it again afterward. %@" : {},
-    "Heeler could not read it again first, so it ran nothing. %@" : {},
+    "Heeler could not read it again afterward. %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その後、Heeler は再読み取りできませんでした。%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 之后未能重新读取它。%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 之後無法再次讀取它。%@"
+          }
+        }
+      }
+    },
+    "Heeler could not read it again first, so it ran nothing. %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は事前に再読み取りできなかったため、何も実行しませんでした。%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 未能先重新读取它，因此未执行任何操作。%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法先重新讀取它，因此沒有執行任何動作。%@"
+          }
+        }
+      }
+    },
     "Heeler could not read the Host's plugin before changing it, so nothing changed. Run the checks again." : {
       "localizations" : {
         "ja" : {
@@ -28528,7 +30106,28 @@
         }
       }
     },
-    "Heeler could not read what gh printed on the Host." : {},
+    "Heeler could not read what gh printed on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はホスト上で gh が出力した内容を読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法读取 gh 在主机上输出的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法讀取 gh 在主機上輸出的內容。"
+          }
+        }
+      }
+    },
     "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
@@ -29624,7 +31223,28 @@
         }
       }
     },
-    "Heeler puts this message in that Agent's Composer. Nothing is sent until you send it." : {},
+    "Heeler puts this message in that Agent's Composer. Nothing is sent until you send it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler はこのメッセージを相手のエージェントのコンポーザーに入れます。あなたが送信するまで何も送信されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 会把这条消息放入该 Agent 的输入框。在你发送之前不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 會把這則訊息放入該 Agent 的輸入框。在你傳送之前不會傳送任何內容。"
+          }
+        }
+      }
+    },
     "Heeler reaches the Jump Host through this network without turning on a VPN." : {
       "localizations" : {
         "ja" : {
@@ -29713,9 +31333,72 @@
         }
       }
     },
-    "Heeler reads GitHub through gh on %@ once it connects." : {},
-    "Heeler reads pull requests and issues through the gh command on %@. Install it there with GitHub's instructions for Linux, then check again." : {},
-    "Heeler reads pull requests and issues through the gh command on %@. Install it there, then check again." : {},
+    "Heeler reads GitHub through gh on %@ once it connects." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が接続されると、Heeler はそこで gh を使って GitHub を読み取ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 连接后，Heeler 会通过其上的 gh 读取 GitHub。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 連線後，Heeler 會透過其上的 gh 讀取 GitHub。"
+          }
+        }
+      }
+    },
+    "Heeler reads pull requests and issues through the gh command on %@. Install it there with GitHub's instructions for Linux, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は %@ の gh コマンドでプルリクエストと Issue を読み取ります。GitHub の Linux 向け手順に従ってそこにインストールし、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 通过 %@ 上的 gh 命令读取 Pull Request 和 Issue。请按照 GitHub 的 Linux 安装说明在该主机上安装，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 透過 %@ 上的 gh 指令讀取 Pull Request 與 Issue。請依照 GitHub 的 Linux 安裝說明在該主機上安裝，然後再檢查一次。"
+          }
+        }
+      }
+    },
+    "Heeler reads pull requests and issues through the gh command on %@. Install it there, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は %@ の gh コマンドでプルリクエストと Issue を読み取ります。そこにインストールしてから、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 通过 %@ 上的 gh 命令读取 Pull Request 和 Issue。请在该主机上安装，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 透過 %@ 上的 gh 指令讀取 Pull Request 與 Issue。請在該主機上安裝，然後再檢查一次。"
+          }
+        }
+      }
+    },
     "Heeler redistributes these components. Each licence is reproduced in full." : {
       "localizations" : {
         "ja" : {
@@ -32363,7 +34046,28 @@
         }
       }
     },
-    "Installing gh on Linux" : {},
+    "Installing gh on Linux" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linux に gh をインストールする"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Linux 上安装 gh"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Linux 上安裝 gh"
+          }
+        }
+      }
+    },
     "Instructions dictated to a coding agent" : {
       "localizations" : {
         "ja" : {
@@ -32615,11 +34319,73 @@
         }
       }
     },
-    "Investigate First" : {},
-    "Issue" : {
-      "comment" : "Read first for an issue in the GitHub list."
+    "Investigate First" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まず調査する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先调查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先調查"
+          }
+        }
+      }
     },
-    "Issues" : {},
+    "Issue" : {
+      "comment" : "Read first for an issue in the GitHub list.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        }
+      }
+    },
+    "Issues" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Issue"
+          }
+        }
+      }
+    },
     "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows" : {
       "localizations" : {
         "ja" : {
@@ -32642,7 +34408,28 @@
         }
       }
     },
-    "It may have gone through. Heeler did not send it again." : {},
+    "It may have gone through. Heeler did not send it again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "実行された可能性があります。Heeler は再送信しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可能已经生效。Heeler 没有再次发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它可能已經生效。Heeler 沒有再次傳送。"
+          }
+        }
+      }
+    },
     "It may still complete. Check the Terminal before trying again." : {
       "localizations" : {
         "ja" : {
@@ -33177,7 +34964,28 @@
         }
       }
     },
-    "Just Read It" : {},
+    "Just Read It" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読むだけ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅阅读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅閱讀"
+          }
+        }
+      }
+    },
     "Just now" : {
       "localizations" : {
         "ja" : {
@@ -33469,7 +35277,28 @@
         }
       }
     },
-    "Labels" : {},
+    "Labels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ラベル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標籤"
+          }
+        }
+      }
+    },
     "Language" : {
       "localizations" : {
         "ja" : {
@@ -33845,8 +35674,50 @@
         }
       }
     },
-    "Leave a comment" : {},
-    "Leave a comment (optional)" : {},
+    "Leave a comment" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメントを入力"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发表评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言"
+          }
+        }
+      }
+    },
+    "Leave a comment (optional)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメントを入力（任意）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发表评论（可选）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "留言（選填）"
+          }
+        }
+      }
+    },
     "Leave blank for a Tailscale account. Enter an https URL to use your own Headscale server." : {
       "localizations" : {
         "ja" : {
@@ -35483,8 +37354,50 @@
         }
       }
     },
-    "Merge" : {},
-    "Merged" : {},
+    "Merge" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合併"
+          }
+        }
+      }
+    },
+    "Merged" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已合併"
+          }
+        }
+      }
+    },
     "Merged into %@ · updated %@ ago" : {
       "localizations" : {
         "en" : {
@@ -35492,11 +37405,71 @@
             "state" : "new",
             "value" : "Merged into %1$@ · updated %2$@ ago"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ にマージ済み · %2$@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已合并到 %1$@ · %2$@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已合併至 %1$@ · %2$@前更新"
+          }
         }
       }
     },
-    "Merge…" : {},
-    "Merging…" : {},
+    "Merge…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合并…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合併…"
+          }
+        }
+      }
+    },
+    "Merging…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在合并…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在合併…"
+          }
+        }
+      }
+    },
     "Message" : {
       "comment" : "Notice title for a peer message with no sender",
       "localizations" : {
@@ -36439,7 +38412,28 @@
         }
       }
     },
-    "Needs Your Review" : {},
+    "Needs Your Review" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのレビュー待ち"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待你审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待你審查"
+          }
+        }
+      }
+    },
     "Needs attention" : {
       "localizations" : {
         "ja" : {
@@ -36938,7 +38932,28 @@
         }
       }
     },
-    "New commits were pushed to this pull request after you opened it, so Heeler did not merge. Look at them, then merge again." : {},
+    "New commits were pushed to this pull request after you opened it, so Heeler did not merge. Look at them, then merge again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプルリクエストを開いた後に新しいコミットがプッシュされたため、Heeler はマージしませんでした。新しいコミットを確認してから、もう一度マージしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你打开此 Pull Request 后又有新的提交被推送，因此 Heeler 没有合并。请先查看这些提交，然后再次合并。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你開啟此 Pull Request 後又有新的提交被推送，因此 Heeler 沒有合併。請先查看這些提交，然後再合併一次。"
+          }
+        }
+      }
+    },
     "New empty file." : {
       "localizations" : {
         "ja" : {
@@ -37162,13 +39177,52 @@
         }
       }
     },
-    "No Agent on %@ can take a message now." : {},
+    "No Agent on %@ can take a message now." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在 %@ にはメッセージを受け取れるエージェントがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上目前没有可以接收消息的 Agent。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上目前沒有可以接收訊息的 Agent。"
+          }
+        }
+      }
+    },
     "No Agent on %@ works in %@ yet. Choose a folder." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "No Agent on %1$@ works in %2$@ yet. Choose a folder."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ には、まだ %2$@ で作業しているエージェントがありません。フォルダを選択してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 上还没有在 %2$@ 中工作的 Agent。请选择一个文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 上還沒有在 %2$@ 中工作的 Agent。請選擇一個資料夾。"
           }
         }
       }
@@ -37394,7 +39448,28 @@
         }
       }
     },
-    "No Issues Involve You" : {},
+    "No Issues Involve You" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに関係する Issue はありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有与你相关的 Issue"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有與你相關的 Issue"
+          }
+        }
+      }
+    },
     "No Listening Ports" : {
       "localizations" : {
         "ja" : {
@@ -37660,7 +39735,28 @@
         }
       }
     },
-    "No Pull Requests Involve You" : {},
+    "No Pull Requests Involve You" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに関係するプルリクエストはありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有与你相关的 Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有與你相關的 Pull Request"
+          }
+        }
+      }
+    },
     "No Results for “%@”" : {
       "comment" : "Empty state when a search finds nothing. %@ is the search text.",
       "localizations" : {
@@ -37993,8 +40089,50 @@
         }
       }
     },
-    "No checks yet" : {},
-    "No comments" : {},
+    "No checks yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェックはまだありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無檢查"
+          }
+        }
+      }
+    },
+    "No comments" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメントなし"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有留言"
+          }
+        }
+      }
+    },
     "No commits yet" : {
       "localizations" : {
         "ja" : {
@@ -38017,7 +40155,28 @@
         }
       }
     },
-    "No description provided." : {},
+    "No description provided." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "説明はありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供描述。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未提供說明。"
+          }
+        }
+      }
+    },
     "No directory" : {
       "comment" : "Label of a derived Workspace with no directory",
       "localizations" : {
@@ -39020,9 +41179,50 @@
       }
     },
     "None yet" : {
-      "comment" : "A pull request with no checks, in its detail."
+      "comment" : "A pull request with no checks, in its detail.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無"
+          }
+        }
+      }
     },
-    "Not Approved" : {},
+    "Not Approved" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未核准"
+          }
+        }
+      }
+    },
     "Not Available" : {
       "localizations" : {
         "ja" : {
@@ -39045,8 +41245,50 @@
         }
       }
     },
-    "Not Closed" : {},
-    "Not Closed Yet" : {},
+    "Not Closed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クローズされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未關閉"
+          }
+        }
+      }
+    },
+    "Not Closed Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだクローズされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未關閉"
+          }
+        }
+      }
+    },
     "Not Connected" : {
       "localizations" : {
         "ja" : {
@@ -39091,8 +41333,50 @@
         }
       }
     },
-    "Not Merged" : {},
-    "Not Merged Yet" : {},
+    "Not Merged" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未合併"
+          }
+        }
+      }
+    },
+    "Not Merged Yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだマージされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未合併"
+          }
+        }
+      }
+    },
     "Not Now" : {
       "localizations" : {
         "ja" : {
@@ -39115,7 +41399,28 @@
         }
       }
     },
-    "Not Posted" : {},
+    "Not Posted" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未发布"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未發布"
+          }
+        }
+      }
+    },
     "Not Set" : {
       "comment" : "Accounts: folder variable value when none is set",
       "localizations" : {
@@ -39692,7 +41997,28 @@
         }
       }
     },
-    "Not requested yet" : {},
+    "Not requested yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ依頼されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未请求"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未請求"
+          }
+        }
+      }
+    },
     "Not running" : {
       "localizations" : {
         "ja" : {
@@ -40423,9 +42749,72 @@
         }
       }
     },
-    "Offline, read at %@" : {},
-    "Offline, read on %@" : {},
-    "Offline, read yesterday" : {},
+    "Offline, read at %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフライン、%@ に読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线，读取于 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離線，讀取於 %@"
+          }
+        }
+      }
+    },
+    "Offline, read on %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフライン、%@ に読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线，读取于 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離線，讀取於 %@"
+          }
+        }
+      }
+    },
+    "Offline, read yesterday" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフライン、昨日読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线，读取于昨天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離線，讀取於昨天"
+          }
+        }
+      }
+    },
     "Oh My Pi is working. Send once it's idle, or steer from the terminal." : {
       "localizations" : {
         "ja" : {
@@ -40804,7 +43193,28 @@
         }
       }
     },
-    "On this branch" : {},
+    "On this branch" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このブランチ上"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此分支上"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此分支上"
+          }
+        }
+      }
+    },
     "One Dark" : {
       "shouldTranslate" : false
     },
@@ -41274,7 +43684,28 @@
         }
       }
     },
-    "Open Terminal on %@" : {},
+    "Open Terminal on %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ でターミナルを開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上打开终端"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上開啟終端機"
+          }
+        }
+      }
+    },
     "Open ZeroTier Central" : {
       "localizations" : {
         "ja" : {
@@ -41319,7 +43750,28 @@
         }
       }
     },
-    "Open in Browser" : {},
+    "Open in Browser" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブラウザで開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在浏览器中打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在瀏覽器中開啟"
+          }
+        }
+      }
+    },
     "Open in New Window" : {
       "localizations" : {
         "ja" : {
@@ -41408,7 +43860,28 @@
         }
       }
     },
-    "Open issues assigned to you or created by you show here." : {},
+    "Open issues assigned to you or created by you show here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに割り当てられた、またはあなたが作成したオープンな Issue がここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分配给你或由你创建的未关闭 Issue 会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指派給你或由你建立、尚未關閉的 Issue 會顯示在這裡。"
+          }
+        }
+      }
+    },
     "Open it again from the list." : {
       "localizations" : {
         "ja" : {
@@ -41454,7 +43927,28 @@
         }
       }
     },
-    "Open pull requests you created or were asked to review show here." : {},
+    "Open pull requests you created or were asked to review show here." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが作成した、またはレビューを依頼されたオープンなプルリクエストがここに表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你创建的或请你审查的未关闭 Pull Request 会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你建立的或請你審查、尚未關閉的 Pull Request 會顯示在這裡。"
+          }
+        }
+      }
+    },
     "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
       "localizations" : {
         "ja" : {
@@ -42349,7 +44843,27 @@
       }
     },
     "Opened by %@" : {
-      "comment" : "Who opened a pull request, read in the GitHub list."
+      "comment" : "Who opened a pull request, read in the GitHub list.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が作成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 创建"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %@ 建立"
+          }
+        }
+      }
     },
     "Opened by %@ · updated %@ ago" : {
       "localizations" : {
@@ -42358,10 +44872,49 @@
             "state" : "new",
             "value" : "Opened by %1$@ · updated %2$@ ago"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ が作成 · %2$@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %1$@ 创建 · %2$@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 %1$@ 建立 · %2$@前更新"
+          }
         }
       }
     },
-    "Opened by you · updated %@ ago" : {},
+    "Opened by you · updated %@ ago" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが作成 · %@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你创建 · %@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由你建立 · %@前更新"
+          }
+        }
+      }
+    },
     "Opening Browser…" : {
       "localizations" : {
         "ja" : {
@@ -43251,7 +45804,28 @@
         }
       }
     },
-    "Outcome Unknown" : {},
+    "Outcome Unknown" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結果不明"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结果未知"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結果不明"
+          }
+        }
+      }
+    },
     "Output" : {
       "comment" : "Token type: output tokens",
       "localizations" : {
@@ -44054,7 +46628,28 @@
         }
       }
     },
-    "Passing" : {},
+    "Passing" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通過"
+          }
+        }
+      }
+    },
     "Password" : {
       "localizations" : {
         "ja" : {
@@ -45229,7 +47824,28 @@
         }
       }
     },
-    "Post" : {},
+    "Post" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "投稿"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发布"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "發布"
+          }
+        }
+      }
+    },
     "Post #%lld" : {
       "localizations" : {
         "ja" : {
@@ -46134,9 +48750,50 @@
         }
       }
     },
-    "Pull Requests" : {},
+    "Pull Requests" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プルリクエスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Request"
+          }
+        }
+      }
+    },
     "Pull request" : {
-      "comment" : "Read first for a pull request in the GitHub list."
+      "comment" : "Read first for a pull request in the GitHub list.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プルリクエスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull Request"
+          }
+        }
+      }
     },
     "Pull to load earlier messages" : {
       "localizations" : {
@@ -46160,7 +48817,28 @@
         }
       }
     },
-    "Pull to try again." : {},
+    "Pull to try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引いて再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下拉以重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下拉可重試。"
+          }
+        }
+      }
+    },
     "Put herdr's install directory on the account's non-interactive SSH PATH." : {
       "localizations" : {
         "ja" : {
@@ -46876,6 +49554,24 @@
             "state" : "new",
             "value" : "Read at %1$@ from %2$@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ に %2$@ から読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取于 %1$@，来自 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取於 %1$@，來自 %2$@"
+          }
         }
       }
     },
@@ -46885,6 +49581,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Read on %1$@ at %2$@ from %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ に %3$@ から読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取于 %1$@ %2$@，来自 %3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取於 %1$@ %2$@，來自 %3$@"
           }
         }
       }
@@ -46983,6 +49697,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Read yesterday at %1$@ from %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "昨日 %1$@ に %2$@ から読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取于昨天 %1$@，来自 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取於昨天 %1$@，來自 %2$@"
           }
         }
       }
@@ -47208,7 +49940,28 @@
         }
       }
     },
-    "Reading from %@…" : {},
+    "Reading from %@…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ から読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 %@ 读取…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在從 %@ 讀取…"
+          }
+        }
+      }
+    },
     "Reading from the Host…" : {
       "localizations" : {
         "ja" : {
@@ -47410,7 +50163,28 @@
       }
     },
     "Reattach to open it again." : {},
-    "Rebase and Merge" : {},
+    "Rebase and Merge" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リベースしてマージ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "变基并合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rebase 並合併"
+          }
+        }
+      }
+    },
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -49299,7 +52073,28 @@
         }
       }
     },
-    "Requested from %@" : {},
+    "Requested from %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に依頼済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已请求 %@ 审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已請求 %@ 審查"
+          }
+        }
+      }
+    },
     "Require Encryption" : {
       "localizations" : {
         "ja" : {
@@ -49837,8 +52632,50 @@
         }
       }
     },
-    "Review" : {},
-    "Review It" : {},
+    "Review" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "審查"
+          }
+        }
+      }
+    },
+    "Review It" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レビューする"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進行審查"
+          }
+        }
+      }
+    },
     "Review Paste" : {
       "localizations" : {
         "ja" : {
@@ -49928,7 +52765,28 @@
         }
       }
     },
-    "Review required" : {},
+    "Review required" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レビューが必要"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要審查"
+          }
+        }
+      }
+    },
     "Review started" : {
       "localizations" : {
         "ja" : {
@@ -50541,7 +53399,28 @@
         }
       }
     },
-    "Run the Agent in a clean checkout instead of the one above." : {},
+    "Run the Agent in a clean checkout instead of the one above." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上のチェックアウトではなく、クリーンなチェックアウトでエージェントを実行します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在一个干净的检出副本中运行 Agent，而不是上面那个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在乾淨的簽出中執行 Agent，而不是使用上方那一個。"
+          }
+        }
+      }
+    },
     "Run the agent in a clean checkout instead of the workspace itself." : {
       "localizations" : {
         "ja" : {
@@ -50706,6 +53585,24 @@
             "state" : "new",
             "value" : "Runs %1$@ on %2$@ as @%3$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ を %2$@ で @%3$@ として実行します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将以 @%3$@ 的身份在 %2$@ 上运行 %1$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將以 @%3$@ 的身分在 %2$@ 上執行 %1$@。"
+          }
         }
       }
     },
@@ -50715,6 +53612,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Runs %1$@ on %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ を %2$@ で実行します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将在 %2$@ 上运行 %1$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將在 %2$@ 上執行 %1$@。"
           }
         }
       }
@@ -52009,9 +54924,72 @@
         }
       }
     },
-    "Send To" : {},
-    "Send to Agent" : {},
-    "Send to Agent…" : {},
+    "Send To" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信先"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送给"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送給"
+          }
+        }
+      }
+    },
+    "Send to Agent" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントに送信"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送给 Agent"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送給 Agent"
+          }
+        }
+      }
+    },
+    "Send to Agent…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "エージェントに送信…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送给 Agent…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送給 Agent…"
+          }
+        }
+      }
+    },
     "Sending once the last words settle" : {
       "localizations" : {
         "ja" : {
@@ -53732,7 +56710,28 @@
         }
       }
     },
-    "Showing what was read at %@." : {},
+    "Showing what was read at %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に読み取った内容を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前显示 %@ 读取的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前顯示 %@ 讀取的內容。"
+          }
+        }
+      }
+    },
     "Showing what was read on %@ at %@." : {
       "localizations" : {
         "en" : {
@@ -53740,10 +56739,49 @@
             "state" : "new",
             "value" : "Showing what was read on %1$@ at %2$@."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ に読み取った内容を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前显示 %1$@ %2$@ 读取的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前顯示 %1$@ %2$@ 讀取的內容。"
+          }
         }
       }
     },
-    "Showing what was read yesterday at %@." : {},
+    "Showing what was read yesterday at %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "昨日 %@ に読み取った内容を表示しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前显示昨天 %@ 读取的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目前顯示昨天 %@ 讀取的內容。"
+          }
+        }
+      }
+    },
     "Shown at %lld columns by %lld rows" : {
       "localizations" : {
         "en" : {
@@ -54022,7 +57060,28 @@
         }
       }
     },
-    "Shows the pull requests and issues that the gh command on your Hosts reads. Turn off to hide the GitHub tab and remove the lists saved on this device." : {},
+    "Shows the pull requests and issues that the gh command on your Hosts reads. Turn off to hide the GitHub tab and remove the lists saved on this device." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上の gh コマンドが読み取るプルリクエストと Issue を表示します。オフにすると「GitHub」タブを隠し、このデバイスに保存されたリストを削除します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示主机上的 gh 命令读取到的 Pull Request 和 Issue。关闭后将隐藏“GitHub”标签页，并移除保存在此设备上的列表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示你的主機上 gh 指令讀取的 Pull Request 與 Issue。關閉後會隱藏「GitHub」分頁，並移除儲存在此裝置上的列表。"
+          }
+        }
+      }
+    },
     "Shows the terminals in this Workspace" : {
       "localizations" : {
         "ja" : {
@@ -54221,7 +57280,28 @@
         }
       }
     },
-    "Sign In to GitHub on %@" : {},
+    "Sign In to GitHub on %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ で GitHub にサインイン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上登录 GitHub"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上登入 GitHub"
+          }
+        }
+      }
+    },
     "Sign In with Browser" : {
       "localizations" : {
         "ja" : {
@@ -55114,7 +58194,28 @@
         }
       }
     },
-    "Squash and Merge" : {},
+    "Squash and Merge" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スカッシュしてマージ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "压缩并合并"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "壓縮並合併"
+          }
+        }
+      }
+    },
     "Staged" : {
       "comment" : "Changes list group title and file staging",
       "localizations" : {
@@ -60307,7 +63408,28 @@
         }
       }
     },
-    "The Host could not make a private temporary folder for gh." : {},
+    "The Host could not make a private temporary folder for gh." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストで gh 用の非公開の一時フォルダを作成できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机无法为 gh 创建私有临时文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機無法為 gh 建立私有暫存資料夾。"
+          }
+        }
+      }
+    },
     "The Host couldn't be reached. The tab is still open there." : {
       "localizations" : {
         "ja" : {
@@ -60882,7 +64004,28 @@
         }
       }
     },
-    "The Host did not finish getting the worktree's starting commit." : {},
+    "The Host did not finish getting the worktree's starting commit." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストはワークツリーの開始コミットの取得を完了できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机未能完成获取工作树的起始提交。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機沒有完成取得工作樹的起始提交。"
+          }
+        }
+      }
+    },
     "The Host did not finish in time. Heeler is reading what is installed there now." : {
       "localizations" : {
         "ja" : {
@@ -61645,7 +64788,28 @@
         }
       }
     },
-    "The Host took too long to fetch the worktree's starting commit." : {},
+    "The Host took too long to fetch the worktree's starting commit." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストがワークツリーの開始コミットの取得に時間をかけすぎました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机获取工作树的起始提交耗时过长。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機取得工作樹的起始提交花費太久。"
+          }
+        }
+      }
+    },
     "The Host took too long to read Changes. Pull to try again." : {
       "localizations" : {
         "ja" : {
@@ -62912,8 +66076,50 @@
         }
       }
     },
-    "The branch %@ is still on GitHub." : {},
-    "The branch %@ was deleted." : {},
+    "The branch %@ is still on GitHub." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブランチ %@ はまだ GitHub にあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支 %@ 仍在 GitHub 上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支 %@ 仍在 GitHub 上。"
+          }
+        }
+      }
+    },
+    "The branch %@ was deleted." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブランチ %@ は削除されました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支 %@ 已删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分支 %@ 已刪除。"
+          }
+        }
+      }
+    },
     "The change failed unexpectedly. (%@)" : {
       "localizations" : {
         "ja" : {
@@ -63030,6 +66236,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "The checkout of %1$@ that %2$@ works in."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ が作業している %1$@ のチェックアウトです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 正在其中工作的 %1$@ 检出目录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 正在其中工作的 %1$@ 簽出。"
           }
         }
       }
@@ -63257,7 +66481,28 @@
         }
       }
     },
-    "The connection ended before gh said how it went." : {},
+    "The connection ended before gh said how it went." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh が結果を返す前に接続が終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 gh 报告结果之前，连接已断开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 gh 回報結果之前，連線已中斷。"
+          }
+        }
+      }
+    },
     "The connection ended during the change, which may still finish on the Host. Run the checks again." : {
       "localizations" : {
         "ja" : {
@@ -64779,7 +68024,28 @@
         }
       }
     },
-    "The message could not be put in that Agent's Composer: %@" : {},
+    "The message could not be put in that Agent's Composer: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのエージェントのコンポーザーにメッセージを入れられませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法将消息放入该 Agent 的输入框：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將訊息放入該 Agent 的輸入框：%@"
+          }
+        }
+      }
+    },
     "The message could not be sent. Check the connection and retry." : {
       "localizations" : {
         "ja" : {
@@ -64802,7 +68068,28 @@
         }
       }
     },
-    "The message goes into the new Agent's Composer once it starts. Nothing is sent until you send it." : {},
+    "The message goes into the new Agent's Composer once it starts. Nothing is sent until you send it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいエージェントが起動すると、メッセージはそのコンポーザーに入ります。あなたが送信するまで何も送信されません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新 Agent 启动后，消息会放入它的输入框。在你发送之前不会发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新 Agent 啟動後，訊息會放入它的輸入框。在你傳送之前不會傳送任何內容。"
+          }
+        }
+      }
+    },
     "The microphone is in use or unavailable." : {
       "localizations" : {
         "ja" : {
@@ -65674,7 +68961,28 @@
         }
       }
     },
-    "The pull requests and issues that involve you, as gh reads them on your Hosts." : {},
+    "The pull requests and issues that involve you, as gh reads them on your Hosts." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上の gh が読み取った、あなたに関係するプルリクエストと Issue です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 gh 读取到的、与你相关的 Pull Request 和 Issue。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的主機上 gh 讀取到、與你相關的 Pull Request 與 Issue。"
+          }
+        }
+      }
+    },
     "The question has no Write-in row." : {},
     "The question has no answers Heeler can read." : {
       "localizations" : {
@@ -65831,7 +69139,28 @@
         }
       }
     },
-    "The read was cancelled." : {},
+    "The read was cancelled." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りはキャンセルされました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取已取消。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取已取消。"
+          }
+        }
+      }
+    },
     "The recording could not be saved." : {
       "localizations" : {
         "ja" : {
@@ -68014,7 +71343,28 @@
         }
       }
     },
-    "This Host cannot run gh for Heeler." : {},
+    "This Host cannot run gh for Heeler." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストでは Heeler のために gh を実行できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机无法为 Heeler 运行 gh。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機無法為 Heeler 執行 gh。"
+          }
+        }
+      }
+    },
     "This Host cannot run the Host Helper yet." : {
       "localizations" : {
         "ja" : {
@@ -69836,7 +73186,28 @@
         }
       }
     },
-    "This is what gh printed." : {},
+    "This is what gh printed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh の出力は次のとおりです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下是 gh 的输出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下是 gh 的輸出。"
+          }
+        }
+      }
+    },
     "This language's speech model is needed." : {
       "localizations" : {
         "ja" : {
@@ -70192,9 +73563,72 @@
         }
       }
     },
-    "This pull request is a draft again, so Heeler ran nothing." : {},
-    "This repository" : {},
-    "This repository deletes a pull request's branch once it is merged." : {},
+    "This pull request is a draft again, so Heeler ran nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプルリクエストは再び下書きになったため、Heeler は何も実行しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Pull Request 又变回了草稿，因此 Heeler 未执行任何操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Pull Request 又變回草稿，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
+    "This repository" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此存放庫"
+          }
+        }
+      }
+    },
+    "This repository deletes a pull request's branch once it is merged." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリポジトリでは、プルリクエストのブランチはマージ後に削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仓库会在 Pull Request 合并后删除其分支。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此存放庫會在 Pull Request 合併後刪除其分支。"
+          }
+        }
+      }
+    },
     "This route's overlay network was removed. Choose another network or Direct." : {
       "localizations" : {
         "ja" : {
@@ -71333,7 +74767,28 @@
         }
       }
     },
-    "Try again in %@." : {},
+    "Try again in %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@後に再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 %@後再試一次。"
+          }
+        }
+      }
+    },
     "Try again once they are back." : {
       "localizations" : {
         "ja" : {
@@ -72803,7 +76258,28 @@
         }
       }
     },
-    "Updated %@ ago" : {},
+    "Updated %@ ago" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@前更新"
+          }
+        }
+      }
+    },
     "Updated at #%lld" : {
       "localizations" : {
         "ja" : {
@@ -75277,7 +78753,28 @@
         }
       }
     },
-    "What gh printed" : {},
+    "What gh printed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh の出力"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 的输出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 的輸出"
+          }
+        }
+      }
+    },
     "What it cannot see" : {
       "localizations" : {
         "ja" : {
@@ -75388,7 +78885,28 @@
         }
       }
     },
-    "What you wrote" : {},
+    "What you wrote" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが書いた内容"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你写的内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你寫的內容"
+          }
+        }
+      }
+    },
     "When and how often your Host sends notification requests." : {
       "localizations" : {
         "ja" : {
@@ -75544,7 +79062,28 @@
         }
       }
     },
-    "Work on It" : {},
+    "Work on It" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り組む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "着手处理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "著手處理"
+          }
+        }
+      }
+    },
     "Worked for %@" : {
       "comment" : "The argument is a spelled-out duration that already carries units",
       "localizations" : {
@@ -75702,7 +79241,28 @@
         }
       }
     },
-    "Working on GitHub" : {},
+    "Working on GitHub" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub で処理中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在 GitHub 上处理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在 GitHub 上處理"
+          }
+        }
+      }
+    },
     "Workspace" : {
       "localizations" : {
         "ja" : {
@@ -76149,7 +79709,27 @@
       }
     },
     "You" : {
-      "comment" : "The signed-in GitHub account, among people."
+      "comment" : "The signed-in GitHub account, among people.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなた"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你"
+          }
+        }
+      }
     },
     "You can add this folder as a %@ Account." : {
       "localizations" : {
@@ -76201,6 +79781,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "You want to merge into %1$@ · updated %2$@ ago"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが %1$@ へのマージを希望 · %2$@前に更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你请求合并到 %1$@ · %2$@前更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你請求合併至 %1$@ · %2$@前更新"
           }
         }
       }
@@ -76294,7 +79892,28 @@
         }
       }
     },
-    "Your Pull Requests" : {},
+    "Your Pull Requests" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのプルリクエスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Pull Request"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Pull Request"
+          }
+        }
+      }
+    },
     "Your browser opens when it is ready." : {
       "localizations" : {
         "ja" : {
@@ -76406,7 +80025,28 @@
         }
       }
     },
-    "Your review was requested" : {},
+    "Your review was requested" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたにレビューが依頼されています"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已请求你审查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已請求你審查"
+          }
+        }
+      }
+    },
     "ZeroTier default" : {
       "comment" : "ZeroTier planet value when none is set",
       "localizations" : {
@@ -76731,7 +80371,27 @@
       }
     },
     "checks %@" : {
-      "comment" : "How a pull request's checks stand, read in the GitHub list: checks 3 failing."
+      "comment" : "How a pull request's checks stand, read in the GitHub list: checks 3 failing.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェック %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檢查：%@"
+          }
+        }
+      }
     },
     "connected" : {},
     "connecting" : {},
@@ -77027,22 +80687,250 @@
         }
       }
     },
-    "gh did not answer in time." : {},
-    "gh did not finish in the Mac's desktop session in time." : {},
-    "gh did not say how it ended." : {},
-    "gh finished without an error." : {},
-    "gh is installed on %@ but isn't signed in. Run this in a terminal there, then check again." : {},
-    "gh is not installed on the Host." : {},
-    "gh is not signed in on the Host." : {},
-    "gh printed nothing. It stopped with status %lld." : {},
-    "gh stopped with an error after the merge. This is what it printed." : {},
-    "gh stopped with status %@ and gave no reason." : {},
+    "gh did not answer in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh が時間内に応答しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 未及时响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 未及時回應。"
+          }
+        }
+      }
+    },
+    "gh did not finish in the Mac's desktop session in time." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は Mac のデスクトップセッションで時間内に終了しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 未能在 Mac 的桌面会话中及时完成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 未能在 Mac 的桌面工作階段中及時完成。"
+          }
+        }
+      }
+    },
+    "gh did not say how it ended." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は終了の結果を返しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 未报告它的结束状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 沒有回報它的結束狀態。"
+          }
+        }
+      }
+    },
+    "gh finished without an error." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh はエラーなしで終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 已结束，没有报错。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 已結束，沒有錯誤。"
+          }
+        }
+      }
+    },
+    "gh is installed on %@ but isn't signed in. Run this in a terminal there, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は %@ にインストールされていますが、サインインしていません。そこでターミナルを開いてこれを実行し、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上已安装 gh，但尚未登录。请在该主机的终端中运行以下命令，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上已安裝 gh，但尚未登入。請在該主機的終端機中執行以下指令，然後再檢查一次。"
+          }
+        }
+      }
+    },
+    "gh is not installed on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに gh がインストールされていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上未安装 gh。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上未安裝 gh。"
+          }
+        }
+      }
+    },
+    "gh is not signed in on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの gh はサインインしていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 gh 未登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 gh 尚未登入。"
+          }
+        }
+      }
+    },
+    "gh printed nothing. It stopped with status %lld." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh は何も出力せず、ステータス %lld で終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 没有任何输出，并以状态码 %lld 结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 沒有任何輸出，並以狀態 %lld 結束。"
+          }
+        }
+      }
+    },
+    "gh stopped with an error after the merge. This is what it printed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マージ後に gh がエラーで終了しました。出力は次のとおりです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合并后 gh 因错误而停止。以下是它的输出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合併後 gh 因錯誤而停止。以下是它的輸出。"
+          }
+        }
+      }
+    },
+    "gh stopped with status %@ and gave no reason." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh はステータス %@ で終了し、理由を示しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 以状态码 %@ 停止，未给出原因。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "gh 以狀態 %@ 停止，沒有提供原因。"
+          }
+        }
+      }
+    },
     "git could not fetch %@ from %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "git could not fetch %1$@ from %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git は %2$@ から %1$@ をフェッチできませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 无法从 %2$@ 获取 %1$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 無法從 %2$@ 擷取 %1$@。"
           }
         }
       }
@@ -77054,10 +80942,49 @@
             "state" : "new",
             "value" : "git could not fetch %1$@ from %2$@: %3$@"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git は %2$@ から %1$@ をフェッチできませんでした: %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 无法从 %2$@ 获取 %1$@：%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 無法從 %2$@ 擷取 %1$@：%3$@"
+          }
         }
       }
     },
-    "git could not get the worktree's starting commit: %@" : {},
+    "git could not get the worktree's starting commit: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git はワークツリーの開始コミットを取得できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 无法获取工作树的起始提交：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "git 無法取得工作樹的起始提交：%@"
+          }
+        }
+      }
+    },
     "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: %@" : {
       "localizations" : {
         "ja" : {
