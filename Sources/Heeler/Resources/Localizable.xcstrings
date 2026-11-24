@@ -8446,6 +8446,29 @@
         }
       }
     },
+    "After Recording" : {
+      "comment" : "Voice Input recognition: the whole recording is sent once the user stops",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音後"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录完再识别"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錄完再辨識"
+          }
+        }
+      }
+    },
     "After running the commands on the Host." : {
       "localizations" : {
         "ja" : {
@@ -10714,6 +10737,51 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已鎖定"
+          }
+        }
+      }
+    },
+    "As You Speak" : {
+      "comment" : "Voice Input recognition: text appears while the user talks",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "話しながら"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "边说边识别"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "邊說邊辨識"
+          }
+        }
+      }
+    },
+    "As You Speak shows the text while you talk. After Recording sends the whole recording once you stop, and if As You Speak loses its connection, the recording is sent that way instead." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「話しながら」は話している間にテキストを表示します。「録音後」は録音を止めたときに録音全体を送信します。「話しながら」の接続が切れた場合も、録音はこの方法で送信されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“边说边识别”会在你说话时显示文字。“录完再识别”在你停止后发送整段录音；“边说边识别”的连接中断时，录音也会改用这种方式发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「邊說邊辨識」會在你說話時顯示文字。「錄完再辨識」在你停止後傳送整段錄音；「邊說邊辨識」的連線中斷時，錄音也會改用這種方式傳送。"
           }
         }
       }
@@ -30174,28 +30242,6 @@
         }
       }
     },
-    "Hold the phone a little closer and try again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone をもう少し近づけて、もう一度話してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "离手机近一点，再说一次。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "離手機近一點，再說一次。"
-          }
-        }
-      }
-    },
     "Hold to read a day" : {
       "localizations" : {
         "ja" : {
@@ -46962,6 +47008,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "近期事件"
+          }
+        }
+      }
+    },
+    "Recognition" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "認識方法"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "识别方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "辨識方式"
           }
         }
       }
@@ -65273,28 +65341,6 @@
         }
       }
     },
-    "The recording was too short." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "録音が短すぎました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "录音时间太短。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "錄音時間太短。"
-          }
-        }
-      }
-    },
     "The relay cannot decrypt this content because it never receives your Notification Key." : {
       "localizations" : {
         "ja" : {
@@ -66244,6 +66290,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "語音服務拒絕了 API 金鑰。"
+          }
+        }
+      }
+    },
+    "The speech service returned error %lld." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サービスがエラー %lld を返しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音服务返回了错误 %lld。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音服務傳回了錯誤 %lld。"
           }
         }
       }
@@ -69672,6 +69740,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此服務沒有說明語言設定。"
+          }
+        }
+      }
+    },
+    "This service doesn't take uploaded recordings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサービスは録音のアップロードを受け付けません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务不接受上传的录音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服務不接受上傳的錄音。"
           }
         }
       }
@@ -73991,6 +74081,35 @@
         }
       }
     },
+    "Voice Input sends what you say to %@ as you speak, or the whole recording once you stop, to be turned into text under %@'s terms. Heeler keeps no copy once the text arrives." : {
+      "comment" : "Voice Input consent for a service that can stream. %1$@ is the service host name, %2$@ the company that runs it.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Voice Input sends what you say to %1$@ as you speak, or the whole recording once you stop, to be turned into text under %2$@'s terms. Heeler keeps no copy once the text arrives."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力は、話している内容を話しながら、または録音を止めたときに録音全体を %1$@ に送信し、%2$@ の規約に従ってテキスト化します。テキストを受け取った後、Heeler はコピーを保持しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音输入会在你说话时把内容发送至 %@，或在你停止后发送整段录音，并按照 %@ 的条款转换为文本。收到文本后，Heeler 不会保留任何副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音輸入會在你說話時把內容傳送至 %@，或在你停止後傳送整段錄音，並依 %@ 的條款轉成文字。文字送達後，Heeler 不會保留任何副本。"
+          }
+        }
+      }
+    },
     "Voice Input turns speech into Composer text through a speech service you choose, with your own API key." : {
       "localizations" : {
         "ja" : {
@@ -74009,6 +74128,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "語音輸入會透過你選擇的語音服務，並使用你自己的 API 金鑰，將語音轉成輸入框文字。"
+          }
+        }
+      }
+    },
+    "Volcengine (China)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volcengine（中国）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "火山引擎（中国）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "火山引擎（中國）"
+          }
+        }
+      }
+    },
+    "Volcengine recognizes Mandarin, Chinese dialects, and English, including speech that mixes them." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volcengine は標準中国語、中国語の方言、英語を認識し、それらが混ざった話し方にも対応します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "火山引擎可识别普通话、各地方言和英语，也能识别中英混说。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "火山引擎可辨識普通話、各地方言和英語，也能辨識中英混說。"
           }
         }
       }

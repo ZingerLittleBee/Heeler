@@ -60,9 +60,25 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
     var acceptsPrompt: Bool {
         switch self {
         case .onDevice: false
-        case .preset(let preset): preset.uploadFormat.acceptsPrompt
+        case .preset(let preset): preset.acceptsPrompt
         case .custom: true
         }
+    }
+
+    /// The ways this service recognizes speech, its default first.
+    var recognitionModes: [VoiceRecognitionMode] {
+        switch self {
+        case .onDevice: [.stream]
+        case .preset(let preset): preset.recognitionModes
+        case .custom: [.batch]
+        }
+    }
+
+    /// The way a recording is recognized: `chosen` where this service
+    /// offers it, otherwise its default.
+    func recognitionMode(chosen: VoiceRecognitionMode?) -> VoiceRecognitionMode {
+        if let chosen, recognitionModes.contains(chosen) { return chosen }
+        return recognitionModes.first ?? .batch
     }
 
     /// Whether the service reads Keywords only once the user turns them on,
@@ -70,7 +86,7 @@ enum VoiceInputService: Hashable, Sendable, Identifiable {
     var keywordsAreOptional: Bool {
         switch self {
         case .onDevice, .custom: false
-        case .preset(let preset): preset.uploadFormat.optionalKeywords != nil
+        case .preset(let preset): preset.optionalKeywords != nil
         }
     }
 
@@ -261,6 +277,13 @@ final class VoiceInputSettings {
         if service == .onDevice { return true }
         guard let endpoint else { return false }
         return hasKey(for: endpoint) && hasConsent(for: endpoint)
+    }
+
+    /// How the next recording is recognized: the user's choice where the
+    /// service offers it, otherwise the service's default. Nil while Voice
+    /// Input is off.
+    var recognitionMode: VoiceRecognitionMode? {
+        service?.recognitionMode(chosen: endpoint.flatMap { options(for: $0).mode })
     }
 
     func options(for endpoint: VoiceInputEndpoint) -> VoiceInputRequestOptions {

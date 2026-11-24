@@ -7,7 +7,11 @@ status: accepted
 Amended by [ADR 0043](0043-voice-input-transcribes-on-device-as-it-is-heard.md):
 On Device shows its text in a recorder in the input's place as it is heard,
 capture is one in-memory `AVAudioEngine` tap, and the session mixes with
-other audio.
+other audio. Amended by
+[ADR 0064](0064-voice-input-recognizes-as-a-stream-where-the-service-offers-it.md):
+Volcengine is a built-in service that streams or takes the finished
+recording over a WebSocket, and a service that streams falls back to the
+whole recording.
 
 [ADR 0003](0003-ios26-speechanalyzer-dictation.md) chose on-device
 SpeechAnalyzer dictation because "nothing I say to my Agents ever leaves the

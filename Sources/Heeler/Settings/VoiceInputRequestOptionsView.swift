@@ -54,6 +54,8 @@ struct VoiceInputLanguagesSection: View {
                 Text("Use Automatic for mixed speech. This service accepts one language; results depend on its model.")
             case .siliconFlowCN:
                 Text("This service does not document a language setting.")
+            case .volcengine:
+                Text("Volcengine recognizes Mandarin, Chinese dialects, and English, including speech that mixes them.")
             }
         }
     }
