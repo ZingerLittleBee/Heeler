@@ -5,25 +5,27 @@ import SwiftUI
 struct GitHubItemRow: View {
     let item: GitHubItem
     let section: GitHubListSection.Kind
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        // At accessibility sizes a line that fits a phone holds a word or
+        // two, so the lines wrap rather than cut off what they say.
+        let wraps = dynamicTypeSize.isAccessibilitySize
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: Self.symbol(for: item))
                 .foregroundStyle(Self.tint(for: item))
                 .font(.body.weight(.medium))
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 3) {
-                Text(overLine)
+                overLine(wraps: wraps)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
                 Text(item.title)
                     .font(.body.weight(.medium))
-                    .lineLimit(2)
-                status
+                    .lineLimit(wraps ? 4 : 2)
+                status(wraps: wraps)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
         }
         .padding(.vertical, 2)
@@ -31,59 +33,91 @@ struct GitHubItemRow: View {
     }
 
     /// "Heeler #712 · riley-dev · 2h": the author only where the request
-    /// came from someone else.
-    private var overLine: String {
-        var parts = ["\(item.repositoryName) #\(item.number)"]
-        if section == .reviewRequested, let author = item.author { parts.append(author) }
-        parts.append(Self.age(of: item.updatedAt))
-        return parts.joined(separator: " · ")
+    /// came from someone else. On one line a long repository or author
+    /// name gives way, never the number or the age.
+    @ViewBuilder
+    private func overLine(wraps: Bool) -> some View {
+        let author = section == .reviewRequested ? item.author : nil
+        let age = Self.age(of: item.updatedAt)
+        if wraps {
+            Text(verbatim: ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
+                .joined(separator: " · "))
+        } else {
+            HStack(spacing: 0) {
+                Text(verbatim: item.repositoryName).layoutPriority(1)
+                Text(verbatim: " #\(item.number)").layoutPriority(2)
+                if let author {
+                    Text(verbatim: " · \(author)").layoutPriority(1)
+                }
+                Text(verbatim: " · \(age)").layoutPriority(2)
+            }
+            .lineLimit(1)
+        }
     }
 
     @ViewBuilder
-    private var status: some View {
+    private func status(wraps: Bool) -> some View {
         switch item.kind {
-        case .pullRequest: pullRequestStatus
-        case .issue: Text(issueStatus)
+        case .pullRequest: pullRequestStatus.lineLimit(wraps ? nil : 1)
+        case .issue: issueStatus(wraps: wraps)
         }
     }
 
-    private var pullRequestStatus: some View {
-        let checks = item.checks?.summary ?? .none
-        var rest: [String] = []
-        if section == .reviewRequested, let additions = item.additions, let deletions = item.deletions {
-            rest.append("+\(additions.formatted()) \u{2212}\(deletions.formatted())")
-        } else if let review = item.review, item.state != .draft {
-            rest.append(GitHubItemWords.decision(review))
+    /// One Text, so it wraps as a sentence at accessibility sizes.
+    private var pullRequestStatus: Text {
+        if item.state == .merged {
+            return Text("Merged").foregroundStyle(GitHubInk.purple)
         }
-        return HStack(spacing: 4) {
-            if item.state == .merged {
-                Text("Merged").foregroundStyle(GitHubInk.purple)
-            } else {
-                if item.state == .draft {
-                    Text("Draft")
-                    Text(verbatim: "·")
-                }
-                if let symbol = Self.symbol(for: checks) {
-                    Image(systemName: symbol)
-                        .foregroundStyle(Self.tint(for: checks))
-                        .imageScale(.small)
-                }
-                Text(Self.title(for: checks))
-                if !rest.isEmpty {
-                    Text(verbatim: "· \(rest.joined(separator: " · "))")
+        let checks = item.checks?.summary ?? .none
+        var line = Text(verbatim: "")
+        if item.state == .draft {
+            line = Text("Draft") + Text(verbatim: " · ")
+        }
+        if let symbol = Self.symbol(for: checks) {
+            line = line + Text(Image(systemName: symbol)).font(.caption2).foregroundStyle(Self.tint(for: checks))
+                + Text(verbatim: " ")
+        }
+        line = line + Text(Self.title(for: checks))
+        if let rest = pullRequestRest {
+            line = line + Text(verbatim: " · \(rest)")
+        }
+        return line
+    }
+
+    /// After the checks: the change size where a review is asked of you,
+    /// otherwise the review decision.
+    private var pullRequestRest: String? {
+        if section == .reviewRequested, let additions = item.additions, let deletions = item.deletions {
+            return "+\(additions.formatted()) \u{2212}\(deletions.formatted())"
+        }
+        if let review = item.review, item.state != .draft {
+            return GitHubItemWords.decision(review)
+        }
+        return nil
+    }
+
+    /// Labels, then the comment count, which long labels never push off
+    /// the line.
+    @ViewBuilder
+    private func issueStatus(wraps: Bool) -> some View {
+        let labels = item.labels.prefix(3).map(\.name).joined(separator: " · ")
+        let comments =
+            item.commentCount > 0
+            ? String(localized: "\(item.commentCount) comments", comment: "An issue's comment count in the GitHub list.")
+            : nil
+        if labels.isEmpty {
+            Text(comments ?? String(localized: "No comments"))
+        } else if wraps {
+            Text(verbatim: [labels, comments].compactMap(\.self).joined(separator: " · "))
+        } else {
+            HStack(spacing: 0) {
+                Text(verbatim: labels)
+                if let comments {
+                    Text(verbatim: " · \(comments)").layoutPriority(1)
                 }
             }
+            .lineLimit(1)
         }
-    }
-
-    /// Labels, then the comment count.
-    private var issueStatus: String {
-        var parts = item.labels.prefix(3).map(\.name)
-        if item.commentCount > 0 {
-            parts.append(
-                String(localized: "\(item.commentCount) comments", comment: "An issue's comment count in the GitHub list."))
-        }
-        return parts.isEmpty ? String(localized: "No comments") : parts.joined(separator: " · ")
     }
 
     // MARK: Glyphs and words
