@@ -112,12 +112,21 @@ final class GitHubStore {
     /// Follows the catalog. `hostsOutOfSight` is `HostStore.hostsOutOfSight`;
     /// nil says the catalog could not be read, so no saved list is swept.
     func setCatalog(_ catalogHosts: [Host], hostsOutOfSight: Set<Host.ID>?) {
+        let previous = machines
         machines = HostMachine.grouped(catalogHosts).compactMap { machine in
             let records = machine.servers.map(\.id)
             guard let first = machine.members.first, !records.isEmpty else { return nil }
             return GitHubHost(id: first.id, name: machine.name, records: records)
         }
         let ids = Set(machines.map(\.id))
+        let moves = Self.moves(from: previous, to: machines)
+        for move in moves {
+            if var state = states[move.from] {
+                state.isReading = false
+                states[move.to] = state
+            }
+            if settings.selectedHostID == move.from { settings.selectHost(move.to) }
+        }
         states = states.filter { ids.contains($0.key) }
         details = details.filter { ids.contains($0.key.host) }
         for (key, task) in detailReads where !ids.contains(key.host) {
@@ -130,11 +139,35 @@ final class GitHubStore {
             task.cancel()
             reads[id] = nil
         }
-        if let hostsOutOfSight, isEnabled {
-            let retained = hostsOutOfSight.union(catalogHosts.map(\.id))
-            Task { [cache] in await cache.retainHosts(retained) }
+        let retained = hostsOutOfSight?.union(catalogHosts.map(\.id))
+        if isEnabled, retained != nil || !moves.isEmpty {
+            Task { [cache] in
+                for move in moves {
+                    if let list = await cache.load(move.from) { await cache.save(list, for: move.to) }
+                }
+                if let retained { await cache.retainHosts(retained) }
+            }
         }
         refreshHosts()
+    }
+
+    /// A Host is keyed by its first record. When that record goes, as turning
+    /// its Server off removes it, the Host is still there under the first
+    /// record of the machine that holds one of its others, and its choice in
+    /// the menu and its saved list go with it.
+    private static func moves(
+        from previous: [GitHubHost], to current: [GitHubHost]
+    ) -> [(from: Host.ID, to: Host.ID)] {
+        let previousIDs = Set(previous.map(\.id))
+        let currentIDs = Set(current.map(\.id))
+        return previous.compactMap { old in
+            guard !currentIDs.contains(old.id),
+                let new = current.first(where: { machine in
+                    !previousIDs.contains(machine.id) && machine.records.contains(where: old.records.contains)
+                })
+            else { return nil }
+            return (from: old.id, to: new.id)
+        }
     }
 
     /// Hides Hosts known to be native Windows, which the Console learns
