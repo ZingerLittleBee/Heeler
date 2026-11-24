@@ -39404,6 +39404,7 @@
         }
       }
     },
+    "No Host Can Run gh" : {},
     "No Host in this scope can report Usage right now." : {
       "localizations" : {
         "ja" : {
@@ -62760,6 +62761,7 @@
         }
       }
     },
+    "The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there." : {},
     "The Hand Off failed: %@" : {
       "localizations" : {
         "ja" : {

@@ -76,6 +76,8 @@ final class GitHubStore {
     let settings: GitHubSettings
     /// The Hosts the menu offers, in catalog order.
     private(set) var hosts: [GitHubHost] = []
+    /// There are Hosts, and none can run gh, as native Windows cannot.
+    private(set) var hasHiddenHostsOnly = false
     private(set) var states: [Host.ID: HostState] = [:]
     private(set) var details: [DetailKey: DetailState] = [:]
     /// Items with a write running, one write per item at a time.
@@ -193,6 +195,7 @@ final class GitHubStore {
                 && !machine.records.contains { access?.isNativeWindows($0) == true }
         }
         if shown != hosts { hosts = shown }
+        if hasHiddenHostsOnly != (shown.isEmpty && !machines.isEmpty) { hasHiddenHostsOnly.toggle() }
     }
 
     /// Shows another Host; the tab reads it as it does on opening.

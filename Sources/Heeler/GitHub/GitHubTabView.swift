@@ -48,6 +48,12 @@ struct GitHubListScreen: View {
         Group {
             if let host = store.selectedHost {
                 content(for: host)
+            } else if store.hasHiddenHostsOnly {
+                ContentUnavailableView {
+                    Label("No Host Can Run gh", systemImage: "server.rack")
+                } description: {
+                    Text("The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there.")
+                }
             } else {
                 ContentUnavailableView {
                     Label("No Hosts", systemImage: "server.rack")
