@@ -305,3 +305,25 @@ Close.
 - When the watchdog kills the exec's own gh, the private folder stays, with
   a write's body, in the account's temporary directory until the system
   clears it.
+- On 2026-11-24, against the same kind of stand-in, Comment, Merge and Close
+  each ran once on tmux, herdr-core and Rex Hosts on a Mac (Rex through its
+  Server's SSH exec), and Comment and Close on Debian 13 under dash. The body
+  arrived byte for byte on each, Merge left out `--delete-branch` where the
+  repository deletes merged branches itself, a two-line refusal with
+  backticks, quotes and CJK was shown word for word, and no `heeler-gh.`
+  folder was left in `/tmp` on Debian.
+- On a Host with a tmux and a herdr-core Server, reads and writes went
+  through the tmux Server, its first record, and the herdr-core Server ran
+  nothing. With the tmux connection killed during the read, Heeler ran
+  nothing and said the Host was not connected, though the herdr-core Server
+  was: a read stops at the first connected Server's error. Killed 0.1
+  seconds after the read answered, the script reached the Host and died of
+  SIGPIPE before gh ran; killed 0.3 seconds after, gh ran once on the tmux
+  Server, after the connection was gone. Both said the outcome was unknown,
+  and nothing was sent again after Heeler reconnected.
+- A gh that outlasted the exec was killed by the watchdog at 50 seconds,
+  before Heeler's own 60-second limit, so Heeler said it could not read what
+  gh printed, not that gh did not answer in time; the outcome was unknown
+  either way. A connection killed while gh ran, on tmux and on herdr-core,
+  read as the connection ending before gh said how it went. gh finished on
+  the Host and its folder went, and nothing was sent again after reconnect.
