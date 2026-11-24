@@ -32,9 +32,9 @@ Close.
   security session of its own and cannot read the login keychain, where gh
   keeps its token on macOS. When the exec's gh has no usable token on Darwin
   (exit status 4, an HTTP 401, or GitHub's limit for requests without a
-  token), the script runs the same request once more as a one-shot launchd
-  job in the `gui/<uid>` domain, whose gh reads the keychain as the desktop's
-  does. The job inherits only where gh, its configuration and its tools are,
+  token; a write needs stricter proof, below), the script runs the same
+  request once more as a one-shot launchd job in the `gui/<uid>` domain,
+  whose gh reads the keychain as the desktop's does. The job inherits only where gh, its configuration and its tools are,
   and the proxy variables (`GitHubCLIScript.desktopVariables`), never a token
   variable. It writes to a private temporary folder the script made, the
   script polls for its status for up to 30 seconds by the clock, then
@@ -160,9 +160,17 @@ Close.
   the read just before it, and on no other: trying each connected Server in
   turn is for reads. On a Herdr TUI Server it runs on the current connection
   only (`EventsSession.withTransportOnce`), never again on a replacement. The
-  desktop route runs it a second time only on the proof reads use that the
-  first gh had no token (exit status 4, an HTTP 401, or GitHub's mark for a
-  request without one), when it could have changed nothing. An exec that
+  desktop route runs it a second time only on proof that the first gh had
+  no token, when it could have changed nothing: exit status 4, or another
+  failure with a line of error output that begins `HTTP 401`, as gh's
+  `HTTP 401: Bad credentials (…)` does
+  (`GitHubCLIScript.writeHadNoToken`, and the same test in the script). gh
+  names the item when a write succeeds, title and all (`✓ Merged pull
+  request o/r#1 (<title>)`), so a title holding "HTTP 401" must prove
+  nothing: it comes mid-line and holds no newline, and exit status 0 never
+  counts. The same test decides when Heeler says a write did not run. Reads
+  keep the wider test, GitHub's mark for a request without a token
+  included, since running a read again is harmless. An exec that
   ends without gh's exit status (the watchdog, a lost connection, a desktop
   job past its wait) may have changed GitHub: once the exec was handed to
   SSH, `HeelerSSHTransport.runGitHubScript` reports a failure as
@@ -301,6 +309,14 @@ Close.
   `git rev-parse` found no repository. `printf` octal escapes rebuilt every
   byte from 1 to 255 in macOS `sh`, `bash`, `zsh`, `ksh` and `dash`, BusyBox
   `ash` and Debian `dash`.
+- Before writes had a test of their own, a merge or close of a pull request
+  titled "Fix HTTP 401 on token refresh" that gh finished with exit status 0
+  ran twice on a Mac, once more in the desktop session, because the title
+  in gh's "✓ Squashed and merged pull request …" line matched; and Heeler
+  would have said it did not run. With the test, measured on 2026-11-24 with
+  the stand-in gh, each ran once in the exec, a failure naming the title
+  mid-line ran once, and only a failure whose first line was `HTTP 401: Bad
+  credentials` went on to the desktop session.
 - 300 rounds of `sleep 0.1`, the desktop wait before it read the clock, took
   33 to 43 seconds on a Mac. After the exec's own gh, that outlasted the
   50-second watchdog, whose SIGKILL skipped the bootout and the folder's

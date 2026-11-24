@@ -145,9 +145,7 @@ enum GitHubWriteOutcome: Sendable, Equatable {
                 return
             }
             // gh with no token could change nothing.
-            if status == 4 || run.errorOutput.contains("HTTP 401")
-                || run.errorOutput.contains(GitHubCLIScript.unauthenticatedMark)
-            {
+            if GitHubCLIScript.writeHadNoToken(exitStatus: status, errorOutput: run.errorOutput) {
                 self = .notRun(GitHubBannerText.message(for: .notSignedIn))
                 return
             }

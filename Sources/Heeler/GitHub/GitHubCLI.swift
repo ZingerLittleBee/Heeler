@@ -56,8 +56,8 @@ enum GitHubCLIRoute: Sendable, Equatable {
 /// gh runs in the script's private temporary folder, with git kept from
 /// finding a checkout around it, so no gh command acts on a local
 /// repository (`gh pr merge --delete-branch` would delete a local branch).
-/// A write runs again in the desktop session only on that same proof that
-/// the first gh did nothing: with no token it could change nothing.
+/// A write runs again in the desktop session only on proof that the first
+/// gh had no token (`writeHadNoToken`), when it could change nothing.
 ///
 /// The folder holds what the user typed, gh's output and the desktop job's
 /// environment, so the script boots its job out and removes the folder on
@@ -81,6 +81,30 @@ enum GitHubCLIScript {
     /// keychain and its configuration names an account: a 401, or once the
     /// address's few requests without a token are spent, this.
     static let unauthenticatedMark = "Authenticated requests get a higher rate limit"
+
+    /// Whether a write's gh proved it had no usable token, and so changed
+    /// nothing: exit status 4, or another failure with a line of error
+    /// output that begins `HTTP 401`, as in gh 2.105's
+    /// "HTTP 401: Bad credentials (https://api.github.com/graphql)". On
+    /// success gh names the item, title and all ("✓ Merged pull request
+    /// o/r#1 (Fix HTTP 401 …)"), but mid-line, and a title holds no newline,
+    /// so nothing else counts and exit status 0 never does. A read keeps the
+    /// wider test, GitHub's mark for a request without a token included:
+    /// running a read again is harmless.
+    static func writeHadNoToken(exitStatus: Int32, errorOutput: String) -> Bool {
+        if exitStatus == 4 { return true }
+        guard exitStatus != 0 else { return false }
+        return errorOutput.utf8.split(separator: 0x0A, omittingEmptySubsequences: false)
+            .contains { $0.starts(with: "HTTP 401".utf8) }
+    }
+
+    /// The script's test, after the exec's gh, for running the request in
+    /// the desktop session: `writeHadNoToken` for a write.
+    private static func noTokenTest(isMutation: Bool) -> String {
+        isMutation
+            ? #"[ "$rc" = 4 ] || { [ "$rc" != 0 ] && grep -q '^HTTP 401' "$D/err"; }"#
+            : #"[ "$rc" = 4 ] || grep -q -e 'HTTP 401' -e '\#(unauthenticatedMark)' "$D/err""#
+    }
 
     /// How long the exec may run before the remote watchdog kills it, with
     /// no cleanup: no trap runs on SIGKILL, and a later run's sweep removes
@@ -211,7 +235,7 @@ enum GitHubCLIScript {
                 \(command) >"$D/out" 2>"$D/err" </dev/null
                 rc=$?
                 if [ "$os" = Darwin ] && [ \(mode.rawValue) = auto ]; then
-                    if [ "$rc" = 4 ] || grep -q -e 'HTTP 401' -e '\(unauthenticatedMark)' "$D/err"; then
+                    if \(noTokenTest(isMutation: request.isMutation)); then
                         route=desktop
                     fi
                 fi
