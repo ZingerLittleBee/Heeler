@@ -169,17 +169,20 @@ struct GitHubItemRow: View {
         case (.pullRequest, .merged): "arrow.triangle.merge"
         case (.pullRequest, .draft): "circle.dashed"
         case (.pullRequest, _): ConsoleTab.gitHubSymbol
-        case (.issue, .closed): "checkmark.circle"
+        case (.issue, .closed): item.closedReason == .notPlanned ? "circle.slash" : "checkmark.circle"
         case (.issue, _): "smallcircle.filled.circle"
         }
     }
 
+    /// GitHub's: a closed pull request red, an issue closed as completed
+    /// purple, and one not planned grey.
     static func tint(for item: GitHubItem) -> Color {
-        switch item.state {
-        case .open: GitHubInk.green
-        case .draft: .secondary
-        case .merged: GitHubInk.purple
-        case .closed: GitHubInk.red
+        switch (item.kind, item.state) {
+        case (_, .open): GitHubInk.green
+        case (_, .draft): .secondary
+        case (_, .merged): GitHubInk.purple
+        case (.pullRequest, .closed): GitHubInk.red
+        case (.issue, .closed): item.closedReason == .notPlanned ? GitHubInk.grey : GitHubInk.purple
         }
     }
 
@@ -254,6 +257,7 @@ enum GitHubInk {
     static let red = ink(light: 0xC4161C, dark: 0xFF6961)
     static let amber = ink(light: 0x9A4A00, dark: 0xFFD60A)
     static let purple = ink(light: 0x8944AB, dark: 0xD08BFF)
+    static let grey = ink(light: 0x59636E, dark: 0x9198A1)
 
     private static func ink(light: Int, dark: Int) -> Color {
         Color(uiColor: UIColor { traits in

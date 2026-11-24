@@ -15,6 +15,13 @@ struct GitHubItem: Codable, Sendable, Equatable, Hashable, Identifiable {
         case closed
     }
 
+    /// Why a closed issue was closed, as GitHub says it.
+    enum ClosedReason: String, Codable, Sendable {
+        case completed
+        /// Not planned, or a duplicate.
+        case notPlanned
+    }
+
     let id: String
     let kind: Kind
     /// `owner/name`.
@@ -32,6 +39,9 @@ struct GitHubItem: Codable, Sendable, Equatable, Hashable, Identifiable {
     var additions: Int?
     var deletions: Int?
     var labels: [GitHubLabel]
+    /// A closed issue's reason; nil for anything else, and when GitHub or a
+    /// list saved before Heeler read it gave none.
+    var closedReason: ClosedReason? = nil
 
     /// The repository's name without its owner.
     var repositoryName: String {

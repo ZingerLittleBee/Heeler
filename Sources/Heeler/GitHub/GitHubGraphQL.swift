@@ -17,7 +17,7 @@ enum GitHubGraphQL {
     /// An issue's fields as a list row shows them.
     static let issueFragment = """
         fragment issue on Issue {
-          id number title url state updatedAt
+          id number title url state stateReason updatedAt
           author { login } repository { nameWithOwner } comments { totalCount }
           labels(first: 10) { nodes { name color } }
         }
@@ -200,6 +200,8 @@ enum GitHubGraphQL {
         let title: String
         let url: String
         let state: String
+        /// An issue's; optional, so an answer recorded without it decodes.
+        let stateReason: String?
         let updatedAt: Date
         let isDraft: Bool?
         let additions: Int?
@@ -225,7 +227,16 @@ enum GitHubGraphQL {
                 checks: kind == .pullRequest ? checks : nil,
                 review: reviewDecision.flatMap(GitHubGraphQL.review),
                 additions: additions, deletions: deletions,
-                labels: (labels?.values ?? []).map { GitHubLabel(name: $0.name, color: $0.color ?? "") })
+                labels: (labels?.values ?? []).map { GitHubLabel(name: $0.name, color: $0.color ?? "") },
+                closedReason: state == .closed && kind == .issue ? closedReason : nil)
+        }
+
+        private var closedReason: GitHubItem.ClosedReason? {
+            switch stateReason {
+            case "COMPLETED": .completed
+            case "NOT_PLANNED", "DUPLICATE": .notPlanned
+            default: nil
+            }
         }
 
         private var checks: GitHubChecks {
