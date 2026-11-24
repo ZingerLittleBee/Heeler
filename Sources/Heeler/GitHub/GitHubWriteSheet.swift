@@ -84,18 +84,21 @@ struct GitHubWriteSheet: View {
 
 /// Presents the GitHub tab's write sheets from above the tab, as Send to
 /// Agent is, and then, once each, the results that came after their screen
-/// had gone, while the tab is on screen and no write sheet is (ADR 0064).
+/// had gone (ADR 0064).
 struct GitHubWriteSheetPresenter: ViewModifier {
     @Binding var request: GitHubWriteSheetRequest?
     let store: GitHubStore
-    let isTabShown: Bool
+    /// The GitHub tab is the one shown and none of the Console's sheets is
+    /// up. A waiting result shows only then: a sheet such as Send to Agent
+    /// can end by opening another tab, and the result would land over it.
+    let mayShowResult: () -> Bool
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     func body(content: Content) -> some View {
         content
             .onAppear(perform: showNext)
-            .onChange(of: isTabShown) { showNext() }
+            .onChange(of: mayShowResult()) { showNext() }
             .onChange(of: store.reports) { showNext() }
             .sheet(item: $request, onDismiss: showNext) { shown in
                 // The presentation it opened with: following a size class
@@ -112,9 +115,16 @@ struct GitHubWriteSheetPresenter: ViewModifier {
             }
     }
 
+    /// Shows the oldest waiting result once the update that asked is over.
+    /// Send to Agent closes in the same update in which it opens an Agent,
+    /// and the Console leaves the GitHub tab only in that update's
+    /// `onChange`s, which may come after this one's.
     private func showNext() {
-        guard isTabShown, request == nil, let report = store.takeReport() else { return }
-        request = GitHubWriteSheetRequest(host: report.host, item: report.result.item, kind: .result(report.result))
+        Task { @MainActor in
+            guard mayShowResult(), request == nil, let report = store.takeReport() else { return }
+            request = GitHubWriteSheetRequest(
+                host: report.host, item: report.result.item, kind: .result(report.result))
+        }
     }
 }
 

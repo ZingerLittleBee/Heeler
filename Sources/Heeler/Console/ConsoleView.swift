@@ -328,7 +328,8 @@ struct ConsoleView: View {
             })
         .modifier(
             GitHubWriteSheetPresenter(
-                request: $gitHubWriteRequest, store: console.gitHub, isTabShown: currentTab == .github))
+                request: $gitHubWriteRequest, store: console.gitHub,
+                mayShowResult: { currentTab == .github && !isConsoleSheetUp }))
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -2964,6 +2965,13 @@ struct ConsoleView: View {
     }
 
     /// How the Console's sheets present, resolved against this view.
+    /// One of the Console's own sheets, other than a GitHub write's, is up.
+    private var isConsoleSheetUp: Bool {
+        titleRename != nil || movePaneRequest != nil || handOffRequest != nil || gitHubSendRequest != nil
+            || startAgentRequest != nil || isStartingTerminal || connectionDetailRequest != nil
+            || isShowingHostIssues || isShowingHostsSheet || isShowingSettingsSheet
+    }
+
     private var sheetPresentation: ConsoleSheetPresentation {
         ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
     }

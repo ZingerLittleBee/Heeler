@@ -271,9 +271,11 @@ Close.
   result comes (the user went back, picked another row, or left the tab),
   and always for Close, which has no sheet, a result that is anything but
   a plain success waits in `GitHubStore.reports`. The Console's presenter
-  shows the same page while the GitHub tab is shown, after any sheet
-  already up, naming the Host under the item, since it can land over
-  another item's detail. Turning GitHub off drops what waits.
+  shows the same page once the GitHub tab is the one shown and none of the
+  Console's sheets is up, since one such as Send to Agent can end by
+  opening an Agent on another tab. It names the Host under the item, since
+  it can land over another item's detail. Turning GitHub off drops what
+  waits.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged
