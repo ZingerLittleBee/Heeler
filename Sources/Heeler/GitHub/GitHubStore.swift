@@ -532,6 +532,9 @@ final class GitHubStore {
                 continue
             } catch {
                 failure = Self.failure(error)
+                // A link that failed leaves the Host's next Server to answer;
+                // after a timeout, trying on would double the wait.
+                if failure == .offline { continue }
                 break
             }
         }

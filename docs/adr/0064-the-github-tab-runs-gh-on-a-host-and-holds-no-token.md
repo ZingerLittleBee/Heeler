@@ -52,7 +52,9 @@ Close.
   domain, and the Host is Not Signed In. Linux needs none of this.
 - **A Host, not a Server.** gh belongs to the machine, so the tab lists Hosts
   ([ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md)) and runs
-  gh through any of the Host's connected Servers that can, in order. One Host
+  gh through any of the Host's connected Servers that can, in order. A read
+  goes on to the next Server when one cannot run gh this way or its link
+  fails; a timeout ends it, since trying on would double the wait. One Host
   is read at a time, chosen from a menu at the top of the list; the menu is
   hidden when there is one Host, and the choice is remembered.
 - **Reads are GraphQL, parsed on the device.** The list is one
@@ -371,13 +373,14 @@ Close.
   folder was left in `/tmp` on Debian.
 - On a Host with a tmux and a herdr-core Server, reads and writes went
   through the tmux Server, its first record, and the herdr-core Server ran
-  nothing. With the tmux connection killed during the read, Heeler ran
-  nothing and said the Host was not connected, though the herdr-core Server
-  was: a read stops at the first connected Server's error. Killed 0.1
-  seconds after the read answered, the script reached the Host and died of
-  SIGPIPE before gh ran; killed 0.3 seconds after, gh ran once on the tmux
-  Server, after the connection was gone. Both said the outcome was unknown,
-  and nothing was sent again after Heeler reconnected.
+  nothing. With the tmux connection killed during a read, the read went on
+  to the herdr-core Server: the list arrived, and a write whose read before
+  it was cut ran once there, on the Server whose read answered. Killed 0.1
+  seconds after the read answered, the write's script reached the tmux
+  Server and died of SIGPIPE before gh ran; killed 0.3 seconds after, gh ran
+  once on the tmux Server, after the connection was gone. Both said the
+  outcome was unknown, the herdr-core Server ran no write, and nothing was
+  sent again after Heeler reconnected.
 - A gh that outlasted the exec was killed by the watchdog at 50 seconds,
   before Heeler's own 60-second limit, so Heeler said it could not read what
   gh printed, not that gh did not answer in time; the outcome was unknown
