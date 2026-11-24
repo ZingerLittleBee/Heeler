@@ -433,7 +433,8 @@ struct GitHubWriteResultView: View {
                     }
                 }
                 VStack(spacing: 10) {
-                    if page.style == .unknown, let detail = result.detail, let url = URL(string: detail.item.url) {
+                    // The row the write began from when the read after failed too.
+                    if page.style == .unknown, let url = URL(string: (result.detail?.item ?? result.item).url) {
                         Button {
                             openURL(url)
                         } label: {
