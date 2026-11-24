@@ -135,13 +135,15 @@ Close.
   `refs/heads/<default>` for an issue, and answers with that commit. On the
   pull request's own branch the script also makes the branch at that commit,
   tracking the remote's branch for a pull request from the repository itself,
-  or moves an existing branch forward to it with `git branch -f`. git 2.35
-  and later refuse that for a branch a Worktree is rebasing or bisecting,
-  which `git worktree list` shows only as a detached HEAD, and the Start
-  fails with git's words; older git moves it. A branch ahead of the pull
-  request, holding its commits and more, is checked out as it is, as
-  `gh pr checkout` leaves it; only a branch that has diverged from the pull
-  request is left alone and fails the Start, asking for another name.
+  which it then fetches too, best effort, so the Worktree's upstream exists
+  rather than showing as gone, or moves an existing branch forward to it
+  with `git branch -f`. git 2.35 and later refuse that for a branch a
+  Worktree is rebasing or bisecting, which `git worktree list` shows only as
+  a detached HEAD, and the Start fails with git's words; older git moves it.
+  A branch ahead of the pull request, holding its commits and more, is
+  checked out as it is, as `gh pr checkout` leaves it; only a branch that
+  has diverged from the pull request is left alone and fails the Start,
+  asking for another name.
   For a fork's pull request the same refusal covers a name that belongs to
   the checkout's remote, a local branch with an upstream or a name among the
   remote's branches (`refs/remotes/<remote>/<branch>`), since moving or
@@ -152,18 +154,18 @@ Close.
   `worktree.create` takes it as `base` on Herdr TUI, and herdr-core and tmux
   run `git worktree add -b <branch> <path> <commit>` in place of `HEAD`
   (ADR 0032, ADR 0045). A branch that exists is checked out as it is, as
-  before. The fetch is the only network step, bounded by the seam's 60
-  seconds. It fetches into `refs/heeler/start/<nonce>`, which the script
+  before. The fetches are the only network steps, bounded by the seam's 60
+  seconds. The first goes into `refs/heeler/start/<nonce>`, which the script
   reads and deletes at once, on its failure paths too: an Agent fetching in
   the same checkout could replace `FETCH_HEAD` before the script read it.
-  git still writes `FETCH_HEAD` and, for an issue, the remote's
-  `refs/remotes/<remote>/<default>`, as any fetch of a branch the remote's
-  refspec maps does; the script also writes the branch it makes or moves and
-  that branch's tracking settings. Nothing is pushed. In a repository
-  over its auto-gc limit the fetch starts git's detached maintenance, which
-  would keep the script's answer open until it ends, so git fetches with the
-  answer's descriptors closed; the repository's maintenance settings stay as
-  they are.
+  git still writes `FETCH_HEAD` and, for an issue or a tracked branch, the
+  remote's `refs/remotes/<remote>/<branch>`, as any fetch of a branch the
+  remote's refspec maps does; the script also writes the branch it makes or
+  moves and that branch's tracking settings. Nothing is pushed. In a
+  repository over its auto-gc limit a fetch starts git's detached
+  maintenance, which would keep the script's answer open until it ends, so
+  git fetches with the answer's descriptors closed; the repository's
+  maintenance settings stay as they are.
 - **Writes are gh's porcelain commands.** The detail's "⋯" menu ends with
   Comment… (any item), Approve… (an open pull request that is not the
   account's own), Merge… (an open pull request that is not a draft) and

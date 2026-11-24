@@ -70,7 +70,10 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         // branch that exists keeps commits the pull request does not have:
         // it is moved only forward, by `git branch -f`, which git 2.35 and
         // later refuse for a branch a Worktree is rebasing or bisecting on a
-        // detached HEAD, where `worktree list` names no branch.
+        // detached HEAD, where `worktree list` names no branch. A branch made
+        // to track the remote's has that branch fetched too, best effort:
+        // the pull request's ref leaves the upstream missing, and `git
+        // status` would call it gone.
         var body = Data(
             """
             wt() {
@@ -104,6 +107,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
                   if [ -n "$track" ]; then
                     git -C "$d" config "branch.$b.remote" "$r" &&
                       git -C "$d" config "branch.$b.merge" "refs/heads/$track" || return 6
+                    git -C "$d" fetch --quiet --no-tags "$r" "refs/heads/$track" </dev/null >/dev/null 2>&1 3>&- 4>&-
                   fi
                 fi
               fi
