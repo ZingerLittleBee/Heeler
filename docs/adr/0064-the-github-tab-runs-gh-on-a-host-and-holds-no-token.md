@@ -381,9 +381,11 @@ Close.
   once on the tmux Server, after the connection was gone. Both said the
   outcome was unknown, the herdr-core Server ran no write, and nothing was
   sent again after Heeler reconnected.
-- A gh that outlasted the exec was killed by the watchdog at 50 seconds,
-  before Heeler's own 60-second limit, so Heeler said it could not read what
-  gh printed, not that gh did not answer in time; the outcome was unknown
-  either way. A connection killed while gh ran, on tmux and on herdr-core,
+- A gh that outlasted the exec was killed by the watchdog at 50 seconds, and
+  Heeler said gh did not answer in time and did not send it again. A wrapper
+  on the Host that relays the exec's standard error from inside its process
+  group loses the watchdog's mark: the `kill -KILL 0` ends the relay first,
+  the exec seems to end normally, and Heeler says it could not read what gh
+  printed. A connection killed while gh ran, on tmux and on herdr-core,
   read as the connection ending before gh said how it went. gh finished on
   the Host and its folder went, and nothing was sent again after reconnect.
