@@ -244,11 +244,9 @@ private struct GitHubMergeSheet: View {
     let presence: UUID
     @Bindable var state: GitHubWriteSheetState
     let close: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let detail = store.detailState(of: item, on: host).detail
-        let warns = GitHubWriteWords.mergeWarning(item: detail?.item ?? item, pull: detail?.pullRequest) != nil
         NavigationStack {
             Group {
                 if case .done(let result) = state.phase {
@@ -271,10 +269,10 @@ private struct GitHubMergeSheet: View {
                 }
             }
         }
-        // A warning, or text larger than the default, pushes the button
-        // below a partial sheet; a result page shows at full height.
-        .presentationDetents(
-            state.phase.isDone || warns || dynamicTypeSize > .large ? [.large] : [.fraction(0.7), .large])
+        // Full height: seven tenths of a 6.3-inch iPhone held the form at
+        // the default text size with no room to spare, and of an SE cut
+        // the button off below Delete Branch.
+        .presentationDetents([.large])
         .interactiveDismissDisabled(state.phase.isWorking)
         .onAppear { store.present(presence) }
         .onDisappear { store.leave(presence) }
