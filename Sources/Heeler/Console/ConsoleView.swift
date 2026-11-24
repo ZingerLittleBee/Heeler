@@ -63,6 +63,8 @@ struct ConsoleView: View {
     /// Beside an iPad's sidebar, the pull request or issue in the GitHub
     /// tab's detail column.
     @State private var gitHubSelection: GitHubItemLink?
+    /// Where the GitHub tab's stack is pushed to, without a sidebar.
+    @State private var gitHubPath: [GitHubItemLink] = []
     @State private var gitHubSendRequest: GitHubSendRequest?
     /// The Host the Usage tab reads; nil reads every Host.
     @State private var usageScopeHostID: Host.ID?
@@ -692,7 +694,12 @@ struct ConsoleView: View {
             }
             .toolbarVisibility(.hidden, for: .tabBar)
         } else {
-            GitHubTabView(store: console.gitHub, terminals: gitHubTerminals, send: gitHubSend)
+            GitHubTabView(store: console.gitHub, path: $gitHubPath, terminals: gitHubTerminals, send: gitHubSend)
+                // A pushed detail hides the bar as an Agent's does.
+                .background {
+                    ConsoleTabBarBridge(chromeScheme: nil, hidesBar: hidesTabBar, request: tabBarRequest)
+                }
+                .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
         }
     }
 
@@ -743,6 +750,7 @@ struct ConsoleView: View {
         if isGitHubTabSelected { selectedTab.wrappedValue = shownListTab }
         isShowingGitHubListMenu = false
         gitHubSelection = nil
+        gitHubPath = []
         gitHubSendRequest = nil
     }
 
@@ -1010,10 +1018,12 @@ struct ConsoleView: View {
 
     /// A pushed detail owns the whole iPhone screen, as it did before the
     /// tab bar existed. A wide iPhone keeps the bar to switch lists; an
-    /// iPad's sidebar switches them itself.
+    /// iPad's sidebar switches them itself. The GitHub tab's detail covers
+    /// its list in every width, so it hides the bar in every width.
     private var hidesTabBar: Bool {
-        usesSidebarNavigation
-            || (horizontalSizeClass == .compact && selectedItem.wrappedValue != nil)
+        if usesSidebarNavigation { return true }
+        if currentTab == .github { return !gitHubPath.isEmpty }
+        return horizontalSizeClass == .compact && selectedItem.wrappedValue != nil
     }
 
     /// Beside an opaque sidebar, the detail's leading safe area lies under

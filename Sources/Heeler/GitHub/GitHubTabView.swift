@@ -18,11 +18,13 @@ struct GitHubItemLink: Hashable {
 /// a row pushes its detail.
 struct GitHubTabView: View {
     let store: GitHubStore
+    /// The pushed details, which the Console reads to hide its tab bar.
+    @Binding var path: [GitHubItemLink]
     let terminals: GitHubTerminalLink?
     let send: GitHubSendLink?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             GitHubListScreen(store: store, terminals: terminals, selection: nil)
                 .navigationTitle(ConsoleTab.github.title)
                 .navigationDestination(for: GitHubItemLink.self) { link in
