@@ -178,8 +178,18 @@ private struct ClaudeDialogPlanner {
         dialog.kind == .claudeQuestion && dialog.options.contains { $0.role == .next }
     }
 
+    /// A question whose options have previews: a digit only moves the
+    /// focus, and Enter answers with the focused option.
+    private var showsPreviews: Bool {
+        dialog.kind == .claudeQuestion && dialog.subject.showsPreviews
+    }
+
     func plan(_ action: DialogAction) throws(DialogPlanError) -> DialogActionPlan {
         switch action {
+        case .dismiss where showsPreviews && dialog.focus.notesText != nil:
+            // Esc in the open notes field only closes it; the next cancels.
+            DialogActionPlan(
+                steps: [.keys(["esc"]), .expect(.notesClosed), .keys(["esc"])], confirmation: confirmation)
         case .dismiss:
             // Esc cancels rather than submits, so it goes through even when
             // a field holds text.
@@ -194,13 +204,42 @@ private struct ClaudeDialogPlanner {
             try approvePlan(note: note)
         case .submitSelection(let ordinals, let text):
             try submitSelection(ordinals, text: text)
+        case .focus(let ordinal):
+            try focus(ordinal)
         case .expandQuestions, .skipQuestion:
             throw .unsupported(String(localized: "Only Codex queues questions."))
         }
     }
 
+    /// Moves the focus beside the previews to an answer, which draws that
+    /// answer's preview and gives none.
+    private func focus(_ ordinal: Int) throws(DialogPlanError) -> DialogActionPlan {
+        guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
+        guard showsPreviews, option.role == .answer else {
+            throw .unsupported(String(localized: "The question has no such action."))
+        }
+        guard dialog.focus.notesText == nil else {
+            throw .unsupported(String(localized: "Claude's notes field is open, so keys would be typed into it."))
+        }
+        var builder = StepBuilder(dialog: dialog)
+        try focusAnswer(option, with: &builder)
+        return DialogActionPlan(steps: builder.steps, confirmation: .stepsChecked)
+    }
+
+    /// An answer beside the previews takes the focus by its digit, except
+    /// from `Chat about this`, which ignores digits and `n`: only arrow
+    /// keys leave it.
+    private func focusAnswer(_ option: DialogOption, with builder: inout StepBuilder) throws(DialogPlanError) {
+        if dialog.focus.focusedOrdinal.flatMap(dialog.option)?.role == .chat {
+            try builder.move(to: option.ordinal)
+        } else {
+            try builder.focusField(option)
+        }
+    }
+
     private func choose(_ ordinal: Int) throws(DialogPlanError) -> DialogActionPlan {
         guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
+        if showsPreviews { return try answerBesidePreview(option, note: nil) }
         guard !dialog.hasTypedText else { throw .textFieldNotEmpty }
         var builder = StepBuilder(dialog: dialog)
         switch option.role {
@@ -225,6 +264,10 @@ private struct ClaudeDialogPlanner {
     /// Claude what to do next`, `No, and tell Claude what to do
     /// differently`.
     private func amend(_ ordinal: Int, note: String) throws(DialogPlanError) -> DialogActionPlan {
+        if showsPreviews {
+            guard let option = dialog.option(ordinal) else { throw .noSuchOption(ordinal) }
+            return try answerBesidePreview(option, note: note)
+        }
         guard [.claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead].contains(dialog.kind) else {
             throw .unsupported(String(localized: "Only Claude's Bash and file dialogs take a note with the answer."))
         }
@@ -244,6 +287,53 @@ private struct ClaudeDialogPlanner {
         builder.paste(text)
         builder.expect(.inputText(text))
         builder.keys("enter")
+        return DialogActionPlan(steps: builder.steps, confirmation: confirmation)
+    }
+
+    /// Answers a question with previews: the option's digit moves the
+    /// focus to it and Enter answers. With a note, `n` opens the question's
+    /// notes first, which Enter sends with the answer.
+    ///
+    /// The open notes field takes digits and arrows as text, so only the
+    /// option that already has the focus can be answered then. Notes typed
+    /// in the terminal go with that answer, as the card shows them.
+    private func answerBesidePreview(_ option: DialogOption, note: String?) throws(DialogPlanError) -> DialogActionPlan {
+        var text: String?
+        if let note { text = try DialogActionPlanner.fieldText(note) }
+        var builder = StepBuilder(dialog: dialog)
+        if let open = dialog.focus.notesText {
+            guard option.role == .answer, dialog.focus.focusedOrdinal == option.ordinal else {
+                throw .unsupported(String(localized: "Claude's notes field is open, so keys would be typed into it."))
+            }
+            if let text {
+                guard open.isEmpty else { throw .textFieldNotEmpty }
+                builder.paste(text)
+                builder.expect(.notes(text))
+            } else if open.isEmpty {
+                // Enter in the blank field only closes it.
+                builder.keys("enter")
+                builder.expect(.notesClosed)
+            }
+        } else {
+            switch option.role {
+            case .answer:
+                try focusAnswer(option, with: &builder)
+                if let text {
+                    // `n` on notes the field keeps would add to them.
+                    guard dialog.focus.savedNotes == nil else { throw .textFieldNotEmpty }
+                    builder.keys("n")
+                    builder.expect(.notes(""))
+                    builder.paste(text)
+                    builder.expect(.notes(text))
+                }
+            case .chat where text == nil:
+                try builder.move(to: option.ordinal)
+            default:
+                throw .unsupported(String(localized: "Only an answer takes notes."))
+            }
+        }
+        builder.keys("enter")
+        if option.role == .answer { builder.append(pageTurn()) }
         return DialogActionPlan(steps: builder.steps, confirmation: confirmation)
     }
 
@@ -366,7 +456,7 @@ private struct CodexDialogPlanner {
         case .amend, .respond, .approvePlan:
             throw .unsupported(
                 String(localized: "Codex ignores text on approvals; decline, then tell Codex in the composer."))
-        case .submitSelection, .expandQuestions, .skipQuestion:
+        case .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The approval has no such action."))
         }
     }
@@ -417,7 +507,7 @@ private struct CodexDialogPlanner {
             }
             return DialogActionPlan(
                 steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked, focusesComposer: true)
-        case .amend, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .amend, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The question has no such action."))
         }
     }
@@ -430,7 +520,7 @@ private struct CodexDialogPlanner {
             DialogActionPlan(steps: [.keys(["shift+left"])], confirmation: .fingerprintChange)
         case .dismiss:
             DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChangeOrUnblocked, focusesComposer: true)
-        case .choose, .amend, .respond, .approvePlan, .submitSelection, .skipQuestion:
+        case .choose, .amend, .respond, .approvePlan, .submitSelection, .skipQuestion, .focus:
             throw .unsupported(String(localized: "Open the questions first."))
         }
     }
@@ -449,7 +539,7 @@ private struct CodexDialogPlanner {
             return DialogActionPlan(steps: builder.steps, confirmation: .queuedNotice(dialog.title))
         case .skipQuestion:
             return DialogActionPlan(steps: [.keys(["ctrl+]"])], confirmation: .fingerprintChangeOrUnblocked)
-        case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions:
+        case .dismiss, .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .focus:
             throw .unsupported(String(localized: "Codex offers only an answer or a skip here."))
         }
     }
@@ -468,7 +558,7 @@ private struct CodexDialogPlanner {
             return DialogActionPlan(steps: builder.steps, confirmation: .fingerprintChange)
         case .dismiss:
             return DialogActionPlan(steps: [.keys(["esc"])], confirmation: .fingerprintChange)
-        case .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .amend, .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             throw .unsupported(String(localized: "The trust screen has no such action."))
         }
     }

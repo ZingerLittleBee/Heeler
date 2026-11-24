@@ -487,34 +487,52 @@ struct BlockedCardStoreTests {
 
         await pane.show(try ScreenFixture.screen("claude-42-c8-phone-question-previews"))
         await relaunched.refresh()
-        guard case .generic = relaunched.content else {
-            Issue.record("Expected the generic card, got \(relaunched.content)")
+        guard case .card(let previews) = relaunched.content else {
+            Issue.record("Expected the question's card, got \(relaunched.content)")
             return
         }
+        #expect(previews.dialog.subject.showsPreviews)
 
-        // The call's result ends it.
+        // The dialog leaving the screen ends it, as its call's result says.
         relaunched.update(transcript: Self.transcript(resolved: [Self.question("toolu_q")]))
+        await pane.show(try ScreenFixture.screen("claude-01-ready"))
+        await relaunched.refresh()
         #expect(relaunched.content == .none)
     }
 
-    @Test func anIdleAgentWithoutAnOpenQuestionIsNotRead() async throws {
-        let pane = FakePane(try ScreenFixture.screen("claude-14-c4-review"))
+    /// herdr 0.9.5 reports Claude Code 2.1.330 idle on a question with
+    /// previews once its footer wraps, and Claude Code 2.1.330 writes a
+    /// call only once it is answered, so no open call says to read.
+    @Test func anIdleClaudeIsReadOnceAndOnWhileADialogShows() async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-01-ready"))
         let store = Self.store(.claude, pane: pane)
-        store.update(transcript: Self.transcript(pending: [Self.bash("toolu_1", "touch c1.txt")]))
         store.update(activity: .idle)
 
         await store.refresh()
+        await store.refresh()
 
         #expect(store.content == .none)
-        #expect(await pane.reads == 0)
+        #expect(await pane.reads == 1)
 
-        // Only Claude's idle questions read: herdr reports the others.
+        let asking = FakePane(try ScreenFixture.screen("claude-42-c8-phone-question-previews"))
+        let shown = Self.store(.claude, pane: asking)
+        shown.update(activity: .idle)
+        await shown.refresh()
+        await shown.refresh()
+        guard case .card(let card) = shown.content else {
+            Issue.record("Expected the question's card, got \(shown.content)")
+            return
+        }
+        #expect(card.dialog.subject.showsPreviews)
+        #expect(await asking.reads == 2)
+
+        // Only Claude's idle screen reads: herdr reports the others.
         let codex = Self.store(.codex, pane: pane)
         codex.update(transcript: Self.transcript(pending: [Self.question("toolu_q")]))
         codex.update(activity: .idle)
         await codex.refresh()
         #expect(codex.content == .none)
-        #expect(await pane.reads == 0)
+        #expect(await pane.reads == 1)
     }
 
     /// herdr 0.9.5 reports Codex's trust screen Idle once its question
@@ -2497,7 +2515,9 @@ struct BlockedCardStoreTests {
         #expect(await pane.reads == 1)
     }
 
-    /// Only Working to idle is a turn's end, and only agy is read there.
+    /// Only Working to idle is agy's turn end. Claude is read whenever it
+    /// turns idle (`anIdleClaudeIsReadOnceAndOnWhileADialogShows`), and no
+    /// other program is.
     @Test func noOtherChangeReadsAtATurnEnd() async throws {
         let edit = try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40")
         let answered = FakePane(edit)
@@ -2513,12 +2533,12 @@ struct BlockedCardStoreTests {
         await unknownToIdle.refresh()
         #expect(await started.reads == 0)
 
-        let claude = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
-        let claudeStore = Self.store(.claude, pane: claude)
-        claudeStore.update(activity: .working)
-        claudeStore.update(activity: .idle)
-        await claudeStore.refresh()
-        #expect(await claude.reads == 0)
+        let codex = FakePane(edit)
+        let codexStore = Self.store(.codex, pane: codex)
+        codexStore.update(activity: .working)
+        codexStore.update(activity: .idle)
+        await codexStore.refresh()
+        #expect(await codex.reads == 0)
     }
 
     // MARK: Helpers

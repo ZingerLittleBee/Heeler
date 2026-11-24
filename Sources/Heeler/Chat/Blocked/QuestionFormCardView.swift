@@ -46,6 +46,9 @@ struct QuestionFormCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     prompt
                     options
+                    if let preview {
+                        BlockedOptionPreview(text: preview)
+                    }
                 }
                 .disabled(!isReady)
             }
@@ -107,6 +110,12 @@ struct QuestionFormCard: View {
         }
     }
 
+    /// The chosen option's preview, on a question whose options have them.
+    private var preview: String? {
+        guard question.hasPreviews else { return nil }
+        return question.options.indices.first(where: draft.isChosen).flatMap { question.options[$0].preview }
+    }
+
     /// Claude's `Chat about this`: no answers, a conversation instead. It
     /// stands apart from the options, which it isn't one of.
     private var chat: DialogOption? {
@@ -116,8 +125,9 @@ struct QuestionFormCard: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Antigravity CLI's multi-select page takes one too: its
-            // `Write-in...` goes with the checks.
-            if !question.isMultiSelect || form.writesInWithSelection {
+            // `Write-in...` goes with the checks. Claude's page for a
+            // question with previews has no row to type into.
+            if !question.hasPreviews, !question.isMultiSelect || form.writesInWithSelection {
                 BlockedTextField(
                     placeholder: String(localized: "Type your own answer"),
                     text: Binding(get: { draft.text }, set: { draft.type($0) }), isFocused: $isTextFocused)
@@ -143,7 +153,8 @@ struct QuestionFormCard: View {
     // MARK: Answers
 
     /// An option answers a single-select question and moves on, as a digit
-    /// does in the terminal; the last page waits for Submit.
+    /// does in the terminal; the last page waits for Submit. Beside
+    /// previews the page stays, to compare them.
     private func choose(_ index: Int) {
         isTextFocused = false
         draft.choose(index)

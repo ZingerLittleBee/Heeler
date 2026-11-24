@@ -73,10 +73,11 @@ struct BlockedCard: Equatable, Sendable {
 ///
 /// The screen decides everything a card offers. While Chat shows a Blocked
 /// Agent the store reads it every second, and also an idle Claude whose
-/// AskUserQuestion call is open (see `readsIdleQuestion`), an idle
+/// AskUserQuestion call is open (see `readsIdleQuestion`) or that has just
+/// turned idle or come on screen idle (`readsIdleOnce`), an idle
 /// Antigravity CLI with a call that asks the user open
 /// (`readsIdleGatedCall`) or that herdr has just moved from Working to idle
-/// (`readsTurnEnd`), an idle Codex or Antigravity CLI that has
+/// (`readsIdleOnce`), an idle Codex or Antigravity CLI that has
 /// reported no session (`readsIdleTrust`), and an Antigravity CLI without
 /// a session that herdr has no status for (`readsUnknownTrust`). An action reads it
 /// again first and sends nothing if the dialog changed, waits until the
@@ -182,12 +183,19 @@ final class BlockedCardStore {
     /// and the focus the answer asks for lands on it. The next status ends
     /// it, and so does another card.
     private var answerHandedTurnBack = false
-    /// See `readsIdleGatedCall`: an Antigravity CLI that herdr has just
-    /// moved from Working to idle, read once for a dialog herdr reports
-    /// idle on, before the transcript shows its call. The next status
-    /// change ends it, and so does a read that names no dialog, or one
-    /// that fails before any shows.
-    @ObservationIgnored private var readsTurnEnd = false
+    /// An idle Agent read once for a dialog herdr reports idle on, and on
+    /// while a read names one. The next status change ends it, and so does
+    /// a read that names no dialog, or one that fails before any shows.
+    ///
+    /// An Antigravity CLI that herdr has just moved from Working to idle,
+    /// before the transcript shows its call (`readsIdleGatedCall`).
+    ///
+    /// A Claude that herdr has just moved to idle, or that Chat comes to
+    /// show idle. herdr 0.9.5 reports Claude Code 2.1.330 idle on a
+    /// question with previews once its footer wraps, as on a phone's grid,
+    /// and Claude Code 2.1.330 writes a call only once it is answered, so
+    /// no open call stands in for Blocked there (`readsIdleQuestion`).
+    @ObservationIgnored private var readsIdleOnce = false
     /// See `readsUnknownTrust`: set as an Antigravity CLI comes to be read
     /// for its trust prompt with no status, and ended by the first read,
     /// whatever it found or if it failed, by `Timing.firstUnknownRead`, and
@@ -251,9 +259,11 @@ final class BlockedCardStore {
     /// A Chat view shows the Agent: watch it while it is Blocked, while an
     /// idle Claude has an open AskUserQuestion call or an idle Antigravity
     /// CLI an open call that asks the user, or while an idle Codex or
-    /// Antigravity CLI, or an agy without a status, awaits its session.
+    /// Antigravity CLI, or an agy without a status, awaits its session. An
+    /// idle Claude is read once (`readsIdleOnce`).
     func show() {
         isVisible = true
+        if program == .claude, activity == .idle, content == .none { readsIdleOnce = true }
         updateWatching()
     }
 
@@ -283,16 +293,29 @@ final class BlockedCardStore {
     /// herdr's latest status. Leaving Blocked clears the card unless an
     /// action is still checking its effect, or an idle Claude still has an
     /// open AskUserQuestion call (an idle Antigravity CLI a call that asks
-    /// the user).
+    /// the user). A Claude turning idle keeps a dialog's card for the read
+    /// that says whether the dialog is still there (`readsIdleOnce`), as
+    /// when a narrower screen wraps its footer, and nothing else.
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
         let previous = self.activity
         let readUnknown = readsUnknownTrust
         self.activity = activity
         if answerHandedTurnBack { answerHandedTurnBack = false }
-        readsTurnEnd = program == .agy && previous == .working && activity == .idle
+        readsIdleOnce =
+            switch program {
+            case .agy: previous == .working && activity == .idle
+            case .claude: activity == .idle
+            default: false
+            }
         if activity == .blocked { quietSince = clock.now() }
-        if !readsScreen, progress != .acting { clear() }
+        if progress != .acting {
+            if !readsScreen {
+                clear()
+            } else if program == .claude, activity == .idle, !showsCard {
+                clear()
+            }
+        }
         noteUnknownTrust(wasRead: readUnknown)
         updateWatching()
     }
@@ -359,6 +382,8 @@ final class BlockedCardStore {
     /// herdr 0.9.5 reports Claude Code 2.1.301 idle, not Blocked, on some
     /// AskUserQuestion screens: the review page, and a question with
     /// previews. An open AskUserQuestion call stands in for Blocked there.
+    /// Claude Code 2.1.330 writes the call only once it is answered
+    /// (`readsIdleOnce`).
     private var readsIdleQuestion: Bool {
         program == .claude && activity == .idle && pendingRequests.contains { $0.toolName == "AskUserQuestion" }
     }
@@ -371,7 +396,7 @@ final class BlockedCardStore {
     /// stands in for Blocked there. A command sent to the background has
     /// its result and keeps no card. The transcript shows the call only a
     /// poll after herdr's idle, so an agy that herdr has just moved from
-    /// Working to idle is also read once (`readsTurnEnd`).
+    /// Working to idle is also read once (`readsIdleOnce`).
     private var readsIdleGatedCall: Bool {
         program == .agy && activity == .idle
             && pendingRequests.contains { AgyToolCall.userGatedTools.contains($0.toolName) }
@@ -400,7 +425,7 @@ final class BlockedCardStore {
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
         activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
-            || readsTurnEnd
+            || readsIdleOnce
     }
 
     /// Puts the reading sign in the Composer's place as an Antigravity CLI
@@ -491,7 +516,7 @@ final class BlockedCardStore {
                 return
             }
             history.record(.stopped, forCall: id)
-        case .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion:
+        case .respond, .approvePlan, .submitSelection, .expandQuestions, .skipQuestion, .focus:
             break
         }
     }
@@ -647,6 +672,11 @@ final class BlockedCardStore {
         if let refusal { notice = refusal }
     }
 
+    private var showsCard: Bool {
+        if case .card = content { return true }
+        return false
+    }
+
     /// The dialog the card shows, nil when it shows none.
     private var shownFingerprint: DialogFingerprint? {
         switch content {
@@ -692,21 +722,21 @@ final class BlockedCardStore {
                 content = .unreadable
                 if answerHandedTurnBack { answerHandedTurnBack = false }
             }
-            if content == .none { endTurnEndRead() }
+            if content == .none { endIdleRead() }
             return
         }
         releaseIfChanged(observation)
         present(observation)
-        if observation.result.dialog == nil { endTurnEndRead() }
+        if observation.result.dialog == nil { endIdleRead() }
     }
 
-    /// The turn-end read found no dialog it names, or failed: it was the
-    /// one read (`readsTurnEnd`). Unless another reason reads the screen,
-    /// the card clears, so a screen Heeler can't name never stays a
-    /// generic card there.
-    private func endTurnEndRead() {
-        guard readsTurnEnd else { return }
-        readsTurnEnd = false
+    /// The idle read found no dialog it names, or failed: it was the one
+    /// read (`readsIdleOnce`). Unless another reason reads the screen, the
+    /// card clears, so a screen Heeler can't name never stays a generic
+    /// card there.
+    private func endIdleRead() {
+        guard readsIdleOnce else { return }
+        readsIdleOnce = false
         if !readsScreen, progress != .acting { clear() }
         updateWatching()
     }
@@ -805,8 +835,7 @@ final class BlockedCardStore {
             if dialog.kind == .grokCancelTurn { return .decline }
             return roleKind(option.role)
         case .amend(let ordinal, _):
-            guard let option = dialog.option(ordinal),
-                option.role == .approve || option.role == .decline
+            guard let option = dialog.option(ordinal), [.approve, .decline, .answer].contains(option.role)
             else { return .unknown }
             return .answer
         case .respond(let ordinal, _):
@@ -819,7 +848,7 @@ final class BlockedCardStore {
             return (ordinals.isEmpty && !hasText) ? .unknown : .answer
         case .skipQuestion:
             return .answer
-        case .expandQuestions:
+        case .expandQuestions, .focus:
             return .unknown
         }
     }

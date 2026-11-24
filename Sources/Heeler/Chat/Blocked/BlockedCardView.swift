@@ -66,6 +66,9 @@ private struct BlockedDialogCard: View {
     /// Whether the answers past the decision show (`moreAnswers`).
     @State private var showsMoreAnswers = false
     @State private var selection: Set<Int>
+    /// The answer tapped beside the previews, by ordinal, until the
+    /// terminal's focus has followed it (`showPreview`).
+    @State private var previewChoice: Int?
     @State private var pinnedChoicesHeight: CGFloat = 0
     @FocusState private var isTextFocused: Bool
 
@@ -326,12 +329,18 @@ private struct BlockedDialogCard: View {
 
     /// What sends a multi-select page's answers: Claude's button, or
     /// Antigravity CLI's Enter, which turns to the next question until the
-    /// last.
+    /// last. Also what sends the answer chosen beside its preview: Claude's
+    /// Enter.
     private var selectionTitle: String {
         if let button = dialog.options.first(where: { $0.role == .next }) { return button.label }
+        // A page of Claude's form turns to the next question, or to the
+        // review page, which submits.
+        if dialog.kind == .claudeQuestion, dialog.subject.questionHeaders.count > 1 {
+            return String(localized: "Next")
+        }
         return dialog.questionPage.map { $0.index < $0.count } == true
             ? String(localized: "Next")
-            : String(localized: "Submit", comment: "Sends the checked answers on a multi-select question's last page")
+            : String(localized: "Submit", comment: "Sends the chosen answers on a question's last page")
     }
 
     /// Antigravity CLI's `Write-in...` on a multi-select question. Enter in
@@ -350,9 +359,86 @@ private struct BlockedDialogCard: View {
         .disabled((selection.isEmpty && text == nil) || dialog.answersHeldByDraft)
     }
 
+    /// The question this page asks as the call spells it out, where the
+    /// transcript has the call while its dialog is open (Claude Code
+    /// 2.1.330 writes it only once answered): beside a preview the screen
+    /// leaves out each option's description, and cuts a long preview short.
+    private var askedQuestion: ChatQuestion? {
+        let shown = DialogRowScanner.comparable(dialog.subject.question ?? dialog.title)
+        return card.request?.questions.first { DialogRowScanner.comparable($0.text) == shown }
+    }
+
+    private func asked(_ option: DialogOption) -> ChatQuestion.Option? {
+        let label = DialogRowScanner.comparable(option.label)
+        return askedQuestion?.options.first { DialogRowScanner.comparable($0.label) == label }
+    }
+
+    /// The answer the terminal has the focus on, which Enter gives. None
+    /// while `Chat about this` has it.
+    private var focusedAnswer: Int? {
+        dialog.options.first { $0.isFocused && $0.role == .answer }?.ordinal
+    }
+
+    /// The answer the card marks: the one just tapped, else the terminal's.
+    private var chosenAnswer: Int? { previewChoice ?? focusedAnswer }
+
+    /// The preview under the answers: the call's for the chosen answer, or
+    /// without a matching call the lines the box shows, which are those of
+    /// the answer the terminal is on.
+    private var shownPreview: String? {
+        if askedQuestion != nil { return chosenAnswer.flatMap(dialog.option).flatMap(asked)?.preview }
+        let lines = dialog.subject.previewLines
+        guard focusedAnswer != nil, !lines.isEmpty else { return nil }
+        return lines.joined(separator: "\n")
+    }
+
+    /// What the box says it left out of the preview shown from the screen.
+    private var previewCutNote: String? {
+        askedQuestion == nil ? dialog.subject.previewCutNote : nil
+    }
+
+    /// A question with previews: its answers as one list where one is
+    /// chosen, with that one's preview under them. Choosing gives no
+    /// answer, as in the terminal, where Enter does (`previewAnswer`): it
+    /// moves the terminal's focus, and the box draws that answer's preview.
+    @ViewBuilder
+    private var previewChoices: some View {
+        optionRows(dialog.options.filter { $0.role == .answer }) { option in
+            let asked = asked(option)
+            return BlockedOptionRow(
+                label: asked?.label ?? option.label, detail: asked?.detail,
+                mark: .choice(option.ordinal == chosenAnswer)
+            ) {
+                showPreview(of: option.ordinal)
+            }
+        }
+        if let shownPreview {
+            BlockedOptionPreview(text: shownPreview)
+                // The box still shows the last answer's until the focus moves.
+                .opacity(previewChoice == nil || askedQuestion != nil ? 1 : 0.4)
+            if let previewCutNote {
+                Text("Claude Code's terminal cuts this preview: \(previewCutNote)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func showPreview(of ordinal: Int) {
+        guard ordinal != focusedAnswer, previewChoice == nil else { return }
+        previewChoice = ordinal
+        Task {
+            await store.perform(.focus(ordinal: ordinal))
+            previewChoice = nil
+        }
+    }
+
     @ViewBuilder
     private var choices: some View {
-        if isMultiSelect {
+        if dialog.subject.showsPreviews {
+            previewChoices
+        } else if isMultiSelect {
             optionRows(dialog.options.filter { $0.role == .answer }) { option in
                 BlockedOptionRow(
                     label: option.label, detail: option.detail, mark: .check(selection.contains(option.ordinal))
@@ -560,6 +646,8 @@ private struct BlockedDialogCard: View {
             }
         case .agyCommand:
             noteEntry
+        case .claudeQuestion where dialog.subject.showsPreviews:
+            previewAnswer
         case .claudeQuestion, .agyQuestion:
             // agy's `Write-in...` names a row, not what to type: its fields
             // say what the form's pages say. Claude's card keeps the row
@@ -599,6 +687,34 @@ private struct BlockedDialogCard: View {
             }
         default:
             EmptyView()
+        }
+    }
+
+    /// Notes the terminal already holds for a question with previews, in
+    /// its open field or kept by the closed one. They go with the answer,
+    /// and Heeler adds none to them.
+    private var terminalNotes: String? {
+        if let saved = dialog.focus.savedNotes { return saved }
+        guard let open = dialog.focus.notesText, !open.isEmpty else { return nil }
+        return open
+    }
+
+    /// Sends the answer chosen beside its preview, with the question's
+    /// notes when the field has any: Claude's `n`.
+    private var previewAnswer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let terminalNotes {
+                BlockedCardText(String(localized: "Notes from the terminal: \(terminalNotes)"))
+            } else {
+                BlockedTextField(placeholder: String(localized: "Add notes"), text: $text, isFocused: $isTextFocused)
+            }
+            BlockedPrimaryButton(title: selectionTitle) {
+                guard let chosenAnswer else { return }
+                perform(
+                    hasText && terminalNotes == nil
+                        ? .amend(ordinal: chosenAnswer, note: text) : .choose(ordinal: chosenAnswer))
+            }
+            .disabled(chosenAnswer == nil)
         }
     }
 
@@ -1260,6 +1376,38 @@ struct BlockedCodeBox: View {
 
     var body: some View {
         ChatTerminalText(text: text, isCommand: isCommand, lineLimit: 6)
+    }
+}
+
+/// What choosing a question's option gives, as the Agent wrote it for the
+/// box Claude Code draws beside the options: a mockup, a snippet, a
+/// diagram. Monospaced on the terminal's black, as that box is, and without
+/// the fences of a code block, which the box leaves out too. A line wider
+/// than the card scrolls sideways rather than wraps, so columns stay
+/// aligned.
+struct BlockedOptionPreview: View {
+    let text: String
+
+    var body: some View {
+        ChatTerminalBlock {
+            ScrollView(.horizontal) {
+                Text(verbatim: Self.shown(text))
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        }
+        .accessibilityIdentifier("chat.blocked-card.preview")
+    }
+
+    nonisolated static func shown(_ preview: String) -> String {
+        preview.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("```") }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .newlines)
     }
 }
 

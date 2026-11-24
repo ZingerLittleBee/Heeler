@@ -176,18 +176,21 @@ struct ClaudeDialogParserTests {
         #expect(dialog.focus == DialogFocusState(focusedOrdinal: 1))
     }
 
-    @Test("A question with previews stays on the generic card")
+    @Test("A question with previews")
     func questionWithPreviews() throws {
-        // Claude Code 2.1.301 draws each option's preview beside the list.
-        let result = ClaudeDialogParser.parse(try ScreenFixture.screen("claude-42-c8-phone-question-previews"))
-        guard case .unrecognized(let excerpt) = result else {
-            Issue.record("Expected the generic card, got \(result)")
-            return
-        }
-        #expect(excerpt.reason == "Heeler does not handle questions with previews yet.")
-        // Digits only move the focus there, so the card offers the key pad
-        // alone.
-        #expect(excerpt.numbered.isEmpty)
+        // Claude Code 2.1.301 draws the focused option's preview in a box
+        // beside the list, the question's notes under it, and `Chat about
+        // this` without a number.
+        let dialog = try dialog("claude-42-c8-phone-question-previews")
+        #expect(dialog.kind == .claudeQuestion)
+        #expect(dialog.title == "Which layout?")
+        #expect(dialog.progress == "Layout")
+        #expect(dialog.options.map(\.label) == ["A", "B", "Chat about this"])
+        #expect(dialog.options.map(\.role) == [.answer, .answer, .chat])
+        #expect(dialog.options.map(\.number) == [1, 2, nil])
+        #expect(dialog.subject.showsPreviews)
+        #expect(dialog.subject.previewLines == ["header", "content"])
+        #expect(dialog.focus == DialogFocusState(focusedOrdinal: 1))
     }
 
     @Test("A multi-select question page")

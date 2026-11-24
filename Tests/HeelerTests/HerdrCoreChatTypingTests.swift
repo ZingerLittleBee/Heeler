@@ -30,15 +30,17 @@ struct HerdrCoreChatTypingTests {
         return Data(captured.replacingOccurrences(of: end, with: modes + end).utf8)
     }
 
-    /// A question Heeler can't name, so its card has only the key pad. No core paint
-    /// of it was captured: this wraps the capture's rows in the end of a paint, which
-    /// `HerdrCoreFirstPaintTests` shows reads as the capture does.
+    /// A question Heeler can't name, so its card has only the key pad: one with
+    /// previews, the box that holds them drawn with a corner Heeler doesn't read. No
+    /// core paint of it was captured: this wraps the capture's rows in the end of a
+    /// paint, which `HerdrCoreFirstPaintTests` shows reads as the capture does.
     private static func previewsPaint(
         asking question: String = "Which layout?", previewing preview: String = "header"
     ) throws -> Data {
         let captured = try ScreenFixture.text("claude-42-c8-phone-question-previews")
         let drawn =
             captured
+            .replacingOccurrences(of: "┌", with: "╭")
             .replacingOccurrences(of: "Which layout?", with: question)
             .replacingOccurrences(of: "header", with: preview)
         return Data((drawn + "\u{1B}[1;1H\u{1B}[?9001l").utf8)
