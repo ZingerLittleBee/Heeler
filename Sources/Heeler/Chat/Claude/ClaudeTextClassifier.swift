@@ -157,9 +157,7 @@ enum ClaudeUserText: Sendable, Equatable {
 
     /// A teammate's `{"type":"idle_notification","from",…,"result"}` body.
     private static func idleNotification(_ content: String) -> (from: String?, result: String?)? {
-        guard content.hasPrefix("{"), let data = content.data(using: .utf8),
-            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            object["type"] as? String == "idle_notification"
+        guard let object = ClaudeText.mailboxObject(content), object["type"] as? String == "idle_notification"
         else { return nil }
         let result = (object["result"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (object["from"] as? String, result.flatMap { $0.isEmpty ? nil : $0 })
@@ -216,6 +214,56 @@ enum ClaudeUserText: Sendable, Equatable {
 
     private static func isLowercaseHexDigit(_ byte: UInt8) -> Bool {
         (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+    }
+}
+
+/// One `<teammate-message>` block a teammate sent the lead, reduced to what
+/// Background Work follows: who sent it and whether it says the teammate's
+/// turn ended. Claude Code 2.1.331 writes mailbox types as a JSON body
+/// (`idle_notification`, `shutdown_approved`, `teammate_terminated`, …)
+/// and anything else as text.
+struct ClaudeTeammateMessage: Sendable, Equatable {
+    enum Kind: Sendable, Equatable {
+        /// Text, or a mailbox type that says nothing of the teammate's state.
+        case message
+        /// Its turn ended and it waits on its mailbox: `idle_notification`
+        /// with its `idleReason` (`available`, `failed`, `interrupted`).
+        case idle(reason: String?)
+        /// It is gone: `shutdown_approved` or `teammate_terminated`.
+        case ended
+    }
+
+    /// The teammate's name, which messages sent to it use.
+    var sender: String
+    var kind: Kind
+    /// The body's own `timestamp`: when the teammate went idle, which the
+    /// record carrying it can follow by minutes.
+    var timestamp: String?
+
+    /// The blocks in a user record's text, after a peer message header or
+    /// on their own; none for any other text.
+    static func messages(in text: String) -> [ClaudeTeammateMessage] {
+        guard text.contains("<teammate-message") else { return [] }
+        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let header = ClaudeUserText.peerMessageHeaders.first(where: { body.hasPrefix($0) }) {
+            body = body.dropFirst(header.count).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard ClaudeText.leadingTag(of: body) == "teammate-message" else { return [] }
+        return ClaudeText.blocks(ofTag: "teammate-message", in: body).compactMap { block in
+            let content = block.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let object = ClaudeText.mailboxObject(content)
+            guard
+                let sender = ClaudeText.attribute("teammate_id", in: block.openingTag)
+                    ?? (object?["from"] as? String).flatMap({ $0.isEmpty ? nil : $0 })
+            else { return nil }
+            let kind: Kind =
+                switch object?["type"] as? String {
+                case "idle_notification": .idle(reason: object?["idleReason"] as? String)
+                case "shutdown_approved", "teammate_terminated": .ended
+                default: .message
+                }
+            return ClaudeTeammateMessage(sender: sender, kind: kind, timestamp: object?["timestamp"] as? String)
+        }
     }
 }
 
@@ -386,6 +434,12 @@ enum ClaudeText {
             searchStart = close.upperBound
         }
         return blocks
+    }
+
+    /// A `<teammate-message>` body that is a mailbox type's JSON object.
+    static func mailboxObject(_ content: String) -> [String: Any]? {
+        guard content.hasPrefix("{"), let data = content.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
     /// The value of `name="…"` in a tag's text.

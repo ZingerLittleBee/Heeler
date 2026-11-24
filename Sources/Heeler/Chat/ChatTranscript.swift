@@ -1177,14 +1177,17 @@ struct ChatRecordedPrompt: Equatable, Sendable {
     }
 }
 
-/// One piece of Background Work: a Subagent, Workflow, background command, or
-/// scheduled timer/cron the program started beside the conversation, as the
-/// transcript records its launch and its end. Saved with the conversation only
-/// to carry a launch above a later read's window into it, where that read's
-/// records can still end it.
+/// One piece of Background Work: a Subagent, teammate, Workflow, background
+/// command, or scheduled timer/cron the program started beside the
+/// conversation, as the transcript records its launch and its end. Saved with
+/// the conversation only to carry a launch above a later read's window into
+/// it, where that read's records can still end it.
 struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     enum Kind: Equatable, Codable, Sendable {
         case subagent
+        /// A Claude Code agent spawned with a name: it waits on its mailbox
+        /// between turns of its own, so it can run again after it ends.
+        case teammate
         case workflow
         case command
         case timer
@@ -1224,7 +1227,8 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     let id: String
     var kind: Kind
     var title: String
-    /// A Subagent's type, or what a Workflow says it does.
+    /// A Subagent's type, a teammate's name, or what a Workflow says it
+    /// does.
     var subtitle: String?
     var state: State
     /// Where a Workflow records its agents, on the Host; nil when it is
@@ -1240,12 +1244,17 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     var launchOffset: UInt64
     /// Where the record that says it ended starts.
     var endOffset: UInt64?
-    /// On the Host's clock, from the records' timestamps.
+    /// On the Host's clock, from the records' timestamps. A teammate's is
+    /// when its latest run started: its spawn, or the message that woke it.
     var launchedAt: Date?
     /// A later sign in the transcript that running work is still active.
     var lastActivityAt: Date?
     var endedAt: Date?
     var usage: Usage?
+    /// The latest message the lead sent a teammate while the records read
+    /// so far showed it running. A later window can load an end from before
+    /// that message, recorded after it, and the message then woke it again.
+    var messagedWhileRunningAt: Date?
 
     init(
         id: String, kind: Kind, title: String, subtitle: String? = nil, state: State = .running,
@@ -1350,12 +1359,98 @@ struct ChatBackgroundCommand: Equatable, Sendable {
     var isStoppable: Bool { isRunning && !isDaemon }
 }
 
+/// What one record says about a Claude Code teammate (ADR 0024). A teammate
+/// waits on its mailbox once a turn of its own ends, and a message the lead
+/// sends it starts another, so it runs, ends and runs again under one name.
+struct ChatTeammateEvent: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        /// A teammate took this name; later records name that one.
+        case spawned
+        /// The lead sent it a message, which starts a turn unless one runs.
+        case messaged
+        /// A turn ended: done, failed or interrupted; or it was stopped.
+        case ended(ChatBackgroundWorkItem.State)
+        /// It wrote to the lead, which it does only while it runs.
+        case wrote
+    }
+
+    /// The teammate's name; nil for a record about every teammate:
+    /// `agents_killed`, or a message sent to `*`.
+    var name: String?
+    var kind: Kind
+    /// Where the record starts.
+    var offset: UInt64
+    /// When it happened, on the Host's clock. An idle notification says
+    /// when the teammate went idle, and its record can come after the lead
+    /// has already sent the next message.
+    var at: Date?
+}
+
 extension ChatBackgroundWorkItem {
     mutating func apply(_ end: ChatBackgroundWorkEnd) {
         state = end.state
         endOffset = end.offset
         endedAt = end.endedAt
         usage = end.usage
+    }
+
+    /// Follows a teammate through the `events` after its spawn, in the
+    /// order they happened. Events already reflected change nothing, so a
+    /// teammate carried from an earlier read follows the same events again.
+    mutating func follow(_ events: [ChatTeammateEvent]) {
+        guard kind == .teammate, let name = subtitle else { return }
+        var mine = events.filter { ($0.name == nil || $0.name == name) && $0.offset > launchOffset }
+        // A name is taken again only once its teammate has ended.
+        let successor = mine.first { $0.kind == .spawned && $0.name == name }
+        if let successor {
+            mine = mine.filter { $0.offset < successor.offset }
+        }
+        for event in mine.sorted(by: { ($0.at ?? .distantPast, $0.offset) < ($1.at ?? .distantPast, $1.offset) }) {
+            switch event.kind {
+            case .spawned:
+                break
+            case .messaged:
+                if state == .running {
+                    if let at = event.at, at > launchedAt ?? .distantPast {
+                        messagedWhileRunningAt = max(messagedWhileRunningAt ?? at, at)
+                    }
+                    continue
+                }
+                // A message sent before the end it follows woke nothing.
+                if let at = event.at, let endedAt, at < endedAt { continue }
+                runAgain(from: event.at)
+            case .ended(let ended):
+                guard state == .running else { continue }
+                // An end from before this run belongs to the one before.
+                if let at = event.at, let launchedAt, at < launchedAt { continue }
+                state = ended
+                endOffset = event.offset
+                endedAt = event.at
+                let message = messagedWhileRunningAt
+                messagedWhileRunningAt = nil
+                if let message, let at = event.at, message > at {
+                    runAgain(from: message)
+                }
+            case .wrote:
+                guard state == .running, let at = event.at else { continue }
+                lastActivityAt = [lastActivityAt, at].compactMap(\.self).max()
+            }
+        }
+        if state == .running, let successor {
+            state = .stopped
+            endOffset = successor.offset
+            endedAt = successor.at
+            messagedWhileRunningAt = nil
+        }
+    }
+
+    private mutating func runAgain(from start: Date?) {
+        state = .running
+        launchedAt = start ?? launchedAt
+        endOffset = nil
+        endedAt = nil
+        lastActivityAt = nil
+        usage = nil
     }
 }
 
@@ -1421,6 +1516,9 @@ struct ChatTranscript: Equatable, Sendable {
     /// Pending-count caps recorded at turn boundaries inside a tail window,
     /// retiring excess running work carried from above `windowStart`.
     var backgroundWorkTurnCaps: [ChatTurnPendingAllowance]
+    /// What the loaded lines say about Claude Code teammates, in file
+    /// order, which a teammate spawned above them follows too.
+    var teammateEvents: [ChatTeammateEvent] = []
     /// The turns the loaded lines open, oldest first. Entries above the
     /// first belong to a turn opened above the loaded lines.
     var turns: [ChatTurn]
@@ -1481,6 +1579,13 @@ struct ChatTranscript: Equatable, Sendable {
         return backgroundWork.filter { $0.state == .running || ($0.endOffset ?? 0) > prompt }
     }
 
+    /// What a saved conversation keeps to carry into a later window: what
+    /// Chat lists, and every teammate, which a later message runs again.
+    var savedBackgroundWork: [ChatBackgroundWorkItem] {
+        let listed = Set(listedBackgroundWork.map(\.id))
+        return backgroundWork.filter { listed.contains($0.id) || $0.kind == .teammate }
+    }
+
     /// Puts work an earlier read listed, launched above `windowStart`, ahead
     /// of the work launched in the loaded lines, ending what they end. The
     /// earlier read's latest message stands when none is loaded.
@@ -1490,6 +1595,10 @@ struct ChatTranscript: Equatable, Sendable {
         let loaded = Set(backgroundWork.map(\.id))
         var carried = earlier.filter { $0.launchOffset < windowStart && !loaded.contains($0.id) }.map { item in
             var item = item
+            if item.kind == .teammate {
+                item.follow(teammateEvents)
+                return item
+            }
             // A record that ends a command can name only its task.
             let end = backgroundWorkEnds[item.id] ?? item.taskID.flatMap { backgroundWorkEnds[$0] }
             if let end, end.offset > (item.endOffset ?? item.launchOffset) {

@@ -196,6 +196,9 @@ struct ClaudeToolInput: Sendable, Equatable {
     /// ExitPlanMode call in the same message can carry the plan as it
     /// stood before that Write.
     var planContent: String?
+    /// SendMessage's `to` when its `message` is text; nil for a protocol
+    /// request such as a shutdown, which wakes no teammate to work.
+    var messageRecipient: String?
 }
 
 struct ClaudeTodo: Sendable, Equatable {
@@ -504,7 +507,8 @@ extension ClaudeToolInput {
                     isMultiSelect: question.multiSelect ?? false)
             },
             todos: raw.todos?.compactMap(ClaudeTodo.init), skill: raw.skill, arguments: raw.args,
-            teammateName: raw.name, subject: raw.subject, taskID: raw.taskId, status: raw.status, planContent: raw.planContent)
+            teammateName: raw.name, subject: raw.subject, taskID: raw.taskId, status: raw.status, planContent: raw.planContent,
+            messageRecipient: raw.messageRecipient)
     }
 }
 
@@ -865,10 +869,11 @@ private struct RawToolInput: Decodable {
     var taskId: String?
     var status: String?
     var planContent: String?
+    var messageRecipient: String?
 
     private enum CodingKeys: String, CodingKey {
         case command, description, path, pattern, url, query, prompt, plan, planFilePath
-        case questions, todos, skill, args, content, name, subject, taskId, status
+        case questions, todos, skill, args, content, name, subject, taskId, status, to, message
         case filePath = "file_path"
         case notebookPath = "notebook_path"
         case subagentType = "subagent_type"
@@ -904,6 +909,9 @@ private struct RawToolInput: Decodable {
         status = c.lenient(String.self, .status)
         if filePath?.contains("/.claude/plans/") == true {
             planContent = c.lenient(String.self, .content)
+        }
+        if c.lenient(String.self, .message) != nil {
+            messageRecipient = c.lenient(String.self, .to)
         }
     }
 }

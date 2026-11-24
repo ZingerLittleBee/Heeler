@@ -58,7 +58,7 @@ struct ChatBackgroundWorkEvidence: Equatable, Sendable {
 }
 
 /// The Background Work Chat lists above its Composer (ADR 0024): the
-/// transcript's Subagents, Workflows and background commands, each Workflow
+/// transcript's Subagents, teammates, Workflows and background commands, each Workflow
 /// with its journal's progress, running work first. Built afresh after every
 /// read and never saved, so nothing read from the device can claim to be
 /// running.

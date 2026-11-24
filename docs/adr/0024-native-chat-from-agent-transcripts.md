@@ -897,7 +897,9 @@ Idle. Chat lists that Background Work over the Composer: for Claude Code, a
 Subagent the Agent tool started in the background and a Workflow, from their
 launch results in the transcript and the `<task-notification>`, `TaskStop`,
 `agents_killed`, `turn_duration` pending counts, or Workflow `<runId>.json`
-state file that reports each one's end, and a background command: a Bash or
+state file that reports each one's end; a teammate, which an Agent call with
+a name spawns (`teammate_spawned`), from the messages it and the lead
+exchange; and a background command: a Bash or
 PowerShell call whose result names a `backgroundTaskId` (asked to run there,
 timed out, or moved there while it ran) and a Monitor, ended by its
 `<task-notification>`, a `TaskStop`, or for a Monitor the closing event the
@@ -921,7 +923,19 @@ background command writes its output to a file the launch result names
 (`<tasks>/<task id>.output`), which Chat stats, never reads, at most once
 every 30 seconds while the command runs, so one that still writes after hours
 keeps reading as running; a Monitor's events in the transcript are the same
-sign. Neither says a command ended, which only the transcript does. For Antigravity CLI,
+sign. Neither says a command ended, which only the transcript does. A teammate
+writes no task notification and no end: it waits on its mailbox once a turn
+of its own ends, and the lead's next message starts another, so its row
+follows its runs. Its `<teammate-message>` `idle_notification` ends a run
+(done, or failed or stopped by its `idleReason`), as do `shutdown_approved`,
+`teammate_terminated` and `agents_killed`; a text `SendMessage` to its name,
+or to `*`, starts the next one, and the row's clock counts from that message.
+An idle notification carries the time the teammate went idle, and Claude
+Code can record it after the lead has already sent the next message, so a
+teammate's records are followed in the order they happened rather than the
+order they were written. While any teammate lives, Claude Code holds the
+lead's `turn_duration` until none runs, so no pending count speaks of
+teammates. For Antigravity CLI,
 Chat also stats `tasks/task-<N>.log`, follows each Subagent's own
 `transcript_full.jsonl` (settling a Subagent whose parent turn was interrupted
 once its own turn has stayed idle for five seconds), and reads `AgyScreen` to
@@ -959,9 +973,11 @@ phone reads zero.
 
 The list is rebuilt from the loaded lines on every read, but a launch can sit
 far above the tail window a later open reads. The saved conversation keeps
-the list it last showed, and when its entries join the live window, work
+the list it last showed, and every teammate, which a message can run again
+after its row has left the list, and when its entries join the live window, work
 launched above the window comes back with it: a notification or stop among
-the loaded lines ends it, and otherwise it still runs. Nothing saved shows
+the loaded lines ends it, a teammate follows the messages among them, and
+otherwise it still runs. Nothing saved shows
 before a live read, and a saved launch never joins a window it does not
 continue, since its end could sit in the gap.
 
@@ -1214,9 +1230,9 @@ no Attach at all.
     device never read that far, until the user loads earlier messages past
     the launch.
   - Background Work for Codex; stopping Background Work from Chat; a running
-    Subagent's progress; teammates; and a Claude Code Subagent resumed through
-    SendMessage, which stays listed as finished while it runs again and
-    takes its next end's counts when that arrives.
+    Subagent's or teammate's progress; and a Claude Code Subagent resumed
+    through SendMessage, which stays listed as finished while it runs again
+    and takes its next end's counts when that arrives.
   - A Claude Code background command whose end the transcript never
     records, which stays listed as not updating; the commands a Subagent
     put in the background, which its own file shows as finished calls; and

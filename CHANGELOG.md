@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- List Claude Code teammates, the agents an Agent starts with a name (which Claude Code shows under its input box beside `main`), in Chat's Background Work strip and sheet with their task and `@name`. Chat showed none of them, so an Agent running several in parallel looked idle. A teammate's row runs while it works, reads **Done** when it goes idle, and runs again with a fresh clock when the Agent sends it the next task; one that failed, was interrupted, shut down or was stopped reads **Failed** or **Stopped**. A running teammate also keeps the Agent in **Working**, as a Subagent does.
 - Show Antigravity CLI (`agy`) non-daemon `schedule` timers and recurring crons in Chat's Background Work strip and sheet with their prompt and duration or cron badge, keeping the Agent in **Working** while they run until they fire, hit `MaxIterations`, are cancelled early by `TimerCondition`, or stop, while continuing to skip standing `IsDaemon: true` crons. (PR #831)
 - Choose **ElevenLabs** in Settings › Voice Input to transcribe Composer recordings with Scribe v3 and your own API key. Turn on **Send Keywords** there to have it spell your Keywords, which ElevenLabs bills extra. (PR #810)
 

@@ -817,7 +817,7 @@ actor ChatConversationEngine {
             coverageStart: coverageStart, coverageEnd: source.readOffset,
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
             title: transcript.title, entries: entries, savedAt: date,
-            backgroundWork: transcript.listedBackgroundWork,
+            backgroundWork: transcript.savedBackgroundWork,
             latestPromptOffset: transcript.latestPromptOffset, turns: transcript.turns,
             precedingTurnEnd: transcript.precedingTurnEnd, model: transcript.model,
             effort: transcript.effort, permissionMode: transcript.permissionMode,
