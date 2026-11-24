@@ -585,6 +585,7 @@
 		710948D7F3D3C34C8208FA1B /* HerdrCoreSessionBinder+Pick.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13488C3AE27CA2BBE90794CA /* HerdrCoreSessionBinder+Pick.swift */; };
 		7153525CBA2994F5E4270229 /* GitProbe+Numstat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6762413D42607606CC99026 /* GitProbe+Numstat.swift */; };
 		71661C1008468E60B82B74CD /* SSHTransportSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D43AE8B2A62473EBA9EA090E /* SSHTransportSettings.swift */; };
+		719FA9B1277BD35CEED3F2A4 /* ClaudeTeammateTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CEC5790EB581ED0800E2A4A /* ClaudeTeammateTranscript.swift */; };
 		7224044640A0876E7FF86F76 /* RexDataLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC419DBC369D6C2D64DD4D14 /* RexDataLink.swift */; };
 		7238C957097EADD61E823E9D /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */; };
 		72408C0BAADF6668D5B75DB7 /* VoiceTranscriptionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 432857728368D638F3766801 /* VoiceTranscriptionClientTests.swift */; };
@@ -1054,6 +1055,7 @@
 		CD2F9C1E4EAFC6C9D94F6FFB /* CodexRecordDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89669281E7DB73D3A6B63BCD /* CodexRecordDecoder.swift */; };
 		CD6468C4FE5F5F67671D33E6 /* HerdrCommandLineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90E77FA4275B5056D4C0808 /* HerdrCommandLineTests.swift */; };
 		CD7F12A6A8D1F064B44879C0 /* CodexRolloutFileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = C02B2098030E5048047D4B29 /* CodexRolloutFileName.swift */; };
+		CDB528A5A63CAAAF7694F6FC /* ClaudeTeammateTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE8F4130935475EDD4076BF /* ClaudeTeammateTranscriptTests.swift */; };
 		CECE02E9BEEA9589C7F6D7CE /* RexOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D35DE1B1360AC47FD67500C /* RexOrganization.swift */; };
 		CF1C8E803B3A98CC36E199B6 /* UsageMiscLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCB84101E983154CA1087D1 /* UsageMiscLocalizationTests.swift */; };
 		CF2323019F65949DA4B9B7F2 /* AgyStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9454B2FE4D1BA88B3CCAECA7 /* AgyStep.swift */; };
@@ -2176,6 +2178,7 @@
 		9C0FE372DA87C9222894ABD1 /* HerdrCoreEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreEvent.swift; sourceTree = "<group>"; };
 		9C7D28071688F3A69201EEE7 /* HerdrHostPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrHostPath.swift; sourceTree = "<group>"; };
 		9C7DDBB62D64D6A5B2B20CFC /* WebSocketHandshakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketHandshakeTests.swift; sourceTree = "<group>"; };
+		9CEC5790EB581ED0800E2A4A /* ClaudeTeammateTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTeammateTranscript.swift; sourceTree = "<group>"; };
 		9CFA2284DB622A6EB63D2F85 /* HerdrWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrWire.swift; sourceTree = "<group>"; };
 		9D22BD103F3CD9127066426E /* ConsoleEmptyDetailPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleEmptyDetailPresentationTests.swift; sourceTree = "<group>"; };
 		9D52C938A9D232CF78A21B91 /* ChangesReferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesReferenceTests.swift; sourceTree = "<group>"; };
@@ -2256,6 +2259,7 @@
 		AD69BB4579A415BE96578319 /* HeelerWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HeelerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD9ABABB1CA63F2B23539DD6 /* HerdrCoreLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreLink.swift; sourceTree = "<group>"; };
 		ADA42EBE95B7E6452127AD5C /* NewTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewTerminalStore.swift; sourceTree = "<group>"; };
+		ADE8F4130935475EDD4076BF /* ClaudeTeammateTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTeammateTranscriptTests.swift; sourceTree = "<group>"; };
 		AE055700998ED82B854B293E /* DemoOpenCodeChatSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoOpenCodeChatSample.swift; sourceTree = "<group>"; };
 		AE0CD27692E075E352C7E962 /* TerminalSizeNoticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSizeNoticeTests.swift; sourceTree = "<group>"; };
 		AE16D57AEFD0D48E3244999E /* PortsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortsListView.swift; sourceTree = "<group>"; };
@@ -2870,6 +2874,7 @@
 				541B6BD9F48CB41007DC16A6 /* ClaudeImagePasteTests.swift */,
 				0E4FF7E57C110066B1BA9B2E /* ClaudeProjectKeyTests.swift */,
 				EECB915608BCB22A56A63EAC /* ClaudeSyntheticTranscriptTests.swift */,
+				ADE8F4130935475EDD4076BF /* ClaudeTeammateTranscriptTests.swift */,
 				2E8B84917BD7C10317B2E308 /* ClaudeTextClassifierTests.swift */,
 				67915AA97A2D8B0113F65CE4 /* ClaudeTranscriptLocatorTests.swift */,
 				43DC74615D7A661E18B7C9BA /* ClaudeTranscriptRecordTests.swift */,
@@ -3925,6 +3930,7 @@
 				692A0F0205C465D80AE9D24B /* ClaudeFileIdentity.swift */,
 				2BB2D46A5EE83B7D06B75176 /* ClaudeImagePaste.swift */,
 				E3B331536AFB3AAB2EDE1080 /* ClaudePermissionMode.swift */,
+				9CEC5790EB581ED0800E2A4A /* ClaudeTeammateTranscript.swift */,
 				07CDDDBB1D1B2089F40BB669 /* ClaudeTextClassifier.swift */,
 				F5F796BFD9CB085A6B54A597 /* ClaudeToolSummary.swift */,
 				BEEF25743E0808461240B38A /* ClaudeTranscriptIndex.swift */,
@@ -4981,6 +4987,7 @@
 				5FCD7965946C3A65B8C14E12 /* ClaudeImagePaste.swift in Sources */,
 				AFF55B89873AA016592C2A8F /* ClaudePermissionMode.swift in Sources */,
 				383BC275B9C56A0DC6466A16 /* ClaudeProjectKey.swift in Sources */,
+				719FA9B1277BD35CEED3F2A4 /* ClaudeTeammateTranscript.swift in Sources */,
 				39B3475CECC25A78769EBE5A /* ClaudeTextClassifier.swift in Sources */,
 				7BFC4BD6075086CC955C5EFD /* ClaudeToolSummary.swift in Sources */,
 				A4808A99FD16CBC177DB010E /* ClaudeTranscriptIndex.swift in Sources */,
@@ -5622,6 +5629,7 @@
 				09A7BCD071E7E11CB967219D /* ClaudeImagePasteTests.swift in Sources */,
 				4314A401840F11DD11B38FD9 /* ClaudeProjectKeyTests.swift in Sources */,
 				6D4CA5B12B7977BD95A758DD /* ClaudeSyntheticTranscriptTests.swift in Sources */,
+				CDB528A5A63CAAAF7694F6FC /* ClaudeTeammateTranscriptTests.swift in Sources */,
 				679567AC2DC9AB289ECC94C2 /* ClaudeTextClassifierTests.swift in Sources */,
 				8FC7B3F9BAC1C86576520AEF /* ClaudeTranscriptLocatorTests.swift in Sources */,
 				A3697D955BC7D40445F0520F /* ClaudeTranscriptRecordTests.swift in Sources */,

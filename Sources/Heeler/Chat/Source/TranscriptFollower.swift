@@ -2,7 +2,9 @@ import Foundation
 
 /// Follows one transcript file on the Host: opens at its tail, reads what the
 /// Agent appends, pages backwards on request, and notices when the file was
-/// rewritten in place or replaced.
+/// rewritten in place or replaced. A look that finds more appended than one
+/// poll reads, as after Chat was away, opens at the tail again, so the newest
+/// records show at once and the ones skipped load as older history.
 ///
 /// SFTP version 3 has no inode and whole-second modification times, so the
 /// follower judges identity by content: the file's first bytes and the bytes
@@ -19,7 +21,8 @@ struct TranscriptFollower: Sendable {
         var tailWindow = 1 << 20
         /// The largest single read; each runs under the transport deadline.
         var readChunk = 1 << 20
-        /// The most one poll reads before handing lines on.
+        /// The most one poll reads before handing lines on. A poll that
+        /// finds more unread opens at the tail instead.
         var pollBudget = 2 << 20
         /// The first backward page; it doubles while a line does not fit.
         var olderPage = 512 << 10
@@ -50,9 +53,10 @@ struct TranscriptFollower: Sendable {
     enum Change: Equatable, Sendable {
         case unchanged
         case appended([ChatLine])
-        /// The file was rewritten in place (`replaced == false`) or is a
-        /// different file (`replaced == true`). Everything delivered before is
-        /// stale; the lines are a fresh tail window.
+        /// The file was rewritten in place (`replaced == false`), is a
+        /// different file (`replaced == true`), or grew by more than one poll
+        /// reads. Everything delivered before is stale; the lines are a fresh
+        /// tail window.
         case reset([ChatLine], replaced: Bool)
         /// The file is gone. The follower keeps its state; the owner keeps
         /// what it showed and looks for the file again.
@@ -204,6 +208,11 @@ struct TranscriptFollower: Sendable {
                 guard try await anchorStillMatches(files) else { return try await reload(files) }
                 modificationTime = status.modificationTime
                 return .unchanged
+            }
+            // Reading on would show the backlog page by page, oldest first,
+            // before what the Agent is doing now.
+            if size - readOffset > UInt64(limits.pollBudget) {
+                return try await reload(files, status: status)
             }
         }
         let anchorLength = tailAnchor.count
@@ -358,13 +367,14 @@ struct TranscriptFollower: Sendable {
         return bytes == tailAnchor
     }
 
-    /// The file no longer continues what was read. If it still holds the
-    /// same conversation, it was edited in place (Claude rewrites a
-    /// transcript to drop records, Oh My Pi rewrites its whole file);
-    /// otherwise it is a different file under the same name.
-    private mutating func reload(_ files: ChatHostFiles) async throws -> Change {
+    /// The file no longer continues what was read, or holds more past it than
+    /// one poll reads. If it still holds the same conversation, it was edited
+    /// in place (Claude rewrites a transcript to drop records, Oh My Pi
+    /// rewrites its whole file) or grew; otherwise it is a different file
+    /// under the same name. `status` is the look just taken, if any.
+    private mutating func reload(_ files: ChatHostFiles, status: RemoteFileStatus? = nil) async throws -> Change {
         let previousHead = head
-        guard let lines = try await open(files) else { return .missing }
+        guard let lines = try await open(files, preloadedStatus: status, preloadedHead: nil) else { return .missing }
         return .reset(lines, replaced: !Self.sameConversation(previousHead, head, identity: identity))
     }
 
