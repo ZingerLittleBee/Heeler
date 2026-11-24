@@ -2277,6 +2277,17 @@
         }
       }
     },
+    "%@ was merged into %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ was merged into %2$@."
+          }
+        }
+      }
+    },
+    "%@ was merged." : {},
     "%@ was not updated." : {
       "comment" : "Argument: Heeler Plugin or Host Helper.",
       "localizations" : {
@@ -2296,6 +2307,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 未更新。"
+          }
+        }
+      }
+    },
+    "%@ was rebased onto %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ was rebased onto %2$@."
+          }
+        }
+      }
+    },
+    "%@ was squashed into %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ was squashed into %2$@."
           }
         }
       }
@@ -3365,6 +3396,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld 個候選位址"
+          }
+        }
+      }
+    },
+    "%lld checks are failing and changes were requested. GitHub may refuse this merge." : {
+      "comment" : "Warning over the Merge sheet. Argument: how many checks fail.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld check is failing and changes were requested. GitHub may refuse this merge."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld checks are failing and changes were requested. GitHub may refuse this merge."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件のチェックが失敗し、変更も求められています。GitHub がこのマージを拒否する可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项检查失败，且有人要求修改。GitHub 可能会拒绝这次合并。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個檢查失敗，且有人要求修改。GitHub 可能會拒絕這次合併。"
+          }
+        }
+      }
+    },
+    "%lld checks are failing. GitHub may refuse this merge." : {
+      "comment" : "Warning over the Merge sheet. Argument: how many checks fail.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld check is failing. GitHub may refuse this merge."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld checks are failing. GitHub may refuse this merge."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件のチェックが失敗しています。GitHub がこのマージを拒否する可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项检查失败。GitHub 可能会拒绝这次合并。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個檢查失敗。GitHub 可能會拒絕這次合併。"
           }
         }
       }
@@ -9949,6 +10062,7 @@
         }
       }
     },
+    "Another change to this item is still running." : {},
     "Another command ran in this repository at the same time; a change made by either may show under either result." : {
       "localizations" : {
         "ja" : {
@@ -10611,6 +10725,7 @@
     },
     "Approved" : {},
     "Approved by %@" : {},
+    "Approve…" : {},
     "Archive channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -13397,6 +13512,7 @@
         }
       }
     },
+    "Changes were requested. GitHub may refuse this merge." : {},
     "Changes: %@" : {
       "comment" : "VoiceOver label of an Agent row's Changes totals",
       "localizations" : {
@@ -14054,6 +14170,7 @@
         }
       }
     },
+    "Check it on GitHub before you try again." : {},
     "Check its settings in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -14231,6 +14348,7 @@
       }
     },
     "Check the Rex version on the Host." : {},
+    "Check the conversation on GitHub before you try again." : {},
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -15542,6 +15660,7 @@
         }
       }
     },
+    "Close Pull Request" : {},
     "Close Tab" : {
       "comment" : "Action that closes a tab.",
       "localizations" : {
@@ -15654,6 +15773,8 @@
         }
       }
     },
+    "Close This Issue?" : {},
+    "Close This Pull Request?" : {},
     "Close Workspace" : {
       "comment" : "Action that closes a Workspace with its last tab.",
       "localizations" : {
@@ -15722,6 +15843,8 @@
         }
       }
     },
+    "Close as Completed" : {},
+    "Close as Not Planned" : {},
     "Close the other terminal before reconnecting." : {
       "localizations" : {
         "ja" : {
@@ -15879,6 +16002,7 @@
         }
       }
     },
+    "Close…" : {},
     "Closing failed: %@" : {
       "comment" : "Error when closing a tab or pane failed. %@ is the underlying error.",
       "localizations" : {
@@ -16661,7 +16785,9 @@
         }
       }
     },
+    "Comment" : {},
     "Comments" : {},
+    "Comment…" : {},
     "Compaction cancelled" : {
       "localizations" : {
         "ja" : {
@@ -19728,6 +19854,7 @@
     "Courier New" : {
       "shouldTranslate" : false
     },
+    "Create a Merge Commit" : {},
     "Create channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -20822,6 +20949,7 @@
         }
       }
     },
+    "Delete Branch" : {},
     "Delete Network" : {
       "localizations" : {
         "ja" : {
@@ -26172,8 +26300,62 @@
     "GitHub CLI Isn't Installed" : {},
     "GitHub CLI not installed" : {},
     "GitHub Host" : {},
+    "GitHub Refused the Approval" : {},
+    "GitHub Refused the Comment" : {},
+    "GitHub Refused the Merge" : {},
+    "GitHub Refused to Close the Issue" : {},
+    "GitHub Refused to Close the Pull Request" : {},
+    "GitHub did not say how this repository merges." : {},
+    "GitHub no longer offers this here, so Heeler ran nothing." : {},
     "GitHub no longer shows this issue to your account." : {},
     "GitHub no longer shows this pull request to your account." : {},
+    "GitHub now shows this issue as closed, so Heeler ran nothing." : {},
+    "GitHub now shows this pull request as closed, so Heeler ran nothing." : {},
+    "GitHub now shows this pull request as merged, so Heeler ran nothing." : {},
+    "GitHub sheet Approve" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Approve"
+          }
+        }
+      }
+    },
+    "GitHub sheet Close" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Close"
+          }
+        }
+      }
+    },
+    "GitHub sheet Comment" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Comment"
+          }
+        }
+      }
+    },
+    "GitHub sheet Merge" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Merge"
+          }
+        }
+      }
+    },
     "GitHub state Closed" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -26196,6 +26378,8 @@
         }
       }
     },
+    "GitHub still shows the issue open." : {},
+    "GitHub still shows the pull request open." : {},
     "GitHub's Rate Limit Was Reached" : {},
     "GitHub's answer could not be read." : {},
     "GitHub's default palettes for each appearance" : {
@@ -28231,6 +28415,8 @@
         }
       }
     },
+    "Heeler could not read it again afterward. %@" : {},
+    "Heeler could not read it again first, so it ran nothing. %@" : {},
     "Heeler could not read the Host's plugin before changing it, so nothing changed. Run the checks again." : {
       "localizations" : {
         "ja" : {
@@ -32452,6 +32638,7 @@
         }
       }
     },
+    "It may have gone through. Heeler did not send it again." : {},
     "It may still complete. Check the Terminal before trying again." : {
       "localizations" : {
         "ja" : {
@@ -33654,6 +33841,8 @@
         }
       }
     },
+    "Leave a comment" : {},
+    "Leave a comment (optional)" : {},
     "Leave blank for a Tailscale account. Enter an https URL to use your own Headscale server." : {
       "localizations" : {
         "ja" : {
@@ -35290,6 +35479,7 @@
         }
       }
     },
+    "Merge" : {},
     "Merged" : {},
     "Merged into %@ · updated %@ ago" : {
       "localizations" : {
@@ -35301,6 +35491,8 @@
         }
       }
     },
+    "Merge…" : {},
+    "Merging…" : {},
     "Message" : {
       "comment" : "Notice title for a peer message with no sender",
       "localizations" : {
@@ -36742,6 +36934,7 @@
         }
       }
     },
+    "New commits were pushed to this pull request after you opened it, so Heeler did not merge. Look at them, then merge again." : {},
     "New empty file." : {
       "localizations" : {
         "ja" : {
@@ -38825,6 +39018,7 @@
     "None yet" : {
       "comment" : "A pull request with no checks, in its detail."
     },
+    "Not Approved" : {},
     "Not Available" : {
       "localizations" : {
         "ja" : {
@@ -38847,6 +39041,8 @@
         }
       }
     },
+    "Not Closed" : {},
+    "Not Closed Yet" : {},
     "Not Connected" : {
       "localizations" : {
         "ja" : {
@@ -38891,6 +39087,8 @@
         }
       }
     },
+    "Not Merged" : {},
+    "Not Merged Yet" : {},
     "Not Now" : {
       "localizations" : {
         "ja" : {
@@ -38913,6 +39111,7 @@
         }
       }
     },
+    "Not Posted" : {},
     "Not Set" : {
       "comment" : "Accounts: folder variable value when none is set",
       "localizations" : {
@@ -43045,6 +43244,7 @@
         }
       }
     },
+    "Outcome Unknown" : {},
     "Output" : {
       "comment" : "Token type: output tokens",
       "localizations" : {
@@ -45022,6 +45222,7 @@
         }
       }
     },
+    "Post" : {},
     "Post #%lld" : {
       "localizations" : {
         "ja" : {
@@ -47199,6 +47400,7 @@
       }
     },
     "Reattach to open it again." : {},
+    "Rebase and Merge" : {},
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -50483,6 +50685,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "執行中…"
+          }
+        }
+      }
+    },
+    "Runs %@ on %@ as @%@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Runs %1$@ on %2$@ as @%3$@."
+          }
+        }
+      }
+    },
+    "Runs %@ on %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Runs %1$@ on %2$@."
           }
         }
       }
@@ -54882,6 +55104,7 @@
         }
       }
     },
+    "Squash and Merge" : {},
     "Staged" : {
       "comment" : "Changes list group title and file staging",
       "localizations" : {
@@ -62679,6 +62902,8 @@
         }
       }
     },
+    "The branch %@ is still on GitHub." : {},
+    "The branch %@ was deleted." : {},
     "The change failed unexpectedly. (%@)" : {
       "localizations" : {
         "ja" : {
@@ -63022,6 +63247,7 @@
         }
       }
     },
+    "The connection ended before gh said how it went." : {},
     "The connection ended during the change, which may still finish on the Host. Run the checks again." : {
       "localizations" : {
         "ja" : {
@@ -69600,6 +69826,7 @@
         }
       }
     },
+    "This is what gh printed." : {},
     "This language's speech model is needed." : {
       "localizations" : {
         "ja" : {
@@ -69955,7 +70182,9 @@
         }
       }
     },
+    "This pull request is a draft again, so Heeler ran nothing." : {},
     "This repository" : {},
+    "This repository deletes a pull request's branch once it is merged." : {},
     "This route's overlay network was removed. Choose another network or Direct." : {
       "localizations" : {
         "ja" : {
@@ -75038,6 +75267,7 @@
         }
       }
     },
+    "What gh printed" : {},
     "What it cannot see" : {
       "localizations" : {
         "ja" : {
@@ -75148,6 +75378,7 @@
         }
       }
     },
+    "What you wrote" : {},
     "When and how often your Host sends notification requests." : {
       "localizations" : {
         "ja" : {
@@ -75461,6 +75692,7 @@
         }
       }
     },
+    "Working on GitHub" : {},
     "Workspace" : {
       "localizations" : {
         "ja" : {
@@ -76783,9 +77015,14 @@
       }
     },
     "gh did not answer in time." : {},
+    "gh did not finish in the Mac's desktop session in time." : {},
+    "gh did not say how it ended." : {},
+    "gh finished without an error." : {},
     "gh is installed on %@ but isn't signed in. Run this in a terminal there, then check again." : {},
     "gh is not installed on the Host." : {},
     "gh is not signed in on the Host." : {},
+    "gh printed nothing. It stopped with status %lld." : {},
+    "gh stopped with an error after the merge. This is what it printed." : {},
     "gh stopped with status %@ and gave no reason." : {},
     "git could not fetch %@ from %@." : {
       "localizations" : {

@@ -169,6 +169,68 @@ struct GitHubPullRequestDetail: Sendable, Equatable {
     let mergeable: String?
     /// GitHub's `mergeStateStatus` (CLEAN, BLOCKED, BEHIND, DIRTY, ...).
     let mergeState: String?
+    /// The head commit's id. A merge names it, so a commit pushed after the
+    /// user looked is not merged with it.
+    let headCommit: String?
+    /// The head branch is still on GitHub.
+    let headBranchExists: Bool
+    /// Who merged it, once merged.
+    let mergedBy: String?
+    /// How many parents its merge commit has, once merged: two for a merge
+    /// commit, one for a squash or a rebase.
+    let mergeCommitParents: Int?
+    let mergeSettings: GitHubMergeSettings
+}
+
+/// How a pull request's repository lets it be merged.
+struct GitHubMergeSettings: Sendable, Equatable {
+    /// The methods the repository allows, in the order the sheet lists them.
+    let allowed: [GitHubMergeMethod]
+    /// GitHub's choice for the account in this repository: the method it
+    /// last used there, or the repository's default.
+    let preferred: GitHubMergeMethod?
+    /// GitHub deletes a merged pull request's branch itself.
+    let deletesBranch: Bool
+
+    /// The method the sheet starts on.
+    var initial: GitHubMergeMethod? {
+        preferred.flatMap { allowed.contains($0) ? $0 : nil } ?? allowed.first
+    }
+}
+
+enum GitHubMergeMethod: String, CaseIterable, Sendable, Identifiable {
+    case squash
+    case merge
+    case rebase
+
+    var id: Self { self }
+
+    /// GitHub's `PullRequestMergeMethod`.
+    init?(graphQL value: String) {
+        switch value {
+        case "SQUASH": self = .squash
+        case "MERGE": self = .merge
+        case "REBASE": self = .rebase
+        default: return nil
+        }
+    }
+
+    /// gh's flag for it.
+    var flag: String {
+        switch self {
+        case .squash: "--squash"
+        case .merge: "--merge"
+        case .rebase: "--rebase"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .squash: String(localized: "Squash and Merge")
+        case .merge: String(localized: "Create a Merge Commit")
+        case .rebase: String(localized: "Rebase and Merge")
+        }
+    }
 }
 
 /// Where a pull request's review stands, and with whom.

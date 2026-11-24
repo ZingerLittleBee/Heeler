@@ -962,6 +962,7 @@
 		BE6E5B65B5F471C78273989B /* CheckoutChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD163326F33D84419346620D /* CheckoutChanges.swift */; };
 		BE92EAF1AB7A7A6B6E65170F /* TerminalMessageJumpControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98C291FF5279ECEDF232B5D /* TerminalMessageJumpControllerTests.swift */; };
 		BED7E3449E625701DDAA36D2 /* HostRoutesPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D8D1B2FD58D354D0D91C5E /* HostRoutesPresentation.swift */; };
+		BF16468CEB0770C667D4D495 /* GitHubWriteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42886E3CCB145D52127A80CA /* GitHubWriteSheet.swift */; };
 		BF22FFBA362B7389807D12D0 /* GrokToolSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B1ABD77CFF84CDB66BA6EA /* GrokToolSummary.swift */; };
 		BF2B2F4FFE8627278A0BBB94 /* ComposerImageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBAAAD8FA88138BA1FF09A1 /* ComposerImageAttachment.swift */; };
 		BF34AFDEB274D8503D59FB05 /* HerdrCoreEventCursorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C6D00C5E1D095E6FD02BD1F /* HerdrCoreEventCursorTests.swift */; };
@@ -1162,6 +1163,7 @@
 		E01C6C2B6FE021123D7967A3 /* TmuxHostOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B962730F894B916B5B233ABC /* TmuxHostOnboardingTests.swift */; };
 		E06C5A70BFBFE23806B2857E /* ClaudeChainResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBCA847045534254FC9757E9 /* ClaudeChainResolver.swift */; };
 		E074C6F4D42B432614731CF9 /* TmuxInputVectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB186843F581A953B0BF650 /* TmuxInputVectorTests.swift */; };
+		E0BAB91D197858B370793866 /* GitHubWrite.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A27E9A6F4CEEB4C8BFD446 /* GitHubWrite.swift */; };
 		E118CE5CB81C21030F23BC84 /* ConsoleListPresentationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76FEA2FB18C10525E4B4F1D8 /* ConsoleListPresentationStore.swift */; };
 		E14C1ADE39E8CB006B598450 /* TmuxSSHTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9585A37C94874B824A8D8A52 /* TmuxSSHTransportTests.swift */; };
 		E15289CC73DDC6ABA620C5DF /* CodexSessionSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34E8A169E442401BFFE678B0 /* CodexSessionSettingsTests.swift */; };
@@ -1728,6 +1730,7 @@
 		422841675A480B72CC88FFEF /* RexTerminalPaintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexTerminalPaintTests.swift; sourceTree = "<group>"; };
 		423EDC5B2A1A0A20551CF9D9 /* ChatConversationStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConversationStatus.swift; sourceTree = "<group>"; };
 		427512344847A84699F819A0 /* TerminalFontSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalFontSettingsTests.swift; sourceTree = "<group>"; };
+		42886E3CCB145D52127A80CA /* GitHubWriteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubWriteSheet.swift; sourceTree = "<group>"; };
 		430F78B9739BA6B62C0F2FCE /* OpenCodeTerminalTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeTerminalTitle.swift; sourceTree = "<group>"; };
 		431389855EAA66004BCCB5B9 /* AgentRowLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRowLayoutTests.swift; sourceTree = "<group>"; };
 		432857728368D638F3766801 /* VoiceTranscriptionClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTranscriptionClientTests.swift; sourceTree = "<group>"; };
@@ -2207,6 +2210,7 @@
 		A03953ADE9FBC5162FBFF29F /* NotificationRegistrationCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRegistrationCeremony.swift; sourceTree = "<group>"; };
 		A058322630CB1827F69DBF53 /* SharedAsyncOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAsyncOperation.swift; sourceTree = "<group>"; };
 		A0825D7BB5E854C78C08833F /* BoundedHostScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedHostScriptTests.swift; sourceTree = "<group>"; };
+		A0A27E9A6F4CEEB4C8BFD446 /* GitHubWrite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubWrite.swift; sourceTree = "<group>"; };
 		A0A4C115B72A618407CA68A2 /* PiInputBoxDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiInputBoxDetector.swift; sourceTree = "<group>"; };
 		A0AD9F606CE55E143F8DE5E0 /* FakeRexWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeRexWorld.swift; sourceTree = "<group>"; };
 		A13286E84EE3A80BB299503D /* ChatToolOutputs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolOutputs.swift; sourceTree = "<group>"; };
@@ -4110,6 +4114,8 @@
 				A30B86853F5D9FAB70F27005 /* GitHubStore.swift */,
 				ED5786FF7F44238128331FD7 /* GitHubTabView.swift */,
 				EB5C17A1EF7C8ADEFC7324B9 /* GitHubWorktreeStart.swift */,
+				A0A27E9A6F4CEEB4C8BFD446 /* GitHubWrite.swift */,
+				42886E3CCB145D52127A80CA /* GitHubWriteSheet.swift */,
 			);
 			path = GitHub;
 			sourceTree = "<group>";
@@ -5115,6 +5121,8 @@
 				F4A1F127864DC78F50757C6F /* GitHubStore.swift in Sources */,
 				BFB4B72BD69BB9E902725F8F /* GitHubTabView.swift in Sources */,
 				434839E3B4AC97F5D351E5E6 /* GitHubWorktreeStart.swift in Sources */,
+				E0BAB91D197858B370793866 /* GitHubWrite.swift in Sources */,
+				BF16468CEB0770C667D4D495 /* GitHubWriteSheet.swift in Sources */,
 				81129F8952AA54C9B1B205C1 /* GitProbe+Changes.swift in Sources */,
 				C74D34C256DB90B990C46139 /* GitProbe+CheckoutRoots.swift in Sources */,
 				01E46F4109A7EB36E0CAA49B /* GitProbe+Command.swift in Sources */,

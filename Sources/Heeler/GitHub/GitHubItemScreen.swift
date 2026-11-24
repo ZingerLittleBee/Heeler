@@ -6,15 +6,19 @@ struct GitHubSendLink {
     let present: @MainActor (GitHubSendRequest) -> Void
 }
 
-/// A pull request or an issue: how it stands, what it says, and Send to
-/// Agent (ADR 0064). Its list row shows at once; the rest comes from a read
-/// of the one item, again on a pull.
+/// A pull request or an issue: how it stands, what it says, Send to Agent,
+/// and Comment, Approve, Merge and Close from its "⋯" (ADR 0064). Its list
+/// row shows at once; the rest comes from a read of the one item, again on
+/// a pull and around every write.
 struct GitHubItemScreen: View {
     let store: GitHubStore
     let host: GitHubHost
     /// The item as the list showed it when the detail opened.
     let item: GitHubItem
     let send: GitHubSendLink?
+
+    @State private var writeSheet: GitHubWriteSheetRequest?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         let state = store.detailState(of: item, on: host)
@@ -56,8 +60,15 @@ struct GitHubItemScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                GitHubItemMenu(item: current)
+                GitHubItemMenu(
+                    store: store, host: host, item: item, current: current, detail: detail,
+                    sheet: $writeSheet)
             }
+        }
+        .sheet(item: $writeSheet) { request in
+            GitHubWriteSheet(request: request, store: store, host: host, item: item)
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
         .modifier(GitHubSendBar(isShown: send != nil) {
             Button {
@@ -310,22 +321,96 @@ private struct GitHubItemBody: View {
 
 // MARK: - More
 
-/// The detail's "⋯": the item's address for now. Comment, Approve, Merge
-/// and Close join it as further sections.
+/// The detail's "⋯": the item's address, then what the account can do to
+/// it once a detail read says what it is. Close asks first, then runs; a
+/// write running on the item turns the button into a spinner.
 private struct GitHubItemMenu: View {
+    let store: GitHubStore
+    let host: GitHubHost
+    /// The item the detail opened on, which keys its reads.
     let item: GitHubItem
+    /// As the detail shows it now.
+    let current: GitHubItem
+    let detail: GitHubItemDetail?
+    @Binding var sheet: GitHubWriteSheetRequest?
+
+    @State private var isConfirmingClose = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Menu {
-            if let url = URL(string: item.url) {
-                Section {
-                    Button("Open in Browser", systemImage: "safari") { openURL(url) }
-                    Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = url }
+        let actions = detail.map(GitHubWrite.actions(for:)) ?? []
+        let canWrite = store.isConnected(host)
+        Group {
+            if store.isWriting(item, on: host) {
+                ProgressView()
+                    .accessibilityLabel(Text("Working on GitHub"))
+            } else {
+                Menu {
+                    if let url = URL(string: current.url) {
+                        Section {
+                            Button("Open in Browser", systemImage: "safari") { openURL(url) }
+                            Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = url }
+                        }
+                    }
+                    if !actions.isEmpty {
+                        Section {
+                            if actions.contains(.comment) {
+                                Button("Comment…", systemImage: "text.bubble") {
+                                    sheet = GitHubWriteSheetRequest(kind: .compose(.comment))
+                                }
+                            }
+                            if actions.contains(.approve) {
+                                Button("Approve…", systemImage: "checkmark.circle") {
+                                    sheet = GitHubWriteSheetRequest(kind: .compose(.approve))
+                                }
+                            }
+                            if actions.contains(.merge) {
+                                Button("Merge…", systemImage: "arrow.triangle.merge") {
+                                    sheet = GitHubWriteSheetRequest(kind: .merge)
+                                }
+                            }
+                            if actions.contains(.close) {
+                                Button("Close…", systemImage: "xmark.circle", role: .destructive) {
+                                    isConfirmingClose = true
+                                }
+                            }
+                        }
+                        .disabled(!canWrite)
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
                 }
             }
-        } label: {
-            Label("More", systemImage: "ellipsis")
+        }
+        .confirmationDialog(
+            current.kind == .pullRequest ? Text("Close This Pull Request?") : Text("Close This Issue?"),
+            isPresented: $isConfirmingClose, titleVisibility: .visible
+        ) {
+            switch current.kind {
+            case .pullRequest:
+                Button("Close Pull Request", role: .destructive) { close(nil) }
+            case .issue:
+                Button("Close as Completed", role: .destructive) { close(.completed) }
+                Button("Close as Not Planned", role: .destructive) { close(.notPlanned) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(GitHubWriteWords.runsAs(.close, kind: current.kind, host: host, login: detail?.viewer))
+        }
+    }
+
+    /// The detail shows the item closed when it is; anything else opens a
+    /// page that says what happened.
+    private func close(_ reason: GitHubCloseReason?) {
+        Task {
+            guard let result = await store.write(.close(reason), on: item, host: host) else { return }
+            let isClosed = result.detail.map { $0.item.state == .closed || $0.item.state == .merged } ?? false
+            switch result.outcome {
+            case .finished(exitStatus: 0, _) where isClosed, .unknown where isClosed:
+                return
+            default:
+                sheet = GitHubWriteSheetRequest(kind: .closeResult(result))
+            }
         }
     }
 }

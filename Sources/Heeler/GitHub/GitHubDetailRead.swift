@@ -2,7 +2,8 @@ import Foundation
 
 /// The detail read: one `gh api graphql` request for one pull request or
 /// issue by its node id, with the fields its list row has and what the
-/// detail adds (ADR 0064). A node costs one point of the GraphQL limit.
+/// detail and its actions add (ADR 0064). A node costs one point of the
+/// GraphQL limit.
 enum GitHubDetailRead {
     static func request(for item: GitHubItem) -> GitHubCLIRequest {
         .graphQL(
@@ -13,9 +14,13 @@ enum GitHubDetailRead {
                 __typename
                 ... on PullRequest {
                   ...pullRequest
-                  repository { defaultBranchRef { name } }
+                  repository {
+                    defaultBranchRef { name }
+                    squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed viewerDefaultMergeMethod deleteBranchOnMerge
+                  }
                   body headRefName baseRefName changedFiles viewerDidAuthor isCrossRepository
                   headRepositoryOwner { login } mergeable mergeStateStatus
+                  headRefOid headRef { id } mergedBy { login } mergeCommit { parents(first: 2) { totalCount } }
                   reviewRequests(first: 20) { nodes { requestedReviewer { ...reviewer } } }
                   viewerLatestReviewRequest { requestedReviewer { ...reviewer } }
                   latestOpinionatedReviews(first: 20) { nodes { state author { login } } }
@@ -74,10 +79,34 @@ enum GitHubDetailRead {
         let author: GitHubGraphQL.Login?
     }
 
-    /// The repository's default branch; nil for an empty repository.
+    private struct MergeCommit: Decodable {
+        let parents: GitHubGraphQL.Count?
+    }
+
+    /// What the detail adds of the repository: its default branch, nil for
+    /// an empty repository, and for a pull request its merge settings. Its
+    /// `nameWithOwner` is the list row's, in the same object.
     private struct Repository: Decodable {
         struct Ref: Decodable { let name: String }
         let defaultBranchRef: Ref?
+        let squashMergeAllowed: Bool?
+        let mergeCommitAllowed: Bool?
+        let rebaseMergeAllowed: Bool?
+        let viewerDefaultMergeMethod: String?
+        let deleteBranchOnMerge: Bool?
+
+        var settings: GitHubMergeSettings {
+            let allowed = GitHubMergeMethod.allCases.filter { method in
+                switch method {
+                case .squash: squashMergeAllowed == true
+                case .merge: mergeCommitAllowed == true
+                case .rebase: rebaseMergeAllowed == true
+                }
+            }
+            return GitHubMergeSettings(
+                allowed: allowed, preferred: viewerDefaultMergeMethod.flatMap(GitHubMergeMethod.init(graphQL:)),
+                deletesBranch: deleteBranchOnMerge == true)
+        }
     }
 
     private struct Node: Decodable {
@@ -92,15 +121,24 @@ enum GitHubDetailRead {
         let headRepositoryOwner: GitHubGraphQL.Login?
         let mergeable: String?
         let mergeStateStatus: String?
+        let headRefOid: String?
+        /// Present while the head branch is on GitHub.
+        let headRef: HeadRef?
+        let mergedBy: GitHubGraphQL.Login?
+        let mergeCommit: MergeCommit?
         let reviewRequests: GitHubGraphQL.Nodes<ReviewRequest>?
         let viewerLatestReviewRequest: ReviewRequest?
         let latestOpinionatedReviews: GitHubGraphQL.Nodes<Review>?
         let assignees: GitHubGraphQL.Nodes<GitHubGraphQL.Login>?
 
+        struct HeadRef: Decodable {
+            let id: String
+        }
+
         enum CodingKeys: String, CodingKey {
             case repository, body, headRefName, baseRefName, changedFiles, viewerDidAuthor, isCrossRepository
-            case headRepositoryOwner, mergeable, mergeStateStatus, reviewRequests, viewerLatestReviewRequest
-            case latestOpinionatedReviews, assignees
+            case headRepositoryOwner, mergeable, mergeStateStatus, headRefOid, headRef, mergedBy, mergeCommit
+            case reviewRequests, viewerLatestReviewRequest, latestOpinionatedReviews, assignees
         }
 
         init(from decoder: any Decoder) throws {
@@ -116,6 +154,10 @@ enum GitHubDetailRead {
             headRepositoryOwner = try container.decodeIfPresent(GitHubGraphQL.Login.self, forKey: .headRepositoryOwner)
             mergeable = try container.decodeIfPresent(String.self, forKey: .mergeable)
             mergeStateStatus = try container.decodeIfPresent(String.self, forKey: .mergeStateStatus)
+            headRefOid = try container.decodeIfPresent(String.self, forKey: .headRefOid)
+            headRef = try container.decodeIfPresent(HeadRef.self, forKey: .headRef)
+            mergedBy = try container.decodeIfPresent(GitHubGraphQL.Login.self, forKey: .mergedBy)
+            mergeCommit = try container.decodeIfPresent(MergeCommit.self, forKey: .mergeCommit)
             reviewRequests = try container.decodeIfPresent(
                 GitHubGraphQL.Nodes<ReviewRequest>.self, forKey: .reviewRequests)
             viewerLatestReviewRequest = try container.decodeIfPresent(
@@ -138,7 +180,13 @@ enum GitHubDetailRead {
                     headOwner: headRepositoryOwner?.login,
                     review: review(viewer: viewer),
                     mergeable: mergeable,
-                    mergeState: mergeStateStatus)
+                    mergeState: mergeStateStatus,
+                    headCommit: headRefOid,
+                    headBranchExists: headRef != nil,
+                    mergedBy: mergedBy?.login,
+                    mergeCommitParents: mergeCommit?.parents?.totalCount,
+                    mergeSettings: repository?.settings
+                        ?? GitHubMergeSettings(allowed: [], preferred: nil, deletesBranch: false))
             }
             return GitHubItemDetail(
                 item: item, viewer: viewer, body: body ?? "", pullRequest: pullRequest,

@@ -61,6 +61,12 @@ final class GitHubStore {
         let item: GitHubItem.ID
     }
 
+    /// A detail read that answered, and the Server it answered on.
+    private struct DetailAnswer: Sendable {
+        let detail: GitHubItemDetail
+        let record: Host.ID
+    }
+
     /// A list or detail older than this is read again when it opens.
     static let staleAfter: TimeInterval = 120
     /// How long Send to Agent waits for the checkout read before it leaves
@@ -72,6 +78,8 @@ final class GitHubStore {
     private(set) var hosts: [GitHubHost] = []
     private(set) var states: [Host.ID: HostState] = [:]
     private(set) var details: [DetailKey: DetailState] = [:]
+    /// Items with a write running, one write per item at a time.
+    private(set) var writing: Set<DetailKey> = []
 
     @ObservationIgnored weak var access: (any GitHubHostAccess)?
     @ObservationIgnored private let cache: any GitHubListCache
@@ -81,7 +89,7 @@ final class GitHubStore {
     @ObservationIgnored private var unsupported: Set<Host.ID> = []
     @ObservationIgnored private var loadedCaches: Set<Host.ID> = []
     @ObservationIgnored private var reads: [Host.ID: Task<Void, Never>] = [:]
-    @ObservationIgnored private var detailReads: [DetailKey: Task<Result<GitHubItemDetail, GitHubReadFailure>, Never>] = [:]
+    @ObservationIgnored private var detailReads: [DetailKey: Task<Result<DetailAnswer, GitHubReadFailure>, Never>] = [:]
     /// Bumped when the switch goes off, so a read already running keeps
     /// nothing it finds.
     @ObservationIgnored private var generation = 0
@@ -324,6 +332,10 @@ final class GitHubStore {
     /// for the first and gets its answer.
     @discardableResult
     func reread(_ item: GitHubItem, on host: GitHubHost) async -> Result<GitHubItemDetail, GitHubReadFailure> {
+        await answer(item, on: host).map(\.detail)
+    }
+
+    private func answer(_ item: GitHubItem, on host: GitHubHost) async -> Result<DetailAnswer, GitHubReadFailure> {
         let key = DetailKey(host: host.id, item: item.id)
         if let running = detailReads[key] { return await running.value }
         let task = Task { await performDetailRead(item, on: host) }
@@ -333,20 +345,31 @@ final class GitHubStore {
         return result
     }
 
+    /// A read that starts now: one already running may have begun before
+    /// what the caller needs to see.
+    private func freshAnswer(_ item: GitHubItem, on host: GitHubHost) async -> Result<DetailAnswer, GitHubReadFailure> {
+        if let running = detailReads[DetailKey(host: host.id, item: item.id)] { _ = await running.value }
+        return await answer(item, on: host)
+    }
+
     private func performDetailRead(
         _ item: GitHubItem, on host: GitHubHost
-    ) async -> Result<GitHubItemDetail, GitHubReadFailure> {
+    ) async -> Result<DetailAnswer, GitHubReadFailure> {
         let generation = generation
         let key = DetailKey(host: host.id, item: item.id)
         details[key, default: DetailState()].isReading = true
-        let result = await run(GitHubDetailRead.request(for: item), on: host).flatMap { outcome in
-            GitHubDetailRead.result(of: outcome, for: item, at: now())
+        let result = await onHost(host) { access, record in
+            try await access.runGitHub(GitHubDetailRead.request(for: item), on: record)
+        }.flatMap { ran in
+            GitHubDetailRead.result(of: ran.value, for: item, at: now())
+                .map { DetailAnswer(detail: $0, record: ran.record) }
         }
         guard generation == self.generation, machines.contains(where: { $0.id == host.id }) else { return result }
         var state = details[key] ?? DetailState()
         state.isReading = false
         switch result {
-        case .success(let detail):
+        case .success(let answer):
+            let detail = answer.detail
             state.detail = detail
             state.failure = nil
             if var list = states[host.id]?.list {
@@ -363,6 +386,80 @@ final class GitHubStore {
         return result
     }
 
+    // MARK: Writes
+
+    func isWriting(_ item: GitHubItem, on host: GitHubHost) -> Bool {
+        writing.contains(DetailKey(host: host.id, item: item.id))
+    }
+
+    /// Comment, Approve, Merge or Close (ADR 0064). Reads the item again and
+    /// runs nothing if it no longer takes the write; otherwise runs gh once,
+    /// on the Server whose read just answered and on no other, then reads
+    /// the item again so the detail, its list row and the saved list follow.
+    /// Nil when a write on the item is already running. The write outlives
+    /// the caller: a sheet closing under it does not stop it.
+    func write(_ write: GitHubWrite, on item: GitHubItem, host: GitHubHost) async -> GitHubWriteResult? {
+        let key = DetailKey(host: host.id, item: item.id)
+        guard isEnabled, !writing.contains(key) else { return nil }
+        writing.insert(key)
+        let task = Task {
+            let result = await performWrite(write, on: item, host: host)
+            writing.remove(key)
+            return result
+        }
+        return await task.value
+    }
+
+    private func performWrite(_ write: GitHubWrite, on item: GitHubItem, host: GitHubHost) async -> GitHubWriteResult {
+        func result(_ outcome: GitHubWriteOutcome, _ detail: GitHubItemDetail?, _ failure: GitHubReadFailure? = nil)
+            -> GitHubWriteResult
+        {
+            GitHubWriteResult(write: write, item: item, outcome: outcome, detail: detail, readFailure: failure)
+        }
+        let before: DetailAnswer
+        switch await freshAnswer(item, on: host) {
+        case .success(let answer):
+            before = answer
+        case .failure(let failure):
+            let reason = GitHubBannerText.message(for: failure)
+            return result(.notRun(String(localized: "Heeler could not read it again first, so it ran nothing. \(reason)")), nil, failure)
+        }
+        if let refusal = write.refusal(by: before.detail) {
+            return result(.notRun(refusal), before.detail)
+        }
+        guard let access, access.isConnected(before.record) else {
+            return result(.notRun(GitHubBannerText.message(for: .offline)), before.detail)
+        }
+        let outcome: GitHubWriteOutcome
+        do {
+            outcome = GitHubWriteOutcome(try await access.runGitHub(write.request(for: before.detail.item), on: before.record))
+        } catch TransportError.hostFeatureUnavailable {
+            outcome = .notRun(GitHubBannerText.message(for: .unsupported))
+        } catch TransportError.sshUnreachable {
+            // Thrown before the exec reached SSH; once there, a failure is
+            // `coreMutationOutcomeUnknown`.
+            outcome = .notRun(GitHubBannerText.message(for: .offline))
+        } catch {
+            outcome = .unknown(Self.unknownReason(error))
+        }
+        if case .notRun = outcome { return result(outcome, before.detail) }
+        switch await freshAnswer(item, on: host) {
+        case .success(let after): return result(outcome, after.detail)
+        case .failure(let failure): return result(outcome, nil, failure)
+        }
+    }
+
+    private static func unknownReason(_ error: any Error) -> String {
+        switch error {
+        case GitHubCLIError.unreadableOutput:
+            String(localized: "Heeler could not read what gh printed on the Host.")
+        case TransportError.hostFileTimedOut, TransportError.timedOut:
+            String(localized: "gh did not answer in time.")
+        default:
+            String(localized: "The connection ended before gh said how it went.")
+        }
+    }
+
     // MARK: Checkouts
 
     /// Which of `directories` on the Host are checkouts, of what and on which
@@ -374,6 +471,7 @@ final class GitHubStore {
         let script = GitHubCheckoutRead.script(for: directories, nonce: nonce)
         let read = Task {
             await onHost(host) { access, record in try await access.runGitHubSeamScript(script, on: record) }
+                .map { $0.value }
         }
         let first = FirstAnswer<Result<GitExecResult, GitHubReadFailure>>()
         let result = await withCheckedContinuation { continuation in
@@ -415,20 +513,21 @@ final class GitHubStore {
     private func run(
         _ request: GitHubCLIRequest, on host: GitHubHost
     ) async -> Result<GitHubCLIOutcome, GitHubReadFailure> {
-        await onHost(host) { access, record in try await access.runGitHub(request, on: record) }
+        await onHost(host) { access, record in try await access.runGitHub(request, on: record) }.map { $0.value }
     }
 
-    /// `body` on the Host's connected Servers in order, until one runs it.
+    /// A read on the Host's connected Servers in order, until one runs it,
+    /// and which one did. A write never comes through here.
     private func onHost<Value>(
         _ host: GitHubHost, _ body: @MainActor (any GitHubHostAccess, Host.ID) async throws -> Value
-    ) async -> Result<Value, GitHubReadFailure> {
+    ) async -> Result<(value: Value, record: Host.ID), GitHubReadFailure> {
         guard let access else { return .failure(.offline) }
         let connected = host.records.filter { access.isConnected($0) }
         guard !connected.isEmpty else { return .failure(.offline) }
         var failure = GitHubReadFailure.unsupported
         for record in connected {
             do {
-                return .success(try await body(access, record))
+                return .success((try await body(access, record), record))
             } catch TransportError.hostFeatureUnavailable {
                 continue
             } catch {
