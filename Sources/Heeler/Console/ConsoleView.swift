@@ -316,7 +316,11 @@ struct ConsoleView: View {
                 selectAgent(id)
             })
         .modifier(
-            GitHubSendSheetPresenter(request: $gitHubSendRequest, console: console) { id in
+            GitHubSendSheetPresenter(
+                request: $gitHubSendRequest, console: console,
+                hosts: hosts.consoleHosts.offeringNewItem(
+                    listsTerminals: false, capabilities: { console.capabilities(for: $0) })
+            ) { id in
                 // The Agent opens with the message in its Composer.
                 selectAgent(id)
             })

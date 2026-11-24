@@ -336,6 +336,7 @@
 		42C86E0D3EFFEA3EEF3FFA96 /* PairingCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DA61C2FD4220803AE6D533 /* PairingCode.swift */; };
 		430EDF8111CC397CA9BD2008 /* PairingScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1674575F15764AB318626947 /* PairingScanView.swift */; };
 		4314A401840F11DD11B38FD9 /* ClaudeProjectKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E4FF7E57C110066B1BA9B2E /* ClaudeProjectKeyTests.swift */; };
+		434839E3B4AC97F5D351E5E6 /* GitHubWorktreeStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB5C17A1EF7C8ADEFC7324B9 /* GitHubWorktreeStart.swift */; };
 		4393B7681CF62F27F8C309A4 /* HerdrAppControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE0789C6BCB55B951D467AA3 /* HerdrAppControlTests.swift */; };
 		43A38C688E912DE27C79D237 /* TmuxAgentRuleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 613A50BBF54B1307BE5F3831 /* TmuxAgentRuleTests.swift */; };
 		441575A5947642BEBBAF1586 /* ChangesUntrackedDirectoryRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA62F28156A8CA87234C33BE /* ChangesUntrackedDirectoryRows.swift */; };
@@ -2578,6 +2579,7 @@
 		EB3CAED65E5DE5FB8F283ED1 /* HerdrCoreChatTypingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreChatTypingTests.swift; sourceTree = "<group>"; };
 		EB430B706185A38891A5DAC2 /* SnippetsManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetsManagementView.swift; sourceTree = "<group>"; };
 		EB4A50BD2089165F17D9445D /* HerdrCorePiSessionBinderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCorePiSessionBinderTests.swift; sourceTree = "<group>"; };
+		EB5C17A1EF7C8ADEFC7324B9 /* GitHubWorktreeStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubWorktreeStart.swift; sourceTree = "<group>"; };
 		EB6BD88F9C7CE1520C4D961C /* RemoteDirectoryBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryBrowserTests.swift; sourceTree = "<group>"; };
 		EB6CD0C14B75BD3DB7AA93EC /* AgyTranscriptReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgyTranscriptReducer.swift; sourceTree = "<group>"; };
 		EB7D2ACA4701AF48E8B6C8C5 /* RexAgentRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexAgentRule.swift; sourceTree = "<group>"; };
@@ -4107,6 +4109,7 @@
 				5125138288FA18B11804B4B7 /* GitHubSettings.swift */,
 				A30B86853F5D9FAB70F27005 /* GitHubStore.swift */,
 				ED5786FF7F44238128331FD7 /* GitHubTabView.swift */,
+				EB5C17A1EF7C8ADEFC7324B9 /* GitHubWorktreeStart.swift */,
 			);
 			path = GitHub;
 			sourceTree = "<group>";
@@ -5111,6 +5114,7 @@
 				CAB62671276049D7FC232138 /* GitHubSettings.swift in Sources */,
 				F4A1F127864DC78F50757C6F /* GitHubStore.swift in Sources */,
 				BFB4B72BD69BB9E902725F8F /* GitHubTabView.swift in Sources */,
+				434839E3B4AC97F5D351E5E6 /* GitHubWorktreeStart.swift in Sources */,
 				81129F8952AA54C9B1B205C1 /* GitProbe+Changes.swift in Sources */,
 				C74D34C256DB90B990C46139 /* GitProbe+CheckoutRoots.swift in Sources */,
 				01E46F4109A7EB36E0CAA49B /* GitProbe+Command.swift in Sources */,

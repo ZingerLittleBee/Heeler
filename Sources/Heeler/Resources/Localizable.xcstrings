@@ -51,6 +51,7 @@
     " · %@" : {
       "shouldTranslate" : false
     },
+    "\"%@\" is not a commit to start from." : {},
     "\"%@\" leaves no folder name for the checkout. Use a branch with ASCII letters or digits in it." : {
       "localizations" : {
         "ja" : {
@@ -1094,6 +1095,16 @@
         }
       }
     },
+    "%@ is already checked out in %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is already checked out in %2$@."
+          }
+        }
+      }
+    },
     "%@ is already in Heeler. Checked servers are turned on there." : {
       "localizations" : {
         "ja" : {
@@ -1134,6 +1145,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 已在 Heeler 中。勾選的伺服器會在該主機下開啟。它的主機金鑰已變更，配對碼中的金鑰會取代先前信任的金鑰。"
+          }
+        }
+      }
+    },
+    "%@ is checked out in %@, so the worktree gets a new branch that starts from it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is checked out in %2$@, so the worktree gets a new branch that starts from it."
           }
         }
       }
@@ -1706,6 +1727,7 @@
         }
       }
     },
+    "%@ on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request." : {},
     "%@ over %@" : {
       "comment" : "Route label: address, Overlay Network name",
       "localizations" : {
@@ -6217,6 +6239,17 @@
         }
       }
     },
+    "A fresh checkout of %@ on a new branch that starts from %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A fresh checkout of %1$@ on a new branch that starts from %2$@."
+          }
+        }
+      }
+    },
+    "A fresh checkout of %@ on this pull request's branch." : {},
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {
         "ja" : {
@@ -36933,6 +36966,16 @@
       }
     },
     "No Agent on %@ can take a message now." : {},
+    "No Agent on %@ works in %@ yet. Choose a folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Agent on %1$@ works in %2$@ yet. Choose a folder."
+          }
+        }
+      }
+    },
     "No Agents" : {
       "localizations" : {
         "ja" : {
@@ -50286,6 +50329,7 @@
         }
       }
     },
+    "Run the Agent in a clean checkout instead of the one above." : {},
     "Run the agent in a clean checkout instead of the workspace itself." : {
       "localizations" : {
         "ja" : {
@@ -60605,6 +60649,7 @@
         }
       }
     },
+    "The Host did not finish getting the worktree's starting commit." : {},
     "The Host did not finish in time. Heeler is reading what is installed there now." : {
       "localizations" : {
         "ja" : {
@@ -61367,6 +61412,7 @@
         }
       }
     },
+    "The Host took too long to fetch the worktree's starting commit." : {},
     "The Host took too long to read Changes. Pull to try again." : {
       "localizations" : {
         "ja" : {
@@ -62739,6 +62785,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "位於 %@ 的 Checkout 已移除，其工作區也已關閉。未刪除任何分支。"
+          }
+        }
+      }
+    },
+    "The checkout of %@ that %@ works in." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The checkout of %1$@ that %2$@ works in."
           }
         }
       }
@@ -64510,6 +64566,7 @@
         }
       }
     },
+    "The message goes into the new Agent's Composer once it starts. Nothing is sent until you send it." : {},
     "The microphone is in use or unavailable." : {
       "localizations" : {
         "ja" : {
@@ -76730,6 +76787,27 @@
     "gh is not installed on the Host." : {},
     "gh is not signed in on the Host." : {},
     "gh stopped with status %@ and gave no reason." : {},
+    "git could not fetch %@ from %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "git could not fetch %1$@ from %2$@."
+          }
+        }
+      }
+    },
+    "git could not fetch %@ from %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "git could not fetch %1$@ from %2$@: %3$@"
+          }
+        }
+      }
+    },
+    "git could not get the worktree's starting commit: %@" : {},
     "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: %@" : {
       "localizations" : {
         "ja" : {

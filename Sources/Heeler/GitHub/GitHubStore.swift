@@ -349,6 +349,28 @@ final class GitHubStore {
         return GitHubCheckoutRead.checkouts(in: output, directories: directories, nonce: nonce)
     }
 
+    /// The commit a New Agent's Worktree for an item starts from, fetched in
+    /// `start`'s checkout on the Server the Agent starts on. Throws
+    /// `GitHubWorktreeStartFailure`.
+    func worktreeStart(_ start: GitHubWorktreeStart, on record: Host.ID) async throws -> String {
+        guard let access else { throw GitHubWorktreeStartFailure.unreachable(String(localized: "The Host is not connected.")) }
+        let nonce = GitProbe.makeNonce()
+        let output: GitExecResult
+        do {
+            output = try await access.runGitHubSeamScript(start.script(nonce: nonce), on: record)
+        } catch {
+            let reason =
+                switch Self.failure(error) {
+                case .offline: String(localized: "The Host is not connected.")
+                case .timedOut: String(localized: "The Host took too long to fetch the worktree's starting commit.")
+                case .failed(let message): message
+                default: String(describing: error)
+                }
+            throw GitHubWorktreeStartFailure.unreachable(reason)
+        }
+        return try start.result(of: output, nonce: nonce).get()
+    }
+
     /// Runs on the first connected Server of the Host that can run gh.
     private func run(
         _ request: GitHubCLIRequest, on host: GitHubHost

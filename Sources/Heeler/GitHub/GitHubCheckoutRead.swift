@@ -3,17 +3,37 @@ import Foundation
 /// One directory as git sees it: the checkout it is in, its branch and
 /// where its remotes point.
 struct GitHubCheckout: Sendable, Equatable {
+    struct Remote: Sendable, Equatable {
+        let name: String
+        let url: String
+    }
+
+    /// One of the repository's Worktrees, its main checkout among them.
+    struct Worktree: Sendable, Equatable {
+        let path: String
+        /// Nil on a detached HEAD.
+        let branch: String?
+    }
+
     let topLevel: String
     /// Nil on a detached HEAD.
     let branch: String?
-    /// Every remote's URL, as git has them.
-    let remoteURLs: [String]
+    /// Every remote's name and URL, as git has them.
+    let remotes: [Remote]
+    /// Every Worktree of the repository, as `git worktree list` has them:
+    /// git checks a branch out in only one of them.
+    var worktrees: [Worktree] = []
 
-    /// A remote points at `repository` (`owner/name`) on GitHub's `host`.
-    func isCheckout(of repository: String, host: String) -> Bool {
-        remoteURLs.contains { url in
-            GitHubRemote.repository(fromURL: url, host: host)?.caseInsensitiveCompare(repository) == .orderedSame
+    /// The first remote that points at `repository` (`owner/name`) on
+    /// GitHub's `host`.
+    func remote(for repository: String, host: String) -> Remote? {
+        remotes.first { remote in
+            GitHubRemote.repository(fromURL: remote.url, host: host)?.caseInsensitiveCompare(repository) == .orderedSame
         }
+    }
+
+    func isCheckout(of repository: String, host: String) -> Bool {
+        remote(for: repository, host: host) != nil
     }
 }
 
@@ -29,6 +49,7 @@ enum GitHubCheckoutRead {
         ("top", "rev-parse --show-toplevel"),
         ("branch", "symbolic-ref -q --short HEAD"),
         ("remotes", "config --get-regexp '^remote\\..*\\.url$'"),
+        ("worktrees", "worktree list --porcelain"),
     ]
 
     static func script(for directories: [String], nonce: String) -> Data {
@@ -56,15 +77,54 @@ enum GitHubCheckoutRead {
             let branch = (try? frames.section("branch\(index)", cap: cap)).flatMap { section in
                 section.status == 0 ? firstLine(section.body) : nil
             }
-            // `remote.<name>.url <url>`; a remote's name can hold a space, its URL rarely does.
-            let urls = (try? frames.section("remotes\(index)", cap: cap)).map { section in
-                String(decoding: section.body, as: UTF8.self).split(whereSeparator: \.isNewline).compactMap { line in
-                    line.split(separator: " ").last.map(String.init)
-                }
+            let remotes = (try? frames.section("remotes\(index)", cap: cap)).map { section in
+                String(decoding: section.body, as: UTF8.self).split(whereSeparator: \.isNewline).compactMap(remote)
             } ?? []
-            checkouts[directory] = GitHubCheckout(topLevel: topLevel, branch: branch, remoteURLs: urls)
+            let worktrees = (try? frames.section("worktrees\(index)", cap: cap)).map { section -> [GitHubCheckout.Worktree] in
+                guard section.status == 0 else { return [] }
+                let worktrees = Self.worktrees(section.body)
+                return section.isTruncated ? Array(worktrees.dropLast()) : worktrees
+            } ?? []
+            checkouts[directory] = GitHubCheckout(
+                topLevel: topLevel, branch: branch, remotes: remotes, worktrees: worktrees)
         }
         return checkouts
+    }
+
+    /// `remote.<name>.url <url>`; a remote's name can hold a space, its URL
+    /// rarely does.
+    private static func remote(_ line: Substring) -> GitHubCheckout.Remote? {
+        guard let space = line.lastIndex(of: " ") else { return nil }
+        let key = line[..<space]
+        let url = line[line.index(after: space)...]
+        guard key.hasPrefix("remote."), key.hasSuffix(".url"), !url.isEmpty else { return nil }
+        let name = key.dropFirst("remote.".count).dropLast(".url".count)
+        guard !name.isEmpty else { return nil }
+        return GitHubCheckout.Remote(name: String(name), url: String(url))
+    }
+
+    /// `git worktree list --porcelain`: a `worktree <path>` line opens each
+    /// entry, and `branch refs/heads/<name>` names its branch.
+    private static func worktrees(_ data: Data) -> [GitHubCheckout.Worktree] {
+        var worktrees: [GitHubCheckout.Worktree] = []
+        var path: String?
+        var branch: String?
+        func close() {
+            if let path { worktrees.append(GitHubCheckout.Worktree(path: path, branch: branch)) }
+            path = nil
+            branch = nil
+        }
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("worktree ") {
+                close()
+                path = String(line.dropFirst("worktree ".count))
+            } else if line.hasPrefix("branch refs/heads/") {
+                branch = String(line.dropFirst("branch refs/heads/".count))
+            } else if line.isEmpty {
+                close()
+            }
+        }
+        return worktrees
     }
 
     private static func firstLine(_ data: Data) -> String? {

@@ -25,6 +25,7 @@ struct StartAgentView: View {
     init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
+        gitHubLaunch: StartAgentStore.GitHubLaunch? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
         self.init(
@@ -52,6 +53,7 @@ struct StartAgentView: View {
                 isAgentListed: { id in console.agents.contains { $0.id == id } },
                 programExit: { console.programExit(of: $0) },
                 origin: origin,
+                gitHubLaunch: gitHubLaunch,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
@@ -128,6 +130,8 @@ struct StartAgentView: View {
                             Text(store.offersWorkspaceName
                                 ? String(localized: "Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                                 : String(localized: "Creates a Workspace in this directory, named after its folder."))
+                        } else if let note = store.gitHubWorkspaceNote {
+                            Text(note)
                         }
                     }
                 }
@@ -139,7 +143,7 @@ struct StartAgentView: View {
                         if store.startsInNewWorktree {
                             HStack(spacing: 10) {
                                 TextField(
-                                    store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
+                                    store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)",
                                     text: $store.worktreeBranch)
                                     .font(.callout.monospaced())
                                     .autocorrectionDisabled()
@@ -179,7 +183,8 @@ struct StartAgentView: View {
                                     ))
                                 .accessibilityIdentifier("startAgent.regenerateBranch")
                             }
-                            if !store.worktreeNeedsBranch {
+                            // Following an item, the item decides the base.
+                            if !store.worktreeNeedsBranch && !store.followsGitHubItem {
                                 TextField("Base (optional)", text: $store.worktreeBase)
                                     .font(.callout.monospaced())
                                     .autocorrectionDisabled()
@@ -192,6 +197,8 @@ struct StartAgentView: View {
                         if let message = store.worktreeBranchErrorMessage {
                             Text(message)
                                 .foregroundStyle(.red)
+                        } else if let note = store.gitHubWorktreeNote {
+                            Text(note)
                         } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                             Text(
                                 "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
@@ -273,7 +280,12 @@ struct StartAgentView: View {
                                 Text(template.description)
                             }
                             Text("Its first start can take up to 35 seconds.")
+                            if let note = store.gitHubAgentNote {
+                                Text(note)
+                            }
                         }
+                    } else if let note = store.gitHubAgentNote {
+                        Text(note)
                     } else {
                         Text(store.discoversThroughUserShell
                             ? String(localized: "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts.")

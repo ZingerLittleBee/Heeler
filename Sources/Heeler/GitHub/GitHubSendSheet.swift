@@ -5,20 +5,41 @@ import SwiftUI
 /// message in that Agent's Composer and opens it; the sheet sends nothing.
 struct GitHubSendSheet: View {
     @State private var store: GitHubSendStore
+    /// New Agent's form, opened from this sheet.
+    @State private var newAgent: NewAgent?
+    /// The Agent New Agent started, which takes the message once the form
+    /// has gone and the Agent is listed.
+    @State private var startedAgent: StartedAgent?
     let gitHub: GitHubStore
     let console: ConsoleStore
+    /// The Servers New Agent can start on, as the Console's New Agent has them.
+    let hosts: [Host]
     /// The Agent whose Composer now holds the message.
     let onSent: (ConsoleAgent.ID) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// New Agent for the message the sheet showed when it was chosen.
+    private struct NewAgent: Identifiable {
+        let id = UUID()
+        let message: String
+        let launch: StartAgentStore.GitHubLaunch
+    }
+
+    private struct StartedAgent {
+        let id: ConsoleAgent.ID
+        let message: String
+    }
 
     init(
-        store: GitHubSendStore, gitHub: GitHubStore, console: ConsoleStore,
+        store: GitHubSendStore, gitHub: GitHubStore, console: ConsoleStore, hosts: [Host],
         onSent: @escaping (ConsoleAgent.ID) -> Void
     ) {
         _store = State(initialValue: store)
         self.gitHub = gitHub
         self.console = console
+        self.hosts = hosts
         self.onSent = onSent
     }
 
@@ -33,6 +54,7 @@ struct GitHubSendSheet: View {
         let agents = console.gitHubSendTargets(on: request.host.records)
         let targets = GitHubSendTarget.ordered(
             agents, checkouts: store.checkouts, item: item, headBranch: detail?.pullRequest?.headBranch)
+        let servers = newAgentServers(of: request.host)
         NavigationStack {
             List {
                 if case .failed(let message) = store.state {
@@ -61,7 +83,13 @@ struct GitHubSendSheet: View {
                     ForEach(targets) { target in
                         agentRow(target, message: message)
                     }
-                    // A New Agent row, once the sheet can start one, goes last here.
+                    if !servers.isEmpty {
+                        newAgentRow {
+                            newAgent = NewAgent(
+                                message: message,
+                                launch: launch(for: item, detail: detail, targets: targets, servers: servers))
+                        }
+                    }
                 } header: {
                     HStack(spacing: 6) {
                         Text("Send To")
@@ -92,8 +120,98 @@ struct GitHubSendSheet: View {
                 }
             }
             .onDisappear { store.cancel() }
+            // The message goes once the form has left the screen: opening the
+            // Agent while it is still going drops the Agent list's selection.
+            .sheet(item: $newAgent, onDismiss: deliverToStartedAgent) { newAgent in
+                // StartAgentView brings its own NavigationStack.
+                StartAgentView(
+                    hosts: hosts, console: console, gitHubLaunch: newAgent.launch,
+                    onStarted: { id in
+                        startedAgent = StartedAgent(id: id, message: newAgent.message)
+                    }
+                )
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass),
+                    fitsContent: true))
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func deliverToStartedAgent() {
+        guard let startedAgent else { return }
+        Task { await store.send(startedAgent.message, to: startedAgent.id) }
+    }
+
+    /// The Host's connected Servers that start Agents, in its order. A Rex
+    /// Server starts none.
+    private func newAgentServers(of host: GitHubHost) -> [Host.ID] {
+        host.records.filter { id in
+            hosts.contains { $0.id == id } && console.isConnected(id) && console.capabilities(for: id).startsAgents
+        }
+    }
+
+    /// New Agent opens on the Workspace of the first Agent that works in a
+    /// checkout of the item's repository, as the list orders them, and its
+    /// Worktree follows the item there.
+    private func launch(
+        for item: GitHubItem, detail: GitHubItemDetail?, targets: [GitHubSendTarget], servers: [Host.ID]
+    ) -> StartAgentStore.GitHubLaunch {
+        let host = URL(string: item.url)?.host() ?? "github.com"
+        let checkouts: [StartAgentStore.GitHubLaunch.Checkout] = targets.compactMap { target in
+            let agent = target.agent
+            guard target.mark != nil, let directory = agent.directory, let checkout = store.checkouts[directory],
+                let remote = checkout.remote(for: item.repository, host: host)
+            else { return nil }
+            var checkedOut: [String: String] = [:]
+            for worktree in checkout.worktrees {
+                if let branch = worktree.branch { checkedOut[branch] = agent.displayPath(worktree.path) }
+            }
+            // The checkout's own branch even when the list did not answer.
+            if let branch = checkout.branch { checkedOut[branch] = agent.displayPath(checkout.topLevel) }
+            return StartAgentStore.GitHubLaunch.Checkout(
+                hostID: agent.hostID, workspaceID: agent.agent.workspaceID,
+                agentName: AgentTerminalView.displayTitle(for: agent),
+                topLevel: checkout.topLevel, remote: remote.name, checkedOut: checkedOut)
+        }
+        let preset = checkouts.first { servers.contains($0.hostID) }
+        let source: GitHubWorktreeStart.Source? =
+            switch item.kind {
+            case .pullRequest:
+                detail?.pullRequest.map { pullRequest in
+                    .pullRequest(
+                        number: item.number, headBranch: pullRequest.headBranch,
+                        isCrossRepository: pullRequest.isCrossRepository)
+                }
+            case .issue:
+                detail?.defaultBranch.map { .defaultBranch($0) }
+            }
+        return StartAgentStore.GitHubLaunch(
+            repository: item.repository, hostName: store.request.host.name,
+            hostID: preset?.hostID ?? servers.first, workspaceID: preset?.workspaceID,
+            source: source, defaultBranch: detail?.defaultBranch, checkouts: checkouts,
+            worktreeStart: { [gitHub] start, record in try await gitHub.worktreeStart(start, on: record) })
+    }
+
+    /// Last among the Agents. It waits for the checkout read, which decides
+    /// where the form opens.
+    private func newAgentRow(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                Label {
+                    Text("New Agent…")
+                        .foregroundStyle(Color(uiColor: .label))
+                } icon: {
+                    Image(systemName: "plus")
+                }
+                Spacer(minLength: 0)
+                if let startedAgent, store.state == .working(startedAgent.id) {
+                    ProgressView()
+                }
+            }
+            .contentShape(.rect)
+        }
+        .disabled(store.isWorking || store.isReadingCheckouts)
     }
 
     private func itemLine(_ item: GitHubItem) -> some View {
@@ -173,6 +291,8 @@ struct GitHubSendSheet: View {
 struct GitHubSendSheetPresenter: ViewModifier {
     @Binding var request: GitHubSendRequest?
     let console: ConsoleStore
+    /// The Servers New Agent can start on.
+    let hosts: [Host]
     /// The Agent whose Composer now holds the message, for the presenter to open.
     let onSent: (ConsoleAgent.ID) -> Void
 
@@ -187,7 +307,7 @@ struct GitHubSendSheetPresenter: ViewModifier {
                         await gitHub.readCheckouts(directories, on: request.host)
                     },
                     deliver: { [console] message, id in try await console.deliverDraft(message, to: id) }),
-                gitHub: console.gitHub, console: console, onSent: onSent
+                gitHub: console.gitHub, console: console, hosts: hosts, onSent: onSent
             )
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))

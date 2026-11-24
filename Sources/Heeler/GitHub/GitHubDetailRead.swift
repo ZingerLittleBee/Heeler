@@ -13,6 +13,7 @@ enum GitHubDetailRead {
                 __typename
                 ... on PullRequest {
                   ...pullRequest
+                  repository { defaultBranchRef { name } }
                   body headRefName baseRefName changedFiles viewerDidAuthor isCrossRepository
                   headRepositoryOwner { login } mergeable mergeStateStatus
                   reviewRequests(first: 20) { nodes { requestedReviewer { ...reviewer } } }
@@ -21,6 +22,7 @@ enum GitHubDetailRead {
                 }
                 ... on Issue {
                   ...issue
+                  repository { defaultBranchRef { name } }
                   body assignees(first: 10) { nodes { login } }
                 }
               }
@@ -72,8 +74,15 @@ enum GitHubDetailRead {
         let author: GitHubGraphQL.Login?
     }
 
+    /// The repository's default branch; nil for an empty repository.
+    private struct Repository: Decodable {
+        struct Ref: Decodable { let name: String }
+        let defaultBranchRef: Ref?
+    }
+
     private struct Node: Decodable {
         let item: GitHubGraphQL.ItemNode
+        let repository: Repository?
         let body: String?
         let headRefName: String?
         let baseRefName: String?
@@ -89,7 +98,7 @@ enum GitHubDetailRead {
         let assignees: GitHubGraphQL.Nodes<GitHubGraphQL.Login>?
 
         enum CodingKeys: String, CodingKey {
-            case body, headRefName, baseRefName, changedFiles, viewerDidAuthor, isCrossRepository
+            case repository, body, headRefName, baseRefName, changedFiles, viewerDidAuthor, isCrossRepository
             case headRepositoryOwner, mergeable, mergeStateStatus, reviewRequests, viewerLatestReviewRequest
             case latestOpinionatedReviews, assignees
         }
@@ -97,6 +106,7 @@ enum GitHubDetailRead {
         init(from decoder: any Decoder) throws {
             item = try GitHubGraphQL.ItemNode(from: decoder)
             let container = try decoder.container(keyedBy: CodingKeys.self)
+            repository = try? container.decodeIfPresent(Repository.self, forKey: .repository)
             body = try container.decodeIfPresent(String.self, forKey: .body)
             headRefName = try container.decodeIfPresent(String.self, forKey: .headRefName)
             baseRefName = try container.decodeIfPresent(String.self, forKey: .baseRefName)
@@ -132,7 +142,8 @@ enum GitHubDetailRead {
             }
             return GitHubItemDetail(
                 item: item, viewer: viewer, body: body ?? "", pullRequest: pullRequest,
-                assignees: (assignees?.values ?? []).map(\.login), readAt: readAt)
+                assignees: (assignees?.values ?? []).map(\.login),
+                defaultBranch: repository?.defaultBranchRef?.name, readAt: readAt)
         }
 
         /// The account's own request first: it is what the account can act

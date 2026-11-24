@@ -145,6 +145,9 @@ struct GitHubItemDetail: Sendable, Equatable {
     let pullRequest: GitHubPullRequestDetail?
     /// Who an issue is assigned to; empty for a pull request.
     let assignees: [String]
+    /// The repository's default branch, which a worktree for an issue
+    /// starts from; nil for an empty repository.
+    let defaultBranch: String?
     let readAt: Date
 
     /// The account opened it.
