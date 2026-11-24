@@ -9,8 +9,9 @@ see where those stand from the phone. The machines Heeler connects to often
 have the GitHub CLI installed and signed in already. The maintainer decided
 on 2026-11-24 that Heeler reads GitHub by running that `gh` over the Host's
 existing SSH connection, and never sees, stores or carries a GitHub token.
-This ADR covers the read-only list (the GitHub tab), a pull request's or an
-issue's detail, and Send to Agent; later actions build on the same seam.
+This ADR covers the list (the GitHub tab), a pull request's or an issue's
+detail, Send to Agent, and the detail's writes: Comment, Approve, Merge and
+Close.
 
 ## Decision
 
@@ -36,8 +37,11 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   does. The job inherits only where gh, its configuration and its tools are,
   and the proxy variables (`GitHubCLIScript.desktopVariables`), never a token
   variable. It writes to a private temporary folder the script made, the
-  script polls for its status for up to 30 seconds, then `launchctl bootout`s
-  the job and removes the folder. The Console remembers the route for that
+  script polls for its status for up to 30 seconds by the clock, then
+  `launchctl bootout`s the job and removes the folder. The wait ends at the
+  latest 44 seconds after the script started, before the exec's 50-second
+  watchdog, which kills the script with no cleanup. The Console remembers the
+  route for that
   connection (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight
   to the desktop session until the connection is replaced or the user taps
   Check Again. With no one logged in at the desktop there is no `gui/<uid>`
@@ -53,8 +57,8 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   recently updated first. Pull requests that request the user's review, pull
   requests the user opened, issues assigned to the user, and issues the user
   opened that are not assigned to them. The headers give each section's full
-  count and say when a rate limit ends. Later writes will use gh's porcelain
-  commands, one exec each, never sent twice.
+  count and say when a rate limit ends. Writes are not GraphQL: they are
+  gh's porcelain commands, below.
 - **The list is kept for display, never watched.** Each Host's list is saved
   on the device (`FileGitHubListCache`) by the rules
   [FileChatTranscriptCache](../../Sources/Heeler/Chat/Cache/FileChatTranscriptCache.swift)
@@ -128,6 +132,62 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   before. The fetch is the only network step, bounded by the seam's 60
   seconds, and writes only `FETCH_HEAD`, the branch the script makes or moves,
   and that branch's tracking settings; nothing is pushed.
+- **Writes are gh's porcelain commands.** The detail's "⋯" menu ends with
+  Comment… (any item), Approve… (an open pull request that is not the
+  account's own), Merge… (an open pull request that is not a draft) and
+  Close… (anything open). Each runs one command through the same script
+  (`GitHubWrite`, `GitHubStore.write(_:on:host:)`): `gh pr comment` or
+  `gh issue comment` with `--body-file`, `gh pr review --approve` with an
+  optional `--body-file`, `gh pr merge` with `--squash`, `--merge` or
+  `--rebase`, `--match-head-commit` and optionally `--delete-branch`,
+  `gh pr close`, and `gh issue close --reason "completed"` or
+  `"not planned"`. gh keeps its own checks, and its messages are shown word
+  for word. Every sheet and confirmation names the command, the Host and the
+  account ("Runs gh pr merge on Studio Mac as @login.").
+- **A write cannot reach a checkout or the shell.** It names the item by its
+  URL and runs in the script's private temporary folder, with
+  `GIT_CEILING_DIRECTORIES` set to that folder's parent and git's location
+  variables unset, so gh finds no local repository: it acts on GitHub only,
+  and `--delete-branch` cannot delete a local branch. What the user typed is
+  written into that folder as `printf` octal escapes, one per byte, and gh
+  reads it with `--body-file`. No shell reads the text, and the desktop job
+  reads the same file.
+- **A write is sent once.** It runs on the Server whose connection answered
+  the read just before it, and on no other: trying each connected Server in
+  turn is for reads. On a Herdr TUI Server it runs on the current connection
+  only (`EventsSession.withTransportOnce`), never again on a replacement. The
+  desktop route runs it a second time only on the proof reads use that the
+  first gh had no token (exit status 4, an HTTP 401, or GitHub's mark for a
+  request without one), when it could have changed nothing. An exec that
+  ends without gh's exit status (the watchdog, a lost connection, a desktop
+  job past its wait) may have changed GitHub: once the exec was handed to
+  SSH, `HeelerSSHTransport.runGitHubScript` reports a failure as
+  `coreMutationOutcomeUnknown`, as a herdr-core mutation does. Heeler says
+  the outcome is unknown, does not send it again, keeps what the user wrote
+  on screen, and offers the item in the browser.
+- **The item is read before and after.** `GitHubStore.reread` runs first. If
+  the item is no longer open, is a draft again, or for Merge has a new head
+  commit, Heeler says so and runs nothing; Merge passes the head it read as
+  `--match-head-commit`, so GitHub refuses a merge of commits pushed since.
+  After a write that ran, Heeler reads again, so the detail, the list row and
+  the saved list follow. Merge's result comes from that read, not from the
+  exit status alone: Merged when GitHub shows the pull request merged, naming
+  the method only when gh exited 0, the account merged it and the merge
+  commit's parents match the method, and saying whether the branch is gone;
+  Not Merged Yet with gh's output when gh exited 0 and the pull request is
+  still open (auto-merge or a merge queue); GitHub Refused the Merge with
+  gh's output when it did not exit 0. The other writes end without a page
+  when gh exits 0 (Close when the read shows the item closed), and otherwise
+  show gh's output under a title that says what happened.
+- **Merge offers what the repository allows.** The detail read adds the
+  repository's allowed methods, the account's default
+  (`viewerDefaultMergeMethod`), whether the repository deletes merged
+  branches, and the head commit. The sheet lists the allowed methods,
+  starting on the default, and warns, worded for each case, when checks fail,
+  changes were requested, or both. Delete Branch is not offered for a fork's
+  pull request. When the repository deletes merged branches itself, the
+  switch shows on and cannot be changed, a line says why, and Heeler passes
+  no flag, so the page after reports what GitHub did.
 - **The tab can be turned off.** Settings has a GitHub switch under Usage's,
   on by default. Off hides the tab, runs no gh and removes the saved lists.
 - **Six tabs fit by moving Settings.** The tab follows Terminals: Agents,
@@ -168,6 +228,13 @@ issue's detail, and Send to Agent; later actions build on the same seam.
 - **Matching Agents to a repository by directory name.** A clone can have
   any name and a fork any owner. git's own answer, read in one script, also
   gives the branch.
+- **Writes as GraphQL mutations through `gh api graphql`.** One request shape
+  for reads and writes, but Heeler would own each mutation's input and
+  errors, give up gh's checks such as `--match-head-commit`, and show
+  messages the user has never seen from gh.
+- **Retrying a write after a lost connection.** The first exec may have
+  finished, and a comment would post twice. The read after it lets the user
+  decide.
 
 ## Consequences
 
@@ -223,3 +290,18 @@ issue's detail, and Send to Agent; later actions build on the same seam.
 - The checked-out rule in the form counts the Worktrees of the checkouts the
   Agents work in. A branch checked out in a separate clone no Agent works in
   is caught by the script, at Start, not in the footer.
+- Writes were measured on 2026-11-24 against a stand-in gh that records what
+  it was given and answers as told, never against GitHub. A body with
+  quotes, `$(...)`, backticks, newlines, CJK and emoji arrived byte for byte,
+  through the desktop job too, and gh ran in the private folder, where
+  `git rev-parse` found no repository. `printf` octal escapes rebuilt every
+  byte from 1 to 255 in macOS `sh`, `bash`, `zsh`, `ksh` and `dash`, BusyBox
+  `ash` and Debian `dash`.
+- 300 rounds of `sleep 0.1`, the desktop wait before it read the clock, took
+  33 to 43 seconds on a Mac. After the exec's own gh, that outlasted the
+  50-second watchdog, whose SIGKILL skipped the bootout and the folder's
+  removal and left a loaded job in `gui/<uid>`. `launchctl bootout` stops a
+  job whose gh is still running: a 40-second gh never answered.
+- When the watchdog kills the exec's own gh, the private folder stays, with
+  a write's body, in the account's temporary directory until the system
+  clears it.

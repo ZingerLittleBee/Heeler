@@ -344,6 +344,22 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   from [GitHubWorktreeStart](../../Sources/Heeler/GitHub/GitHubWorktreeStart.swift)
   through `GitHubStore.worktreeStart(_:on:)` in `StartAgentStore.submit()`,
   and reaches each kind as `WorktreeSpec.base`. No focused tests yet.
+- **GitHub writes (Comment, Approve, Merge, Close):** `GitHubItemMenu`'s
+  last section opens
+  [GitHubWriteSheet](../../Sources/Heeler/GitHub/GitHubWriteSheet.swift)
+  (compose, merge and result pages, wording in `GitHubWriteWords`) or Close's
+  confirmation. [GitHubWrite](../../Sources/Heeler/GitHub/GitHubWrite.swift)
+  says which actions an item allows, builds the gh command and refuses one
+  the fresh read no longer allows; `GitHubWriteOutcome` reads what came back.
+  `GitHubStore.write(_:on:host:)` reads the item again, runs the command once
+  on the Server that answered (`GitHubHostAccess.runGitHub` with
+  `isMutation`), then reads it again. Sent once:
+  `HostConsoleProjection.runGitHubScript` uses
+  `EventsSession.withTransportOnce` for a mutation, and
+  `HeelerSSHTransport.runGitHubScript` turns a failure after the exec was
+  handed to SSH into `coreMutationOutcomeUnknown`. The body file, the private
+  folder and the desktop wait are in `GitHubCLIScript`. Read the writes
+  section of ADR 0064. No focused tests yet.
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
   Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`
