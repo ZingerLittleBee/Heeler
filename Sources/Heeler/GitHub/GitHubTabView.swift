@@ -632,7 +632,17 @@ private struct GitHubHostMenu: View {
         switch state.failure {
         case .notInstalled: return String(localized: "GitHub CLI not installed")
         case .notSignedIn: return String(localized: "Not signed in")
-        default: return state.list.map { "@\($0.login)" }
+        default: break
+        }
+        if let list = state.list { return "@\(list.login)" }
+        // With no list to name the account, what stopped its read.
+        switch state.failure {
+        case .rateLimited:
+            return String(
+                localized: "Rate limited",
+                comment: "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read.")
+        case .timedOut, .failed, .unsupported: return String(localized: "Could not read GitHub")
+        default: return nil
         }
     }
 }

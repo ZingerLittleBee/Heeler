@@ -49371,6 +49371,9 @@
         }
       }
     },
+    "Rate limited" : {
+      "comment" : "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read."
+    },
     "Reach a Mac outside your local network through Tailscale, ZeroTier, EasyTier, or tailcat. Heeler joins on its own, without a VPN." : {
       "localizations" : {
         "ja" : {
