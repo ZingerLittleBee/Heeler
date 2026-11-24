@@ -153,8 +153,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     ) async throws -> Value
 
     /// Runs one gh script on the Host for the GitHub tab, whichever Server
-    /// Kind runs (ADR 0064).
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult
+    /// Kind runs (ADR 0064). A mutation is sent once: no layer runs it again
+    /// on a replacement connection.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult
 
     /// Borrows the connection for the plugin's Notification, Usage and sidebar
     /// files, which only a Herdr TUI Host has.
@@ -249,8 +250,10 @@ protocol CheckedChatTyping: AnyObject {
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
 
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
-        try await withHostServices { try await $0.runGitHubScript(script) }
+    /// For a Server Kind whose `withHostServices` never runs an operation
+    /// again on a new connection; one that does runs a mutation itself.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        try await withHostServices { try await $0.runGitHubScript(script, isMutation: isMutation) }
     }
 
     var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }

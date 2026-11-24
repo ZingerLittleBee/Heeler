@@ -4096,14 +4096,14 @@ extension ConsoleStore: GitHubHostAccess {
     }
 
     /// Straight to the desktop session on a connection whose gh needed it
-    /// before; the exec first otherwise.
+    /// before; the exec first otherwise. A write is sent once.
     func runGitHub(_ request: GitHubCLIRequest, on recordID: Host.ID) async throws -> GitHubCLIOutcome {
         let projection = try projection(for: recordID)
         let generation = projection.transportGeneration
         let mode: GitHubCLIScript.Mode = gitHubDesktopRoutes[recordID] == generation ? .desktop : .auto
         let nonce = GitProbe.makeNonce()
         let result = try await projection.runGitHubScript(
-            GitHubCLIScript.script(for: request, mode: mode, nonce: nonce))
+            GitHubCLIScript.script(for: request, mode: mode, nonce: nonce), isMutation: request.isMutation)
         guard let outcome = GitHubCLIOutcome(stdout: result.stdout, nonce: nonce) else {
             throw GitHubCLIError.unreadableOutput
         }
@@ -4120,7 +4120,7 @@ extension ConsoleStore: GitHubHostAccess {
     }
 
     func runGitHubSeamScript(_ script: Data, on recordID: Host.ID) async throws -> GitExecResult {
-        try await projection(for: recordID).runGitHubScript(script)
+        try await projection(for: recordID).runGitHubScript(script, isMutation: false)
     }
 
     func forgetGitHubRoutes(_ recordIDs: [Host.ID]) {

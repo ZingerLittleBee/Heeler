@@ -4,12 +4,15 @@ import Foundation
 /// bounded exec of POSIX sh, the same on every Server Kind. Heeler never
 /// sees the account's token; gh reads it on the Host as it always does.
 protocol GitHubHostCLI: Sendable {
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult
+    /// `isMutation` marks a script that changes something on GitHub. It is
+    /// sent once, and a failure after it was handed to SSH throws
+    /// `TransportError.coreMutationOutcomeUnknown`: it may have run.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult
 }
 
 extension GitHubHostCLI {
     /// A connection without Host commands cannot run gh, and says so.
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "GitHub"))
     }
 }
@@ -20,6 +23,10 @@ struct GitHubCLIRequest: Sendable, Equatable {
     /// A request that changes something on GitHub. It runs once in one exec
     /// and is never sent again, whatever came back.
     var isMutation: Bool
+    /// What the user typed, for gh's `--body-file`. The script writes these
+    /// bytes to a file in its private folder as printf's octal escapes, so
+    /// none of them is ever shell syntax, and the command names that file.
+    var body: String?
 
     /// A GraphQL read through `gh api graphql`, with the response headers so
     /// a rate limit can say when it ends. Each variable goes as a string
@@ -46,6 +53,11 @@ enum GitHubCLIRoute: Sendable, Equatable {
 
 /// The gh script: find gh, run the request once and, on a Mac where the
 /// exec's gh has no usable token, run it once more in the desktop session.
+/// gh runs in the script's private temporary folder, with git kept from
+/// finding a checkout around it, so no gh command acts on a local
+/// repository (`gh pr merge --delete-branch` would delete a local branch).
+/// A write runs again in the desktop session only on that same proof that
+/// the first gh did nothing: with no token it could change nothing.
 enum GitHubCLIScript {
     /// How a run may use the desktop session.
     enum Mode: String, Sendable {
@@ -63,16 +75,25 @@ enum GitHubCLIScript {
     /// address's few requests without a token are spent, this.
     static let unauthenticatedMark = "Authenticated requests get a higher rate limit"
 
-    /// How long the desktop job may take, in tenths of a second.
-    static let desktopPollTenths = 300
+    /// How long the exec may run before the remote watchdog kills it, with
+    /// no cleanup: its EXIT trap does not run on SIGKILL.
+    static let execSeconds: Int64 = 50
+    /// How long the desktop job may take, in seconds of wall time. 300
+    /// rounds of `sleep 0.1` took 33 to 43 seconds on a Mac, so the poll
+    /// reads the clock.
+    static let desktopWaitSeconds = 30
+    /// When, in seconds from the script's start, the desktop wait ends
+    /// however long gh took in the exec first: early enough to boot the job
+    /// out and remove the folder before the watchdog.
+    static let desktopWaitEnd = Int(execSeconds) - 6
     /// The most of gh's output and error output the script returns.
     static let outputCap = 4 * 1024 * 1024
     static let errorCap = 4096
 
     /// Variables the desktop job takes from the exec: where gh, its
-    /// configuration and its tools are, gh's own quiet settings, and the
-    /// proxy the SSH session reaches GitHub through. A token in the exec's
-    /// environment stays there.
+    /// configuration and its tools are, gh's own quiet settings, the proxy
+    /// the SSH session reaches GitHub through, and git's ceiling. A token in
+    /// the exec's environment stays there.
     static let desktopVariables = [
         "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "PATH", "TMPDIR",
         "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "MISE_DATA_DIR",
@@ -80,16 +101,21 @@ enum GitHubCLIScript {
         "GH_NO_EXTENSION_UPDATE_NOTIFIER", "GH_SPINNER_DISABLED", "NO_COLOR", "CLICOLOR", "GH_PAGER",
         "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
         "https_proxy", "http_proxy", "all_proxy", "no_proxy",
-        "HEELER_GH",
+        "GIT_CEILING_DIRECTORIES", "HEELER_GH",
     ]
 
+    /// Bytes of a body per printf line.
+    private static let bodyLineBytes = 256
+
     static func script(for request: GitHubCLIRequest, mode: Mode, nonce: String) -> Data {
-        let command = (["\"$HEELER_GH\""] + request.arguments.map(GitProbe.singleQuoted))
-            .joined(separator: " ")
+        var words = ["\"$HEELER_GH\""] + request.arguments.map(GitProbe.singleQuoted)
+        if request.body != nil { words += ["--body-file", "\"$D/body\""] }
+        let command = words.joined(separator: " ")
         let job = "__HEELER_GH_JOB_\(nonce)__"
         let plist = "__HEELER_GH_PLIST_\(nonce)__"
         return Data("""
             N=\(nonce)
+            T=$(date +%s 2>/dev/null)
             LC_ALL=C
             export LC_ALL
             PATH="\(HerdrHostPath.extraPATH):/snap/bin:$PATH"
@@ -98,6 +124,7 @@ enum GitHubCLIScript {
             GH_SPINNER_DISABLED=1 NO_COLOR=1 CLICOLOR=0 GH_PAGER=cat
             export GH_PROMPT_DISABLED GH_NO_UPDATE_NOTIFIER GH_NO_EXTENSION_UPDATE_NOTIFIER
             export GH_SPINNER_DISABLED NO_COLOR CLICOLOR GH_PAGER
+            unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
             m() { printf '\\n%s %s\\n' "$N" "$1"; }
             q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\\\\\''/g")"; }
             os=$(uname -s 2>/dev/null)
@@ -107,6 +134,10 @@ enum GitHubCLIScript {
             export HEELER_GH
             D=$(mktemp -d "${TMPDIR:-/tmp}/heeler-gh.XXXXXXXX") || { m 'route failed'; m done; exit 0; }
             trap 'rm -rf "$D"' EXIT
+            GIT_CEILING_DIRECTORIES=${D%/*}
+            export GIT_CEILING_DIRECTORIES
+            cd "$D" || { m 'route failed'; m done; exit 0; }
+            \(bodyFile(request.body))
             route=exec
             rc=
             if [ "$os" = Darwin ] && [ \(mode.rawValue) = desktop ]; then
@@ -135,10 +166,11 @@ enum GitHubCLIScript {
                 done >"$D/env"
                 cat >"$D/job" <<'\(job)'
             . "$1/env"
-            cd "$HOME" 2>/dev/null || cd /
-            \(command) >"$1/gout" 2>"$1/gerr" </dev/null
-            echo $? >"$1/grc.tmp"
-            mv "$1/grc.tmp" "$1/grc"
+            D=$1
+            cd "$D" || exit 1
+            \(command) >"$D/gout" 2>"$D/gerr" </dev/null
+            echo $? >"$D/grc.tmp"
+            mv "$D/grc.tmp" "$D/grc"
             \(job)
                 cat >"$D/job.plist" <<\(plist)
             <?xml version="1.0" encoding="UTF-8"?>
@@ -150,10 +182,13 @@ enum GitHubCLIScript {
             </dict></plist>
             \(plist)
                 if launchctl bootstrap "gui/$U" "$D/job.plist" >/dev/null 2>&1; then
+                    E=$(($(date +%s) + \(desktopWaitSeconds)))
+                    [ "$E" -gt $((T + \(desktopWaitEnd))) ] && E=$((T + \(desktopWaitEnd)))
                     i=0
-                    while [ ! -f "$D/grc" ] && [ "$i" -lt \(desktopPollTenths) ]; do
+                    while [ ! -f "$D/grc" ]; do
                         sleep 0.1
                         i=$((i + 1))
+                        [ $((i % 10)) = 0 ] && [ "$(date +%s)" -ge "$E" ] && break
                     done
                     launchctl bootout "gui/$U/$L" >/dev/null 2>&1
                     if [ -f "$D/grc" ]; then
@@ -176,6 +211,24 @@ enum GitHubCLIScript {
             m done
 
             """.utf8)
+    }
+
+    /// The lines that write `body` to `$D/body`, each byte as an octal
+    /// escape in printf's format, which POSIX printf turns back into that
+    /// byte. Nothing the user typed reaches the shell as text. A failed
+    /// write ends the script before gh runs.
+    private static func bodyFile(_ body: String?) -> String {
+        guard let body else { return "" }
+        let bytes = Array(body.utf8)
+        var lines = [":"]
+        for start in stride(from: 0, to: bytes.count, by: bodyLineBytes) {
+            let escapes = bytes[start..<min(start + bodyLineBytes, bytes.count)].map { byte in
+                let digits = String(byte, radix: 8)
+                return "\\" + String(repeating: "0", count: 3 - digits.count) + digits
+            }
+            lines.append("printf '\(escapes.joined())'")
+        }
+        return "{ \(lines.joined(separator: "; ")); } >\"$D/body\" || { m 'route failed'; m done; exit 0; }"
     }
 }
 

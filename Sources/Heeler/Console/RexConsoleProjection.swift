@@ -949,9 +949,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// The GitHub tab's gh runs, and its read of the Agents' checkouts, on
     /// the connection the server's links use (ADR 0064).
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
         let gitHub = try await session.withConnection { $0.transport.gitHub }
-        return try await gitHub.runGitHubScript(script)
+        return try await gitHub.runGitHubScript(script, isMutation: isMutation)
     }
 
     /// A Rex Host has no plugin, Notifications or Usage files, and its plugin

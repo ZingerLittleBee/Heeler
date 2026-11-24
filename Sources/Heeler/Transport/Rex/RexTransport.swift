@@ -434,8 +434,8 @@ private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
 private struct RexGitHubOnly: GitHubHostCLI {
     let connection: any GitHubHostCLI
 
-    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
-        try await connection.runGitHubScript(script)
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        try await connection.runGitHubScript(script, isMutation: isMutation)
     }
 }
 
