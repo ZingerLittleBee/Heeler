@@ -94,6 +94,13 @@ enum GitHubCLIScript {
     /// however long gh took in the exec first: early enough to boot the job
     /// out and remove the folder before the watchdog.
     static let desktopWaitEnd = Int(execSeconds) - 6
+    /// The latest, in seconds from the script's start, a desktop job may be
+    /// started. After it the job would have under 3 seconds, and the wait's
+    /// first look at the clock, a second or more in, could run into the
+    /// watchdog, whose SIGKILL would leave the job loaded to run the request
+    /// after Heeler was told its outcome. The script starts no job then and
+    /// reports the desktop route as timed out.
+    static let desktopStartLatest = desktopWaitEnd - 3
     /// How old, by its folder's last change, a run's folder or finished
     /// desktop job must be before a later run removes it: more than this
     /// many minutes by GNU find, and a minute more by macOS's and BusyBox's,
@@ -238,7 +245,10 @@ enum GitHubCLIScript {
             <key>RunAtLoad</key><true/>
             </dict></plist>
             \(plist)
-                if launchctl bootstrap "gui/$U" "$D/job.plist" >/dev/null 2>&1; then
+                if [ "$(date +%s)" -ge $((T + \(desktopStartLatest))) ]; then
+                    L=
+                    route=timeout
+                elif launchctl bootstrap "gui/$U" "$D/job.plist" >/dev/null 2>&1; then
                     E=$(($(date +%s) + \(desktopWaitSeconds)))
                     [ "$E" -gt $((T + \(desktopWaitEnd))) ] && E=$((T + \(desktopWaitEnd)))
                     i=0

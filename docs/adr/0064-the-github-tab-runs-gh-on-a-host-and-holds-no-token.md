@@ -40,12 +40,15 @@ Close.
   script polls for its status for up to 30 seconds by the clock, then
   `launchctl bootout`s the job and removes the folder. The wait ends at the
   latest 44 seconds after the script started, before the exec's 50-second
-  watchdog, which kills the script with no cleanup. Every other exit the
-  script can trap boots the job out and removes the folder, and each run
-  first sweeps what an earlier one could not (below). The Console remembers
-  the route for that connection (`ConsoleStore.gitHubDesktopRoutes`), so
-  later reads go straight to the desktop session until the connection is
-  replaced or the user taps Check Again. With no one logged in at the desktop there is no `gui/<uid>`
+  watchdog, which kills the script with no cleanup. When the exec's gh
+  proves no token later than 41 seconds in, no job starts and the route
+  reports a timeout, so the watchdog never meets a loaded job that would go
+  on to run the request. Every other exit the script can trap boots the job
+  out and removes the folder, and each run first sweeps what an earlier one
+  could not (below). The Console remembers the route for that connection
+  (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight to the
+  desktop session until the connection is replaced or the user taps Check
+  Again. With no one logged in at the desktop there is no `gui/<uid>`
   domain, and the Host is Not Signed In. Linux needs none of this.
 - **A Host, not a Server.** gh belongs to the machine, so the tab lists Hosts
   ([ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md)) and runs
