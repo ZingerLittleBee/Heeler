@@ -60,7 +60,7 @@ struct GitHubSendSheet: View {
                 if case .failed(let message) = store.state {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(GitHubInk.red)
                     }
                 }
                 Section {
@@ -285,7 +285,7 @@ struct GitHubSendSheet: View {
                 } else if let mark = target.mark {
                     Text(mark == .onBranch ? String(localized: "On this branch") : String(localized: "This repository"))
                         .font(.footnote)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(GitHubInk.green)
                 }
             }
             .contentShape(.rect)

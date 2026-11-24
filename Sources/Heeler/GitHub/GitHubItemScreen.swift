@@ -198,8 +198,8 @@ private struct GitHubItemFacts: View {
                     Text("\(pull.changedFiles) files")
                 }
                 if let additions = item.additions, let deletions = item.deletions {
-                    Text(verbatim: "+\(additions.formatted())").foregroundStyle(.green)
-                    Text(verbatim: "\u{2212}\(deletions.formatted())").foregroundStyle(.red)
+                    Text(verbatim: "+\(additions.formatted())").foregroundStyle(GitHubInk.green)
+                    Text(verbatim: "\u{2212}\(deletions.formatted())").foregroundStyle(GitHubInk.red)
                 }
             }
             .monospacedDigit()
@@ -243,18 +243,18 @@ private struct GitHubItemFacts: View {
         HStack(spacing: 4) {
             switch checks.summary {
             case .failing(let count):
-                Image(systemName: "xmark.circle.fill").foregroundStyle(.red).imageScale(.small)
+                Image(systemName: "xmark.circle.fill").foregroundStyle(GitHubInk.red).imageScale(.small)
                 Text("\(count) failing", comment: "How many of a pull request's checks failed, in the GitHub list.")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(GitHubInk.red)
                 passed(checks.passing)
             case .running:
-                Image(systemName: "clock.fill").foregroundStyle(.yellow).imageScale(.small)
+                Image(systemName: "clock.fill").foregroundStyle(GitHubInk.amber).imageScale(.small)
                 // Shared with the Background Work bar's count.
                 Text("\(checks.pending) running")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(GitHubInk.amber)
                 passed(checks.passing)
             case .passing:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).imageScale(.small)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(GitHubInk.green).imageScale(.small)
                 Text("\(checks.passing) passed", comment: "How many of a pull request's checks passed, in its detail.")
             case .none:
                 Text("None yet", comment: "A pull request with no checks, in its detail.")

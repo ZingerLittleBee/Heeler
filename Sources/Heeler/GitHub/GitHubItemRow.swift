@@ -57,7 +57,7 @@ struct GitHubItemRow: View {
         }
         return HStack(spacing: 4) {
             if item.state == .merged {
-                Text("Merged").foregroundStyle(.purple)
+                Text("Merged").foregroundStyle(GitHubInk.purple)
             } else {
                 if item.state == .draft {
                     Text("Draft")
@@ -100,10 +100,10 @@ struct GitHubItemRow: View {
 
     static func tint(for item: GitHubItem) -> Color {
         switch item.state {
-        case .open: .green
+        case .open: GitHubInk.green
         case .draft: .secondary
-        case .merged: .purple
-        case .closed: .red
+        case .merged: GitHubInk.purple
+        case .closed: GitHubInk.red
         }
     }
 
@@ -118,9 +118,9 @@ struct GitHubItemRow: View {
 
     private static func tint(for checks: GitHubChecks.Summary) -> Color {
         switch checks {
-        case .failing: .red
-        case .running: .yellow
-        case .passing: .green
+        case .failing: GitHubInk.red
+        case .running: GitHubInk.amber
+        case .passing: GitHubInk.green
         case .none: .secondary
         }
     }
@@ -160,5 +160,25 @@ struct GitHubItemRow: View {
                 additions: nil, deletions: nil, labels: []),
             section: .authored)
             .redacted(reason: .placeholder)
+    }
+}
+
+/// The GitHub screens' state colours. The system tints are too light for
+/// footnote text and small glyphs on white and grouped backgrounds, so
+/// light mode uses darker tones that keep 4.5:1; dark mode keeps tones
+/// close to the system's.
+enum GitHubInk {
+    static let green = ink(light: 0x1A7030, dark: 0x30D158)
+    static let red = ink(light: 0xC4161C, dark: 0xFF6961)
+    static let amber = ink(light: 0x9A4A00, dark: 0xFFD60A)
+    static let purple = ink(light: 0x8944AB, dark: 0xD08BFF)
+
+    private static func ink(light: Int, dark: Int) -> Color {
+        Color(uiColor: UIColor { traits in
+            let rgb = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(
+                red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+        })
     }
 }

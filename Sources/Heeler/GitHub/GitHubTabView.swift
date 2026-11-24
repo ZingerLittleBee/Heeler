@@ -511,7 +511,7 @@ struct GitHubBanner: View {
     private var tint: Color {
         switch text.kind {
         case .offline: .secondary
-        case .rateLimited, .failed: .orange
+        case .rateLimited, .failed: GitHubInk.amber
         }
     }
 
