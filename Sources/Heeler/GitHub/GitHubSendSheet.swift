@@ -346,17 +346,20 @@ struct GitHubSendSheetPresenter: ViewModifier {
 
     func body(content: Content) -> some View {
         content.sheet(item: $request) { request in
-            GitHubSendSheet(
-                store: GitHubSendStore(
-                    request: request,
-                    readCheckouts: { [gitHub = console.gitHub] directories in
-                        await gitHub.readCheckouts(directories, on: request.host)
-                    },
-                    deliver: { [console] message, id in try await console.deliverDraft(message, to: id) }),
-                gitHub: console.gitHub, console: console, hosts: hosts, onSent: onSent
-            )
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+            // Fixed at open: following a resize rebuilt the sheet, closing
+            // New Agent over it and forgetting the chosen ask.
+            ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) { presentation in
+                GitHubSendSheet(
+                    store: GitHubSendStore(
+                        request: request,
+                        readCheckouts: { [gitHub = console.gitHub] directories in
+                            await gitHub.readCheckouts(directories, on: request.host)
+                        },
+                        deliver: { [console] message, id in try await console.deliverDraft(message, to: id) }),
+                    gitHub: console.gitHub, console: console, hosts: hosts, onSent: onSent
+                )
+                .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
+            }
         }
     }
 }
