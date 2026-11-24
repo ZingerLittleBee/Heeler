@@ -103,7 +103,8 @@ Close.
   otherwise; the rest follow in the Agents list's order. One script through
   the same seam (`GitHubCheckoutRead`, so a Rex Host answers too) asks git in
   at most 24 directories for the top level, the branch and every remote URL,
-  4 KB each; a remote names the repository in https, scp-like (`git@host:`)
+  4 KB each, a list cut there losing its last line, which may be a URL cut
+  short; a remote names the repository in https, scp-like (`git@host:`)
   or `ssh://` form, on `github.com` or its `www.` and `ssh.` names. The sheet
   shows the Agents at once and marks them when the read answers, or leaves
   them unmarked after 8 seconds or a failure. Choosing an Agent puts the

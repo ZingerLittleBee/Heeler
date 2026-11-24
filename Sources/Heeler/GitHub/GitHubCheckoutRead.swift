@@ -77,8 +77,12 @@ enum GitHubCheckoutRead {
             let branch = (try? frames.section("branch\(index)", cap: cap)).flatMap { section in
                 section.status == 0 ? firstLine(section.body) : nil
             }
-            let remotes = (try? frames.section("remotes\(index)", cap: cap)).map { section in
-                String(decoding: section.body, as: UTF8.self).split(whereSeparator: \.isNewline).compactMap(remote)
+            let remotes = (try? frames.section("remotes\(index)", cap: cap)).map { section -> [GitHubCheckout.Remote] in
+                var lines = String(decoding: section.body, as: UTF8.self).split(whereSeparator: \.isNewline)
+                // A cut can end inside a URL that still parses, naming
+                // another repository.
+                if section.isTruncated, !lines.isEmpty { lines.removeLast() }
+                return lines.compactMap(remote)
             } ?? []
             let worktrees = (try? frames.section("worktrees\(index)", cap: cap)).map { section -> [GitHubCheckout.Worktree] in
                 guard section.status == 0 else { return [] }
