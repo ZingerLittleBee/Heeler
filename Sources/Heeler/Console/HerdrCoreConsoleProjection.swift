@@ -1118,7 +1118,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     ) async throws -> Agent {
         let git = try await worktreeGit()
         let source = try await placement(workspaceID: workspaceID, directory: nil).cwd
-        let created = try await git.create(branch: worktree.branch ?? "", from: source)
+        let created = try await git.create(branch: worktree.branch ?? "", from: source, startPoint: worktree.base)
         // Before the first row shows, so it already reads as the Worktree it is.
         checkouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)

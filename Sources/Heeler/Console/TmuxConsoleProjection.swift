@@ -601,7 +601,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let directory = try sourceDirectory(for: request)
         let server = try await launchServer()
         let hooks = await hookSettings(for: request)
-        let created = try await worktreeGit().create(branch: worktree.branch ?? "", from: directory)
+        let created = try await worktreeGit().create(
+            branch: worktree.branch ?? "", from: directory, startPoint: worktree.base)
         // Before the session's first row, so it already reads as the Worktree it is.
         knownCheckouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
