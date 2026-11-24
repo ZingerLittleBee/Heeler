@@ -224,8 +224,9 @@ final class SystemVoiceRecorder: VoiceRecorder {
     func stop() throws -> VoiceRecording {
         guard let tap else { throw VoiceRecorderError.recordingFailed }
         end()
+        // A stop before the first buffer arrived leaves no frames: an empty
+        // recording, which the session ends without a notice.
         let (pcm, frames) = tap.finish()
-        guard frames > 0 else { throw VoiceRecorderError.recordingFailed }
         return VoiceRecording(audio: VoicePCM.wav(pcm), duration: Double(frames) / VoicePCM.sampleRate)
     }
 

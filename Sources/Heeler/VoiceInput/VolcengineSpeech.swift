@@ -158,24 +158,29 @@ enum VolcengineConnection {
         return .failed(code: code, message: detail.isEmpty ? nil : detail)
     }
 
-    /// `operation`, given at most `limit`. Past it the socket is closed,
-    /// which ends a receive still waiting.
+    /// `operation`, given at most `limit`. Past it, or once the task is
+    /// cancelled, the socket is closed, which ends a receive still waiting:
+    /// a receive does not answer cancellation on its own.
     static func within<T: Sendable>(
         _ limit: Duration, closing socket: any VoiceWebSocket,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T?.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(for: limit)
-                return nil
+        try await withTaskCancellationHandler {
+            try await withThrowingTaskGroup(of: T?.self) { group in
+                group.addTask { try await operation() }
+                group.addTask {
+                    try await Task.sleep(for: limit)
+                    return nil
+                }
+                defer { group.cancelAll() }
+                guard case .some(.some(let value)) = try await group.next() else {
+                    socket.close()
+                    throw VoiceTranscriptionError.timedOut
+                }
+                return value
             }
-            defer { group.cancelAll() }
-            guard case .some(.some(let value)) = try await group.next() else {
-                socket.close()
-                throw VoiceTranscriptionError.timedOut
-            }
-            return value
+        } onCancel: {
+            socket.close()
         }
     }
 

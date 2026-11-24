@@ -120,6 +120,9 @@ final class ComposerVoiceInput {
     @ObservationIgnored fileprivate weak var session: VoiceInputSession?
     @ObservationIgnored fileprivate var recording: VoiceRecording?
     @ObservationIgnored fileprivate var transcriber: (any VoiceStreamRecognizer)?
+    /// Where this stream's recording goes if the stream cannot settle: the
+    /// service it started with, even if Settings change meanwhile.
+    @ObservationIgnored fileprivate var fallback: (any VoiceBatchRecognizer)?
     @ObservationIgnored fileprivate var task: Task<Void, Never>?
     @ObservationIgnored fileprivate var levelTask: Task<Void, Never>?
     @ObservationIgnored fileprivate var generation = 0
@@ -221,6 +224,7 @@ final class ComposerVoiceInput {
     fileprivate func fail(_ failure: VoiceInputFailure) {
         task = nil
         transcriber = nil
+        fallback = nil
         sendsWhenSettled = false
         stopSamplingLevels()
         phase = .failed(failure)
@@ -246,6 +250,7 @@ final class ComposerVoiceInput {
         task = nil
         recording = nil
         transcriber = nil
+        fallback = nil
         pending = VoiceDraftText(text: text, sends: sendsWhenSettled)
         sendsWhenSettled = false
         onTranscript?()
@@ -268,6 +273,7 @@ final class ComposerVoiceInput {
         task = nil
         transcriber?.cancel()
         transcriber = nil
+        fallback = nil
         stopSamplingLevels()
         recording = nil
         pending = nil
@@ -412,7 +418,7 @@ final class VoiceInputSession {
             input.landNothing()
             return
         }
-        upload(recording, for: input)
+        upload(recording, with: recognizers.batch(for: settings), for: input)
     }
 
     /// Sends a kept recording again.
@@ -420,7 +426,7 @@ final class VoiceInputSession {
         guard case .failed(let failure) = input.phase, failure.canRetry,
             let recording = input.recording
         else { return }
-        upload(recording, for: input)
+        upload(recording, with: recognizers.batch(for: settings), for: input)
     }
 
     /// Fetches the device's speech model for the chosen language, then
@@ -484,6 +490,7 @@ final class VoiceInputSession {
             return nil
         }
         input.transcriber = transcriber
+        input.fallback = recognizers.batch(for: settings)
         let sink: VoiceAudioSink
         do {
             sink = try await transcriber.start { [weak input, weak transcriber] heard in
@@ -524,33 +531,36 @@ final class VoiceInputSession {
         sampleLevels(of: input)
     }
 
-    /// The recognizer settles its last words. If settling fails, a service
-    /// that also takes finished recordings is sent the whole recording,
-    /// which the recorder kept; otherwise what was already heard lands. A
-    /// recording that heard nothing lands nothing, though a requested send
-    /// still goes.
+    /// The recognizer settles its last words, and its text stands even when
+    /// empty. If settling fails, a service that also takes finished
+    /// recordings is sent the whole recording, which the recorder kept, when
+    /// it is long enough to hold speech; otherwise what was already heard
+    /// lands. A recording that heard nothing lands nothing, though a
+    /// requested send still goes.
     private func settle(
         _ transcriber: any VoiceStreamRecognizer, recording: VoiceRecording,
         for input: ComposerVoiceInput
     ) {
         input.recording = recording
         let generation = input.begin(.transcribing)
-        let takesRecordings = settings.service?.recognitionModes.contains(.batch) == true
+        let fallback = recording.duration >= Self.minimumDuration ? input.fallback : nil
         input.task = Task { [weak self, weak input] in
             let text: String?
             do {
                 text = try await transcriber.finish()
+            } catch VoiceTranscriptionError.emptyTranscript {
+                text = ""
             } catch {
                 guard let self, let input, input.generation == generation else { return }
-                if takesRecordings {
+                if let fallback {
                     input.transcriber = nil
-                    upload(recording, for: input)
+                    upload(recording, with: fallback, for: input)
                     return
                 }
                 text = nil
             }
             guard let input, input.generation == generation else { return }
-            let heard = text.flatMap { $0.isEmpty ? nil : $0 } ?? input.heard.text
+            let heard = text ?? input.heard.text
             if heard.isEmpty {
                 input.landNothing()
             } else {
@@ -570,9 +580,12 @@ final class VoiceInputSession {
         }
     }
 
-    private func upload(_ recording: VoiceRecording, for input: ComposerVoiceInput) {
+    /// `recognizer` is nil when the saved service has no key or agreement.
+    private func upload(
+        _ recording: VoiceRecording, with recognizer: (any VoiceBatchRecognizer)?, for input: ComposerVoiceInput
+    ) {
         input.recording = recording
-        guard let recognizer = recognizers.batch(for: settings) else {
+        guard let recognizer else {
             input.fail(.notSetUp)
             return
         }

@@ -153,6 +153,22 @@ struct VolcengineSpeechTests {
         }
     }
 
+    @Test func cancellingWhileWaitingForTheResultClosesTheSocket() async throws {
+        let socket = FakeVoiceWebSocket()
+        let recognizer = VolcengineBatchRecognizer(
+            endpoint: try endpoint(), apiKey: "volc-key", keywords: [],
+            connect: FakeVoiceWebSocketConnector([socket]).connect)
+        let task = Task { try await recognizer.recognize(VoiceRecording(audio: Data(count: 100), duration: 1)) }
+        var budget = PollBudget(.seconds(2))
+        while socket.sent.count < 2, budget.hasTimeLeft {
+            try await Task.sleep(for: .milliseconds(5))
+            budget.charge()
+        }
+        task.cancel()
+        _ = await task.result
+        #expect(socket.isClosed)
+    }
+
     // MARK: Stream
 
     @MainActor

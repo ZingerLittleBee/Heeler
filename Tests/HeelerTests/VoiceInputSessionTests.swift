@@ -172,6 +172,58 @@ struct VoiceInputSessionTests {
         #expect(await fixture.transcriber.requests.isEmpty, "nothing goes to an upload service")
     }
 
+    @Test func aFailedStreamFallsBackToTheServiceItStartedWithEvenAfterSettingsChange() async throws {
+        let stream = FakeVoiceWebSocket(
+            answering: [VolcengineServerFrame.acknowledgement],
+            answerLast: .failure(VoiceTranscriptionError.network("lost")))
+        let batch = FakeVoiceWebSocket(answering: [
+            VolcengineServerFrame.result("同步分支。", sequence: 2, isLast: true)
+        ])
+        let (fixture, connector) = try makeVolcengineFixture([stream, batch])
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        try fixture.settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk-other", consented: true)
+        fixture.session.stop(store.voice)
+        try await waitUntil("landed") { store.draft == "同步分支。" }
+        #expect(connector.requests.compactMap { $0.url?.lastPathComponent } == ["bigmodel_async", "bigmodel_nostream"])
+        #expect(await fixture.transcriber.requests.isEmpty, "the recording never goes to the service chosen meanwhile")
+    }
+
+    @Test func aStreamStoppedBeforeAnyAudioEndsWithoutTheWholeRecording() async throws {
+        let stream = FakeVoiceWebSocket(
+            answering: [VolcengineServerFrame.acknowledgement],
+            answerLast: .failure(VoiceTranscriptionError.network("lost")))
+        let (fixture, connector) = try makeVolcengineFixture([stream])
+        defer { fixture.tearDown() }
+        fixture.recorder.nextRecording = VoiceRecording(audio: VoicePCM.wav(Data()), duration: 0)
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        fixture.session.stop(store.voice)
+        try await waitUntil("ended") { store.voice.phase == .idle }
+        #expect(store.voice.failure == nil)
+        #expect(connector.requests.count == 1, "nothing worth sending again")
+    }
+
+    @Test func anEmptySettledTextWithdrawsWhatWasStillBeingRevised() async throws {
+        let fixture = try makeOnDeviceFixture()
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        fixture.session.toggle(store.voice)
+        try await waitUntil("recording") { store.voice.isRecording }
+        fixture.live.hear(VoiceHeard(settled: "", revising: "嗯"))
+        fixture.live.finalText = ""
+        fixture.session.stop(store.voice)
+        try await waitUntil("ended") { store.voice.phase == .idle }
+        #expect(store.draft.isEmpty)
+        #expect(store.voice.failure == nil)
+    }
+
     @Test func volcengineAfterRecordingSendsTheFinishedRecordingWithoutTheRecorder() async throws {
         let batch = FakeVoiceWebSocket(answering: [
             VolcengineServerFrame.result("运行测试。", sequence: 2, isLast: true)

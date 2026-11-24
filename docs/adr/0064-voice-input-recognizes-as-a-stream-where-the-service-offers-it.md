@@ -26,7 +26,10 @@ recognizes speech becomes a property of the service rather than of On Device.
   every recording in memory whatever the way, so when a stream cannot settle
   (a lost connection, an error from the service, no last result within ten
   seconds) a service that also takes batches is sent the whole recording,
-  without asking: it is the same destination the user agreed to. A batch
+  without asking: it is the same destination the user agreed to. That
+  destination is fixed when the stream starts, so a change in Settings
+  meanwhile never redirects the recording, and a recording too short to
+  hold speech is not sent again. A batch
   that fails then offers Retry in the recorder. On Device has no batch and
   keeps landing what it heard.
 - **Hearing nothing is not a failure.** A recording stopped right after it
