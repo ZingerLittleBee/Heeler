@@ -508,8 +508,11 @@ struct ConsoleView: View {
                 // Settings moved under Hosts a moment ago, before
                 // `moveSettings` caught up.
                 if isSettingsTabSelected { return settingsUnderHosts ? .hosts : .settings }
-                if isUsageTabSelected { return .usage }
-                if isGitHubTabSelected { return .github }
+                // Turned off a moment ago, before `leaveUsage` or
+                // `leaveGitHub` caught up: the tab is already hidden, and
+                // selecting a hidden tab stops the app.
+                if isUsageTabSelected, console.isUsageEnabled { return .usage }
+                if isGitHubTabSelected, console.isGitHubEnabled { return .github }
                 return shownListTab
             },
             set: { requested in
