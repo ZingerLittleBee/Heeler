@@ -29,7 +29,49 @@ struct GitHubItemRow: View {
             }
         }
         .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    /// The row as VoiceOver reads it, in the order a glance takes it in:
+    /// what it is, its title, where, how it stands, then its checks and
+    /// review or its labels and comments, and when it last changed.
+    private var accessibilityText: String {
+        var parts = [
+            item.kind == .pullRequest
+                ? String(localized: "Pull request", comment: "Read first for a pull request in the GitHub list.")
+                : String(localized: "Issue", comment: "Read first for an issue in the GitHub list."),
+            item.title,
+            "\(item.repositoryName) #\(item.number)",
+            GitHubItemWords.state(of: item),
+        ]
+        if section == .reviewRequested, let author = item.author {
+            parts.append(String(localized: "Opened by \(author)", comment: "Who opened a pull request, read in the GitHub list."))
+        }
+        switch item.kind {
+        case .pullRequest:
+            if item.state != .merged {
+                let checks = item.checks?.summary ?? .none
+                if case .none = checks {
+                    parts.append(Self.title(for: checks))
+                } else {
+                    parts.append(
+                        String(
+                            localized: "checks \(Self.title(for: checks))",
+                            comment: "How a pull request's checks stand, read in the GitHub list: checks 3 failing."))
+                }
+            }
+            if let rest = pullRequestRest { parts.append(rest) }
+        case .issue:
+            parts += item.labels.prefix(3).map(\.name)
+            parts.append(
+                item.commentCount > 0
+                    ? String(
+                        localized: "\(item.commentCount) comments", comment: "An issue's comment count in the GitHub list.")
+                    : String(localized: "No comments"))
+        }
+        parts.append(String(localized: "Updated \(Self.age(of: item.updatedAt, width: .wide)) ago"))
+        return parts.joined(separator: ", ")
     }
 
     /// "Heeler #712 · riley-dev · 2h": the author only where the request
@@ -169,8 +211,11 @@ struct GitHubItemRow: View {
         }
     }
 
-    /// "5m", "2h", "3d": the largest whole unit since the last update.
-    nonisolated static func age(of date: Date, now: Date = Date()) -> String {
+    /// "5m", "2h", "3d": the largest whole unit since the last update;
+    /// "2 hours" with a wide width, as VoiceOver reads it.
+    nonisolated static func age(
+        of date: Date, now: Date = Date(), width: Duration.UnitsFormatStyle.UnitWidth = .narrow
+    ) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(date)))
         let duration: Duration =
             switch seconds {
@@ -180,7 +225,7 @@ struct GitHubItemRow: View {
             default: .seconds(seconds / 86_400 * 86_400)
             }
         return duration.formatted(
-            .units(allowed: [.days, .hours, .minutes, .seconds], width: .narrow, maximumUnitCount: 1))
+            .units(allowed: [.days, .hours, .minutes, .seconds], width: width, maximumUnitCount: 1))
     }
 
     /// A row's shape while the first read runs.

@@ -32615,6 +32615,9 @@
       }
     },
     "Investigate First" : {},
+    "Issue" : {
+      "comment" : "Read first for an issue in the GitHub list."
+    },
     "Issues" : {},
     "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows" : {
       "localizations" : {
@@ -42344,6 +42347,9 @@
         }
       }
     },
+    "Opened by %@" : {
+      "comment" : "Who opened a pull request, read in the GitHub list."
+    },
     "Opened by %@ · updated %@ ago" : {
       "localizations" : {
         "en" : {
@@ -46128,6 +46134,9 @@
       }
     },
     "Pull Requests" : {},
+    "Pull request" : {
+      "comment" : "Read first for a pull request in the GitHub list."
+    },
     "Pull to load earlier messages" : {
       "localizations" : {
         "ja" : {
@@ -76719,6 +76728,9 @@
           }
         }
       }
+    },
+    "checks %@" : {
+      "comment" : "How a pull request's checks stand, read in the GitHub list: checks 3 failing."
     },
     "connected" : {},
     "connecting" : {},
