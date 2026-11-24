@@ -122,6 +122,7 @@ private struct GitHubItemHeader: View {
     let item: GitHubItem
     let detail: GitHubItemDetail?
     let viewer: String?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -137,7 +138,8 @@ private struct GitHubItemHeader: View {
                     .foregroundStyle(GitHubItemRow.tint(for: item))
                 Text(verbatim: "· \(item.repository) #\(item.number)")
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    // At accessibility sizes one line holds the owner at most.
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     .truncationMode(.middle)
                     .accessibilityLabel(Text(verbatim: "\(item.repository) #\(item.number)"))
             }
@@ -164,6 +166,7 @@ private struct GitHubItemFacts: View {
     let detail: GitHubItemDetail?
     let viewer: String?
     let isReading: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         switch item.kind {
@@ -179,7 +182,7 @@ private struct GitHubItemFacts: View {
             if let pull {
                 Text(verbatim: pull.isCrossRepository ? "\(pull.headOwner ?? ""):\(pull.headBranch)" : pull.headBranch)
                     .font(.body.monospaced())
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
             } else {
