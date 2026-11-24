@@ -1826,6 +1826,7 @@
         }
       }
     },
+    "%@ on the Host belongs to a remote, and this pull request comes from a fork, so Heeler left it as it is. Name another branch to start one from the pull request." : {},
     "%@ on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request." : {
       "localizations" : {
         "ja" : {

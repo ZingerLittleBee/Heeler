@@ -137,6 +137,12 @@ Close.
   tracking the remote's branch for a pull request from the repository itself,
   or moves an existing branch forward to it; a branch with commits the pull
   request lacks is left alone and the Start fails, asking for another name.
+  For a fork's pull request the same refusal covers a name that belongs to
+  the checkout's remote, a local branch with an upstream or a name among the
+  remote's branches (`refs/remotes/<remote>/<branch>`), since moving or
+  making it would send a later push to the repository's branch. A branch an
+  earlier Start made for the fork's pull request has no upstream, and is
+  moved forward.
   The commit becomes the Worktree's start point (`WorktreeSpec.base`): herdr's
   `worktree.create` takes it as `base` on Herdr TUI, and herdr-core and tmux
   run `git worktree add -b <branch> <path> <commit>` in place of `HEAD`

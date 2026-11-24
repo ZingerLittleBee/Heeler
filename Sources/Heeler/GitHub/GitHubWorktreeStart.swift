@@ -48,22 +48,38 @@ struct GitHubWorktreeStart: Sendable, Equatable {
         return head
     }
 
+    /// A fork's pull request, whose branch name may also be a branch of the
+    /// checkout's remote.
+    private var isFromFork: Bool {
+        if case .pullRequest(_, _, true) = source { return true }
+        return false
+    }
+
     func script(nonce: String) -> Data {
         // A branch checked out in a Worktree of this repository first: git
         // refuses to check it out twice, and moving it would move that
-        // checkout's HEAD under it. Then the fetch, from the remote by name
-        // so its own settings apply. Over the repository's auto-gc limit it
-        // starts git's detached maintenance, which would hold the frame's
+        // checkout's HEAD under it. For a fork's pull request, a branch that
+        // belongs to the remote is left alone: moving or making it would send
+        // a later push to the repository. Then the fetch, from the remote by
+        // name so its own settings apply. Over the repository's auto-gc limit
+        // it starts git's detached maintenance, which would hold the frame's
         // descriptors open until it ends, so the fetch runs without them. A
         // branch that exists keeps commits the pull request does not have:
         // it is moved only forward.
         var body = Data(
             """
             wt() {
-              d=$1 r=$2 ref=$3 b=$4 own=$5 track=$6
+              d=$1 r=$2 ref=$3 b=$4 own=$5 track=$6 fork=$7
               list=$(g -C "$d" worktree list --porcelain) || return 3
               p=$(printf '%s\\n' "$list" | awk -v want="branch refs/heads/$b" 'index($0, "worktree ") == 1 { p = substr($0, 10) } $0 == want { print p; exit }')
               if [ -n "$p" ]; then printf 'busy %s\\n' "$p"; return 0; fi
+              if [ "$own" = 1 ] && [ "$fork" = 1 ]; then
+                if g -C "$d" show-ref -q --verify "refs/remotes/$r/$b" ||
+                  g -C "$d" config --get "branch.$b.remote" >/dev/null ||
+                  g -C "$d" config --get "branch.$b.merge" >/dev/null; then
+                  printf 'remote\\n'; return 0
+                fi
+              fi
               git -C "$d" fetch --quiet --no-tags "$r" "$ref" </dev/null 3>&- 4>&- || return 4
               s=$(g -C "$d" rev-parse -q --verify 'FETCH_HEAD^{commit}') || return 5
               if [ "$own" = 1 ]; then
@@ -88,7 +104,11 @@ struct GitHubWorktreeStart: Sendable, Equatable {
 
             """.utf8)
         body.append(Data("sec \(Self.cap) start wt ".utf8))
-        for argument in [directory, remote, fetchedRef, branch, isPullRequestBranch ? "1" : "0", trackedBranch ?? ""] {
+        let arguments = [
+            directory, remote, fetchedRef, branch, isPullRequestBranch ? "1" : "0", trackedBranch ?? "",
+            isFromFork ? "1" : "0",
+        ]
+        for argument in arguments {
             body.append(GitProbe.singleQuoted(Data(argument.utf8)))
             body.append(Data(" ".utf8))
         }
@@ -113,6 +133,7 @@ struct GitHubWorktreeStart: Sendable, Equatable {
                 return .failure(.checkedOut(branch: branch, directory: String(line.dropFirst("busy ".count))))
             }
             if line == "diverged" { return .failure(.diverged(branch: branch)) }
+            if line == "remote" { return .failure(.remoteBranch(branch: branch)) }
             return .failure(.incomplete)
         case 4:
             return .failure(.fetchFailed(ref: fetchedRef, remote: remote, reason: section.firstMessageLine))
@@ -128,6 +149,9 @@ enum GitHubWorktreeStartFailure: Error, Equatable {
     case checkedOut(branch: String, directory: String)
     /// The branch on the Host has commits the pull request does not.
     case diverged(branch: String)
+    /// A fork's pull request named a branch that follows the checkout's
+    /// remote, or one the remote has.
+    case remoteBranch(branch: String)
     case fetchFailed(ref: String, remote: String, reason: String?)
     case gitFailed(String)
     /// The script's answer did not arrive whole.
@@ -141,6 +165,8 @@ enum GitHubWorktreeStartFailure: Error, Equatable {
             String(localized: "\(branch) is already checked out in \(directory).")
         case .diverged(let branch):
             String(localized: "\(branch) on the Host has commits the pull request does not, so Heeler left it as it is. Name another branch to start one from the pull request.")
+        case .remoteBranch(let branch):
+            String(localized: "\(branch) on the Host belongs to a remote, and this pull request comes from a fork, so Heeler left it as it is. Name another branch to start one from the pull request.")
         case .fetchFailed(let ref, let remote, let reason?):
             String(localized: "git could not fetch \(ref) from \(remote): \(reason)")
         case .fetchFailed(let ref, let remote, nil):
