@@ -254,6 +254,7 @@
         }
       }
     },
+    "%@ Is Offline" : {},
     "%@ See this Host's page in Hosts." : {
       "localizations" : {
         "ja" : {
@@ -1248,6 +1249,7 @@
         }
       }
     },
+    "%@ is offline" : {},
     "%@ is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it." : {
       "localizations" : {
         "ja" : {
@@ -3335,6 +3337,47 @@
         }
       }
     },
+    "%lld comments" : {
+      "comment" : "An issue's comment count in the GitHub list.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld comment"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld comments"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コメント %lld 件"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条评论"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 則留言"
+          }
+        }
+      }
+    },
     "%lld connecting" : {
       "comment" : "Chip counting Hosts that are connecting.",
       "localizations" : {
@@ -3469,6 +3512,29 @@
     },
     "%lld failed" : {
       "comment" : "Background Work items or tool calls that failed",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗 %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個失敗"
+          }
+        }
+      }
+    },
+    "%lld failing" : {
+      "comment" : "How many of a pull request's checks failed, in the GitHub list.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -7604,6 +7670,7 @@
         }
       }
     },
+    "Add a Host in Hosts. Heeler reads pull requests and issues through the gh command there." : {},
     "Add a Host to configure its Agent rows." : {
       "localizations" : {
         "ja" : {
@@ -10474,6 +10541,7 @@
         }
       }
     },
+    "Approved" : {},
     "Archive channel #%@" : {
       "localizations" : {
         "ja" : {
@@ -10786,6 +10854,7 @@
         }
       }
     },
+    "Assigned to You" : {},
     "Assignment (#%lld)" : {
       "localizations" : {
         "ja" : {
@@ -13233,6 +13302,7 @@
         }
       }
     },
+    "Changes requested" : {},
     "Changes totals of the Agent's Checkout" : {
       "localizations" : {
         "ja" : {
@@ -18361,6 +18431,7 @@
         }
       }
     },
+    "Could Not Read GitHub" : {},
     "Could Not Remove Host" : {
       "localizations" : {
         "ja" : {
@@ -18716,6 +18787,7 @@
         }
       }
     },
+    "Could not read GitHub" : {},
     "Could not read Usage" : {
       "localizations" : {
         "ja" : {
@@ -19714,6 +19786,7 @@
         }
       }
     },
+    "Created by You" : {},
     "Created when you first connect" : {
       "comment" : "ZeroTier Node ID value before the first connection",
       "localizations" : {
@@ -21853,6 +21926,7 @@
         }
       }
     },
+    "Draft" : {},
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -26018,6 +26092,12 @@
         }
       }
     },
+    "GitHub" : {},
+    "GitHub CLI Isn't Installed" : {},
+    "GitHub CLI not installed" : {},
+    "GitHub Host" : {},
+    "GitHub's Rate Limit Was Reached" : {},
+    "GitHub's answer could not be read." : {},
     "GitHub's default palettes for each appearance" : {
       "localizations" : {
         "ja" : {
@@ -26040,6 +26120,8 @@
         }
       }
     },
+    "GitHub's rate limit was reached" : {},
+    "GitHub's rate limit was reached." : {},
     "Global" : {
       "localizations" : {
         "ja" : {
@@ -28159,6 +28241,7 @@
         }
       }
     },
+    "Heeler could not read what gh printed on the Host." : {},
     "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
@@ -29342,6 +29425,9 @@
         }
       }
     },
+    "Heeler reads GitHub through gh on %@ once it connects." : {},
+    "Heeler reads pull requests and issues through the gh command on %@. Install it there with GitHub's instructions for Linux, then check again." : {},
+    "Heeler reads pull requests and issues through the gh command on %@. Install it there, then check again." : {},
     "Heeler redistributes these components. Each licence is reproduced in full." : {
       "localizations" : {
         "ja" : {
@@ -31989,6 +32075,7 @@
         }
       }
     },
+    "Installing gh on Linux" : {},
     "Instructions dictated to a coding agent" : {
       "localizations" : {
         "ja" : {
@@ -32240,6 +32327,7 @@
         }
       }
     },
+    "Issues" : {},
     "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows" : {
       "localizations" : {
         "ja" : {
@@ -35098,6 +35186,7 @@
         }
       }
     },
+    "Merged" : {},
     "Message" : {
       "comment" : "Notice title for a peer message with no sender",
       "localizations" : {
@@ -36040,6 +36129,7 @@
         }
       }
     },
+    "Needs Your Review" : {},
     "Needs attention" : {
       "localizations" : {
         "ja" : {
@@ -36982,6 +37072,7 @@
         }
       }
     },
+    "No Issues Involve You" : {},
     "No Listening Ports" : {
       "localizations" : {
         "ja" : {
@@ -37247,6 +37338,7 @@
         }
       }
     },
+    "No Pull Requests Involve You" : {},
     "No Results for “%@”" : {
       "comment" : "Empty state when a search finds nothing. %@ is the search text.",
       "localizations" : {
@@ -37579,6 +37671,8 @@
         }
       }
     },
+    "No checks yet" : {},
+    "No comments" : {},
     "No commits yet" : {
       "localizations" : {
         "ja" : {
@@ -39996,6 +40090,9 @@
         }
       }
     },
+    "Offline, read at %@" : {},
+    "Offline, read on %@" : {},
+    "Offline, read yesterday" : {},
     "Oh My Pi is working. Send once it's idle, or steer from the terminal." : {
       "localizations" : {
         "ja" : {
@@ -40843,6 +40940,7 @@
         }
       }
     },
+    "Open Terminal on %@" : {},
     "Open ZeroTier Central" : {
       "localizations" : {
         "ja" : {
@@ -40975,6 +41073,7 @@
         }
       }
     },
+    "Open issues assigned to you or created by you show here." : {},
     "Open it again from the list." : {
       "localizations" : {
         "ja" : {
@@ -41020,6 +41119,7 @@
         }
       }
     },
+    "Open pull requests you created or were asked to review show here." : {},
     "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
       "localizations" : {
         "ja" : {
@@ -43604,6 +43704,7 @@
         }
       }
     },
+    "Passing" : {},
     "Password" : {
       "localizations" : {
         "ja" : {
@@ -45682,6 +45783,7 @@
         }
       }
     },
+    "Pull Requests" : {},
     "Pull to load earlier messages" : {
       "localizations" : {
         "ja" : {
@@ -45704,6 +45806,7 @@
         }
       }
     },
+    "Pull to try again." : {},
     "Put herdr's install directory on the account's non-interactive SSH PATH." : {
       "localizations" : {
         "ja" : {
@@ -46412,6 +46515,26 @@
         }
       }
     },
+    "Read at %@ from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read at %1$@ from %2$@"
+          }
+        }
+      }
+    },
+    "Read on %@ at %@ from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read on %1$@ at %2$@ from %3$@"
+          }
+        }
+      }
+    },
     "Read swarm board" : {
       "localizations" : {
         "ja" : {
@@ -46496,6 +46619,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "閱讀隱私詳細資料"
+          }
+        }
+      }
+    },
+    "Read yesterday at %@ from %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read yesterday at %1$@ from %2$@"
           }
         }
       }
@@ -46721,6 +46854,7 @@
         }
       }
     },
+    "Reading from %@…" : {},
     "Reading from the Host…" : {
       "localizations" : {
         "ja" : {
@@ -49436,6 +49570,7 @@
         }
       }
     },
+    "Review required" : {},
     "Review started" : {
       "localizations" : {
         "ja" : {
@@ -53215,6 +53350,18 @@
         }
       }
     },
+    "Showing what was read at %@." : {},
+    "Showing what was read on %@ at %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Showing what was read on %1$@ at %2$@."
+          }
+        }
+      }
+    },
+    "Showing what was read yesterday at %@." : {},
     "Shown at %lld columns by %lld rows" : {
       "localizations" : {
         "en" : {
@@ -53493,6 +53640,7 @@
         }
       }
     },
+    "Shows the pull requests and issues that the gh command on your Hosts reads. Turn off to hide the GitHub tab and remove the lists saved on this device." : {},
     "Shows the terminals in this Workspace" : {
       "localizations" : {
         "ja" : {
@@ -53691,6 +53839,7 @@
         }
       }
     },
+    "Sign In to GitHub on %@" : {},
     "Sign In with Browser" : {
       "localizations" : {
         "ja" : {
@@ -56507,28 +56656,6 @@
         }
       }
     },
-    "Switches between Agents, Terminals and Usage" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "エージェント・ターミナル・使用量を切り替えます"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Agent、终端与用量之间切换"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Agent、終端機和用量之間切換"
-          }
-        }
-      }
-    },
     "Switches the permission mode." : {
       "localizations" : {
         "ja" : {
@@ -56547,6 +56674,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切換權限模式。"
+          }
+        }
+      }
+    },
+    "Switches to another list" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のリストに切り替えます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换到另一个列表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換到另一個列表"
           }
         }
       }
@@ -58075,6 +58224,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法辨識 %@ 的輸入框。請在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "The %lld most recently updated of %lld." : {
+      "comment" : "Under a GitHub list section that shows only part of what GitHub found.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The %1$lld most recently updated of %2$lld."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新の新しい %1$lld 件を表示（全 %2$lld 件）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示最近更新的 %1$lld 项，共 %2$lld 项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示最近更新的 %1$lld 項，共 %2$lld 項。"
           }
         }
       }
@@ -59746,6 +59924,7 @@
         }
       }
     },
+    "The Host could not make a private temporary folder for gh." : {},
     "The Host couldn't be reached. The tab is still open there." : {
       "localizations" : {
         "ja" : {
@@ -65095,6 +65274,7 @@
         }
       }
     },
+    "The pull requests and issues that involve you, as gh reads them on your Hosts." : {},
     "The question has no Write-in row." : {},
     "The question has no answers Heeler can read." : {
       "localizations" : {
@@ -65251,6 +65431,7 @@
         }
       }
     },
+    "The read was cancelled." : {},
     "The recording could not be saved." : {
       "localizations" : {
         "ja" : {
@@ -67433,6 +67614,7 @@
         }
       }
     },
+    "This Host cannot run gh for Heeler." : {},
     "This Host cannot run the Host Helper yet." : {
       "localizations" : {
         "ja" : {
@@ -70747,6 +70929,7 @@
         }
       }
     },
+    "Try again in %@." : {},
     "Try again once they are back." : {
       "localizations" : {
         "ja" : {
@@ -75689,6 +75872,7 @@
         }
       }
     },
+    "Your Pull Requests" : {},
     "Your browser opens when it is ready." : {
       "localizations" : {
         "ja" : {
@@ -76417,6 +76601,11 @@
         }
       }
     },
+    "gh did not answer in time." : {},
+    "gh is installed on %@ but isn't signed in. Run this in a terminal there, then check again." : {},
+    "gh is not installed on the Host." : {},
+    "gh is not signed in on the Host." : {},
+    "gh stopped with status %@ and gave no reason." : {},
     "git could not read this worktree, so this attempt ended no Terminal and did not remove the checkout: %@" : {
       "localizations" : {
         "ja" : {

@@ -61,13 +61,15 @@ final class HeelerAppModel {
     /// runs `ConsoleActivityDriver` red (#167). Defaults are the production
     /// values: `HostStore()` reads the real persisted catalog and the
     /// `ConsoleStore` reaches the real `sshSessionFactory()`, keeps Chat's
-    /// cache on disk, and writes the widgets' Usage snapshot.
+    /// cache and the GitHub lists on disk, and writes the widgets' Usage
+    /// snapshot.
     init(
         pushRegistration: PushRegistrationStore,
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(
             chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
+            gitHubCache: FileGitHubListCache(),
             coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
             harnessEdits: HarnessConfigEditStore(defaults: .standard),
             pendingTitleRenames: PendingAgentTitleRenameStore(defaults: .standard)),

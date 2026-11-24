@@ -233,6 +233,11 @@ final class ConsoleStore {
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
     @ObservationIgnored private let usageSettings: AgentUsageSettings
+    /// The GitHub tab's lists (ADR 0064).
+    let gitHub: GitHubStore
+    /// The connection on which each record's gh last needed the macOS
+    /// desktop session, by its transport generation.
+    @ObservationIgnored private var gitHubDesktopRoutes: [Host.ID: UInt64] = [:]
     /// Reads made only because a widget's figures went stale, per Host.
     @ObservationIgnored private var widgetUsageRefreshes: [Host.ID: (id: UUID, task: Task<Void, Never>)] = [:]
     /// The catalog in its order, which the widgets' snapshot keeps.
@@ -289,6 +294,8 @@ final class ConsoleStore {
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
+        gitHubSettings: GitHubSettings = GitHubSettings(),
+        gitHubCache: any GitHubListCache = VolatileGitHubListCache(),
         launchPresets: LaunchPresetStore = LaunchPresetStore(),
         makeSession: @escaping @Sendable (Host, [EventSubscription]) -> EventsSession =
             ConsoleStore.sshSessionFactory(),
@@ -344,6 +351,7 @@ final class ConsoleStore {
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
         self.usageSettings = usageSettings
+        gitHub = GitHubStore(settings: gitHubSettings, cache: gitHubCache)
         self.launchPresets = launchPresets
         self.chatAdapter = chatAdapter
         let terminalBudget = TerminalRetentionBudget()
@@ -364,6 +372,7 @@ final class ConsoleStore {
             guard let self, let host = projections[hostID]?.host else { return }
             cachedChats.record(sidebarSnapshot: snapshot, on: host)
         }
+        gitHub.access = self
     }
 
     /// Pins or unpins the Agent and re-sorts the published list in the same
@@ -404,6 +413,7 @@ final class ConsoleStore {
             pendingTitleRenames.retainHosts(hostsOutOfSight.union(incoming.keys))
         }
         cachedChats.setHosts(hosts)
+        gitHub.setCatalog(catalogHosts, hostsOutOfSight: hostsOutOfSight)
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
             chatPrefetchTasks[id] = nil
@@ -441,6 +451,7 @@ final class ConsoleStore {
             terminalTransportGenerations[id] = nil
             hostPlatforms[id] = nil
             hostPlatformGenerations[id] = nil
+            gitHubDesktopRoutes[id] = nil
             Task {
                 await terminalConnections.removeHost(id)
                 await agentTerminals.removeHost(id)
@@ -2838,6 +2849,19 @@ final class ConsoleStore {
         refreshStaleWidgetUsage()
     }
 
+    var isGitHubEnabled: Bool { gitHub.settings.isEnabled }
+
+    /// Turning GitHub off stops its reads and removes every list, here and
+    /// on the device; the chosen Host stays for when it returns.
+    func setGitHubEnabled(_ enabled: Bool) {
+        guard enabled != isGitHubEnabled else { return }
+        gitHub.settings.setEnabled(enabled)
+        if !enabled {
+            gitHub.reset()
+            gitHubDesktopRoutes.removeAll()
+        }
+    }
+
     /// Hands every catalog Host's current Usage reading to the widgets, each
     /// Host once through the Server it is read through now.
     private func publishUsageWidgets() {
@@ -2980,6 +3004,7 @@ final class ConsoleStore {
         if hostCapabilities != next {
             hostCapabilities = next
         }
+        gitHub.refreshHosts()
     }
 
     private func rebuildHostIssues() {
@@ -4057,5 +4082,44 @@ extension ConsoleStore {
             credentials: resolved,
             hostKeyPolicy: HostKeyPolicy(knownHosts: knownHosts) { _ in false },
             overlays: overlays)
+    }
+}
+
+// MARK: - gh on the Hosts (ADR 0064)
+extension ConsoleStore: GitHubHostAccess {
+    func isConnected(_ recordID: Host.ID) -> Bool {
+        hostStatuses[recordID] == .connected && projections[recordID] != nil
+    }
+
+    func isNativeWindows(_ recordID: Host.ID) -> Bool {
+        hostPlatforms[recordID] == .nativeWindows
+    }
+
+    /// Straight to the desktop session on a connection whose gh needed it
+    /// before; the exec first otherwise.
+    func runGitHub(_ request: GitHubCLIRequest, on recordID: Host.ID) async throws -> GitHubCLIOutcome {
+        let projection = try projection(for: recordID)
+        let generation = projection.transportGeneration
+        let mode: GitHubCLIScript.Mode = gitHubDesktopRoutes[recordID] == generation ? .desktop : .auto
+        let nonce = GitProbe.makeNonce()
+        let result = try await projection.runGitHubScript(
+            GitHubCLIScript.script(for: request, mode: mode, nonce: nonce))
+        guard let outcome = GitHubCLIOutcome(stdout: result.stdout, nonce: nonce) else {
+            throw GitHubCLIError.unreadableOutput
+        }
+        guard projections[recordID] === projection else { return outcome }
+        switch outcome.run?.route {
+        case .ran(.desktop):
+            gitHubDesktopRoutes[recordID] = generation
+        case .ran(.exec), .desktopUnavailable:
+            gitHubDesktopRoutes[recordID] = nil
+        case .desktopTimedOut, .failed, nil:
+            break
+        }
+        return outcome
+    }
+
+    func forgetGitHubRoutes(_ recordIDs: [Host.ID]) {
+        for id in recordIDs { gitHubDesktopRoutes[id] = nil }
     }
 }

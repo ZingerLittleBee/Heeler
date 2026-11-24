@@ -4517,6 +4517,18 @@ extension HeelerSSHTransport: RexHostConnection {
     }
 }
 
+// MARK: - gh on the Host (ADR 0064)
+extension HeelerSSHTransport {
+    /// One bounded exec, whatever Server Kind the connection serves. The
+    /// remote bound leaves room for a read in the exec and one in the
+    /// desktop session after it; a run past it is not sent again.
+    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
+        try await runBoundedScript(
+            script, feature: String(localized: "GitHub"), deadline: .seconds(60), remoteSeconds: 50,
+            timeoutMarkerPrefix: "__HEELER_GH_TIMEOUT_", timedOut: .hostFileTimedOut)
+    }
+}
+
 // MARK: - What a port preview uses of this connection
 /// A direct-tcpip channel as the preview's proxy carries it.
 private struct SSHPortPreviewStream: PortPreviewStream {

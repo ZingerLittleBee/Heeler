@@ -152,6 +152,10 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value
 
+    /// Runs one gh script on the Host for the GitHub tab, whichever Server
+    /// Kind runs (ADR 0064).
+    func runGitHubScript(_ script: Data) async throws -> GitExecResult
+
     /// Borrows the connection for the plugin's Notification, Usage and sidebar
     /// files, which only a Herdr TUI Host has.
     func withNotificationTransport<Value: Sendable>(
@@ -244,6 +248,10 @@ protocol CheckedChatTyping: AnyObject {
 
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
+
+    func runGitHubScript(_ script: Data) async throws -> GitExecResult {
+        try await withHostServices { try await $0.runGitHubScript(script) }
+    }
 
     var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }
 

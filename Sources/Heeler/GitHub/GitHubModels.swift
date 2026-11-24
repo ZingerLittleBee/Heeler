@@ -1,0 +1,151 @@
+import Foundation
+
+/// One pull request or issue, as a GitHub list row shows it. `id` is
+/// GitHub's node id; `repository` and `number` name it for gh.
+struct GitHubItem: Codable, Sendable, Equatable, Hashable, Identifiable {
+    enum Kind: String, Codable, Sendable {
+        case pullRequest
+        case issue
+    }
+
+    enum State: String, Codable, Sendable {
+        case open
+        case draft
+        case merged
+        case closed
+    }
+
+    let id: String
+    let kind: Kind
+    /// `owner/name`.
+    let repository: String
+    let number: Int
+    var title: String
+    var url: String
+    var author: String?
+    var state: State
+    var updatedAt: Date
+    var commentCount: Int
+    /// A pull request's checks on its last commit; nil for an issue.
+    var checks: GitHubChecks?
+    var review: GitHubReviewDecision?
+    var additions: Int?
+    var deletions: Int?
+    var labels: [GitHubLabel]
+
+    /// The repository's name without its owner.
+    var repositoryName: String {
+        repository.split(separator: "/").last.map(String.init) ?? repository
+    }
+}
+
+/// How a pull request's checks stand, by count.
+struct GitHubChecks: Codable, Sendable, Equatable, Hashable {
+    var failing: Int
+    var pending: Int
+    var passing: Int
+
+    enum Summary: Equatable {
+        case failing(Int)
+        case running
+        case passing
+        case none
+    }
+
+    var summary: Summary {
+        if failing > 0 { return .failing(failing) }
+        if pending > 0 { return .running }
+        if passing > 0 { return .passing }
+        return .none
+    }
+}
+
+enum GitHubReviewDecision: String, Codable, Sendable {
+    case approved
+    case changesRequested
+    case reviewRequired
+}
+
+struct GitHubLabel: Codable, Sendable, Equatable, Hashable {
+    let name: String
+    /// Six hex digits, as GitHub gives it.
+    let color: String
+}
+
+/// The four lists that involve the account: what each holds of GitHub's
+/// open items, and how many GitHub counted.
+struct GitHubListSection: Codable, Sendable, Equatable, Identifiable {
+    enum Kind: String, Codable, Sendable, CaseIterable {
+        /// Pull requests whose review was requested of the account.
+        case reviewRequested
+        /// Pull requests the account opened.
+        case authored
+        /// Issues assigned to the account.
+        case assigned
+        /// Issues the account opened that are not assigned to it.
+        case created
+
+        var itemKind: GitHubItem.Kind {
+            switch self {
+            case .reviewRequested, .authored: .pullRequest
+            case .assigned, .created: .issue
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .reviewRequested: String(localized: "Needs Your Review")
+            case .authored: String(localized: "Your Pull Requests")
+            case .assigned: String(localized: "Assigned to You")
+            case .created: String(localized: "Created by You")
+            }
+        }
+    }
+
+    let kind: Kind
+    /// GitHub's count, which can be more than `items` holds.
+    let totalCount: Int
+    var items: [GitHubItem]
+
+    var id: Kind { kind }
+}
+
+/// One read of the lists on one Host: what involves the account gh is
+/// signed in to there.
+struct GitHubList: Codable, Sendable, Equatable {
+    let login: String
+    var sections: [GitHubListSection]
+    let readAt: Date
+
+    func sections(of kind: GitHubItem.Kind) -> [GitHubListSection] {
+        sections.filter { $0.kind.itemKind == kind }
+    }
+
+    /// Replaces every copy of an item that was read again.
+    mutating func replace(_ item: GitHubItem) {
+        for index in sections.indices {
+            for itemIndex in sections[index].items.indices where sections[index].items[itemIndex].id == item.id {
+                sections[index].items[itemIndex] = item
+            }
+        }
+    }
+}
+
+/// Why a Host's lists could not be read.
+enum GitHubReadFailure: Error, Sendable, Equatable {
+    /// gh is not on the Host's PATH. `isMac` picks the install command.
+    case notInstalled(isMac: Bool)
+    /// gh has no usable token on the Host, in the exec and, on a Mac, in the
+    /// desktop session too.
+    case notSignedIn
+    /// GitHub refused for a rate limit; nil when it said no end.
+    case rateLimited(retryAt: Date?)
+    /// No Server of the Host is connected.
+    case offline
+    /// The Host cannot run gh this way, such as native Windows.
+    case unsupported
+    /// The read did not finish in its time.
+    case timedOut
+    /// gh's own words, or a sentence of Heeler's when it gave none.
+    case failed(String)
+}
