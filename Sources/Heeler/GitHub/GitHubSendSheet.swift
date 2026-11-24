@@ -226,7 +226,7 @@ struct GitHubSendSheet: View {
             (Text(verbatim: "\(item.repositoryName) #\(item.number)  ")
                 .foregroundStyle(Color(uiColor: .secondaryLabel))
                 + Text(item.title).foregroundStyle(Color(uiColor: .label)))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .lineLimit(dynamicTypeSize >= .xxxLarge ? 4 : 2)
         }
         .font(.subheadline)
         .textCase(nil)
