@@ -200,13 +200,18 @@ struct GitHubSendSheet: View {
     /// where the form opens.
     private func newAgentRow(_ open: @escaping () -> Void) -> some View {
         Button(action: open) {
+            // The Agents' columns: the plus in the avatars', the title in
+            // the names'. Past the size where it fills that column the
+            // plus stops growing, as the avatars do.
             HStack(spacing: 12) {
-                Label {
-                    Text("New Agent…")
-                        .foregroundStyle(Color(uiColor: .label))
-                } icon: {
-                    Image(systemName: "plus")
-                }
+                Image(systemName: "plus")
+                    // Named here, or the row's own font, uncapped, sizes it.
+                    .font(.body)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                    .frame(width: Self.avatarDiameter)
+                    .accessibilityHidden(true)
+                Text("New Agent…")
+                    .foregroundStyle(Color(uiColor: .label))
                 Spacer(minLength: 0)
                 if let startedAgent, store.state == .working(startedAgent.id) {
                     ProgressView()
@@ -255,6 +260,8 @@ struct GitHubSendSheet: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    private static let avatarDiameter: CGFloat = 34
+
     private func agentRow(_ target: GitHubSendTarget, message: String) -> some View {
         let agent = target.agent
         let kind = AgentKindMark(kind: agent.agent.kind)
@@ -273,7 +280,7 @@ struct GitHubSendSheet: View {
             Task { await store.send(message, to: agent.id) }
         } label: {
             HStack(spacing: 12) {
-                AgentStatusAvatar(mark: kind, status: agent.agent.status, diameter: 34)
+                AgentStatusAvatar(mark: kind, status: agent.agent.status, diameter: Self.avatarDiameter)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: title)
                         .foregroundStyle(Color(uiColor: .label))
