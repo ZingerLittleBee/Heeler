@@ -429,7 +429,29 @@ fixture captures them yet.
   `turn_duration` is written while any teammate lives, idle ones included
   (`_deferTeamDuration`): across four local sessions the lead recorded no
   `turn_duration` after a spawn, except one written in the same millisecond
-  as the `agents_killed` that stopped the session's teammates.
+  as the `agents_killed` that stopped the session's teammates. The lead
+  records idle notifications only when its own turn ends: a busy lead wrote
+  none for a teammate that went idle minutes before.
+- **Teammate files (2.1.331).** A teammate's id is `a<name>-<16 hex>`
+  (`agh-t1-074cdf21c9a8b630`), an unnamed Subagent's `a<hex>` with no hyphen.
+  Its `.meta.json` holds `{agentType, description, name, taskKind:
+  "in_process_teammate", teamName, color, model, …}`. Across 22 local
+  teammate transcripts a turn ends only with an assistant record whose
+  `stop_reason` is `end_turn`, or `stop_sequence` on an
+  `isApiErrorMessage` record, or with a user text "[Request interrupted …";
+  every other assistant record calls a tool. A prompt is a user record
+  holding `<teammate-message …>`, its first or one from its mailbox, and
+  appears only at the file's start or right after an end, never mid-turn:
+  the mailbox is read between turns, so a lead message sent while one runs
+  opens the next one as it ends (live: idle 11:59:41.708, the next prompt
+  .725). The `queued_command` attachments seen mid-turn are task
+  notifications only. `isMeta` reminders and compaction summaries sit among
+  the records and start nothing. A teammate asked to shut down (a prompt
+  whose `<teammate-message>` body is `{"type":"shutdown_request",
+  "requestId",…}`) that agrees calls `SendMessage` with `message:
+  {"type":"shutdown_response","request_id","approve":true}` and exits: that
+  call, with no result after it, is its transcript's last record (once
+  locally). A teammate whose Claude Code stopped leaves its turn open.
 - **Workflow.** The `Workflow` call's input is `{script}`. Its result is
   `toolUseResult{status: "async_launched", taskId, taskType:
   "local_workflow", workflowName, runId, summary, transcriptDir,

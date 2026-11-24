@@ -532,6 +532,24 @@ struct ClaudeSyntheticTranscriptTests {
         #expect(work(10)?.endedAt == Self.date("2026-10-07T10:55:00.000Z"))
     }
 
+    @Test("A message sent while a teammate runs starts its next turn as that one ends")
+    func teammateMessageWaits() {
+        // A teammate reads its mailbox only between turns (2.1.331).
+        let lines = [
+            #"{"type":"user","uuid":"p1","parentUuid":null,"timestamp":"2026-10-07T10:00:00.000Z","message":{"role":"user","content":"Split the work"},"promptSource":"typed","origin":{"kind":"human"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"p1","timestamp":"2026-10-07T10:00:05.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","prompt":"Review it."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-07T10:00:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agentId":"aparser-0123456789abcdef","name":"parser"}}"#,
+            #"{"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-10-07T10:10:00.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_send","name":"SendMessage","input":{"to":"parser","message":"Check the lexer too."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r2","parentUuid":"a2","timestamp":"2026-10-07T10:10:00.100Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_send","content":[{"type":"text","text":"{\"success\":true}"}]}]},"toolUseResult":{"success":true,"message":"Message sent to parser's inbox"}}"#,
+            #"{"type":"user","uuid":"i1","parentUuid":"r2","timestamp":"2026-10-07T10:20:01.000Z","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"parser\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"parser\",\"timestamp\":\"2026-10-07T10:20:00.000Z\",\"idleReason\":\"available\"}\n</teammate-message>"}}"#,
+        ]
+        let item = Self.read(lines.joined(separator: "\n")).0.listedBackgroundWork.first
+        #expect(item?.state == .running)
+        #expect(item?.launchedAt == Self.date("2026-10-07T10:20:00.000Z"))
+        // Its own files are named for its agent id.
+        #expect(item?.taskID == "aparser-0123456789abcdef")
+    }
+
     // MARK: - Commands
 
     @Test("A local command is one row with its output (2.1.291 system records)")

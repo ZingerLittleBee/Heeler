@@ -15,6 +15,14 @@ struct ClaudeTranscriptLocation: Hashable, Sendable {
             projectDirectory, sessionID, "subagents", "agent-\(agentID).jsonl")
     }
 
+    /// `<session>/subagents/` beside the transcript at `transcriptPath`,
+    /// where its Subagents and teammates keep their own transcripts.
+    static func subagentsDirectory(transcriptPath: String) -> String? {
+        guard transcriptPath.hasSuffix(".jsonl") else { return nil }
+        let path = RemoteFilePath.join(String(transcriptPath.dropLast(".jsonl".count)), "subagents")
+        return RemoteFilePath.isAcceptable(path) ? path : nil
+    }
+
     /// Where a Workflow run records its agents:
     /// `<session>/subagents/workflows/<runId>/journal.jsonl` beside the
     /// transcript at `transcriptPath`. Only the run id comes from the

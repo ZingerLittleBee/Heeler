@@ -930,12 +930,29 @@ follows its runs. Its `<teammate-message>` `idle_notification` ends a run
 (done, or failed or stopped by its `idleReason`), as do `shutdown_approved`,
 `teammate_terminated` and `agents_killed`; a text `SendMessage` to its name,
 or to `*`, starts the next one, and the row's clock counts from that message.
-An idle notification carries the time the teammate went idle, and Claude
-Code can record it after the lead has already sent the next message, so a
-teammate's records are followed in the order they happened rather than the
-order they were written. While any teammate lives, Claude Code holds the
-lead's `turn_duration` until none runs, so no pending count speaks of
-teammates. For Antigravity CLI,
+A teammate reads its mailbox only between turns, so a message sent while it
+runs starts the next turn once that one ends, and that turn counts from the
+end. An idle notification carries the time the teammate went idle, and Claude
+Code records it only once the lead's own turn ends, often after the lead has
+sent the next message, so a teammate's records are followed in the order they
+happened rather than the order they were written. While any teammate lives,
+Claude Code holds the lead's `turn_duration` until none runs, so no pending
+count speaks of teammates. Chat also follows each teammate in its own
+transcript, `subagents/agent-<agentId>.jsonl` beside the session's, whose
+`.meta.json` says it is one (`taskKind` `in_process_teammate`) and gives its
+task: it lists that folder once a minute, reads a new meta once, and stats a
+few transcripts a read, a running teammate's every 10 seconds and an idle
+one's every 30, reading the last 64 KiB of one that grew. A turn there opens
+with a prompt, its first or one from its mailbox, and ends with an answer
+that calls no tool, failed by an API error, or stopped by an interrupt or by
+its approval of a shutdown request, after which it exits. So a row ends when
+the teammate's turn does rather than when the lead's turn ends, and runs
+again when another teammate's message, which the lead never records, starts
+one. A teammate the Host shows running whose launch is above the window
+joins the list without it, if its transcript changed in the last 30 minutes:
+one whose Claude Code stopped mid-turn leaves a turn there that never ends.
+Such a row is not saved; each open looks for it on the Host again. For
+Antigravity CLI,
 Chat also stats `tasks/task-<N>.log`, follows each Subagent's own
 `transcript_full.jsonl` (settling a Subagent whose parent turn was interrupted
 once its own turn has stayed idle for five seconds), and reads `AgyScreen` to
@@ -967,8 +984,9 @@ running Background Work rows stop their clocks and say they are not updating.
 Running work
 with no sign of it for longer than such work runs, two hours since a
 Workflow started or its journal last changed, or three hours since a Subagent
-started or a background command started or last wrote, says when it was last
-seen instead of running, and no longer holds the faster reads. Times use the Host's clock, so a Host running ahead of the
+started or a background command started or last wrote, or 30 minutes since
+a teammate's own transcript last changed, says when it was last seen instead
+of running, and no longer holds the faster reads. Times use the Host's clock, so a Host running ahead of the
 phone reads zero.
 
 The list is rebuilt from the loaded lines on every read, but a launch can sit
@@ -1228,7 +1246,7 @@ no Attach at all.
     turn changed.
   - Background Work launched above the tail window of a conversation this
     device never read that far, until the user loads earlier messages past
-    the launch.
+    the launch, except a teammate the Host shows running.
   - Background Work for Codex; stopping Background Work from Chat; a running
     Subagent's or teammate's progress; and a Claude Code Subagent resumed
     through SendMessage, which stays listed as finished while it runs again

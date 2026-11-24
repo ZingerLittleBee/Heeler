@@ -754,7 +754,7 @@ private struct Builder {
         for record in records {
             let at = ClaudeTranscriptProjection.date(record.timestamp)
             if record.kind == .system("agents_killed") {
-                events.append(ChatTeammateEvent(name: nil, kind: .ended(.stopped), offset: record.byteOffset, at: at))
+                events.append(ChatTeammateEvent(name: nil, kind: .stopped, offset: record.byteOffset, at: at))
             }
             for use in record.toolUses where !use.id.isEmpty {
                 guard let answer = answers[use.id], case .succeeded = answer.outcome else { continue }
@@ -776,10 +776,10 @@ private struct Builder {
                 let kind: ChatTeammateEvent.Kind =
                     switch message.kind {
                     case .message: .wrote
-                    case .idle(reason: "failed"?): .ended(.failed)
-                    case .idle(reason: "interrupted"?): .ended(.stopped)
-                    case .idle: .ended(.completed)
-                    case .ended: .ended(.stopped)
+                    case .idle(reason: "failed"?): .idled(.failed)
+                    case .idle(reason: "interrupted"?): .idled(.stopped)
+                    case .idle: .idled(.completed)
+                    case .ended: .stopped
                     }
                 events.append(
                     ChatTeammateEvent(
@@ -1174,6 +1174,7 @@ private struct Builder {
                 title: use.input.description.flatMap(\.nonEmpty) ?? String(localized: "Teammate @\(name)"),
                 subtitle: name, launchOffset: record.byteOffset,
                 launchedAt: ClaudeTranscriptProjection.date(record.timestamp))
+            item.taskID = result.agentID?.nonEmpty
             item.follow(teammateEvents)
             return item
         } else if let taskID = commandTasks[use.id] {

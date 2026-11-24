@@ -624,13 +624,14 @@ background (Claude Code Subagents, teammates, Workflows, background commands
 and Monitors; Antigravity CLI Subagents, Workflows and non-daemon background
 commands), which Chat lists over the Composer from their launch and end
 records in the Transcript and, for a Claude Code Workflow, its journal and run
-file beside it. Claude Code records nothing that tells a server from a command
+file beside it, and for a teammate, its own transcript there. Claude Code records nothing that tells a server from a command
 that will end, so each of its background commands is listed. Running work comes first; finished work
 stays listed until the user's next prompt, and the strip over the Composer hides
 once both the foreground turn and all Background Work have ended. Chat only
 shows it and stops none of it. A Subagent is one background agent; a teammate
 is one Claude Code spawned with a name, which waits on its mailbox when a turn
-of its own ends and runs again when the Agent messages it, so its row reads
+of its own ends and runs again when the Agent or another teammate messages
+it, so its row reads
 done between runs and running again with a fresh clock; a Workflow is
 a script that runs many and is listed as one row with its agents done when its
 journal records them. An Antigravity CLI native **Swarm** (`brain/<id>/.system_generated/swarm`)
