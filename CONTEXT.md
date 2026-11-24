@@ -618,6 +618,22 @@ for display, and read again when shown stale, when pulled, and on Check Again,
 never in the background (ADR 0064).
 _Avoid_: inbox, notifications, feed, dashboard
 
+**GitHub Detail**:
+One pull request or issue from the GitHub List, read again on its own when it
+opens and on a pull: its description, and a pull request's branches, checks,
+review, changes and comments, or an issue's labels, assignees and comments.
+Kept in memory only; its row replaces the list's copy (ADR 0064).
+_Avoid_: item page, PR view
+
+**Send to Agent**:
+Putting a message about a GitHub Detail's pull request or issue in a running
+Agent's Composer: one sentence asking it to review, fix failing checks,
+address review comments, work on, investigate or just read the item, and the
+item's address. Agents of the item's Host in a checkout of its repository come
+first, marked On this branch or This repository from what git says there.
+Nothing is sent: the user sends the draft, as with Hand Off (ADR 0064).
+_Avoid_: assign, dispatch, delegate
+
 **Blocked Card**:
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the
 Composer's place. Its options come from the screen and the request's details

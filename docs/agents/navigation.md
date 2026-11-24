@@ -310,9 +310,11 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift))
   on herdr and tmux, `RexTransport.gitHub` on Rex.
   [GitHubListRead](../../Sources/Heeler/GitHub/GitHubListRead.swift) owns the
-  GraphQL query and turns gh's answer into
+  list's GraphQL query and turns gh's answer into
   [GitHubList](../../Sources/Heeler/GitHub/GitHubModels.swift) or a
-  `GitHubReadFailure`. Saved lists:
+  `GitHubReadFailure`; the fragments, item decoding and failure mapping it
+  shares with the detail are in
+  [GitHubGraphQL](../../Sources/Heeler/GitHub/GitHubGraphQL.swift). Saved lists:
   [FileGitHubListCache](../../Sources/Heeler/GitHub/GitHubListCache.swift).
   Settings' switch: [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift)
   through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
@@ -320,6 +322,24 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `HostListSettingsLink`). Read
   [ADR 0064](../adr/0064-the-github-tab-runs-gh-on-a-host-and-holds-no-token.md).
   No focused tests yet.
+- **GitHub Detail and Send to Agent:**
+  [GitHubItemScreen](../../Sources/Heeler/GitHub/GitHubItemScreen.swift) is
+  pushed from the list on iPhone (`GitHubItemLink`) and fills the detail column
+  on iPad (`ConsoleView.gitHubSelection`); its "⋯" is `GitHubItemMenu`.
+  [GitHubDetailRead](../../Sources/Heeler/GitHub/GitHubDetailRead.swift) is the
+  one-item query, run by `GitHubStore.openDetail(_:on:)` and
+  `reread(_:on:)` into `GitHubStore.details`. Send to Agent:
+  `GitHubSendLink` from the detail sets `ConsoleView.gitHubSendRequest`, which
+  `GitHubSendSheetPresenter` in
+  [GitHubSendSheet](../../Sources/Heeler/GitHub/GitHubSendSheet.swift) shows;
+  [GitHubSendStore](../../Sources/Heeler/GitHub/GitHubSendStore.swift) holds
+  the modes (`GitHubSendMode`), the target order (`GitHubSendTarget`) and the
+  delivery through `ConsoleStore.deliverDraft` (Hand Off's rules in
+  [HandOffStore](../../Sources/Heeler/HandOff/HandOffStore.swift)). Targets
+  come from `ConsoleStore.gitHubSendTargets(on:)`; checkouts from
+  [GitHubCheckoutRead](../../Sources/Heeler/GitHub/GitHubCheckoutRead.swift)
+  through `GitHubStore.readCheckouts(_:on:)` and the gh seam. No focused
+  tests yet.
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
   Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`

@@ -9,8 +9,8 @@ see where those stand from the phone. The machines Heeler connects to often
 have the GitHub CLI installed and signed in already. The maintainer decided
 on 2026-11-24 that Heeler reads GitHub by running that `gh` over the Host's
 existing SSH connection, and never sees, stores or carries a GitHub token.
-This ADR covers the read-only list (the GitHub tab); a pull request's or an
-issue's detail, and later actions, build on the same seam.
+This ADR covers the read-only list (the GitHub tab), a pull request's or an
+issue's detail, and Send to Agent; later actions build on the same seam.
 
 ## Decision
 
@@ -33,15 +33,15 @@ issue's detail, and later actions, build on the same seam.
   (exit status 4, an HTTP 401, or GitHub's limit for requests without a
   token), the script runs the same request once more as a one-shot launchd
   job in the `gui/<uid>` domain, whose gh reads the keychain as the desktop's
-  does. The job inherits only where gh, its configuration and its tools are
-  (`GitHubCLIScript.desktopVariables`), never a token variable. It writes to a
-  private temporary folder the script made, the script polls for its status
-  for up to 30 seconds, then `launchctl bootout`s the job and removes the
-  folder. The Console remembers the route for that connection
-  (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight to the
-  desktop session until the connection is replaced or the user taps Check
-  Again. With no one logged in at the desktop there is no `gui/<uid>` domain,
-  and the Host is Not Signed In. Linux needs none of this.
+  does. The job inherits only where gh, its configuration and its tools are,
+  and the proxy variables (`GitHubCLIScript.desktopVariables`), never a token
+  variable. It writes to a private temporary folder the script made, the
+  script polls for its status for up to 30 seconds, then `launchctl bootout`s
+  the job and removes the folder. The Console remembers the route for that
+  connection (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight
+  to the desktop session until the connection is replaced or the user taps
+  Check Again. With no one logged in at the desktop there is no `gui/<uid>`
+  domain, and the Host is Not Signed In. Linux needs none of this.
 - **A Host, not a Server.** gh belongs to the machine, so the tab lists Hosts
   ([ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md)) and runs
   gh through any of the Host's connected Servers that can, in order. One Host
@@ -63,6 +63,36 @@ issue's detail, and later actions, build on the same seam.
   saved list with when and where it was read, then reads again if it is older
   than two minutes. A pull and Check Again read too. Nothing polls, and a
   detail read stays in memory.
+- **A detail is a second read of one item.** Opening a pull request or an
+  issue runs one more `gh api graphql -i` request (`GitHubDetailRead`) for
+  that item by its node id: its body, and for a pull request its branches,
+  changed files, whether it is the account's or from a fork, mergeability,
+  pending review requests and the latest review of each reviewer; for an issue
+  its assignees. The read runs when the detail opens, unless one finished in
+  the last two minutes, and on a pull. It is kept in memory
+  (`GitHubStore.details`), and the row it returns replaces the list's copy,
+  which is saved again. `GitHubStore.reread(_:on:)` reads one item again on
+  request, so an action can check the item before it acts and the list
+  follows after. An item GitHub no longer shows to the account says so in
+  the detail's banner.
+- **Send to Agent puts a message in a running Agent's Composer.** From a
+  detail, a sheet asks what the Agent should do, worded as one English
+  sentence and the item's address (not localized, ADR 0041, and shown before
+  it is placed): review a pull request, fix its failing checks (the account's
+  own, with failures), address review comments (changes requested), work on
+  or investigate an issue, or just read it. It lists the Agents of the Host's
+  connected Servers that take a Composer message. Agents whose directory is a
+  checkout of the item's repository come first, marked On this branch when
+  the checkout is on the pull request's head branch and This repository
+  otherwise; the rest follow in the Agents list's order. One script through
+  the same seam (`GitHubCheckoutRead`, so a Rex Host answers too) asks git in
+  at most 24 directories for the top level, the branch and every remote URL,
+  4 KB each; a remote names the repository in https, scp-like (`git@host:`)
+  or `ssh://` form, on `github.com` or its `www.` and `ssh.` names. The sheet
+  shows the Agents at once and marks them when the read answers, or leaves
+  them unmarked after 8 seconds or a failure. Choosing an Agent puts the
+  message below any draft in its Composer, by Hand Off's rules
+  (`ConsoleStore.deliverDraft`), and opens the Agent. Nothing is sent.
 - **The tab can be turned off.** Settings has a GitHub switch under Usage's,
   on by default. Off hides the tab, runs no gh and removes the saved lists.
 - **Six tabs fit by moving Settings.** The tab follows Terminals: Agents,
@@ -71,7 +101,8 @@ issue's detail, and later actions, build on the same seam.
   with Hosts to go back to. Flipping either switch while on Settings keeps the
   user on Settings, wherever it now lives. On an iPad beside its sidebar,
   GitHub joins the sidebar's switch between lists, as Usage does, and Hosts
-  and Settings stay sheets from its foot.
+  and Settings stay sheets from its foot. There the lists are the sidebar's
+  selectable rows, and the detail fills the detail column.
 
 ## Considered options
 
@@ -90,6 +121,12 @@ issue's detail, and later actions, build on the same seam.
   execs. One GraphQL request is one round trip and one rate-limit cost.
 - **Polling while the tab is open.** It spends the rate limit and a Host's
   connection for a list that changes slowly. Pull to refresh is enough.
+- **Sending the message for the user.** Placing it as a draft lets the user
+  read, reword or drop it, as Hand Off does, and keeps a mistaken tap from
+  starting work.
+- **Matching Agents to a repository by directory name.** A clone can have
+  any name and a fork any owner. git's own answer, read in one script, also
+  gives the branch.
 
 ## Consequences
 
@@ -111,8 +148,10 @@ issue's detail, and later actions, build on the same seam.
 - On such a Mac the first read of a connection runs gh twice, and a desktop
   job that does not finish holds the read for 30 seconds. The job is booted
   out either way, and its folder goes when the exec ends.
-- The desktop job sees only the variables listed. A proxy set only in the SSH
-  session's environment does not reach it.
+- The desktop job sees only the variables listed. A proxy set in the SSH
+  session's environment reaches it, including any credentials in a proxy URL,
+  through the private folder the job reads its environment from, which the
+  script removes when it ends.
 - A Host that fails reads shows the last list it gave, dimmed when the Host is
   offline, with a banner saying why. Without one, the tab says why in its
   place: gh not installed (with `brew install gh` on macOS, and GitHub's
