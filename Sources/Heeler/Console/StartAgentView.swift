@@ -141,13 +141,16 @@ struct StartAgentView: View {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
                             .disabled(store.selectedWorkspaceID == nil)
                         if store.startsInNewWorktree {
+                            let branchTitle: LocalizedStringKey =
+                                store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
                             HStack(spacing: 10) {
-                                TextField(
-                                    store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)",
-                                    text: $store.worktreeBranch)
+                                // A placeholder is no label: once filled,
+                                // VoiceOver read only the value.
+                                TextField(branchTitle, text: $store.worktreeBranch)
                                     .font(.callout.monospaced())
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
+                                    .accessibilityLabel(Text(branchTitle))
                                     .accessibilityIdentifier("startAgent.worktreeBranch")
                                 if !store.worktreeBranch.isEmpty {
                                     Button {
@@ -189,6 +192,7 @@ struct StartAgentView: View {
                                     .font(.callout.monospaced())
                                     .autocorrectionDisabled()
                                     .textInputAutocapitalization(.never)
+                                    .accessibilityLabel(Text("Base (optional)"))
                             }
                         }
                     } header: {
