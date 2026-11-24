@@ -58,6 +58,13 @@ enum GitHubCLIRoute: Sendable, Equatable {
 /// repository (`gh pr merge --delete-branch` would delete a local branch).
 /// A write runs again in the desktop session only on that same proof that
 /// the first gh did nothing: with no token it could change nothing.
+///
+/// The folder holds what the user typed, gh's output and the desktop job's
+/// environment, so the script boots its job out and removes the folder on
+/// any exit it can trap. An exec whose connection or channel closed gets
+/// only SIGPIPE, at its next write to standard output, and dash runs no
+/// EXIT trap for it, so SIGPIPE is trapped too. The watchdog's SIGKILL
+/// cannot be, and the next run's sweep removes what it left.
 enum GitHubCLIScript {
     /// How a run may use the desktop session.
     enum Mode: String, Sendable {
@@ -76,7 +83,8 @@ enum GitHubCLIScript {
     static let unauthenticatedMark = "Authenticated requests get a higher rate limit"
 
     /// How long the exec may run before the remote watchdog kills it, with
-    /// no cleanup: its EXIT trap does not run on SIGKILL.
+    /// no cleanup: no trap runs on SIGKILL, and a later run's sweep removes
+    /// what it left.
     static let execSeconds: Int64 = 50
     /// How long the desktop job may take, in seconds of wall time. 300
     /// rounds of `sleep 0.1` took 33 to 43 seconds on a Mac, so the poll
@@ -86,6 +94,12 @@ enum GitHubCLIScript {
     /// however long gh took in the exec first: early enough to boot the job
     /// out and remove the folder before the watchdog.
     static let desktopWaitEnd = Int(execSeconds) - 6
+    /// How old, by its folder's last change, a run's folder or finished
+    /// desktop job must be before a later run removes it: more than this
+    /// many minutes by GNU find, and a minute more by macOS's and BusyBox's,
+    /// which count whole minutes. Either is more than twice `execSeconds`,
+    /// so it belongs to no run still reading it.
+    static let staleMinutes = 2
     /// The most of gh's output and error output the script returns.
     static let outputCap = 4 * 1024 * 1024
     static let errorCap = 4096
@@ -106,6 +120,39 @@ enum GitHubCLIScript {
 
     /// Bytes of a body per printf line.
     private static let bodyLineBytes = 256
+
+    /// Removes what earlier runs could not: the watchdog's SIGKILL runs no
+    /// trap, so its run's folder and desktop job stay. A folder goes once
+    /// its last change is `staleMinutes` old and its run's job is not
+    /// running; a desktop job of this user once it has run and stopped and
+    /// its folder is gone or as old. A running job, a write's included, is
+    /// left to finish, and a later run removes it.
+    private static let sweep = #"""
+        for f in "${TMPDIR:-/tmp}"/heeler-gh.*; do
+            [ -d "$f" ] && [ ! -L "$f" ] || continue
+            [ -n "$(find "$f" -prune -user "$U" -mmin +\#(staleMinutes) 2>/dev/null)" ] || continue
+            if [ "$os" = Darwin ]; then
+                n=${f##*/heeler-gh.}
+                l=dev.bybee.heeler.gh.${n%%.*}
+                s=$(launchctl print "gui/$U/$l" 2>/dev/null)
+                case $s in *'state = running'*) continue ;; esac
+                [ -n "$s" ] && launchctl bootout "gui/$U/$l" >/dev/null 2>&1
+            fi
+            rm -rf "$f"
+        done
+        if [ "$os" = Darwin ]; then
+            for l in $(launchctl print "gui/$U" 2>/dev/null | grep -o 'dev\.bybee\.heeler\.gh\.[0-9A-F]*'); do
+                s=$(launchctl print "gui/$U/$l" 2>/dev/null) || continue
+                case $s in *'state = running'*|*'(never exited)'*) continue ;; esac
+                f=$(printf '%s\n' "$s" | sed -n 's|^[[:space:]]*path = \(.*/heeler-gh\.[^/]*\)/job\.plist$|\1|p')
+                if [ -n "$f" ] && [ -d "$f" ] && [ -z "$(find "$f" -prune -mmin +\#(staleMinutes) 2>/dev/null)" ]; then
+                    continue
+                fi
+                launchctl bootout "gui/$U/$l" >/dev/null 2>&1
+                [ -n "$f" ] && [ -d "$f" ] && [ ! -L "$f" ] && rm -rf "$f"
+            done
+        fi
+        """#
 
     static func script(for request: GitHubCLIRequest, mode: Mode, nonce: String) -> Data {
         var words = ["\"$HEELER_GH\""] + request.arguments.map(GitProbe.singleQuoted)
@@ -129,11 +176,22 @@ enum GitHubCLIScript {
             q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\\\\\''/g")"; }
             os=$(uname -s 2>/dev/null)
             m "os $os"
+            U=$(id -u)
+            L=
+            \(sweep)
             HEELER_GH=$(command -v gh 2>/dev/null)
             case $HEELER_GH in /*) ;; *) m missing; m done; exit 0 ;; esac
             export HEELER_GH
-            D=$(mktemp -d "${TMPDIR:-/tmp}/heeler-gh.XXXXXXXX") || { m 'route failed'; m done; exit 0; }
-            trap 'rm -rf "$D"' EXIT
+            D=$(mktemp -d "${TMPDIR:-/tmp}/heeler-gh.$N.XXXXXXXX") || { m 'route failed'; m done; exit 0; }
+            c() {
+                [ -n "$L" ] && launchctl bootout "gui/$U/$L" >/dev/null 2>&1
+                rm -rf "$D"
+            }
+            trap c EXIT
+            trap 'exit 129' HUP
+            trap 'exit 130' INT
+            trap 'exit 141' PIPE
+            trap 'exit 143' TERM
             GIT_CEILING_DIRECTORIES=${D%/*}
             export GIT_CEILING_DIRECTORIES
             cd "$D" || { m 'route failed'; m done; exit 0; }
@@ -156,7 +214,6 @@ enum GitHubCLIScript {
             fi
             if [ "$route" = desktop ]; then
                 L=dev.bybee.heeler.gh.$N
-                U=$(id -u)
                 for v in \(desktopVariables.joined(separator: " ")); do
                     eval "s=\\${$v+x}"
                     if [ -n "$s" ]; then
@@ -191,6 +248,7 @@ enum GitHubCLIScript {
                         [ $((i % 10)) = 0 ] && [ "$(date +%s)" -ge "$E" ] && break
                     done
                     launchctl bootout "gui/$U/$L" >/dev/null 2>&1
+                    L=
                     if [ -f "$D/grc" ]; then
                         rc=$(cat "$D/grc")
                         mv "$D/gout" "$D/out"

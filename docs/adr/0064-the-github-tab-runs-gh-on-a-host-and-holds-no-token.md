@@ -40,11 +40,12 @@ Close.
   script polls for its status for up to 30 seconds by the clock, then
   `launchctl bootout`s the job and removes the folder. The wait ends at the
   latest 44 seconds after the script started, before the exec's 50-second
-  watchdog, which kills the script with no cleanup. The Console remembers the
-  route for that
-  connection (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight
-  to the desktop session until the connection is replaced or the user taps
-  Check Again. With no one logged in at the desktop there is no `gui/<uid>`
+  watchdog, which kills the script with no cleanup. Every other exit the
+  script can trap boots the job out and removes the folder, and each run
+  first sweeps what an earlier one could not (below). The Console remembers
+  the route for that connection (`ConsoleStore.gitHubDesktopRoutes`), so
+  later reads go straight to the desktop session until the connection is
+  replaced or the user taps Check Again. With no one logged in at the desktop there is no `gui/<uid>`
   domain, and the Host is Not Signed In. Linux needs none of this.
 - **A Host, not a Server.** gh belongs to the machine, so the tab lists Hosts
   ([ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md)) and runs
@@ -259,7 +260,7 @@ Close.
 - The desktop job sees only the variables listed. A proxy set in the SSH
   session's environment reaches it, including any credentials in a proxy URL,
   through the private folder the job reads its environment from, which the
-  script removes when it ends.
+  script removes when it ends, or a later run once it is stale.
 - A Host that fails reads shows the last list it gave, dimmed when the Host is
   offline, with a banner saying why. Without one, the tab says why in its
   place: gh not installed (with `brew install gh` on macOS, and GitHub's
@@ -302,9 +303,46 @@ Close.
   50-second watchdog, whose SIGKILL skipped the bootout and the folder's
   removal and left a loaded job in `gui/<uid>`. `launchctl bootout` stops a
   job whose gh is still running: a 40-second gh never answered.
-- When the watchdog kills the exec's own gh, the private folder stays, with
-  a write's body, in the account's temporary directory until the system
-  clears it.
+- An exec learns that its connection is gone only when it next writes.
+  Measured on 2026-11-24 over an sshd in a security session of its own, with
+  macOS `sh` and `dash`: killing the client, killing either `sshd-session`
+  process, or closing the channel alone sent no SIGHUP or SIGTERM. The
+  script ran on and got SIGPIPE at its next write to standard output, after
+  the desktop wait. `dash` (macOS's and Debian's) and BusyBox's `sh` then
+  ran no EXIT trap and left the folder; macOS `sh` ran it. The script traps
+  SIGPIPE, SIGHUP, SIGINT and SIGTERM and leaves through its EXIT trap, which
+  boots the job out and removes the folder. Killing the client, or sending
+  SIGTERM, before the job's bootstrap, while it ran, and after it ended,
+  left no job and no folder.
+- So a desktop job runs to its end, or to the wait's, after the connection
+  is gone, and a write it carries may complete on GitHub. That is the
+  unknown outcome above: Heeler never sends it again.
+- The watchdog kills the exec's process group with SIGKILL, which no trap
+  sees: its job and folder stay, and a job whose gh is still running
+  finishes. Each run therefore first sweeps this user's leftovers. A
+  `heeler-gh.<nonce>.*` folder goes once its last change is more than two
+  minutes old by GNU `find -mmin`, three by macOS's and BusyBox's, which
+  count whole minutes, its job booted out with it, unless that job is
+  running. A `dev.bybee.heeler.gh.<nonce>` job goes once it has run and
+  stopped and its folder, which `launchctl print` names, is gone or as old.
+  A running job, a job not yet started and a younger folder may belong to a
+  run still reading them: two reads can overlap, and another Heeler can read
+  the same Host. Measured: SIGKILL before the bootstrap left a folder, and
+  while the job ran or after it ended a job and a folder, the running gh
+  finishing; the first read once they were stale left none. A write whose
+  exec was killed while its desktop gh ran kept its job and folder through a
+  read made with the folder ten minutes old, and its gh ran on; once gh had
+  finished, the next read with the folder stale removed both. A read while
+  another run's job had ended, before that run collected it, left both, and
+  that run then read its answer. On Debian and Alpine the sweep removed
+  stale folders and kept a younger one, another user's and a symlink.
+- A job and folder left on 2026-11-24 were this case: a 70-second desktop
+  job, from before the wait read the clock, outlasted the watchdog.
+- After a lost connection the watchdog does not end the exec, here or in any
+  bounded exec: its marker write to the closed standard error gets SIGPIPE
+  before its `kill -KILL 0`. The script ends when its wait or its gh does.
+  Closing the channel alone left standard error open, and the watchdog
+  killed the group.
 - On 2026-11-24, against the same kind of stand-in, Comment, Merge and Close
   each ran once on tmux, herdr-core and Rex Hosts on a Mac (Rex through its
   Server's SSH exec), and Comment and Close on Debian 13 under dash. The body
