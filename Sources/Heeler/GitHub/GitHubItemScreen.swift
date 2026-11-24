@@ -125,9 +125,13 @@ private struct GitHubItemHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: GitHubItemRow.symbol(for: item))
                     .foregroundStyle(GitHubItemRow.tint(for: item))
+                    .accessibilityLabel(
+                        item.kind == .pullRequest
+                            ? String(localized: "Pull request", comment: "Read first for a pull request in the GitHub list.")
+                            : String(localized: "Issue", comment: "Read first for an issue in the GitHub list."))
                 Text(GitHubItemWords.state(of: item))
                     .fontWeight(.semibold)
                     .foregroundStyle(GitHubItemRow.tint(for: item))
@@ -135,6 +139,7 @@ private struct GitHubItemHeader: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .accessibilityLabel(Text(verbatim: "\(item.repository) #\(item.number)"))
             }
             .font(.subheadline)
             Text(item.title)
@@ -192,17 +197,9 @@ private struct GitHubItemFacts: View {
             }
         }
         LabeledContent("Changes") {
-            HStack(spacing: 6) {
-                if let pull {
-                    // The catalog's key for a count of files, shared with the Host Helper.
-                    Text("\(pull.changedFiles) files")
-                }
-                if let additions = item.additions, let deletions = item.deletions {
-                    Text(verbatim: "+\(additions.formatted())").foregroundStyle(GitHubInk.green)
-                    Text(verbatim: "\u{2212}\(deletions.formatted())").foregroundStyle(GitHubInk.red)
-                }
-            }
-            .monospacedDigit()
+            // One Text, so VoiceOver reads the value once and it wraps.
+            changes(files: pull?.changedFiles)
+                .monospacedDigit()
         }
         comments
     }
@@ -237,38 +234,66 @@ private struct GitHubItemFacts: View {
         }
     }
 
-    @ViewBuilder
-    private var checks: some View {
-        let checks = item.checks ?? GitHubChecks(failing: 0, pending: 0, passing: 0)
-        HStack(spacing: 4) {
-            switch checks.summary {
-            case .failing(let count):
-                Image(systemName: "xmark.circle.fill").foregroundStyle(GitHubInk.red).imageScale(.small)
-                Text("\(count) failing", comment: "How many of a pull request's checks failed, in the GitHub list.")
-                    .foregroundStyle(GitHubInk.red)
-                passed(checks.passing)
-            case .running:
-                Image(systemName: "clock.fill").foregroundStyle(GitHubInk.amber).imageScale(.small)
-                // Shared with the Background Work bar's count.
-                Text("\(checks.pending) running")
-                    .foregroundStyle(GitHubInk.amber)
-                passed(checks.passing)
-            case .passing:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(GitHubInk.green).imageScale(.small)
-                Text("\(checks.passing) passed", comment: "How many of a pull request's checks passed, in its detail.")
-            case .none:
-                Text("None yet", comment: "A pull request with no checks, in its detail.")
-            }
+    private func changes(files: Int?) -> Text {
+        var parts: [Text] = []
+        if let files {
+            // The catalog's key for a count of files, shared with the Host Helper.
+            parts.append(Text("\(files) files"))
         }
-        .monospacedDigit()
+        if let additions = item.additions, let deletions = item.deletions {
+            parts.append(Text(verbatim: "+\(additions.formatted())").foregroundStyle(GitHubInk.green))
+            parts.append(Text(verbatim: "\u{2212}\(deletions.formatted())").foregroundStyle(GitHubInk.red))
+        }
+        return parts.dropFirst().reduce(parts.first ?? Text(verbatim: "")) { $0 + Text(verbatim: " ") + $1 }
     }
 
-    @ViewBuilder
-    private func passed(_ count: Int) -> some View {
-        if count > 0 {
-            Text(verbatim: "·")
-            Text("\(count) passed", comment: "How many of a pull request's checks passed, in its detail.")
+    /// The glyph, then one Text that VoiceOver reads as a single value
+    /// ("3 failing, 12 passed") and that wraps at large sizes.
+    private var checks: some View {
+        let checks = item.checks ?? GitHubChecks(failing: 0, pending: 0, passing: 0)
+        let glyph: (symbol: String, tint: Color)?
+        let lead: Text
+        let spoken: String
+        switch checks.summary {
+        case .failing(let count):
+            glyph = ("xmark.circle.fill", GitHubInk.red)
+            lead = Text("\(count) failing", comment: "How many of a pull request's checks failed, in the GitHub list.")
+                .foregroundStyle(GitHubInk.red)
+            spoken = String(localized: "\(count) failing", comment: "How many of a pull request's checks failed, in the GitHub list.")
+        case .running:
+            glyph = ("clock.fill", GitHubInk.amber)
+            // Shared with the Background Work bar's count.
+            lead = Text("\(checks.pending) running").foregroundStyle(GitHubInk.amber)
+            spoken = String(localized: "\(checks.pending) running")
+        case .passing:
+            glyph = ("checkmark.circle.fill", GitHubInk.green)
+            lead = Text("\(checks.passing) passed", comment: "How many of a pull request's checks passed, in its detail.")
+            spoken = String(localized: "\(checks.passing) passed", comment: "How many of a pull request's checks passed, in its detail.")
+        case .none:
+            glyph = nil
+            lead = Text("None yet", comment: "A pull request with no checks, in its detail.")
+            spoken = String(localized: "None yet", comment: "A pull request with no checks, in its detail.")
         }
+        // Passed checks follow failing or running ones.
+        let passed: String? =
+            switch checks.summary {
+            case .failing, .running:
+                checks.passing > 0
+                    ? String(localized: "\(checks.passing) passed", comment: "How many of a pull request's checks passed, in its detail.")
+                    : nil
+            case .passing, .none: nil
+            }
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if let glyph {
+                Image(systemName: glyph.symbol)
+                    .foregroundStyle(glyph.tint)
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+            }
+            (passed.map { lead + Text(verbatim: " · \($0)") } ?? lead)
+                .accessibilityLabel([spoken, passed].compactMap(\.self).joined(separator: ", "))
+        }
+        .monospacedDigit()
     }
 
     /// A value the detail read has not given yet.
