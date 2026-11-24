@@ -24,7 +24,7 @@ protocol GitHubHostAccess: AnyObject {
     /// Whether the record is known to be a native Windows Host.
     func isNativeWindows(_ recordID: Host.ID) -> Bool
     /// Runs one gh request on the record's connection, by the route that
-    /// connection last needed.
+    /// connection last needed, or one git request, the exec first.
     func runGitHub(_ request: GitHubCLIRequest, on recordID: Host.ID) async throws -> GitHubCLIOutcome
     /// Runs a script of Heeler's own through the same bounded exec as gh,
     /// such as the checkout read behind Send to Agent.
@@ -538,14 +538,24 @@ final class GitHubStore {
     }
 
     /// The commit a New Agent's Worktree for an item starts from, fetched in
-    /// `start`'s checkout on the Server the Agent starts on. Throws
-    /// `GitHubWorktreeStartFailure`.
+    /// `start`'s checkout on the Server the Agent starts on: the fetch
+    /// through the gh seam, so a Mac runs it in the desktop session when it
+    /// fails over SSH, then the branch's rules in an exec of their own.
+    /// Throws `GitHubWorktreeStartFailure`.
     func worktreeStart(_ start: GitHubWorktreeStart, on record: Host.ID) async throws -> String {
         guard let access else { throw GitHubWorktreeStartFailure.unreachable(String(localized: "The Host is not connected.")) }
         let nonce = GitProbe.makeNonce()
-        let output: GitExecResult
+        let fetchedInto = GitHubWorktreeStart.privateRef(at: Self.epoch(), nonce: nonce)
         do {
-            output = try await access.runGitHubSeamScript(start.script(nonce: nonce), on: record)
+            let fetched = try await access.runGitHub(start.fetchRequest(into: fetchedInto), on: record)
+            if let failure = start.fetchFailure(fetched) { throw failure }
+            let output = try await access.runGitHubSeamScript(
+                start.script(nonce: nonce, fetchedInto: fetchedInto, now: Self.epoch()), on: record)
+            return try start.result(of: output, nonce: nonce).get()
+        } catch let failure as GitHubWorktreeStartFailure {
+            throw failure
+        } catch GitHubCLIError.unreadableOutput {
+            throw GitHubWorktreeStartFailure.incomplete
         } catch {
             let reason =
                 switch Self.failure(error) {
@@ -556,8 +566,11 @@ final class GitHubStore {
                 }
             throw GitHubWorktreeStartFailure.unreachable(reason)
         }
-        return try start.result(of: output, nonce: nonce).get()
     }
+
+    /// Seconds since 1970 by the device's clock, which names a Worktree
+    /// start's private ref and decides when a later start removes it.
+    private static func epoch() -> Int { Int(Date().timeIntervalSince1970) }
 
     /// Runs on the first connected Server of the Host that can run gh.
     private func run(

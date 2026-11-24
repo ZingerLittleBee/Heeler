@@ -49,7 +49,8 @@ Close.
   (`ConsoleStore.gitHubDesktopRoutes`), so later reads go straight to the
   desktop session until the connection is replaced or the user taps Check
   Again. With no one logged in at the desktop there is no `gui/<uid>`
-  domain, and the Host is Not Signed In. Linux needs none of this.
+  domain, and the Host is Not Signed In. A Worktree start's fetch takes the
+  same route (below). Linux needs none of this.
 - **A Host, not a Server.** gh belongs to the machine, so the tab lists Hosts
   ([ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md)) and runs
   gh through any of the Host's connected Servers that can, in order. A read
@@ -127,20 +128,43 @@ Close.
   named as the repository's default branch always gets a generated name,
   since that name is the user's own branch on the Host.
 - **The Worktree starts from the item's commit on every Server Kind.** Before
-  the Worktree is made, one script through the gh seam
-  (`GitHubWorktreeStart`, via `GitHubStore.worktreeStart`) runs git in the
-  Agent's checkout, on the Server the Agent starts on. It checks the branch is
-  not checked out in a Worktree of that repository, then fetches, from the
-  checkout's remote that names the repository, `refs/pull/<n>/head` for a pull
-  request (GitHub keeps it for a fork's pull request too) or
-  `refs/heads/<default>` for an issue, and answers with that commit. On the
-  pull request's own branch the script also makes the branch at that commit,
-  tracking the remote's branch for a pull request from the repository itself,
-  which it then fetches too, best effort, so the Worktree's upstream exists
-  rather than showing as gone, or moves an existing branch forward to it
-  with `git branch -f`. git 2.35 and later refuse that for a branch a
-  Worktree is rebasing or bisecting, which `git worktree list` shows only as
-  a detached HEAD, and the Start fails with git's words; older git moves it.
+  the Worktree is made, two execs through the gh seam (`GitHubWorktreeStart`,
+  via `GitHubStore.worktreeStart`) run git in the Agent's checkout, on the
+  Server the Agent starts on. The first is the gh script with git as its
+  program (`GitHubCLIRequest.Program.git`). It fetches, from the checkout's
+  remote that names the repository, by the remote's name so its own settings
+  and credential helper apply, `refs/pull/<n>/head` for a pull request
+  (GitHub keeps it for a fork's pull request too) or `refs/heads/<default>`
+  for an issue, into `refs/heeler/start/<epoch>-<nonce>`, with
+  `GIT_TERMINAL_PROMPT=0` and standard input from `/dev/null`. For a pull
+  request from the repository itself whose own branch the Worktree checks
+  out, it then fetches that branch too, best effort, so the upstream the
+  branch is made to track exists rather than showing as gone, and a merged
+  pull request whose branch was deleted still starts.
+  On a Mac a fetch that fails in the exec, for any reason, runs once more in
+  the desktop session's one-shot job, as a gh read does: an https remote
+  whose credential helper reads the login keychain, as `gh auth
+  git-credential` does on a Mac, cannot answer in an SSH login. Nothing in
+  git's output is matched, since a fetch changes nothing on GitHub and a
+  network failure just fails again. The job gets the variables gh's job
+  gets, never a token variable or `SSH_AUTH_SOCK`, so an ssh remote uses the
+  desktop session's own agent, and git's location and override variables
+  are unset in the exec and the job alike. The failure names git's first
+  error line from its last run: the desktop session's once that ran, the
+  exec's when no one is logged in at the desktop or the job did not finish.
+  A git request tries the exec first every time and leaves the route the
+  connection remembers for gh as it was.
+  The second exec has no network step. It reads the commit from the private
+  ref and deletes it, whatever follows, along with any other start's ref
+  there named more than five minutes earlier by the device's clock, which a
+  connection lost between the two execs leaves behind. It then checks the
+  branch is not checked out in a Worktree of that repository, and answers
+  with the commit. On the pull request's own branch it also makes the branch
+  at that commit, tracking the remote's branch for a pull request from the
+  repository itself, or moves an existing branch forward to it with `git
+  branch -f`. git 2.35 and later refuse that for a branch a Worktree is
+  rebasing or bisecting, which `git worktree list` shows only as a detached
+  HEAD, and the Start fails with git's words; older git moves it.
   A branch ahead of the pull request, holding its commits and more, is
   checked out as it is, as `gh pr checkout` leaves it; only a branch that
   has diverged from the pull request is left alone and fails the Start,
@@ -155,17 +179,19 @@ Close.
   `worktree.create` takes it as `base` on Herdr TUI, and herdr-core and tmux
   run `git worktree add -b <branch> <path> <commit>` in place of `HEAD`
   (ADR 0032, ADR 0045). A branch that exists is checked out as it is, as
-  before. The fetches are the only network steps, bounded by the seam's 60
-  seconds. The first goes into `refs/heeler/start/<nonce>`, which the script
-  reads and deletes at once, on its failure paths too: an Agent fetching in
-  the same checkout could replace `FETCH_HEAD` before the script read it.
-  git still writes `FETCH_HEAD` and, for an issue or a tracked branch, the
-  remote's `refs/remotes/<remote>/<branch>`, as any fetch of a branch the
-  remote's refspec maps does; the script also writes the branch it makes or
-  moves and that branch's tracking settings. Nothing is pushed. In a
-  repository over its auto-gc limit a fetch starts git's detached
-  maintenance, which would keep the script's answer open until it ends, so
-  git fetches with the answer's descriptors closed; the repository's
+  before. The fetches are the first exec's and the only network steps,
+  bounded by the seam's 60 seconds. They write the private ref, which carries
+  the commit to the second exec because an Agent fetching in the same
+  checkout could replace `FETCH_HEAD` first, and, as any fetch does,
+  `FETCH_HEAD` and, for an issue or a tracked branch, the remote's
+  `refs/remotes/<remote>/<branch>`, which git updates on its own when the
+  remote's refspec maps the branch. The second exec writes the branch it
+  makes or moves and that branch's tracking settings. Nothing is pushed. A
+  fetch that fails writes no private ref, and the second exec does not run.
+  In a repository over its auto-gc limit a fetch starts git's detached
+  maintenance, which keeps the descriptors it was given; the fetch's are
+  `/dev/null` and files in the gh script's private folder, in the exec and
+  in the job, so the answer does not wait for it. The repository's
   maintenance settings stay as they are.
 - **Writes are gh's porcelain commands.** The detail's "⋯" menu ends with
   Comment… (any item), Approve… (an open pull request that is not the
@@ -285,6 +311,19 @@ Close.
 - **Fetching with `gh pr checkout` or `gh repo sync`.** Both act on the
   checkout's own HEAD, which belongs to the Agent working there. A fetch of
   the pull request's ref leaves that checkout as it is.
+- **Fetching only in the exec.** One exec, no launchd job. But on a Mac the
+  commonest https setup, a credential helper that reads the login keychain,
+  fails in every SSH login, so a private repository's Worktree could never
+  start from the item there. The retry costs the failed attempt, about a
+  second, and changes nothing.
+- **Copying the desktop job into the start's script.** It would keep one
+  exec, but two copies of the job, its sweep and its time budget would have
+  to stay in step. The fetch reuses the gh script's, and the branch's rules
+  take a second exec.
+- **Fetching a same-repository pull request's `refs/heads/<branch>`, falling
+  back to `refs/pull/<n>/head`.** One fetch instead of two for an open pull
+  request, but a closed one's branch may have moved on, and the Worktree
+  would start from commits the pull request does not have.
 - **Fetching the fork's branch from the fork's URL.** It needs a remote or a
   URL per fork, and a private fork may not be reachable from the Host.
   `refs/pull/<n>/head` on the repository's own remote has the same commits.
@@ -369,6 +408,29 @@ Close.
   `gc.autoPackLimit` on a Mac, 31 seconds on Debian 13 with a `pre-auto-gc`
   hook drawing it out. With them closed the answer came in 0.9 to 2.6
   seconds, and a Start from the app answered while maintenance went on.
+  Since the fetch runs in the gh script, measured the same day through the
+  `SessionCreate` sshd: a repack the desktop job's fetch started, loosening
+  about 59,000 unreachable objects, went on for 44 seconds after the fetch
+  exec answered in 2.8 seconds, and `launchctl bootout` did not stop it; one
+  the exec's fetch started went on 2.7 seconds after that exec answered in
+  1.2.
+- Measured on 2026-11-25 through the `SessionCreate` sshd, with a private
+  repository's https remote whose credential helper was `gh auth
+  git-credential`, the exec's fetch failed in 0.6 seconds (`could not read
+  Username for 'https://github.com': terminal prompts disabled`), and the
+  same fetch worked in the desktop job. A Start from the app for a pull
+  request from that repository spent 13.4 seconds in the fetch exec on a
+  loaded Mac (5.1 replayed later), both fetches running in the job, and the
+  Worktree's branch had its upstream. A public repository's fetch through
+  that sshd ran in the exec in 1.1 to 1.2 seconds, with no job. A default
+  branch that does not exist failed after the desktop retry with git's
+  `couldn't find remote ref` line, not the exec's, and left no job, folder
+  or private ref. With the job's folder unusable, the route was unavailable
+  and the answer kept the exec's status 128 and its line. On Debian 13 the
+  fetch ran in the exec, and a failed one ran once. A private ref whose
+  second exec never ran was gone after the next Start in that repository,
+  eight minutes later. The ssh form could not be shown working: GitHub
+  accepts no key on this Mac, from either session.
 - A Start for a branch a Worktree was rebasing left the branch where it
   was, with git's line "cannot force update the branch '<branch>' used by
   worktree at '<path>'", on a Mac (git 2.54 and 2.55) and on Debian 13 (git
