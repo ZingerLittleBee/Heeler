@@ -2964,7 +2964,6 @@ struct ConsoleView: View {
         let origin: ConsoleTab?
     }
 
-    /// How the Console's sheets present, resolved against this view.
     /// One of the Console's own sheets, other than a GitHub write's, is up.
     private var isConsoleSheetUp: Bool {
         titleRename != nil || movePaneRequest != nil || handOffRequest != nil || gitHubSendRequest != nil
@@ -2972,6 +2971,7 @@ struct ConsoleView: View {
             || isShowingHostIssues || isShowingHostsSheet || isShowingSettingsSheet
     }
 
+    /// How the Console's sheets present, resolved against this view.
     private var sheetPresentation: ConsoleSheetPresentation {
         ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
     }
