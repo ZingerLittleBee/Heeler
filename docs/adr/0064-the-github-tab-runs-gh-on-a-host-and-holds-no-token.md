@@ -190,7 +190,8 @@ Close.
   commit, Heeler says so and runs nothing; Merge passes the head it read as
   `--match-head-commit`, so GitHub refuses a merge of commits pushed since.
   After a write that ran, Heeler reads again, so the detail, the list row and
-  the saved list follow. Merge's result comes from that read, not from the
+  the saved list follow; a list read already running when that read came
+  back keeps its row when it lands. Merge's result comes from that read, not from the
   exit status alone: Merged when GitHub shows the pull request merged, naming
   the method only when gh exited 0, the account merged it and the merge
   commit's parents match the method, and saying whether the branch is gone;

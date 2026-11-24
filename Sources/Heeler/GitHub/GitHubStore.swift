@@ -277,6 +277,7 @@ final class GitHubStore {
 
     private func performRead(_ host: GitHubHost) async {
         let generation = generation
+        let started = now()
         states[host.id, default: HostState()].isReading = true
         let failure: GitHubReadFailure?
         var list: GitHubList?
@@ -296,7 +297,12 @@ final class GitHubStore {
         var state = states[host.id] ?? HostState()
         state.isReading = false
         state.failure = failure
-        if let list {
+        if var list {
+            // An item read on its own since this read began, as a write's
+            // read after it is, is newer than its row here.
+            for (key, detailState) in details where key.host == host.id {
+                if let detail = detailState.detail, detail.readAt > started { list.replace(detail.item) }
+            }
             state.list = list
             Task { [cache] in await cache.save(list, for: host.id) }
         }
