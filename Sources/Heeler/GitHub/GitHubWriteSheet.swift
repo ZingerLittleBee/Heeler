@@ -73,7 +73,7 @@ struct GitHubWriteSheet: View {
         case .result(let result):
             NavigationStack {
                 GitHubWriteResultView(
-                    host: request.host, result: result, typed: result.write.typed, namesItem: true, done: close)
+                    host: request.host, result: result, typed: result.write.typed, namesHost: true, done: close)
                     .navigationTitle(GitHubWriteWords.sheetTitle(result.write.action))
                     .navigationBarTitleDisplayMode(.inline)
             }
@@ -411,19 +411,28 @@ private struct GitHubMergeSheet: View {
 /// The item a sheet acts on, above its form.
 private struct GitHubWriteItemLine: View {
     let item: GitHubItem
+    /// The Host, under the title, where nothing around the line names it.
+    var hostName: String?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: GitHubItemRow.symbol(for: item))
                 .foregroundStyle(GitHubItemRow.tint(for: item))
-            // One Text, like Send to Agent's: side by side, the title kept
-            // one line and lost most of itself. The header is secondary
-            // already; `.secondary` again dimmed the repository to 1.8:1.
-            (Text(verbatim: "\(item.repositoryName) #\(item.number)  ")
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
-                + Text(item.title).foregroundStyle(Color(uiColor: .label)))
-                .lineLimit(dynamicTypeSize >= .xxxLarge ? 4 : 2)
+            VStack(alignment: .leading, spacing: 2) {
+                // One Text, like Send to Agent's: side by side, the title kept
+                // one line and lost most of itself. The header is secondary
+                // already; `.secondary` again dimmed the repository to 1.8:1.
+                (Text(verbatim: "\(item.repositoryName) #\(item.number)  ")
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    + Text(item.title).foregroundStyle(Color(uiColor: .label)))
+                    .lineLimit(dynamicTypeSize >= .xxxLarge ? 4 : 2)
+                if let hostName {
+                    Text("On \(hostName)")
+                        .font(.footnote)
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                }
+            }
         }
         .font(.subheadline)
         .textCase(nil)
@@ -460,9 +469,9 @@ struct GitHubWriteResultView: View {
     let result: GitHubWriteResult
     /// What the user wrote, kept in sight when it may not have been posted.
     let typed: String?
-    /// Names the item above the page. A result shown after its sheet has
+    /// Names the Host under the item: a result shown after its sheet has
     /// gone can land over another item's detail, or over no item at all.
-    var namesItem = false
+    var namesHost = false
     let done: () -> Void
 
     @Environment(\.openURL) private var openURL
@@ -471,10 +480,9 @@ struct GitHubWriteResultView: View {
         let page = GitHubWriteWords.page(for: result)
         ScrollView {
             VStack(alignment: page.style == .merged ? .center : .leading, spacing: 12) {
-                if namesItem {
-                    GitHubWriteItemLine(item: result.detail?.item ?? result.item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // The item the page's words refer to.
+                GitHubWriteItemLine(item: result.detail?.item ?? result.item, hostName: namesHost ? host.name : nil)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 header(page)
                 if let printed = page.printed {
                     Text(verbatim: printed)

@@ -252,8 +252,9 @@ Close.
   the item again to confirm it, shows gh's output and offers the item in
   the browser. The other writes end without a page when gh exits 0 (Close
   when the read shows the item closed), and otherwise show gh's output
-  under a title that says what happened. A result page opens at full
-  height, so its Done is in view once the keyboard has gone.
+  under a title that says what happened. A result page names the item at
+  its top and opens at full height, so its Done is in view once the
+  keyboard has gone.
 - **A write's sheet belongs to the Console.** Comment, Approve and Merge
   open from the Console, as Send to Agent does (`GitHubWriteSheetPresenter`),
   and their request holds the sheet's state: the text, the method, the
@@ -266,8 +267,8 @@ Close.
   and always for Close, which has no sheet, a result that is anything but
   a plain success waits in `GitHubStore.reports`. The Console's presenter
   shows the same page while the GitHub tab is shown, after any sheet
-  already up, with the item named above it, since it can land over another
-  item's detail. Turning GitHub off drops what waits.
+  already up, naming the Host under the item, since it can land over
+  another item's detail. Turning GitHub off drops what waits.
 - **Merge offers what the repository allows.** The detail read adds the
   repository's allowed methods, the account's default
   (`viewerDefaultMergeMethod`), whether the repository deletes merged
