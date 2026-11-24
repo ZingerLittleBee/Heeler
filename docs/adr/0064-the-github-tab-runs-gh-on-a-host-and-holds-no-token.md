@@ -201,6 +201,19 @@ issue's detail, and Send to Agent; later actions build on the same seam.
   limited (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and
   read their own.
+- The choice in the menu and the saved list are kept under the Host's first
+  record, as a Usage widget names it (ADR 0047). Turning that Server off
+  removes the record, and both move to the record that is first now, so the
+  Host stays chosen and its list stays shown.
+- On 2026-11-24 the list, a detail and Send to Agent were tried on tmux,
+  herdr-core and Rex Hosts on a Mac, the herdr-core one through a
+  `SessionCreate` sshd and so by the desktop route, and on a Host with a tmux
+  and a herdr-core Server. That Host read through whichever was connected, and
+  Send to Agent listed both Servers' Agents.
+- On Debian 13, whose `sh` is dash, the script wrote nothing to standard
+  error outside its frames, a gh that exits 4 read as Not Signed In with no
+  second run, and the checkout read answered with git 2.47. No gh was signed
+  in there: the list and a detail were parsed from a recorded response.
 - Each section shows at most 30 items. A section with more says how many it
   shows of how many.
 - The Worktree is made in the Workspace's checkout, and its commit is
