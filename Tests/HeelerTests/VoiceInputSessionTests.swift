@@ -242,17 +242,20 @@ struct VoiceInputSessionTests {
         #expect(fixture.live.downloads == ["zh-CN"])
     }
 
-    @Test func hearingNothingOffersToTryAgain() async throws {
+    @Test func stoppingBeforeAnythingIsHeardEndsWithoutANotice() async throws {
         let fixture = try makeOnDeviceFixture()
         defer { fixture.tearDown() }
         let store = fixture.makeStore()
+        store.applyEditorDraft("keep", selection: NSRange(location: 4, length: 0))
 
         fixture.session.toggle(store.voice)
         try await waitUntil("recording") { store.voice.isRecording }
         fixture.session.stop(store.voice)
-        try await waitUntil("failed") { store.voice.failure != nil }
-        #expect(store.voice.failure == .noSpeech)
-        #expect(store.voice.failure?.restarts == true)
+        try await waitUntil("ended") { store.voice.phase == .idle }
+        #expect(store.voice.failure == nil)
+        #expect(!store.voice.showsRecorder)
+        #expect(store.draft == "keep")
+        #expect(store.voiceFocusRequests == 0)
 
         fixture.session.start(store.voice)
         try await waitUntil("recording again") { store.voice.isRecording }
@@ -383,15 +386,28 @@ struct VoiceInputSessionTests {
         #expect(fixture.recorder.starts == 0)
     }
 
-    @Test func aTooShortRecordingIsNotSent() async throws {
+    @Test func aRecordingStoppedAtOnceIsNotSentAndEndsWithoutANotice() async throws {
         let fixture = try makeFixture(results: [.success("never")])
         defer { fixture.tearDown() }
         fixture.recorder.nextRecording = VoiceRecording(audio: Data("tap".utf8), duration: 0.2)
         let store = fixture.makeStore()
 
         try await record(store, with: fixture)
-        #expect(store.voice.failure == .tooShort)
+        #expect(store.voice.phase == .idle)
+        #expect(store.voice.failure == nil)
         #expect(await fixture.transcriber.requests.isEmpty)
+    }
+
+    @Test func aRecordingTheServiceHearsNothingInEndsWithoutANotice() async throws {
+        let fixture = try makeFixture(results: [.failure(.emptyTranscript)])
+        defer { fixture.tearDown() }
+        let store = fixture.makeStore()
+
+        try await record(store, with: fixture)
+        try await waitUntil("ended") { store.voice.phase == .idle }
+        #expect(store.voice.failure == nil)
+        #expect(store.draft.isEmpty)
+        #expect(await fixture.transcriber.requests.count == 1)
     }
 
     @Test func theLastDetailLeavingDropsTextStillOnItsWay() async throws {

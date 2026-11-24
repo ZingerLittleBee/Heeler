@@ -70,7 +70,6 @@
 
 - **The speech service rejected the API key.** — 轻点 **Voice Input Settings**，填入有效 key 并轻点 **Save**，然后轻点 **Retry**。
 - **Heeler can't use the microphone. Turn it on in Settings.** — 轻点 **Open Settings**，为 Heeler 开启麦克风权限。
-- **The recording was too short.** — 说话至少满半秒后再结束。
 
 ## 隐私
 

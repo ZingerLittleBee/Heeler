@@ -30242,28 +30242,6 @@
         }
       }
     },
-    "Hold the phone a little closer and try again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone をもう少し近づけて、もう一度話してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "离手机近一点，再说一次。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "離手機近一點，再說一次。"
-          }
-        }
-      }
-    },
     "Hold to read a day" : {
       "localizations" : {
         "ja" : {
@@ -65359,28 +65337,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法儲存錄音。"
-          }
-        }
-      }
-    },
-    "The recording was too short." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "録音が短すぎました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "录音时间太短。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "錄音時間太短。"
           }
         }
       }

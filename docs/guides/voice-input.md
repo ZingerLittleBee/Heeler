@@ -102,7 +102,6 @@ When a recording produces no text, the Composer shows the reason with **Retry** 
 
 - **The speech service rejected the API key.** — Tap **Voice Input Settings**, save a valid key, then tap **Retry**.
 - **Heeler can't use the microphone. Turn it on in Settings.** — Tap **Open Settings** and allow microphone access.
-- **The recording was too short.** — Speak for at least half a second.
 
 ## Privacy
 

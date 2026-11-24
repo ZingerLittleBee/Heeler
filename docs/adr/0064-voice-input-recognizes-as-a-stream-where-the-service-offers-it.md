@@ -29,6 +29,12 @@ recognizes speech becomes a property of the service rather than of On Device.
   without asking: it is the same destination the user agreed to. A batch
   that fails then offers Retry in the recorder. On Device has no batch and
   keeps landing what it heard.
+- **Hearing nothing is not a failure.** A recording stopped right after it
+  started, shorter than half a second, or in which the service heard no
+  speech ends without a notice in either way, since that is how a recording
+  is abandoned; a requested Send still sends the draft. This replaces ADR
+  0043's failure for a recording that heard nothing, and ADR 0036's notice
+  for one too short to send.
 - **A stream connects before recording.** The recorder starts once the
   service has accepted the request, as On Device waits for its model; the
   handshake took about 150 ms in testing. A handshake refused for

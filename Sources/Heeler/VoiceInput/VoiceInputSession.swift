@@ -22,14 +22,9 @@ struct VoiceInputFailure: Equatable, Sendable {
     static let microphoneDenied = VoiceInputFailure(
         message: String(localized: "Heeler can't use the microphone. Turn it on in Settings."),
         symbol: "mic.slash", opensMicrophoneSettings: true)
-    static let tooShort = VoiceInputFailure(message: String(localized: "The recording was too short."))
     static let notSetUp = VoiceInputFailure(
         message: String(localized: "Set up Voice Input to transcribe this recording."),
         canRetry: true, opensVoiceInputSettings: true)
-    static let noSpeech = VoiceInputFailure(
-        message: String(localized: "No speech was recognized."),
-        detail: String(localized: "Hold the phone a little closer and try again."),
-        symbol: "mic", restarts: true)
     static let couldNotStart = VoiceInputFailure(message: String(localized: "Speech recognition could not start."))
 
     init(
@@ -49,8 +44,7 @@ struct VoiceInputFailure: Equatable, Sendable {
 
     init(_ error: VoiceTranscriptionError) {
         self.init(
-            message: error.message, canRetry: error != .emptyTranscript,
-            opensVoiceInputSettings: error.suggestsSettings)
+            message: error.message, canRetry: true, opensVoiceInputSettings: error.suggestsSettings)
     }
 
     /// Why listening could not begin. Nothing was recorded, so there is
@@ -257,6 +251,17 @@ final class ComposerVoiceInput {
         onTranscript?()
     }
 
+    /// Nothing was heard. Stopping right after starting is how a recording
+    /// is abandoned, so it ends without a notice; a requested send still
+    /// sends the draft.
+    fileprivate func landNothing() {
+        if sendsWhenSettled {
+            deliver("")
+        } else {
+            reset()
+        }
+    }
+
     fileprivate func reset() {
         generation += 1
         task?.cancel()
@@ -404,7 +409,7 @@ final class VoiceInputSession {
             return
         }
         guard recording.duration >= Self.minimumDuration else {
-            input.fail(.tooShort)
+            input.landNothing()
             return
         }
         upload(recording, for: input)
@@ -546,8 +551,8 @@ final class VoiceInputSession {
             }
             guard let input, input.generation == generation else { return }
             let heard = text.flatMap { $0.isEmpty ? nil : $0 } ?? input.heard.text
-            if heard.isEmpty, !input.sendsWhenSettled {
-                input.fail(.noSpeech)
+            if heard.isEmpty {
+                input.landNothing()
             } else {
                 input.deliver(heard)
             }
@@ -583,6 +588,8 @@ final class VoiceInputSession {
             switch result {
             case .success(let text):
                 input.deliver(text)
+            case .failure(VoiceTranscriptionError.emptyTranscript):
+                input.landNothing()
             case .failure(let error as VoiceTranscriptionError):
                 input.fail(VoiceInputFailure(error))
             case .failure(is CancellationError):

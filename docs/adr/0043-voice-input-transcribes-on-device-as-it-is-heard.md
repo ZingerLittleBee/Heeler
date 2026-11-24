@@ -12,7 +12,8 @@ ADR 0036's "Upload, not streaming" and its rejection of live partials: the
 partials show in a recorder, not the draft, which still takes the text once.
 Amended by
 [ADR 0064](0064-voice-input-recognizes-as-a-stream-where-the-service-offers-it.md):
-the recorder serves any service that streams, starting with Volcengine.
+the recorder serves any service that streams, starting with Volcengine, and a
+recording that heard nothing ends without a failure.
 The rest of ADR 0036 stands.
 
 ## Decision
