@@ -514,11 +514,20 @@ Close.
   stale folders and kept a younger one, another user's and a symlink.
 - A job and folder left on 2026-11-24 were this case: a 70-second desktop
   job, from before the wait read the clock, outlasted the watchdog.
-- After a lost connection the watchdog does not end the exec, here or in any
-  bounded exec: its marker write to the closed standard error gets SIGPIPE
-  before its `kill -KILL 0`. The script ends when its wait or its gh does.
-  Closing the channel alone left standard error open, and the watchdog
-  killed the group.
+- The watchdog of every bounded exec ignores SIGPIPE, so a lost connection
+  still ends the exec at its bound. Before it did, the marker write to the
+  closed standard error got SIGPIPE before the `kill -KILL 0`, and the script
+  ran until its wait or its gh ended. Measured on 2026-11-25 on macOS 27.0.1
+  with `/bin/sh` (bash 3.2.57) and `/bin/dash` over OpenSSH 10.3's sshd, by
+  killing the client, killing both `sshd-session` processes, closing the
+  channel with the connection kept, and through a pipe whose reader exited,
+  and on Debian 13 with dash 0.5.12 through the pipe: a 30-second child of a
+  3-second bound outlived it before and died 3.0 to 3.1 seconds in after,
+  and a gh hung in the exec ran past 50 seconds before and was killed at 50
+  after. A desktop route's wait still ended at 44 seconds and cleaned up.
+  OpenSSH's own client, when a multiplexed session's client dies, sends
+  `eow@openssh.com` rather than closing the channel, and sshd then closes
+  only standard output, so that watchdog fired either way.
 - On 2026-11-24, against the same kind of stand-in, Comment, Merge and Close
   each ran once on tmux, herdr-core and Rex Hosts on a Mac (Rex through its
   Server's SSH exec), and Comment and Close on Debian 13 under dash. The body
