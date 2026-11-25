@@ -382,7 +382,7 @@ struct ChatMarkdownTableView: View {
                                 .overlay(alignment: .trailing) {
                                     Rectangle().fill(Color(uiColor: .separator)).frame(width: 0.5)
                                 }
-                                .accessibilityAddTraits(row == 0 ? .isHeader : [])
+                                .modifier(ChatMarkdownTableCellAccessibility(table: table, row: row, column: column))
                         }
                     }
                 }
@@ -410,6 +410,32 @@ struct ChatMarkdownTableView: View {
         case .left: .leading
         case .center: .center
         case .right: .trailing
+        }
+    }
+}
+
+/// How VoiceOver reads a table cell. A header cell names its column; it is
+/// not a heading that starts a section, and with that trait every column
+/// read as one, and a message holding a table as a heading. A value is read
+/// after its column's name ("Route, exec"), as a data table's cells are, so
+/// the header row, which those names repeat, is not read on its own. A
+/// table of only a header row reads it as text.
+private struct ChatMarkdownTableCellAccessibility: ViewModifier {
+    let table: ChatMarkdownBlock.Table
+    let row: Int
+    let column: Int
+
+    func body(content: Content) -> some View {
+        let header = String(table.rows[0][column].characters).trimmingCharacters(in: .whitespaces)
+        if row == 0 {
+            content.accessibilityHidden(table.rows.count > 1)
+        } else if header.isEmpty || table.rows[row][column].characters.isEmpty {
+            content
+        } else {
+            content.accessibilityLabel { label in
+                Text(verbatim: header)
+                label
+            }
         }
     }
 }
