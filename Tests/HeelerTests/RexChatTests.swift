@@ -64,13 +64,15 @@ struct RexChatTests {
     // MARK: The kernel
 
     /// `server.version` names the platform first, as Rex 0.1.0-preview.14 did
-    /// on a Mac; only a system Heeler knows reads as a kernel.
+    /// on a Mac; only a system Heeler knows, Windows included since Rex
+    /// Hosts reach it (ADR 0049), reads as a kernel.
     @Test(arguments: [
         ("darwin_arm64", HerdrCoreLocator.macOSKernel),
         ("darwin_x86_64", HerdrCoreLocator.macOSKernel),
         ("linux_x86_64", HerdrCoreLocator.linuxKernel),
         ("x86_64-unknown-linux-gnu", HerdrCoreLocator.linuxKernel),
-        ("windows_x86_64", nil),
+        ("windows_x86_64", HerdrCoreLocator.windowsKernel),
+        ("freebsd_amd64", nil),
         ("", nil),
     ] as [(String, String?)])
     func aServersPlatformReadsAsItsKernel(platform: String, kernel: String?) {
