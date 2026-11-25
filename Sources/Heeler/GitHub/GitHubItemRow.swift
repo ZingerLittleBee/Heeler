@@ -4,7 +4,7 @@ import SwiftUI
 /// title, and how it stands (ADR 0065).
 struct GitHubItemRow: View {
     let item: GitHubItem
-    let section: GitHubListSection.Kind
+    let context: GitHubRowContext
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -53,12 +53,12 @@ struct GitHubItemRow: View {
             "\(item.repositoryName) #\(item.number)",
             GitHubItemWords.state(of: item),
         ]
-        if section == .reviewRequested, let author = item.author {
-            parts.append(String(localized: "Opened by \(author)", comment: "Who opened a pull request, read in the GitHub list."))
+        if let author = context.shownAuthor(of: item) {
+            parts.append(String(localized: "Opened by \(author)", comment: "Who opened a pull request or an issue, read in the GitHub list."))
         }
         switch item.kind {
         case .pullRequest:
-            if item.state != .merged {
+            if item.state == .open || item.state == .draft {
                 let checks = item.checks?.summary ?? .none
                 if case .none = checks {
                     parts.append(Self.title(for: checks))
@@ -68,8 +68,9 @@ struct GitHubItemRow: View {
                             localized: "checks \(Self.title(for: checks))",
                             comment: "How a pull request's checks stand, read in the GitHub list: checks 3 failing."))
                 }
+                // A merged or closed pull request's line says only that.
+                if let rest = pullRequestRest { parts.append(rest) }
             }
-            if let rest = pullRequestRest { parts.append(rest) }
         case .issue:
             parts += item.labels.prefix(3).map(\.name)
             parts.append(
@@ -82,12 +83,12 @@ struct GitHubItemRow: View {
         return parts.joined(separator: ", ")
     }
 
-    /// "Heeler #712 · riley-dev · 2h": the author only where the request
-    /// came from someone else. On one line a long repository or author
-    /// name gives way, never the number or the age.
+    /// "Heeler #712 · riley-dev · 2h": the author where it is someone else
+    /// and the list is not of one person's items. On one line a long
+    /// repository or author name gives way, never the number or the age.
     @ViewBuilder
     private func overLine(wraps: Bool) -> some View {
-        let author = section == .reviewRequested ? item.author : nil
+        let author = context.shownAuthor(of: item)
         let age = Self.age(of: item.updatedAt)
         if wraps {
             Text(verbatim: ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
@@ -118,6 +119,9 @@ struct GitHubItemRow: View {
         if item.state == .merged {
             return Text("Merged").foregroundStyle(GitHubInk.purple)
         }
+        if item.state == .closed {
+            return Text(GitHubItemWords.state(of: item)).foregroundStyle(GitHubInk.red)
+        }
         let checks = item.checks?.summary ?? .none
         var line = Text(verbatim: "")
         if item.state == .draft {
@@ -134,11 +138,18 @@ struct GitHubItemRow: View {
         return line
     }
 
-    /// After the checks: the change size where a review is asked of you,
-    /// otherwise the review decision.
+    /// After the checks: where someone else asks for your review, that, or
+    /// the change size in a list of what asks for it; otherwise the review
+    /// decision.
     private var pullRequestRest: String? {
-        if section == .reviewRequested, let additions = item.additions, let deletions = item.deletions {
-            return "+\(additions.formatted()) \u{2212}\(deletions.formatted())"
+        if context.asksViewer(item) {
+            if context.isReviewList, let additions = item.additions, let deletions = item.deletions {
+                // A no-break space: the two counts wrap as one.
+                return "+\(additions.formatted())\u{00A0}\u{2212}\(deletions.formatted())"
+            }
+            return String(
+                localized: "Needs your review",
+                comment: "In a GitHub list row's status line: the pull request asks for the account's review.")
         }
         if let review = item.review, item.state != .draft {
             return GitHubItemWords.decision(review)
@@ -248,7 +259,7 @@ struct GitHubItemRow: View {
                 author: nil, state: .open, updatedAt: Date(), commentCount: 0,
                 checks: GitHubChecks(failing: 0, pending: 0, passing: 1), review: nil,
                 additions: nil, deletions: nil, labels: []),
-            section: .authored)
+            context: GitHubRowContext())
             .redacted(reason: .placeholder)
             // Redacted, its label reads as a run of blank glyphs; the
             // section's "Reading from…" heading says what is happening.
@@ -265,6 +276,34 @@ extension VerticalAlignment {
 
     /// A GitHub row's title's first baseline, which its icon shares.
     fileprivate static let gitHubRowTitle = VerticalAlignment(GitHubRowTitle.self)
+}
+
+/// What the list around a row says of it, which its words leave out or add.
+struct GitHubRowContext: Equatable {
+    /// The account gh is signed in to, whose own items name no author.
+    var viewer: String?
+    /// The list holds what one person created.
+    var isByAuthor = false
+    /// The list holds what asks for the account's review.
+    var isReviewList = false
+
+    init(viewer: String? = nil, filter: GitHubListFilter = GitHubListFilter()) {
+        self.viewer = viewer
+        isByAuthor = filter.person?.role == .author
+        isReviewList = filter.person == GitHubListFilter.Person(role: .reviewRequested, login: nil)
+    }
+
+    /// The author the over line names, if any.
+    func shownAuthor(of item: GitHubItem) -> String? {
+        guard !isByAuthor, let author = item.author, author != viewer else { return nil }
+        return author
+    }
+
+    /// An open pull request someone else opened asks for the account's review.
+    func asksViewer(_ item: GitHubItem) -> Bool {
+        item.asksViewerToReview == true && (item.state == .open || item.state == .draft)
+            && (viewer == nil || item.author != viewer)
+    }
 }
 
 /// The GitHub screens' state colours. The system tints are too light for

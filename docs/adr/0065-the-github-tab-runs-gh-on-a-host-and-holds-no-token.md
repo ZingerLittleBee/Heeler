@@ -59,13 +59,16 @@ Close.
   is read at a time, chosen from a menu at the top of the list; the menu is
   hidden when there is one Host, unless that Host has a status to show, and
   the choice is remembered.
-- **Reads are GraphQL, parsed on the device.** The list is one
-  `gh api graphql -i` request (`GitHubListRead`): the account's login and four
-  searches of open, unarchived items across repositories, 30 each, most
-  recently updated first. Pull requests that request the user's review, pull
-  requests the user opened, issues assigned to the user, and issues the user
-  opened that are not assigned to them. The headers give each section's full
-  count and say when a rate limit ends. gh exits 1 whenever GitHub's answer
+- **Reads are GraphQL, parsed on the device.** A list read is one
+  `gh api graphql -i` request (`GitHubListRead`): the account's login and one
+  or more searches of unarchived items across repositories, 30 each, most
+  recently updated first, each search's query and cursor passed as a variable.
+  At the filters' defaults it reads both segments: pull requests the user
+  opened, pull requests that request the user's review and that they did not
+  open, issues assigned to the user, and issues the user opened that are not
+  assigned to them. A filter changed from its defaults reads its segment's
+  searches, and Show More the next page of the searches it needs. The title
+  bar says when a rate limit ends. gh exits 1 whenever GitHub's answer
   lists errors, even beside its data. When every error names a field
   (`path`), the read takes the data: a search result GitHub will not show,
   behind SAML or an OAuth App restriction, comes back null and is left out
@@ -73,14 +76,36 @@ Close.
   longer showing it. An error that names no field fails the read with
   GitHub's message; not signed in and a rate limit are told apart first.
   Writes are not GraphQL: they are gh's porcelain commands, below.
-- **The list is kept for display, never watched.** Each Host's list is saved
-  on the device (`FileGitHubListCache`) by the rules
+- **One list per segment, under a row of filters.** Pull Requests and Issues
+  each show one list with no headings, most recently updated first. A row of
+  chips under the picker sets State, Person, Repository and Label
+  (`GitHubListFilter`, `GitHubFilterBar`); each segment keeps its own on the
+  device (`GitHubSettings`, written only when the user picks one), and a
+  change reads once. State is Open (drafts included), Draft, Merged, Closed
+  (unmerged) or All States for pull requests, and Open, Closed or All States
+  for issues. Person is All, a role of the account's (Created by, Needs
+  Review or Reviewed by for pull requests, Assigned to, Mentioning) or a role
+  of another login, picked from the people the lists read or typed in a sheet.
+  Repository is a repository or an owner, `org:` or `user:` as GitHub says
+  the owner is, asked first when no list has shown it. Label is one name.
+- **All is two searches that never share an item.** Person All is what
+  involves the account: for pull requests `author:@me` and
+  `review-requested:@me -author:@me`, for issues `assignee:@me` and
+  `author:@me -assignee:@me`. Their counts add up, and the list shows the
+  newest of what both read; Show More reads only the search whose read items
+  run out before the next 30, and stops where a search with more on GitHub has
+  none left to place.
+- **The list is kept for display, never watched.** Each Host's list at the
+  filters' defaults is saved on the device (`FileGitHubListCache`, `v2`) by
+  the rules
   [FileChatTranscriptCache](../../Sources/Heeler/Chat/Cache/FileChatTranscriptCache.swift)
   follows: the Caches folder, complete file protection, excluded from backup,
   removed with the Host, and dropped after 30 days. Opening the tab shows the
   saved list with when and where it was read, then reads again if it is older
   than two minutes. A pull and Check Again read too. Nothing polls, and a
-  detail read stays in memory.
+  detail read stays in memory, as a filter's list does: while the Host is
+  offline a changed filter shows that it is, with Clear Filters, rather than
+  rows from another search.
 - **A detail is a second read of one item.** Opening a pull request or an
   issue runs one more `gh api graphql -i` request (`GitHubDetailRead`) for
   that item by its node id: its body, and for a pull request its branches,
@@ -316,8 +341,15 @@ Close.
 - **`security unlock-keychain` in the exec.** It asks for the account's
   password, which Heeler does not have and should not.
 - **Porcelain commands (`gh pr list`, `gh search prs`) for reads.** Their JSON
-  fields differ by command and version, and the four lists would take four
-  execs. One GraphQL request is one round trip and one rate-limit cost.
+  fields differ by command and version, and each search would take an exec.
+  One GraphQL request is one round trip and one rate-limit cost.
+- **All as one advanced search with `OR`.** GitHub documents `AND`, `OR` and
+  parentheses for issue search (`ISSUE_ADVANCED`, from 2025), not for pull
+  requests or with `sort:`. Two plain searches whose qualifiers exclude each
+  other give the same items, and both counts are exact.
+- **Filtering the saved list on the device.** It holds 30 items of each
+  search, the account's own roles only, so other people, closed items and
+  anything past the first page could not be found.
 - **Polling while the tab is open.** It spends the rate limit and a Host's
   connection for a list that changes slowly. Pull to refresh is enough.
 - **Sending the message for the user.** Placing it as a draft lets the user
@@ -412,8 +444,16 @@ Close.
   error outside its frames, a gh that exits 4 read as Not Signed In with no
   second run, and the checkout read answered with git 2.47. No gh was signed
   in there: the list and a detail were parsed from a recorded response.
-- Each section shows at most 30 items. A section with more says how many it
-  shows of how many.
+- A list shows 30 items, then Show More with how many it shows of how many
+  GitHub found. Under All the count is the two searches' sum.
+- The Person menu offers the people the lists read (the default list and the
+  segment's results), apps left out, so it changes with what was read; anyone
+  else is typed.
+  A label name cannot hold a double quote, since the query quotes it.
+- A pull request asking for the account's review says "Needs your review" in
+  its status line when a pending review request names the account, or names
+  the team whose request reached it (`viewerLatestReviewRequest`). Under
+  Needs Your Review, where every row asks, it gives the change's size instead.
 - The Worktree is made in the Workspace's checkout, and its commit is
   fetched in the checkout of the Agent the form matched in that Workspace.
   When a Workspace holds two clones, the fetched commit may be missing from
