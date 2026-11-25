@@ -3352,6 +3352,8 @@ private struct SidebarListChoices: View {
     let lists: [ConsoleTab]
     @Binding var isPresented: Bool
     let select: (ConsoleTab) -> Void
+    /// The symbols' column, which grows with the text beside it.
+    @ScaledMetric(relativeTo: .body) private var symbolWidth: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -3367,7 +3369,7 @@ private struct SidebarListChoices: View {
                                 .opacity(list == shown ? 1 : 0)
                                 .accessibilityHidden(true)
                             Image(systemName: Self.symbol(for: list))
-                                .frame(width: 24)
+                                .frame(width: symbolWidth)
                                 .accessibilityHidden(true)
                             Text(list.title)
                             Spacer(minLength: 0)
@@ -3383,7 +3385,9 @@ private struct SidebarListChoices: View {
             }
         }
         .padding(.vertical, 6)
-        .frame(width: 220)
+        // A menu's width, and wider as the text grows, so a list's name
+        // stays on one line instead of breaking inside the word.
+        .frame(minWidth: 220)
         .presentationCompactAdaptation(.popover)
     }
 
