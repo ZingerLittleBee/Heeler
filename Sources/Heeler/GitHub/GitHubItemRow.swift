@@ -11,10 +11,14 @@ struct GitHubItemRow: View {
         // At accessibility sizes a line that fits a phone holds a word or
         // two, so the lines wrap rather than cut off what they say.
         let wraps = dynamicTypeSize.isAccessibilitySize
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .gitHubRowTitle, spacing: 10) {
+            // In the title's face, on its first baseline: the glyph sits
+            // on the title's first line as one set in its text would, at
+            // every text size, wherever the line above leaves it.
             Image(systemName: Self.symbol(for: item))
                 .foregroundStyle(Self.tint(for: item))
                 .font(.body.weight(.medium))
+                .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 3) {
                 overLine(wraps: wraps)
@@ -23,10 +27,14 @@ struct GitHubItemRow: View {
                 Text(item.title)
                     .font(.body.weight(.medium))
                     .lineLimit(wraps ? 4 : 2)
+                    .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
                 status(wraps: wraps)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            // Every row's separator starts at its text, rather than where
+            // the list guesses its first text begins.
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
@@ -246,6 +254,17 @@ struct GitHubItemRow: View {
             // section's "Reading from…" heading says what is happening.
             .accessibilityHidden(true)
     }
+}
+
+extension VerticalAlignment {
+    private enum GitHubRowTitle: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat {
+            context[.firstTextBaseline]
+        }
+    }
+
+    /// A GitHub row's title's first baseline, which its icon shares.
+    fileprivate static let gitHubRowTitle = VerticalAlignment(GitHubRowTitle.self)
 }
 
 /// The GitHub screens' state colours. The system tints are too light for
