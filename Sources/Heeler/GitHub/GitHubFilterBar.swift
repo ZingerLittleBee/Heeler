@@ -96,6 +96,7 @@ struct GitHubFilterBar: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.subheadline.weight(.semibold))
+                        .padding(8)
                         .frame(minWidth: 34, minHeight: 34)
                         .background(.fill.tertiary, in: Circle())
                         .contentShape(Circle())
@@ -109,7 +110,13 @@ struct GitHubFilterBar: View {
             labelMenu
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .tint(Self.accent)
     }
+
+    /// The system's blue, which the app's tint is. The iPad's sidebar list
+    /// tints its rows grey, and its views, a default tint included,
+    /// resolve to that grey, so the filters name their colour.
+    static let accent = Color(uiColor: .systemBlue)
 
     // MARK: State
 
@@ -288,6 +295,8 @@ private struct GitHubFilterChip: View {
         .foregroundStyle(isChanged ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary))
         .padding(.leading, 14)
         .padding(.trailing, 11)
+        // Room above and below the words at the larger text sizes.
+        .padding(.vertical, 6)
         .frame(minHeight: 34)
         .background(isChanged ? AnyShapeStyle(.tint.opacity(0.16)) : AnyShapeStyle(.fill.tertiary), in: Capsule())
         .contentShape(Capsule())
@@ -342,6 +351,7 @@ struct GitHubFilterEntrySheet: View {
                                     Text(verbatim: login)
                                         .font(.subheadline)
                                         .padding(.horizontal, 14)
+                                        .padding(.vertical, 6)
                                         .frame(minHeight: 34)
                                         .background(.fill.tertiary, in: Capsule())
                                         .contentShape(Capsule())
@@ -367,7 +377,7 @@ struct GitHubFilterEntrySheet: View {
                                     if self.role == role {
                                         Image(systemName: "checkmark")
                                             .fontWeight(.semibold)
-                                            .foregroundStyle(.tint)
+                                            .foregroundStyle(GitHubFilterBar.accent)
                                     }
                                 }
                                 .contentShape(Rectangle())

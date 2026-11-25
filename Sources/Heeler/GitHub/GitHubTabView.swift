@@ -290,6 +290,8 @@ struct GitHubListScreen: View {
 
     private var clearFilters: some View {
         Button("Clear Filters") { store.setFilter(GitHubListFilter(), for: kind) }
+            // The iPad's sidebar greys its tint.
+            .tint(GitHubFilterBar.accent)
     }
 
     /// A row opens its detail, except from a list shown while the Host is
@@ -392,6 +394,8 @@ private struct GitHubShowMoreRow: View {
             .contentShape(Rectangle())
         }
         .disabled(isReading)
+        // The iPad's sidebar greys its tint.
+        .tint(GitHubFilterBar.accent)
     }
 }
 
@@ -433,6 +437,7 @@ private struct GitHubReadFailureView: View {
         Button("Check Again", action: checkAgain)
         if let clearFilters {
             Button("Clear Filters", action: clearFilters)
+                .tint(GitHubFilterBar.accent)
         }
     }
 }

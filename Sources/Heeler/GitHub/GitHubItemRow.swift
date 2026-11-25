@@ -136,7 +136,8 @@ struct GitHubItemRow: View {
     private var pullRequestRest: String? {
         if context.asksViewer(item) {
             if context.isReviewList, let additions = item.additions, let deletions = item.deletions {
-                return "+\(additions.formatted()) \u{2212}\(deletions.formatted())"
+                // A no-break space: the two counts wrap as one.
+                return "+\(additions.formatted())\u{00A0}\u{2212}\(deletions.formatted())"
             }
             return String(
                 localized: "Needs your review",
