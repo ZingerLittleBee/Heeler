@@ -34,6 +34,17 @@ enum InputBoxState: Equatable, Sendable {
     var isSendable: Bool {
         if case .empty = self { true } else { false }
     }
+
+    /// Whether Send Anyway may override a hold on this screen state: only
+    /// overlay or unrecognized-box readings, where a CLI layout or custom
+    /// statusline change can false-positive. Dialogs, shell mode, existing
+    /// drafts, disabled states, and exited/dashboard screens never override.
+    var allowsSendAnyway: Bool {
+        switch self {
+        case .overlay, .unknown: true
+        case .empty, .text, .shellMode, .disabled, .dialog, .noComposer: false
+        }
+    }
 }
 
 enum InputBoxStateDetector {

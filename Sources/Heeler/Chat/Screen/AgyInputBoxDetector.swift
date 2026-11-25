@@ -37,13 +37,14 @@ enum AgyInputBoxDetector {
                     localized: "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first.",
                     comment: "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+b again to send command to background"))
         }
-        // A footer Chat doesn't know may change what Enter does, such as
-        // code search mode's (its strings; not captured) or Vim mode's
-        // `-- INSERT --` and `-- VISUAL --` before the hint. Vim's Normal
+        // Footer modes that change what Enter does: code search mode, bash
+        // mode, and Vim mode's Insert / Visual / V-Line badges. Vim's Normal
         // mode draws no badge, so a box in it reads as idle here, and
         // herdr 0.9.5's paste and Enter submitted from it as typed (1.5.3).
-        if let hint = agy.footerHint, !AgyScreen.readyHints.contains(hint), !AgyScreen.workingHints.contains(hint) {
-            return .overlay(hint)
+        // Arbitrary custom `/statusline` output without overlay markers is
+        // allowed, matching Claude Code's custom status line handling.
+        if let blocking = agy.blockingFooter {
+            return .overlay(blocking)
         }
         return .empty(placeholder: composer.placeholder)
     }
