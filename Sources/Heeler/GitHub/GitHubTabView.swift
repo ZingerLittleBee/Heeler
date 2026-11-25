@@ -279,10 +279,14 @@ struct GitHubListScreen: View {
             }
             // Offline there is nothing to read the next page with.
             if shown.list.hasMore, !isOffline {
-                GitHubShowMoreRow(
-                    shown: shown.list.items.count, total: shown.list.totalCount,
-                    isReading: store.state(of: host).readingMore.contains(kind)
-                ) { Task { await store.showMore(kind) } }
+                if let failure = store.moreFailure(kind, on: host) {
+                    GitHubShowMoreFailureRow(failure: failure) { Task { await store.showMore(kind) } }
+                } else {
+                    GitHubShowMoreRow(
+                        shown: shown.list.items.count, total: shown.list.totalCount,
+                        isReading: store.state(of: host).readingMore.contains(kind)
+                    ) { Task { await store.showMore(kind) } }
+                }
             }
         } footer: {
             HStack(spacing: 6) {
@@ -421,6 +425,81 @@ private struct GitHubShowMoreRow: View {
         .disabled(isReading)
         // The iPad's sidebar greys its tint.
         .tint(GitHubFilterBar.accent)
+    }
+}
+
+/// In Show More's place after the next page's read failed, under the rows
+/// already shown: what stopped it, and Try Again, which reads the page again.
+private struct GitHubShowMoreFailureRow: View {
+    let failure: GitHubReadFailure
+    let tryAgain: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        if case .rateLimited(let retryAt?) = failure {
+            // Counts down to when the limit ends.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                row(message: Self.message(for: failure, retryAt: retryAt, now: context.date))
+            }
+        } else {
+            row(message: GitHubBannerText.message(for: failure))
+        }
+    }
+
+    /// GitHub's rate limit with when to try again, while it lasts.
+    static func message(for failure: GitHubReadFailure, retryAt: Date, now: Date) -> String {
+        let words = GitHubBannerText.message(for: failure)
+        guard let wait = GitHubBanner.wait(until: retryAt, now: now) else { return words }
+        return [words, String(localized: "Try again in \(wait).")].joinedAsSentences()
+    }
+
+    private func row(message: String) -> some View {
+        let title = String(
+            localized: "Could not read more",
+            comment: "In place of Show More under a GitHub list, after reading its next page failed.")
+        // Try Again trails the first line, and gh's words take the width
+        // under both, which a sidebar's column needs. At accessibility
+        // sizes it goes under the words, or the line would hold a word.
+        let isLarge = dynamicTypeSize.isAccessibilitySize
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // In the rows' icon column, so the words line up with their titles.
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Color.errorInk)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(verbatim: title)
+                        .foregroundStyle(Color.errorInk)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !isLarge { tryAgainButton }
+                }
+                Text(verbatim: message)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.secondary)
+                if isLarge {
+                    tryAgainButton
+                        .padding(.top, 6)
+                }
+            }
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+        }
+        // The iPad's sidebar greys its tint.
+        .tint(GitHubFilterBar.accent)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([title.asSentence, message].joinedAsSentences())
+        .accessibilityAction(named: Text("Try Again"), tryAgain)
+    }
+
+    private var tryAgainButton: some View {
+        Button(action: tryAgain) {
+            // The iPad's sidebar draws a button's words in the primary
+            // colour.
+            Text("Try Again")
+                .foregroundStyle(.tint)
+        }
+        // Only its words take a tap, not the whole row.
+        .buttonStyle(.borderless)
+        .fixedSize()
     }
 }
 

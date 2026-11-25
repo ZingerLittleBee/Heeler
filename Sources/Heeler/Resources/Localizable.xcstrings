@@ -20274,6 +20274,29 @@
         }
       }
     },
+    "Could not read more" : {
+      "comment" : "In place of Show More under a GitHub list, after reading its next page failed.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続きを読み取れませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取更多"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取更多"
+          }
+        }
+      }
+    },
     "Could not read notification settings from this Host. Check the connection and try again." : {
       "localizations" : {
         "ja" : {

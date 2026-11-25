@@ -55,6 +55,15 @@ final class GitHubStore {
         var results: [GitHubItem.Kind: Results] = [:]
         /// Segments whose next page is being read.
         var readingMore: Set<GitHubItem.Kind> = []
+        /// Why a segment's last read of a next page failed, which its row
+        /// says in Show More's place.
+        var moreFailures: [GitHubItem.Kind: MoreFailure] = [:]
+    }
+
+    /// A next page's read that failed, and the list it was read for.
+    struct MoreFailure: Equatable {
+        let list: UUID
+        let failure: GitHubReadFailure
     }
 
     /// A segment's list under a filter changed from the default.
@@ -291,6 +300,15 @@ final class GitHubStore {
         return results
     }
 
+    /// Why the last read of the next page of what the segment shows failed;
+    /// nil once it is read again, or when the list was read anew.
+    func moreFailure(_ kind: GitHubItem.Kind, on host: GitHubHost) -> GitHubReadFailure? {
+        guard let failure = state(of: host).moreFailures[kind], failure.list == shown(kind, on: host)?.list.id else {
+            return nil
+        }
+        return failure.failure
+    }
+
     // MARK: Reading
 
     /// The tab is showing `kind`: show what the device saved for every
@@ -353,6 +371,7 @@ final class GitHubStore {
         guard !state(of: host).readingMore.contains(kind), let shown = shown(kind, on: host), shown.list.hasMore
         else { return }
         var list = shown.list
+        states[host.id]?.moreFailures[kind] = nil
         let toRead = list.searchesToRead()
         if !toRead.isEmpty {
             let generation = generation
@@ -374,7 +393,16 @@ final class GitHubStore {
                 list = current
                 for (index, page) in zip(toRead, answer.pages) { list.add(page, to: index) }
             case .failure(let failure):
-                states[host.id]?.failure = failure
+                switch failure {
+                case .rateLimited, .timedOut, .failed:
+                    // The rows shown stay, and the title bar keeps the
+                    // status of the list's own read.
+                    states[host.id]?.moreFailures[kind] = MoreFailure(list: list.id, failure: failure)
+                case .offline, .notInstalled, .notSignedIn, .unsupported:
+                    // The Host or its gh, not the page: the tab says so as
+                    // it does for any read.
+                    states[host.id]?.failure = failure
+                }
                 return
             }
         }
