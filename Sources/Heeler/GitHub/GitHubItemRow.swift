@@ -20,13 +20,7 @@ struct GitHubItemRow: View {
                     overLine(wraps: true)
                     status
                 } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        overLine(wraps: false)
-                        Spacer(minLength: 0)
-                        // Never cut off: the repository and the author give
-                        // way first.
-                        status?.fixedSize()
-                    }
+                    overLine(wraps: false)
                 }
             }
             .font(.footnote)
@@ -94,8 +88,8 @@ struct GitHubItemRow: View {
 
     /// "Heeler #712 · riley-dev · 2h" after the state glyph: the author
     /// where it is someone else and the list is not of one person's items.
-    /// On one line a long repository or author name gives way, never the
-    /// number or the age.
+    /// On one line, with the status at its end, as `GitHubOverLineLayout`
+    /// fits them.
     @ViewBuilder
     private func overLine(wraps: Bool) -> some View {
         let author = context.shownAuthor(of: item)
@@ -106,14 +100,27 @@ struct GitHubItemRow: View {
                 + Text(verbatim: " " + ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
                     .joined(separator: " · "))
         } else {
-            HStack(spacing: 0) {
-                glyph.padding(.trailing, 5).layoutPriority(2)
-                Text(verbatim: item.repositoryName).layoutPriority(1)
-                Text(verbatim: " #\(item.number)").layoutPriority(2)
+            GitHubOverLineLayout {
+                glyph.padding(.trailing, 5)
+                    .layoutValue(key: OverLinePartKey.self, value: .glyph)
+                Text(verbatim: item.repositoryName).shortens()
+                    .layoutValue(key: OverLinePartKey.self, value: .repository)
+                Text(verbatim: String(item.repositoryName.prefix(8)) + "…").hidden()
+                    .layoutValue(key: OverLinePartKey.self, value: .repositoryLeast)
+                Text(verbatim: " #\(item.number)")
+                    .layoutValue(key: OverLinePartKey.self, value: .number)
                 if let author {
-                    Text(verbatim: " · \(author)").layoutPriority(1)
+                    Text(verbatim: " · \(author)").shortens()
+                        .layoutValue(key: OverLinePartKey.self, value: .author)
+                    Text(verbatim: " · " + String(author.prefix(3)) + "…").hidden()
+                        .layoutValue(key: OverLinePartKey.self, value: .authorLeast)
                 }
-                Text(verbatim: " · \(age)").layoutPriority(2)
+                Text(verbatim: " · \(age)")
+                    .layoutValue(key: OverLinePartKey.self, value: .age)
+                if let status {
+                    status
+                        .layoutValue(key: OverLinePartKey.self, value: .status)
+                }
             }
             .lineLimit(1)
         }
@@ -258,6 +265,123 @@ struct GitHubItemRow: View {
             // under the title, or before iOS 26 the section's "Reading
             // from…" heading, says what is happening.
             .accessibilityHidden(true)
+    }
+}
+
+/// A piece of a row's over line, as `GitHubOverLineLayout` fits it.
+private enum OverLinePart {
+    case glyph, repository, number, author, age, status
+    /// Hidden: the repository's first eight characters, the least it keeps.
+    case repositoryLeast
+    /// Hidden: the author's first three characters, the least it keeps.
+    case authorLeast
+}
+
+private struct OverLinePartKey: LayoutValueKey {
+    static let defaultValue: OverLinePart? = nil
+}
+
+private extension View {
+    /// Shortens to whatever width the over line gives it, down to nothing.
+    func shortens() -> some View {
+        frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
+    }
+}
+
+/// A row's over line on one line, with the status at its end. Short of
+/// room, the author gives way first, shortening and then leaving with its
+/// dot, then the repository, which keeps about eight characters before its
+/// number; past that the status goes under the line, as at accessibility
+/// sizes. The glyph, the number and the age never shorten.
+private struct GitHubOverLineLayout: Layout {
+    private static let statusGap: CGFloat = 8
+    private static let lineGap: CGFloat = 3
+
+    private struct Placement {
+        let subview: LayoutSubview
+        let origin: CGPoint
+        let proposal: ProposedViewSize
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(width: proposal.width, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for placement in arrange(width: bounds.width, subviews: subviews).placements {
+            placement.subview.place(
+                at: CGPoint(x: bounds.minX + placement.origin.x, y: bounds.minY + placement.origin.y),
+                proposal: placement.proposal)
+        }
+    }
+
+    private func arrange(width: CGFloat?, subviews: Subviews) -> (size: CGSize, placements: [Placement]) {
+        func part(_ piece: OverLinePart) -> LayoutSubview? { subviews.first { $0[OverLinePartKey.self] == piece } }
+        func ideal(_ piece: OverLinePart) -> CGFloat { part(piece)?.sizeThatFits(.unspecified).width ?? 0 }
+
+        let repository = ideal(.repository)
+        let author = ideal(.author)
+        let status = part(.status)
+        let statusRoom = status == nil ? 0 : ideal(.status) + Self.statusGap
+        let fixed = ideal(.glyph) + ideal(.number) + ideal(.age)
+        let lineWidth = width ?? fixed + repository + author + statusRoom
+        let repositoryLeast = min(repository, ideal(.repositoryLeast))
+        let authorLeast = min(author, ideal(.authorLeast))
+        // The widths the repository and the author get in a room.
+        func fit(_ room: CGFloat) -> (repository: CGFloat, author: CGFloat)? {
+            if room >= repository + authorLeast { return (repository, min(author, room - repository)) }
+            if room >= repositoryLeast { return (min(repository, room), 0) }
+            return nil
+        }
+        let statusIsBelow: Bool
+        let widths: (repository: CGFloat, author: CGFloat)
+        if let fitted = fit(lineWidth - fixed - statusRoom) {
+            statusIsBelow = false
+            widths = fitted
+        } else {
+            statusIsBelow = status != nil
+            let room = lineWidth - fixed
+            widths = fit(room) ?? (max(room, 0), 0)
+        }
+
+        var line: [(subview: LayoutSubview, proposal: ProposedViewSize, x: CGFloat)] = []
+        var x: CGFloat = 0
+        for piece in [OverLinePart.glyph, .repository, .number, .author, .age] {
+            guard let subview = part(piece) else { continue }
+            let proposal: ProposedViewSize =
+                switch piece {
+                case .repository: ProposedViewSize(width: widths.repository, height: nil)
+                case .author: ProposedViewSize(width: widths.author, height: nil)
+                default: .unspecified
+                }
+            line.append((subview, proposal, x))
+            x += subview.sizeThatFits(proposal).width
+        }
+        if let status, !statusIsBelow {
+            line.append((status, .unspecified, lineWidth - status.sizeThatFits(.unspecified).width))
+        }
+        // Every piece on its first baseline.
+        let dimensions = line.map { $0.subview.dimensions(in: $0.proposal) }
+        let baseline = dimensions.map { $0[VerticalAlignment.firstTextBaseline] }.max() ?? 0
+        var placements: [Placement] = []
+        var height: CGFloat = 0
+        for (piece, size) in zip(line, dimensions) {
+            let y = baseline - size[VerticalAlignment.firstTextBaseline]
+            placements.append(Placement(subview: piece.subview, origin: CGPoint(x: piece.x, y: y), proposal: piece.proposal))
+            height = max(height, y + size.height)
+        }
+        if let status, statusIsBelow {
+            let proposal = ProposedViewSize(width: min(status.sizeThatFits(.unspecified).width, lineWidth), height: nil)
+            placements.append(Placement(subview: status, origin: CGPoint(x: 0, y: height + Self.lineGap), proposal: proposal))
+            height += Self.lineGap + status.sizeThatFits(proposal).height
+        }
+        // The hidden measures take no room.
+        for piece in [OverLinePart.repositoryLeast, .authorLeast] {
+            if let subview = part(piece) {
+                placements.append(Placement(subview: subview, origin: .zero, proposal: .zero))
+            }
+        }
+        return (CGSize(width: lineWidth, height: height), placements)
     }
 }
 

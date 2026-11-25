@@ -109,14 +109,17 @@ Close.
 - **A row is a line about the item over its title.** The list is plain and
   full width, with no disclosure chevron, so a row is as wide offline as
   online (`GitHubItemRow`). Its first line is the state's glyph in its colour,
-  then `repo #number · author · age`, where the repository and the author
-  shorten first, and at its end the status: a pull request's checks glyph
-  with one word (Needs your review, the change's size, Approved, Changes
-  requested, else the checks' Passing, failing count or Running; Draft or
-  that word alone without checks; Merged or Closed in their colour), an
-  issue's comment count when above zero. The title follows on up to two lines
-  (four at accessibility sizes, where the status drops under the first line),
-  and an issue's labels take a third line when it has any.
+  then `repo #number · author · age`, and at its end the status: a pull
+  request's checks glyph with one word (Needs your review, the change's size,
+  Approved, Changes requested, else the checks' Passing, failing count or
+  Running; Draft or that word alone without checks; Merged or Closed in their
+  colour), an issue's comment count when above zero. Short of room the author
+  gives way first, shortening and then leaving with its dot, then the
+  repository, which keeps about eight characters; past that the status goes
+  under the first line (`GitHubOverLineLayout`). The number and the age never
+  shorten. The title follows on up to two lines (four at accessibility sizes,
+  where the status is always under the first line), and an issue's labels
+  take a third line when it has any.
 - **All is two searches that never share an item.** Person All is what
   involves the account: for pull requests `author:@me` and
   `review-requested:@me -author:@me`, for issues `assignee:@me` and
