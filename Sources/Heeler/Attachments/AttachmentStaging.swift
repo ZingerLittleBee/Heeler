@@ -86,3 +86,27 @@ enum AttachmentStagingError: Error, Sendable, Equatable {
         }
     }
 }
+
+/// Where a Rex Agent's attachment lands on a native Windows Host (ADR 0056's
+/// update of 2026-11-25): SFTP opens `/C:/Users/me/...`, and the Agent reads
+/// `C:\Users\me\...`.
+enum WindowsStagePath {
+    /// The per-connection folder under the account's temp folder, in the form
+    /// SFTP opens; `home` is already in that form.
+    static func parentDirectory(home: String, suffix: String) -> String {
+        RemoteFilePath.join(home, "AppData", "Local", "Temp", "heeler.\(suffix)")
+    }
+
+    /// Eight lower-case letters and digits, as `mktemp`'s `heeler.XXXXXXXX`.
+    static func randomSuffix() -> String {
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        return String((0..<8).map { _ in alphabet.randomElement() ?? "x" })
+    }
+
+    /// `/C:/a/b` as `C:\a\b`; nil for anything that is not an SFTP drive path.
+    static func windowsPath(fromSFTP path: String) -> String? {
+        guard path.hasPrefix("/") else { return nil }
+        let windows = String(path.dropFirst()).replacingOccurrences(of: "/", with: "\\")
+        return RemoteHostPath.isWindowsAbsolute(windows) ? windows : nil
+    }
+}

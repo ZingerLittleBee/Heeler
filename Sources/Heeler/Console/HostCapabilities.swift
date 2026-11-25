@@ -140,11 +140,11 @@ extension HostCapabilities {
         // Composer Send and Stop, and Chat for `rexChatPrograms` once the
         // server has named Linux or macOS, or for `rexWindowsChatPrograms`
         // once it has named Windows, read and typed over the Host's own
-        // connection (ADRs 0055 and 0056). Named Linux or macOS, it also
-        // stages images and files over SFTP for them, as a tmux Host does;
-        // staging is POSIX's alone.
+        // connection (ADRs 0055 and 0056). Wherever Chat opens it also stages
+        // images and files over SFTP for them: on Linux and macOS as a tmux
+        // Host does, on native Windows into the account's temp folder by SFTP
+        // alone (ADR 0056's update of 2026-11-25).
         guard serverKind != .rex else {
-            let posix = coreKernel == HerdrCoreLocator.linuxKernel || coreKernel == HerdrCoreLocator.macOSKernel
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
                 case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
@@ -153,7 +153,7 @@ extension HostCapabilities {
                 }
             self.init(
                 startsAgents: false, startsTerminals: true, renameAgent: false, renamesWorkspaces: false,
-                worktrees: false, uploads: posix, composerSend: true, chat: rexChatPrograms != nil,
+                worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,

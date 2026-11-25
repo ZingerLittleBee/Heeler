@@ -421,9 +421,7 @@ native Windows core's Chat reads it (ADR 0034), with G1 to G7 unchanged.
 
 - **Capabilities.** A server that names Windows (`windows_x86_64`) offers
   Chat for `HostCapabilities.rexWindowsChatPrograms`, Claude Code alone, and
-  no uploads: staging makes its folder with a POSIX exec, and a core stages
-  on Windows through its own `terminal.put`, which Rex has no counterpart of
-  over SSH. `ConsoleStore.chatProgram(for:)` reads a Rex Host reached by a
+  uploads. `ConsoleStore.chatProgram(for:)` reads a Rex Host reached by a
   pipe as native Windows, and `AgentChatAvailability` opens Chat on native
   Windows for a Rex Host as for a core Host, for the programs the
   capabilities name.
@@ -446,6 +444,20 @@ native Windows core's Chat reads it (ADR 0034), with G1 to G7 unchanged.
   `claude.exe`, and a path that parts at `\`; the Windows read names it
   `claude`. `RexConsoleProjection.foregroundNames` takes each name in that
   form there, so the check that the pid is still the one Rex named holds.
+- **Uploads.** POSIX staging makes its folder with a `mktemp` exec, and a
+  core stages on Windows through its own `terminal.put`, which Rex has no
+  counterpart of over SSH. On a Rex connection to native Windows,
+  `HeelerSSHTransport.stageOnWindows` uses SFTP alone: it makes a
+  `heeler.<8 random>` folder once per connection under
+  `USERPROFILE\AppData\Local\Temp`, a `stage-<uuid>` folder in it, writes
+  the file as `.part` and renames it with `posix-rename@openssh.com`, which
+  Win32-OpenSSH's server offers, and hands the Composer the Windows path
+  (`C:\Users\<name>\AppData\Local\Temp\heeler.…\stage-…\image.png`,
+  `WindowsStagePath`). Windows keeps no POSIX mode, so the folder is the
+  account's by the temp folder's own ACL, and no mode is set or checked
+  there. Names are already cleaned for Windows (`FilePreparer.cleanStem`),
+  and a sent message shows such a path as a staged image or video
+  (`ChatImageLink`).
 - **Wording.** A read that finds no process on a Rex terminal says Chat
   can't tell the conversation, not the herdr-core text about elevation and
   constrained PowerShell.
@@ -455,14 +467,19 @@ holds open, which nothing reads on Windows, as on a core Host; Pi and Oh My
 Pi, until Heeler's extension is checked in a Rex terminal on Windows (and it
 waits for `REX_SESSION`, which preview.23 does not set); and uploads through
 Rex's own `upload_begin`, which types the paths itself rather than handing
-them to the Composer.
+them to the Composer, so it would bypass Send's checks.
 
 Evidence: `RexSessionBinderTests` binds Claude Code in a Rex terminal on
 Windows from a scripted Windows read and registry entry, refuses another
 block, another session and another image, binds with no `REX_SESSION`, and
 checks the read fits the command line for a ten-digit pid.
-`RexConsoleTests` offers Chat for Claude Code alone, and no uploads, on a
-Rex Host reached by a pipe whose server names Windows. On 2026-11-25, against
+`RexConsoleTests` offers Chat for Claude Code alone, and uploads, on a
+Rex Host reached by a pipe whose server names Windows; `RexStagingTests`
+builds the Windows stage paths and reads them back as staged media. Against
+the same PC over the same relay, SFTP made a `heeler.*` folder and a
+`stage-*` folder in `AppData/Local/Temp`, wrote a `.part`, renamed it and
+removed all three; the server listed `posix-rename@openssh.com`.
+On 2026-11-25, against
 Rex 0.1.0-preview.23 on Windows 11 with three Claude Code 2.1.332 Agents,
 `process` named each foreground as `claude.exe`, the Windows process read of
 each found `REX_BLOCK` matching its block and no `REX_SESSION`, its start

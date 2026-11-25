@@ -28,8 +28,8 @@ struct RexConsoleTests {
     /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
     /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
     /// Codex, Pi and Oh My Pi and uploads once the server has named a Linux
-    /// or macOS kernel, and Chat for Claude Code alone once it has named
-    /// Windows, whatever a
+    /// or macOS kernel, and Chat for Claude Code alone and uploads once it
+    /// has named Windows, whatever a
     /// platform probe would say, since none runs. A terminal shows in one
     /// window at a time, so a row offers no window of its own and the windows
     /// take turns, as with a Herdr TUI Host's channel.
@@ -55,7 +55,7 @@ struct RexConsoleTests {
             #expect(!offers.renamesWorkspaces)
             #expect(offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
-            #expect(offers.uploads == isPOSIX)
+            #expect(offers.uploads == opensChat)
             #expect(!offers.tabNames)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
@@ -767,8 +767,8 @@ struct RexConsoleTests {
 
     /// A Rex Host reached by a Windows named pipe offers Chat once its server
     /// has named Windows, for Claude Code alone, read as a native Windows
-    /// core's Chat reads it; a Codex there opens on its terminal, and nothing
-    /// is staged on the Host (ADR 0056).
+    /// core's Chat reads it; a Codex there opens on its terminal, and
+    /// attachments are staged over SFTP (ADR 0056).
     @Test(arguments: [("claude.exe", ChatProgram?.some(.claude)), ("codex.exe", nil)])
     func aWindowsRexHostOffersChatForClaudeCodeAlone(program: String, chat: ChatProgram?) async throws {
         var studio = FakeRexWorld.studio()
@@ -789,7 +789,7 @@ struct RexConsoleTests {
         let agent = try #require(console.agents.first)
 
         #expect(console.capabilities(for: windows.id).chatPrograms == [.claude])
-        #expect(!console.capabilities(for: windows.id).uploads)
+        #expect(console.capabilities(for: windows.id).uploads)
         #expect(console.chatProgram(for: agent) == chat)
     }
 
