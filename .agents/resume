@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# No shared services or thread credentials are needed for local development.
