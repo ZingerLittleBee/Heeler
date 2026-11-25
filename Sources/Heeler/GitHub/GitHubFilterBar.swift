@@ -276,6 +276,27 @@ struct GitHubFilterBar: View {
     }
 }
 
+/// Clear Filters under an empty, offline or failed filtered list: a grey
+/// capsule, as the chips at their defaults are.
+struct GitHubClearFiltersButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Clear Filters")
+                .fontWeight(.semibold)
+                // Not `.primary`, which in a button is the tint's.
+                .foregroundStyle(Color.primary)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .frame(minHeight: 44)
+                .background(.fill.tertiary, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// One filter's chip: what it shows, tinted once changed from its default.
 private struct GitHubFilterChip: View {
     let title: String
