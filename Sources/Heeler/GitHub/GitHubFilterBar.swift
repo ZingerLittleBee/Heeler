@@ -301,11 +301,16 @@ struct GitHubClearFiltersButton: View {
 private struct GitHubFilterChip: View {
     let title: String
     let isChanged: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        // At the accessibility sizes a chip may take a line of its own and
+        // still not fit, and its words wrap rather than lose the name.
+        let wraps = dynamicTypeSize.isAccessibilitySize
         HStack(spacing: 5) {
             Text(verbatim: title)
-                .lineLimit(1)
+                .lineLimit(wraps ? 3 : 1)
+                .multilineTextAlignment(.leading)
             Image(systemName: "chevron.down")
                 .font(.caption.weight(.semibold))
                 .imageScale(.small)
@@ -319,8 +324,14 @@ private struct GitHubFilterChip: View {
         // Room above and below the words at the larger text sizes.
         .padding(.vertical, 6)
         .frame(minHeight: 34)
-        .background(isChanged ? AnyShapeStyle(.tint.opacity(0.16)) : AnyShapeStyle(.fill.tertiary), in: Capsule())
-        .contentShape(Capsule())
+        .background(isChanged ? AnyShapeStyle(.tint.opacity(0.16)) : AnyShapeStyle(.fill.tertiary), in: shape)
+        .contentShape(shape)
+    }
+
+    /// A capsule, which wrapped words would overflow at its ends.
+    private var shape: AnyShape {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyShape(RoundedRectangle(cornerRadius: 17, style: .continuous)) : AnyShape(Capsule())
     }
 }
 
