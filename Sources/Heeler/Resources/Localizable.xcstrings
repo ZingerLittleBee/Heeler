@@ -50656,7 +50656,7 @@
       }
     },
     "Read on %@ at %@" : {
-      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "comment" : "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -50801,7 +50801,7 @@
       }
     },
     "Read yesterday at %@" : {
-      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "comment" : "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {

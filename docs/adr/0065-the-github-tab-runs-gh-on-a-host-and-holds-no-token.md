@@ -116,8 +116,9 @@ Close.
   (`GitHubStore.details`), and the row it returns replaces the list's copy,
   which is saved again. `GitHubStore.reread(_:on:)` reads one item again on
   request, so an action can check the item before it acts and the list
-  follows after. An item GitHub no longer shows to the account says so in
-  the detail's banner.
+  follows after. An item GitHub no longer shows to the account says so as
+  a failed read's words: in the detail's "⋯" on iOS 26, in its banner
+  before.
 - **Send to Agent puts a message in a running Agent's Composer.** From a
   detail, a sheet asks what the Agent should do, worded as one English
   sentence and the item's address (not localized, ADR 0041, and shown before
@@ -423,12 +424,20 @@ Close.
   it gave, dimmed when the Host is offline, and the title bar says why, never
   a line among the rows: the Host button, the toolbar's own, puts an amber
   glyph before the Host's name (offline, rate limited, or a failed read),
-  with no fill of its own inside iOS 26's glass, and on iOS 26 a subtitle
-  under the title says it with when the list was read, or when to try again;
-  an iPad sidebar, whose bar shows its title menu instead of a title, has
-  that line just under the bar. After a failed read the Host menu holds gh's
-  own words and Check Again, so the button shows with one Host too while it
-  has a status.
+  with no fill of its own inside iOS 26's glass. On iOS 26 a subtitle under
+  the title is there whenever the list area is, from its first frame, so the
+  title bar keeps its height and the list does not move for anything that
+  comes and goes: Reading… while a read has nothing to show yet or runs over
+  the rows, then when the rows were read, or the status with when they were
+  read or when to try again, the status alone where no rows show. The list's
+  footer and its placeholder rows' heading, which said the same, show only
+  before iOS 26. A screen that takes the list's place has no subtitle. An
+  iPad sidebar, whose bar shows its title menu instead of a title, has that
+  line just under the bar. A detail has one under its number by the same
+  rules once it shows, with gh's words after a failed read in its "⋯" over
+  Check Again; before iOS 26 a banner between its header and its facts says
+  it instead. After a failed read the Host menu holds gh's own words and
+  Check Again, so the button shows with one Host too while it has a status.
   Without a list, the tab says why in its place: offline, rate limited
   (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and

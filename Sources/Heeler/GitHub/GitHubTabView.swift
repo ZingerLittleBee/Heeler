@@ -72,7 +72,7 @@ struct GitHubListScreen: View {
                 }
             }
         }
-        .modifier(GitHubStatusSubtitle(status: status))
+        .modifier(GitHubSubtitleLine(subtitle: subtitle))
         .sheet(item: $filterSheet) { sheet in
             if let host = store.selectedHost {
                 GitHubFilterEntrySheet(
@@ -104,17 +104,37 @@ struct GitHubListScreen: View {
     /// shows rather than the list.
     private var status: GitHubHostStatus? {
         guard let host = store.selectedHost else { return nil }
-        let state = store.state(of: host)
+        return GitHubHostStatus(failure: store.state(of: host).failure, isConnected: store.isConnected(host))
+    }
+
+    /// The line under the title whenever the list area shows, from its
+    /// first frame, so the title bar keeps its height while a read runs, the
+    /// Host drops or a read fails. Nil over a screen that takes the list's
+    /// place, and going to or from one replaces the whole content anyway.
+    private var subtitle: GitHubSubtitle? {
+        guard let host = store.selectedHost, case .list = screen(for: host) else { return nil }
         let isConnected = store.isConnected(host)
-        // Dated by the rows on screen: a filter's results by their own
-        // read, and nothing over a filter's Is Offline or failure screen.
-        let readAt: Date? =
-            if case .rows(let shown) = content(on: host, isOffline: !isConnected || state.failure == .offline) {
-                shown.readAt
-            } else {
-                nil
+        let content = content(on: host, isOffline: !isConnected || store.state(of: host).failure == .offline)
+        // A read runs over what shows, or will fill the placeholder rows.
+        // Offline, nothing reads.
+        let isReading =
+            switch content {
+            case .reading: true
+            case .rows(let shown): shown.isReading
+            case .offline, .failed: false
             }
-        return GitHubHostStatus(failure: state.failure, isConnected: isConnected, readAt: readAt)
+        if isConnected, isReading { return .reading }
+        switch content {
+        case .rows(let shown):
+            // Dated by the rows on screen: a filter's results by their own read.
+            return status.map { .status($0, readAt: shown.readAt) } ?? .read(shown.readAt)
+        case .reading, .offline:
+            // Only while the Host is offline: the status alone.
+            return .status(status ?? GitHubHostStatus(kind: .offline), readAt: nil)
+        case .failed(let failure):
+            let status = GitHubHostStatus(failure: failure, isConnected: isConnected)
+            return .status(status ?? GitHubHostStatus(kind: .failed(failure)), readAt: nil)
+        }
     }
 
     /// With more than one Host to pick; with one, while it has a status,
@@ -124,34 +144,52 @@ struct GitHubListScreen: View {
         store.hosts.count > 1 || status != nil
     }
 
-    @ViewBuilder
-    private func content(for host: GitHubHost) -> some View {
+    /// What takes the tab for the selected Host: the list area under the
+    /// picker and the filters, or a screen in its place.
+    private enum Screen {
+        case setup(GitHubSetupView.Step)
+        case list
+        /// Offline with nothing read.
+        case offline
+        /// A read failed with nothing read.
+        case failed
+    }
+
+    private func screen(for host: GitHubHost) -> Screen {
         let state = store.state(of: host)
         let isConnected = store.isConnected(host)
         switch state.failure {
-        case .notInstalled(let isMac):
-            GitHubSetupView(
-                step: .install(isMac: isMac), host: host, terminals: terminals, isReading: state.isReading
-            ) { Task { await store.checkAgain(showing: kind) } }
-        case .notSignedIn:
-            GitHubSetupView(
-                step: .signIn, host: host, terminals: terminals, isReading: state.isReading
-            ) { Task { await store.checkAgain(showing: kind) } }
+        case .notInstalled(let isMac): return .setup(.install(isMac: isMac))
+        case .notSignedIn: return .setup(.signIn)
         default:
             // A changed filter keeps its row, whatever its read found.
             if !store.filter(for: kind).isDefault || state.list != nil || state.isReading
                 || (state.failure == nil && isConnected)
             {
-                listView(host: host, state: state, isConnected: isConnected)
-            } else if !isConnected || state.failure == .offline {
-                ContentUnavailableView {
-                    Label("\(host.name) Is Offline", systemImage: "wifi.slash")
-                } description: {
-                    Text("Heeler reads GitHub through gh on \(host.name) once it connects.")
-                }
-            } else {
-                GitHubReadFailureView(failure: state.failure) { Task { await store.checkAgain(showing: kind) } }
+                return .list
             }
+            return !isConnected || state.failure == .offline ? .offline : .failed
+        }
+    }
+
+    @ViewBuilder
+    private func content(for host: GitHubHost) -> some View {
+        let state = store.state(of: host)
+        switch screen(for: host) {
+        case .setup(let step):
+            GitHubSetupView(
+                step: step, host: host, terminals: terminals, isReading: state.isReading
+            ) { Task { await store.checkAgain(showing: kind) } }
+        case .list:
+            listView(host: host, state: state, isConnected: store.isConnected(host))
+        case .offline:
+            ContentUnavailableView {
+                Label("\(host.name) Is Offline", systemImage: "wifi.slash")
+            } description: {
+                Text("Heeler reads GitHub through gh on \(host.name) once it connects.")
+            }
+        case .failed:
+            GitHubReadFailureView(failure: state.failure) { Task { await store.checkAgain(showing: kind) } }
         }
     }
 
@@ -219,18 +257,23 @@ struct GitHubListScreen: View {
         case .rows(let shown):
             rows(shown, filter: filter, host: host, isOffline: isOffline)
         case .reading:
-            Section {
-                ForEach(0..<4, id: \.self) { _ in
-                    GitHubItemRow.placeholder
+            if GitHubSubtitle.isShown {
+                // The line under the title says a read runs.
+                Section {
+                    placeholderRows
                 }
-            } header: {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Reading from \(host.name)…")
+            } else {
+                Section {
+                    placeholderRows
+                } header: {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Reading from \(host.name)…")
+                    }
+                    // One heading: the spinner alone read as an unnamed one.
+                    .accessibilityElement(children: .combine)
+                    .textCase(nil)
                 }
-                // One heading: the spinner alone read as an unnamed one.
-                .accessibilityElement(children: .combine)
-                .textCase(nil)
             }
         case .offline:
             unavailable {
@@ -273,33 +316,54 @@ struct GitHubListScreen: View {
                 }
             }
         }
-        Section {
-            ForEach(shown.list.items) { item in
-                row(item, context: context, host: host, isOffline: isOffline)
+        if GitHubSubtitle.isShown {
+            // The line under the title says when the rows were read, and
+            // that a read runs over them.
+            Section {
+                itemRows(shown, context: context, host: host, isOffline: isOffline)
             }
-            // Offline there is nothing to read the next page with.
-            if shown.list.hasMore, !isOffline {
-                if let failure = store.moreFailure(kind, on: host) {
-                    GitHubShowMoreFailureRow(failure: failure) { Task { await store.showMore(kind) } }
-                } else {
-                    GitHubShowMoreRow(
-                        shown: shown.list.items.count, total: shown.list.totalCount,
-                        isReading: store.state(of: host).readingMore.contains(kind)
-                    ) { Task { await store.showMore(kind) } }
+        } else {
+            Section {
+                itemRows(shown, context: context, host: host, isOffline: isOffline)
+            } footer: {
+                HStack(spacing: 6) {
+                    // A read on its way over the list read earlier.
+                    if shown.isReading {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .accessibilityLabel(Text("Refreshing"))
+                    }
+                    Text(GitHubReadTime(shown.readAt).footer(host: host.name))
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
             }
-        } footer: {
-            HStack(spacing: 6) {
-                // A read on its way over the list read earlier.
-                if shown.isReading {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .accessibilityLabel(Text("Refreshing"))
-                }
-                Text(GitHubReadTime(shown.readAt).footer(host: host.name))
-                    .multilineTextAlignment(.center)
+        }
+    }
+
+    @ViewBuilder
+    private func itemRows(
+        _ shown: GitHubStore.Shown, context: GitHubRowContext, host: GitHubHost, isOffline: Bool
+    ) -> some View {
+        ForEach(shown.list.items) { item in
+            row(item, context: context, host: host, isOffline: isOffline)
+        }
+        // Offline there is nothing to read the next page with.
+        if shown.list.hasMore, !isOffline {
+            if let failure = store.moreFailure(kind, on: host) {
+                GitHubShowMoreFailureRow(failure: failure) { Task { await store.showMore(kind) } }
+            } else {
+                GitHubShowMoreRow(
+                    shown: shown.list.items.count, total: shown.list.totalCount,
+                    isReading: store.state(of: host).readingMore.contains(kind)
+                ) { Task { await store.showMore(kind) } }
             }
-            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var placeholderRows: some View {
+        ForEach(0..<4, id: \.self) { _ in
+            GitHubItemRow.placeholder
         }
     }
 
@@ -645,9 +709,10 @@ private struct GitHubSetupView: View {
 
 // MARK: - The Host's status
 
-/// What stopped the selected Host's last read. The title bar shows it, not
-/// the list: a glyph on the Host button and, on iOS 26, a subtitle under
-/// the title such as "Offline · Read yesterday at 18:40" (ADR 0065).
+/// What stopped the selected Host's last read, or a detail's. The title bar
+/// shows it, not the list: a glyph on the Host button and, on iOS 26, the
+/// line under the title, such as "Offline · Read yesterday at 18:40"
+/// (ADR 0065).
 struct GitHubHostStatus: Equatable {
     enum Kind: Equatable {
         case offline
@@ -657,13 +722,14 @@ struct GitHubHostStatus: Equatable {
     }
 
     let kind: Kind
-    /// When the list on screen was read; nil when none was, and a screen
-    /// of its own says what stopped the read.
-    let readAt: Date?
+
+    init(kind: Kind) {
+        self.kind = kind
+    }
 
     /// gh missing or signed out takes the list's place, and a Host that
     /// cannot run gh is not offered, so neither has a status.
-    init?(failure: GitHubReadFailure?, isConnected: Bool, readAt: Date?) {
+    init?(failure: GitHubReadFailure?, isConnected: Bool) {
         if !isConnected || failure == .offline {
             kind = .offline
         } else {
@@ -674,7 +740,6 @@ struct GitHubHostStatus: Equatable {
             case .notInstalled, .notSignedIn, .unsupported, .offline, nil: return nil
             }
         }
-        self.readAt = readAt
     }
 
     var symbol: String {
@@ -698,18 +763,17 @@ struct GitHubHostStatus: Equatable {
         }
     }
 
-    /// Under the title, over a list read earlier: "Offline · Read yesterday
-    /// at 18:40", "Rate limited · Try again in 4m 12s", "Could not read
-    /// GitHub · Read at 14:05". Nil without a list.
-    func subtitle(now: Date) -> String? {
-        guard let readAt else { return nil }
-        let detail =
+    /// Under the title: "Offline · Read yesterday at 18:40", "Rate limited ·
+    /// Try again in 4m 12s", "Could not read GitHub · Read at 14:05", after
+    /// when what shows was read. The status alone when nothing read shows.
+    func subtitle(readAt: Date?, now: Date) -> String {
+        let detail: String? =
             if case .rateLimited(let retryAt?) = kind {
                 Self.retry(at: retryAt, now: now)
             } else {
-                GitHubReadTime(readAt, now: now).read
+                readAt.map { GitHubReadTime($0, now: now).read }
             }
-        return [title, detail].joined(separator: " · ")
+        return [title, detail].compactMap(\.self).joined(separator: " · ")
     }
 
     /// "Try again in 4m 12s", counting down; "Pull to try again" once the
@@ -725,16 +789,52 @@ struct GitHubHostStatus: Equatable {
     }
 }
 
-/// The status under the title, where iOS 26 shows a navigation subtitle;
-/// before it, the Host button's glyph and its menu say it.
-private struct GitHubStatusSubtitle: ViewModifier {
-    let status: GitHubHostStatus?
+/// The line under a GitHub title: the list's and a detail's (ADR 0065).
+/// While either shows it is never empty, so the title bar keeps its height
+/// whatever comes and goes; only a screen that takes the list's place has
+/// none.
+enum GitHubSubtitle: Equatable {
+    /// A read with nothing to show yet, or one running over what shows.
+    case reading
+    /// What shows was read then, and nothing stopped the last read.
+    case read(Date)
+    /// What stopped the last read, and when what shows was read, if
+    /// anything read shows.
+    case status(GitHubHostStatus, readAt: Date?)
+
+    /// iOS 26 shows the line under the title, and an iPad sidebar under its
+    /// bar. Before it there is none: the list's footer, its placeholder
+    /// rows' heading and a detail's banner say it instead.
+    static var isShown: Bool {
+        if #available(iOS 26.0, *) { true } else { false }
+    }
+
+    /// "Reading…", "Read at 14:05", "Offline · Read yesterday at 18:40".
+    func text(now: Date) -> String {
+        switch self {
+        case .reading: String(localized: "Reading…")
+        case .read(let date): GitHubReadTime(date, now: now).read
+        case .status(let status, let readAt): status.subtitle(readAt: readAt, now: now)
+        }
+    }
+
+    /// When a rate limit ends, which the line counts down to.
+    var retryAt: Date? {
+        guard case .status(let status, _) = self, case .rateLimited(let retryAt?) = status.kind else { return nil }
+        return retryAt
+    }
+}
+
+/// Puts the line under the title where iOS 26 shows a navigation subtitle,
+/// and under an iPad sidebar's bar; before iOS 26 it does nothing.
+struct GitHubSubtitleLine: ViewModifier {
+    let subtitle: GitHubSubtitle?
     @State private var now = Date()
     @Environment(\.isSidebarColumn) private var isSidebarColumn
 
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            let text = status?.subtitle(now: now)
+            let text = subtitle?.text(now: now)
             // Each always set, empty when there is nothing to say: a
             // modifier added and removed would make the list a new view.
             content
@@ -759,10 +859,10 @@ private struct GitHubStatusSubtitle: ViewModifier {
                             .padding(.bottom, 6)
                     }
                 }
-                .task(id: status) {
+                .task(id: subtitle) {
                     now = Date()
                     // A rate limit counts down to when it ends.
-                    guard case .rateLimited(let retryAt?) = status?.kind else { return }
+                    guard let retryAt = subtitle?.retryAt else { return }
                     while !Task.isCancelled, now < retryAt {
                         try? await Task.sleep(for: .seconds(1))
                         now = Date()
@@ -828,7 +928,8 @@ private struct LargeTitleRemeasure: UIViewRepresentable {
 
 // MARK: - Banners
 
-/// What the banner over a pull request's or an issue's detail says.
+/// What the banner over a pull request's or an issue's detail says before
+/// iOS 26, where the line under its title says it instead.
 struct GitHubBannerText: Equatable {
     enum Kind: Equatable {
         case offline
@@ -941,8 +1042,8 @@ struct GitHubBanner: View {
 
 // MARK: - When a list was read
 
-/// When a list was read, as the footer, the title bar's status, a detail's
-/// banner and the Host menu say it.
+/// When a list or a detail was read, as the line under a title, the list's
+/// footer and a detail's banner before iOS 26, and the Host menu say it.
 struct GitHubReadTime {
     enum Day {
         case today
@@ -975,18 +1076,18 @@ struct GitHubReadTime {
         }
     }
 
-    /// "Read yesterday at 18:40", after the status under the title.
+    /// "Read yesterday at 18:40", under a title, alone or after a status.
     var read: String {
         switch day {
         case .today: String(localized: "Read at \(time)")
         case .yesterday:
             String(
                 localized: "Read yesterday at \(time)",
-                comment: "After a Host's status under the GitHub tab's title: when the list shown was read.")
+                comment: "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.")
         case .earlier(let date):
             String(
                 localized: "Read on \(date) at \(time)",
-                comment: "After a Host's status under the GitHub tab's title: when the list shown was read.")
+                comment: "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.")
         }
     }
 

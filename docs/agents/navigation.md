@@ -325,7 +325,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [GitHubGraphQL](../../Sources/Heeler/GitHub/GitHubGraphQL.swift). Saved lists:
   [FileGitHubListCache](../../Sources/Heeler/GitHub/GitHubListCache.swift).
   What stopped the selected Host's read is `GitHubHostStatus`, shown in the
-  title bar by `GitHubHostMenu` and `GitHubStatusSubtitle`, not in the list.
+  title bar by `GitHubHostMenu`, not in the list; the line under the list's
+  and a detail's title is `GitHubSubtitle`, put there by `GitHubSubtitleLine`.
   Settings' switch and each segment's filters:
   [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift), the switch
   through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
