@@ -27,15 +27,10 @@ struct RexSocket: Codable, Hashable, Sendable {
     var isWindowsPipe: Bool { Self.isWindowsPipeAddress(path) }
 
     /// The prefix Rex gives a named pipe's address.
-    static let windowsPipePrefix = "npipe:////./pipe/"
+    static var windowsPipePrefix: String { RexProbe.windowsPipePrefix }
 
-    /// Only the name Rex gives a personal server's pipe, `rex-` and the
-    /// account's SID, so the address goes on a command line unquoted.
     static func isWindowsPipeAddress(_ path: String) -> Bool {
-        guard path.hasPrefix(windowsPipePrefix) else { return false }
-        let name = path.dropFirst(windowsPipePrefix.count)
-        guard name.hasPrefix("rex-"), name.count > 4, name.count <= 200 else { return false }
-        return name.dropFirst(4).allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        RexProbe.isWindowsPipeAddress(path)
     }
 
     private enum CodingKeys: String, CodingKey {

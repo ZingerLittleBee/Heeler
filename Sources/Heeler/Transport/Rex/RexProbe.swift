@@ -116,11 +116,23 @@ enum RexProbe {
         $rexSid = $null
         try { $rexSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { $rexSid = $null }
         if ($rexSid -match '^S-[0-9-]+$' -and (Test-Path -LiteralPath ('\\\\.\\pipe\\rex-' + $rexSid))) {
-            say ('socket 1 1 \(RexSocket.windowsPipePrefix)rex-' + $rexSid)
+            say ('socket 1 1 \(windowsPipePrefix)rex-' + $rexSid)
         }
         say ''
         say \(PowerShellCommand.literal(endMarker(nonce)))
         """
+    }
+
+    /// The prefix Rex gives a named pipe's address.
+    static let windowsPipePrefix = "npipe:////./pipe/"
+
+    /// Only the name Rex gives a personal server's pipe, `rex-` and the
+    /// account's SID, so the address goes on a command line unquoted.
+    static func isWindowsPipeAddress(_ path: String) -> Bool {
+        guard path.hasPrefix(windowsPipePrefix) else { return false }
+        let name = path.dropFirst(windowsPipePrefix.count)
+        guard name.hasPrefix("rex-"), name.count > 4, name.count <= 200 else { return false }
+        return name.dropFirst(4).allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
     }
 
     /// Reads only what lies between the last pair of markers. A path is taken
@@ -143,7 +155,7 @@ enum RexProbe {
                     separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 guard fields.count == 3, let own = flag(fields[0]), let usable = flag(fields[1]) else { continue }
                 let path = String(fields[2])
-                guard path.hasPrefix("/") || RexSocket.isWindowsPipeAddress(path),
+                guard path.hasPrefix("/") || isWindowsPipeAddress(path),
                     !report.sockets.contains(where: { $0.path == path }) else { continue }
                 report.sockets.append(Socket(path: path, isOwn: own, isUsable: usable))
             }
