@@ -326,7 +326,13 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [FileGitHubListCache](../../Sources/Heeler/GitHub/GitHubListCache.swift).
   What stopped the selected Host's read is `GitHubHostStatus`, shown in the
   title bar by `GitHubHostMenu`, not in the list; the line under the list's
-  and a detail's title is `GitHubSubtitle`, put there by `GitHubSubtitleLine`.
+  and a detail's title is `GitHubSubtitle`. The list's title, its segment
+  menu and that line are the list's first row, `GitHubListHeader` (over a
+  screen in the list's place too); `GitHubListTitle` keeps the bar inline
+  and shows the bar's title, menu and subtitle (`GitHubSubtitleLine`) only
+  once the header has scrolled under it, crossfaded by `BarTitleFade`.
+  Beside an iPad's detail, `GitHubKindPicker` and `GitHubSubtitleLine`'s
+  line under the sidebar's bar stand in for the header.
   Settings' switch and each segment's filters:
   [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift), the switch
   through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
