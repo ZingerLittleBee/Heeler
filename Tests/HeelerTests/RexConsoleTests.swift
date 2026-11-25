@@ -637,7 +637,13 @@ struct RexConsoleTests {
         let rex = rex
         console.setHosts([rex])
         await console.resume()
-        try await waitUntil("the Agent with its status") { console.agents.first?.agent.status == .working }
+        // The Agent's status publishes before the other terminals' reads
+        // answer (ADR 0054), and the inventory they bring lets its pooled
+        // connection go like any other: wait for those reads too, so it cannot
+        // land between the selections below and their count.
+        try await waitUntil("the Agent with its status, and every terminal's details") {
+            console.agents.first?.agent.status == .working && console.panesAwaitingForeground.isEmpty
+        }
         let agentRow = try #require(console.terminals.first { $0.isAgent })
         let soloPane = RexPaneAddress(sessionID: "session:studio", blockID: "block:solo").paneID
         let soloRow = try #require(console.terminals.first { $0.paneID == soloPane })
