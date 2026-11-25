@@ -1199,6 +1199,33 @@ struct TerminalAttachTests {
         #expect(inset.isConfirmingDismissal)
     }
 
+    /// Back from the Notification Center, an iPhone kept a frame covering the
+    /// bottom of the window with no keyboard on screen and nothing after it.
+    /// The scene's activation settles the inset against the window.
+    @MainActor
+    @Test func activationDismissesAHeightTheWindowShowsNoKeyboardFor() async throws {
+        let center = NotificationCenter()
+        let clock = ManualClock()
+        let phone = CGRect(x: 0, y: 0, width: 402, height: 874)
+        let inset = Self.makeInset(
+            center: center, clock: clock,
+            measure: {
+                TerminalKeyboardInset.insetHeight(
+                    covered: phone.intersection($0).height, bottomSafeArea: 34)
+            },
+            measureWindowKeyboard: { 0 })
+
+        try await Self.present(
+            CGRect(x: 0, y: 781, width: 402, height: 328), on: center, clock: clock)
+        try #require(await Self.eventually { inset.height == 59 })
+        #expect(inset.keyboardRideTarget > 0)
+
+        center.post(name: UIScene.didActivateNotification, object: nil)
+        #expect(inset.height == 0)
+        #expect(inset.keyboardRideTarget == 0)
+        #expect(inset.isConfirmingDismissal)
+    }
+
     /// Focusing the Composer with a hardware keyboard attached, as the iPad
     /// simulator publishes it: a zero-height frame at the bottom edge, then
     /// will-hide, confirmed.
