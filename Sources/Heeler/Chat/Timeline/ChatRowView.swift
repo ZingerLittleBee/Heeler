@@ -135,6 +135,7 @@ private struct ChatRowAccessibility: ViewModifier {
                 .accessibilityAction(named: "Copy") { actions.copy(text) }
                 .accessibilityAction(named: "Select Text") { actions.selectText(text) }
                 .accessibilityActions { imageActions }
+                .environment(\.chatMarkdownReadsAsOne, true)
         } else {
             content
                 .accessibilityElement(children: .contain)

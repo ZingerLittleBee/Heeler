@@ -198,6 +198,10 @@ struct ChatHostLinkOpener {
 extension EnvironmentValues {
     @Entry var chatImageOpener: ChatImageOpener? = nil
     @Entry var chatHostLinkOpener: ChatHostLinkOpener? = nil
+    /// Whether VoiceOver reads the Markdown within one element, as a Chat
+    /// message (`accessibilityElement(children: .combine)`). That element
+    /// leaves out what a scroll view holds.
+    @Entry var chatMarkdownReadsAsOne = false
 }
 
 extension View {
@@ -353,16 +357,31 @@ struct ChatMarkdownTableView: View {
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
     @Environment(\.chatImageOpener) private var imageOpener
+    @Environment(\.chatMarkdownReadsAsOne) private var readsAsOne
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             grid
-            ScrollView(.horizontal) { grid }
+            scrollingGrid
         }
         .clipShape(.rect(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+        }
+    }
+
+    /// The grid, scrolling sideways. VoiceOver moves through its cells and
+    /// scrolls to each, but an element read as one, as a Chat message is,
+    /// leaves out a scroll view's content: there the grid stands in for the
+    /// scroll view, so its cells are read with the message, row by row.
+    @ViewBuilder
+    private var scrollingGrid: some View {
+        if readsAsOne {
+            ScrollView(.horizontal) { grid }
+                .accessibilityRepresentation { grid }
+        } else {
+            ScrollView(.horizontal) { grid }
         }
     }
 
