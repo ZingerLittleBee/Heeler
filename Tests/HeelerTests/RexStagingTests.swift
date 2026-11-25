@@ -157,8 +157,9 @@ struct RexStagingTests {
     // MARK: What a Rex Host offers
 
     /// Uploads open with Chat, once the server has named Linux or macOS, and
-    /// so do the detail's attachments on Chat and the terminal; the rest of a
-    /// Rex Host's menus stay as they were.
+    /// so do the detail's attachments on Chat and the terminal; a server that
+    /// names Windows opens Chat without them. The rest of a Rex Host's menus
+    /// stay as they were.
     @Test(arguments: [
         (nil, false), (HerdrCoreLocator.linuxKernel, true), (HerdrCoreLocator.macOSKernel, true),
         (HerdrCoreLocator.windowsKernel, false),
@@ -166,7 +167,7 @@ struct RexStagingTests {
     func uploadsOpenWhereChatDoes(kernel: String?, opens: Bool) {
         let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel)
         #expect(capabilities.uploads == opens)
-        #expect(capabilities.uploads == capabilities.chat)
+        #expect(capabilities.chat == (opens || kernel == HerdrCoreLocator.windowsKernel))
         #expect(capabilities.composerSend)
         let offers = AgentDetailMenuOffers(
             capabilities: capabilities, workspaceID: "session:studio", removesSavedChat: false)

@@ -26,15 +26,19 @@ struct RexConsoleTests {
     /// one it names (ADR 0049's update of 2026-11-25), in a POSIX or a
     /// Windows directory, and starts no Agent, closes and renames nothing
     /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
-    /// 0056). Its Agents offer
-    /// Composer Send and Stop, and Chat for Claude Code and Codex and uploads
-    /// once the server has named a Linux or macOS kernel, whatever a
+    /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
+    /// Codex, Pi and Oh My Pi and uploads once the server has named a Linux
+    /// or macOS kernel, and Chat for Claude Code alone once it has named
+    /// Windows, whatever a
     /// platform probe would say, since none runs. A terminal shows in one
     /// window at a time, so a row offers no window of its own and the windows
     /// take turns, as with a Herdr TUI Host's channel.
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
-        let opensChat = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        let programs: Set<ChatProgram> =
+            isPOSIX ? [.claude, .codex, .pi, .omp] : kernel == HerdrCoreLocator.windowsKernel ? [.claude] : []
+        let opensChat = !programs.isEmpty
         for isLocatingCore in [false, true] {
             let offers = HostCapabilities(
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore)
@@ -51,7 +55,7 @@ struct RexConsoleTests {
             #expect(!offers.renamesWorkspaces)
             #expect(offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
-            #expect(offers.uploads == opensChat)
+            #expect(offers.uploads == isPOSIX)
             #expect(!offers.tabNames)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
@@ -63,10 +67,9 @@ struct RexConsoleTests {
             #expect(offers.composerSend)
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
-            #expect(offers.chatPrograms == (opensChat ? [.claude, .codex, .pi, .omp] : []))
+            #expect(offers.chatPrograms == programs)
             for program in ChatProgram.allCases {
-                #expect(
-                    offers.offersChat(for: program) == (opensChat && [.claude, .codex, .pi, .omp].contains(program)))
+                #expect(offers.offersChat(for: program) == programs.contains(program))
             }
             #expect(offers.terminalsShowInOneWindow)
             #expect(
@@ -760,6 +763,34 @@ struct RexConsoleTests {
         #expect(await host.log == logged)
         #expect(!logged.contains("probe"))
         #expect(!logged.contains("windows"))
+    }
+
+    /// A Rex Host reached by a Windows named pipe offers Chat once its server
+    /// has named Windows, for Claude Code alone, read as a native Windows
+    /// core's Chat reads it; a Codex there opens on its terminal, and nothing
+    /// is staged on the Host (ADR 0056).
+    @Test(arguments: [("claude.exe", ChatProgram?.some(.claude)), ("codex.exe", nil)])
+    func aWindowsRexHostOffersChatForClaudeCodeAlone(program: String, chat: ChatProgram?) async throws {
+        var studio = FakeRexWorld.studio()
+        var block = FakeRexWorld.Block.running("block:left", program: program)
+        block.directory = "D:\\work\\app"
+        block.processID = 7240
+        studio.windows[0].layers[0].blocks[2] = block
+        let console = store(servers: await served(FakeRexWorld(sessions: [studio], platform: "windows_x86_64")))
+        defer { console.setHosts([]) }
+        let windows = Host(
+            name: "Rex", address: "pc.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "npipe:////./pipe/rex-S-1-5-21-1001"))
+        console.setHosts([windows])
+        await console.resume()
+        try await waitUntil("the Agent, with Chat") {
+            !console.agents.isEmpty && console.capabilities(for: windows.id).chat
+        }
+        let agent = try #require(console.agents.first)
+
+        #expect(console.capabilities(for: windows.id).chatPrograms == [.claude])
+        #expect(!console.capabilities(for: windows.id).uploads)
+        #expect(console.chatProgram(for: agent) == chat)
     }
 
     /// Stop and the Blocked card follow the Agent Status (ADR 0056). A Rex

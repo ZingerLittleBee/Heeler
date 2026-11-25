@@ -84,7 +84,8 @@ extension HostProcessReader {
     private static let windowsHomeVariable = "USERPROFILE"
     private static let windowsBeginPlaceholder = "__HEELER_PROC_BEGIN_MARKER__"
 
-    private static func windowsProgramName(_ image: String) -> String {
+    /// An image's name as a Windows read gives it: lower case, without `.exe`.
+    static func windowsProgramName(_ image: String) -> String {
         let name = image.lowercased()
         return name.hasSuffix(".exe") ? String(name.dropLast(".exe".count)) : name
     }

@@ -481,6 +481,40 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
   unnamed is still the one Rex named and binds; one the walk answered
   without is gone.
 
+### Processes on Rex 0.1.0-preview.23, macOS and Windows
+
+From reads on 2026-11-25 against Rex 0.1.0-preview.23 (API revision 19,
+supporting 0 to 19), on macOS 27.2 with `ps -E`, and on Windows 11 with
+Win32-OpenSSH, through `HostProcessReader`'s PowerShell read, three real
+Claude Code 2.1.332 Agents running in Rex terminals there.
+
+- **No `REX_SESSION`.** Every program in a terminal inherits `REX_BLOCK`,
+  `REX_SERVER`, `REX_BIN_DIR` and `REX_AUTOSTART`, and none carries
+  `REX_SESSION`, on macOS and Windows alike. A block id names one block on
+  the server, so the binder places a process by `REX_BLOCK` and takes a
+  `REX_SESSION` only when one is set. Heeler's extension for Pi and Oh My
+  Pi still waits for both variables, so on this release it keeps no file in
+  a Rex terminal.
+- **The Windows foreground.** `process` names the image, such as
+  `claude.exe`, with `argv0` either the bare word typed (`claude`) or the
+  whole path (`C:\Users\<name>\.local\bin\claude.exe`), the working
+  directory as a drive path, and `home` as `C:\Users\<name>`. A Claude Code
+  started from a PowerShell has the PowerShell as `child` and itself as
+  `foreground`; one started as the block's program is both. The Windows
+  process read names the same process `claude`, in lower case without
+  `.exe`, so Heeler takes each name Rex gave in that form there.
+- **The registry on Windows.** Claude Code 2.1.332 wrote the process's
+  creation FILETIME as decimal digits in `procStart`, as earlier releases
+  did under herdr-core (herdr-compatibility.md), and it matched the Windows
+  read's start. The Transcript was under
+  `/C:/Users/<name>/.claude/projects/D--work-lms-phoenix/` over SFTP.
+- **Size of the Windows read.** With Rex's two variables, `TMUX`,
+  `TMUX_PANE`, `HC_SCOPE`, `HOME`, `CLAUDE_CONFIG_DIR` and Claude Code's two
+  names, the encoded PowerShell command was 8,131 bytes against `cmd.exe`'s
+  8,191. Native Windows runs no tmux, so the read there does not ask for
+  `TMUX` or `TMUX_PANE`: 8,083 bytes for a four-digit pid, 8,115 for a
+  ten-digit one.
+
 ### Pi and Oh My Pi in a Rex terminal
 
 Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18, from the iOS

@@ -419,8 +419,13 @@ actor HeelerSSHTransport: Transport {
     /// The Host's herdr endpoint launcher (ADR 0023); nil runs the `herdr` on
     /// the SSH PATH.
     private let herdrLauncher: HerdrLauncher?
-    /// A herdr-core Host's connection, whose Chat also reads on native Windows.
+    /// A herdr-core or Rex Host's connection, whose Chat also reads on native
+    /// Windows.
     private let readsChatFilesOnWindows: Bool
+    /// A Rex Host's connection, whose Chat reads a native Windows Host's
+    /// processes and home here, as a core's transport reads them for its own
+    /// Chat (ADR 0056).
+    private let servesRexHost: Bool
     nonisolated let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
@@ -748,6 +753,7 @@ actor HeelerSSHTransport: Transport {
             SSHTransportSettings.defaultNotificationConfigDirCommand
         herdrLauncher = nil
         readsChatFilesOnWindows = false
+        servesRexHost = false
         sftpRefusal = HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
@@ -770,7 +776,8 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
-        readsChatFilesOnWindows = settings.serverKind == .herdrCore
+        readsChatFilesOnWindows = settings.serverKind == .herdrCore || settings.serverKind == .rex
+        servesRexHost = settings.serverKind == .rex
         sftpRefusal = settings.sftpRefusal ?? HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
@@ -1171,9 +1178,12 @@ actor HeelerSSHTransport: Transport {
     }
 
     func hostHomeDirectory() async throws -> String {
-        let home = try await hostFileEnvironment().home
+        let environment = try await hostFileEnvironment()
+        // A Rex Host's Chat reads a native Windows home over SFTP, in the form
+        // that opens there, as a core's Chat does.
+        if servesRexHost, environment.isWindows { return RemoteFilePath.windowsForSFTP(environment.home) }
         try await requirePOSIXHost(feature: String(localized: "Chat"))
-        return home
+        return environment.home
     }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
@@ -4426,8 +4436,21 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        let platform = try await hostPlatform()
+        // A Rex Host's Chat reads a native Windows Host's processes as a core's
+        // does: one PowerShell exec, with no argv or open files (ADR 0034).
+        if servesRexHost, platform == .nativeWindows {
+            let nonce = HostProcessReader.makeNonce()
+            let command = try HostProcessReader.windowsCommand(request, nonce: nonce)
+            let bound = WindowsHostExec.processRead.bound
+            let result = try await withRequestDeadline(timeout: bound) {
+                try await self.runExec(command, timeout: bound, priority: .interactive)
+            }
+            guard result.exitStatus == 0 else { return [:] }
+            return (try? HostProcessReader.parseWindows(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
+        }
         // Windows' existing reader does not expose argv. Unknown stays hidden.
-        guard try await hostPlatform() == .posix else { return [:] }
+        guard platform == .posix else { return [:] }
         let nonce = HostProcessReader.makeNonce()
         let result = try await runBoundedScript(
             HostProcessReader.script(request, nonce: nonce), feature: String(localized: "Agent permission modes"),
