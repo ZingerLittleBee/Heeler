@@ -4493,6 +4493,31 @@ extension HeelerSSHTransport: RexHostConnection {
         }
     }
 
+    /// A native Windows server's control link: an exec of Rex's stdio bridge
+    /// (`RexWindowsDial`) under the events slot, as herdr-core's `connect` is.
+    func openRexControlExec(command: String) async throws -> any HeelerSSHAPIChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        return try await channelAdmission.admitCoreLink {
+            BootstrappedExecChannel(
+                channel: try await self.openCoreExec(command: command),
+                startupFailure: String(localized: "The command that reaches Rex did not start."))
+        }
+    }
+
+    /// A native Windows server's data link, the same exec under an attach slot.
+    func openRexDataExec(command: String) async throws -> any HeelerSSHAPIChannel {
+        guard connected else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The SSH connection is closed."))
+        }
+        return try await channelAdmission.admitAttachLink {
+            BootstrappedExecChannel(
+                channel: try await self.openCoreExec(command: command),
+                startupFailure: String(localized: "The command that reaches Rex did not start."))
+        }
+    }
+
     /// One bounded exec that tests a file and lists sockets.
     func runRexSocketCheck(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(

@@ -1,7 +1,7 @@
 import Foundation
 
-/// The read that finds a Rex server on a macOS or Linux Host by its socket
-/// (ADR 0049). Pure: it builds a script for one bounded exec and reads what
+/// The read that finds a Rex server on a macOS or Linux Host by its socket,
+/// and on a native Windows Host by its named pipe (ADR 0049). Pure: it builds a script for one bounded exec and reads what
 /// the script prints.
 ///
 /// It never runs `rex`: the command-line tool is often missing from the PATH
@@ -102,6 +102,27 @@ enum RexProbe {
         """
     }
 
+    /// The Windows read, for PowerShell after `HerdrCoreLocator.windowsPrelude`.
+    /// Rex names a personal server's pipe `rex-` and the account's SID; the
+    /// read tests that the pipe is there and that `rex.exe` is on the exec's
+    /// PATH, which is how a channel reaches it (`RexWindowsDial`). It never
+    /// runs `rex`. Everything from outside is a single-quoted literal.
+    static func windowsBody(nonce: String) -> String {
+        """
+        say ''
+        say \(PowerShellCommand.literal(beginMarker(nonce)))
+        say 'kernel \(HerdrCoreLocator.windowsKernel)'
+        if (Get-Command rex.exe -CommandType Application -ErrorAction SilentlyContinue) { say 'installed' }
+        $rexSid = $null
+        try { $rexSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { $rexSid = $null }
+        if ($rexSid -match '^S-[0-9-]+$' -and (Test-Path -LiteralPath ('\\\\.\\pipe\\rex-' + $rexSid))) {
+            say ('socket 1 1 \(RexSocket.windowsPipePrefix)rex-' + $rexSid)
+        }
+        say ''
+        say \(PowerShellCommand.literal(endMarker(nonce)))
+        """
+    }
+
     /// Reads only what lies between the last pair of markers. A path is taken
     /// once, where the script first found it.
     static func parse(stdout: Data, nonce: String) throws -> Report {
@@ -122,7 +143,8 @@ enum RexProbe {
                     separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
                 guard fields.count == 3, let own = flag(fields[0]), let usable = flag(fields[1]) else { continue }
                 let path = String(fields[2])
-                guard path.hasPrefix("/"), !report.sockets.contains(where: { $0.path == path }) else { continue }
+                guard path.hasPrefix("/") || RexSocket.isWindowsPipeAddress(path),
+                    !report.sockets.contains(where: { $0.path == path }) else { continue }
                 report.sockets.append(Socket(path: path, isOwn: own, isUsable: usable))
             }
         }
