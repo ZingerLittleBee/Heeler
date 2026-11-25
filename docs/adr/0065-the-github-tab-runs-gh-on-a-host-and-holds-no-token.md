@@ -387,9 +387,15 @@ Close.
   list: `brew install gh` on macOS and GitHub's instructions on Linux, or
   `gh auth login` with Open Terminal on the Host where it can start Terminals,
   each with Check Again. A Host that fails reads otherwise shows the last list
-  it gave, dimmed when the Host is offline, with a banner saying why. Without
-  one, the tab says why in its place: offline, rate limited (with when to try
-  again), or gh's own message.
+  it gave, dimmed when the Host is offline, and the title bar says why, never
+  a line among the rows: the Host button carries a glyph on amber (offline,
+  rate limited, or a failed read), and on iOS 26 a subtitle under the title
+  says it with when the list was read, or when to try again; an iPad sidebar,
+  whose bar shows its title menu instead of a title, has that line just under
+  the bar. After a failed read the Host menu holds gh's own words and Check
+  Again. Before iOS 26 the button shows with one Host too while it has a
+  status. Without a list, the tab says why in its place: offline, rate limited
+  (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and
   read their own.
 - The choice in the menu and the saved list are kept under the Host's first

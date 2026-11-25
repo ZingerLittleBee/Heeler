@@ -64,12 +64,13 @@ struct GitHubListScreen: View {
             }
         }
         .toolbar {
-            if store.hosts.count > 1 {
+            if showsHostMenu {
                 ToolbarItem(placement: .topBarTrailing) {
-                    GitHubHostMenu(store: store)
+                    GitHubHostMenu(store: store, status: status)
                 }
             }
         }
+        .modifier(GitHubStatusSubtitle(status: status))
         // Again when the Host connects: a list read while it was offline
         // is read as soon as it can be.
         .task(id: ReadTrigger(host: store.selectedHost?.id, isConnected: store.selectedHost.map(store.isConnected))) {
@@ -80,6 +81,20 @@ struct GitHubListScreen: View {
     private struct ReadTrigger: Equatable {
         let host: Host.ID?
         let isConnected: Bool?
+    }
+
+    /// What stopped the selected Host's last read, which the title bar
+    /// shows rather than the list.
+    private var status: GitHubHostStatus? {
+        store.selectedHost.flatMap { GitHubHostStatus(of: $0, in: store) }
+    }
+
+    /// With more than one Host to pick; with one, before iOS 26, while it
+    /// has a status, which no subtitle can show there.
+    private var showsHostMenu: Bool {
+        if store.hosts.count > 1 { return true }
+        if #available(iOS 26.0, *) { return false }
+        return status != nil
     }
 
     @ViewBuilder
@@ -161,9 +176,6 @@ struct GitHubListScreen: View {
         isOffline: Bool
     ) -> some View {
         Section {
-            if let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list) {
-                GitHubBanner(text: banner)
-            }
         } header: {
             GitHubKindPicker(kind: $kind)
         }
@@ -418,9 +430,141 @@ private struct GitHubSetupView: View {
     }
 }
 
+// MARK: - The Host's status
+
+/// What stopped the selected Host's last read. The title bar shows it, not
+/// the list: a glyph on the Host button and, on iOS 26, a subtitle under
+/// the title such as "Offline · Read yesterday at 18:40" (ADR 0065).
+struct GitHubHostStatus: Equatable {
+    enum Kind: Equatable {
+        case offline
+        case rateLimited(retryAt: Date?)
+        /// gh's words, or Heeler's for a read that stopped some other way.
+        case failed(GitHubReadFailure)
+    }
+
+    let kind: Kind
+    /// When the list on screen was read; nil when none was, and a screen
+    /// of its own says what stopped the read.
+    let readAt: Date?
+
+    /// gh missing or signed out takes the list's place, and a Host that
+    /// cannot run gh is not offered, so neither has a status.
+    init?(failure: GitHubReadFailure?, isConnected: Bool, readAt: Date?) {
+        if !isConnected || failure == .offline {
+            kind = .offline
+        } else {
+            switch failure {
+            case .rateLimited(let retryAt): kind = .rateLimited(retryAt: retryAt)
+            case .timedOut: kind = .failed(.timedOut)
+            case .failed(let words): kind = .failed(.failed(words))
+            case .notInstalled, .notSignedIn, .unsupported, .offline, nil: return nil
+            }
+        }
+        self.readAt = readAt
+    }
+
+    @MainActor
+    init?(of host: GitHubHost, in store: GitHubStore) {
+        let state = store.state(of: host)
+        self.init(failure: state.failure, isConnected: store.isConnected(host), readAt: state.list?.readAt)
+    }
+
+    var symbol: String {
+        switch kind {
+        case .offline: "wifi.slash"
+        case .rateLimited: "hourglass"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    /// "Offline": the subtitle's first part, and how VoiceOver reads the
+    /// Host button's state.
+    var title: String {
+        switch kind {
+        case .offline: String(localized: "Offline")
+        case .rateLimited:
+            String(
+                localized: "Rate limited",
+                comment: "A Host's status in the GitHub tab: GitHub's rate limit stopped its read.")
+        case .failed: String(localized: "Could not read GitHub")
+        }
+    }
+
+    /// Under the title, over a list read earlier: "Offline · Read yesterday
+    /// at 18:40", "Rate limited · Try again in 4m 12s", "Could not read
+    /// GitHub · Read at 14:05". Nil without a list.
+    func subtitle(now: Date) -> String? {
+        guard let readAt else { return nil }
+        let detail =
+            if case .rateLimited(let retryAt?) = kind {
+                Self.retry(at: retryAt, now: now)
+            } else {
+                GitHubReadTime(readAt, now: now).read
+            }
+        return [title, detail].joined(separator: " · ")
+    }
+
+    /// "Try again in 4m 12s", counting down; "Pull to try again" once the
+    /// limit has ended.
+    static func retry(at date: Date, now: Date) -> String {
+        guard let wait = GitHubBanner.wait(until: date, now: now) else {
+            return String(
+                localized: "Pull to try again", comment: "After \"Rate limited · \" under the GitHub tab's title.")
+        }
+        return String(
+            localized: "Try again in \(wait)",
+            comment: "After \"Rate limited · \" under the GitHub tab's title. The wait counts down: 4m 12s.")
+    }
+}
+
+/// The status under the title, where iOS 26 shows a navigation subtitle;
+/// before it, the Host button's glyph and its menu say it.
+private struct GitHubStatusSubtitle: ViewModifier {
+    let status: GitHubHostStatus?
+    @State private var now = Date()
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            let text = status?.subtitle(now: now)
+            // Each always set, empty when there is nothing to say: a
+            // modifier added and removed would make the list a new view.
+            content
+                .navigationSubtitle(isSidebarColumn ? "" : text ?? "")
+                // An iPad sidebar's bar shows its own title menu in place
+                // of the title, and no subtitle with it, so the line goes
+                // in the bar's area just under it.
+                .safeAreaBar(edge: .top, alignment: .leading) {
+                    if isSidebarColumn, let text {
+                        Text(text)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            // In line with the title menu's name.
+                            .padding(.leading, 22)
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 6)
+                    }
+                }
+                .task(id: status) {
+                    now = Date()
+                    // A rate limit counts down to when it ends.
+                    guard case .rateLimited(let retryAt?) = status?.kind else { return }
+                    while !Task.isCancelled, now < retryAt {
+                        try? await Task.sleep(for: .seconds(1))
+                        now = Date()
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Banners
 
-/// What a banner over a list read earlier says.
+/// What the banner over a pull request's or an issue's detail says.
 struct GitHubBannerText: Equatable {
     enum Kind: Equatable {
         case offline
@@ -436,18 +580,6 @@ struct GitHubBannerText: Equatable {
         self.kind = kind
         self.title = title
         self.message = message
-    }
-
-    /// Over a list read earlier. gh missing or signed out takes the list's
-    /// place instead.
-    init?(failure: GitHubReadFailure?, isOffline: Bool, host: GitHubHost, list: GitHubList) {
-        switch failure {
-        case .unsupported:
-            guard isOffline else { return nil }
-        default:
-            break
-        }
-        self.init(failure: failure, isOffline: isOffline, host: host, readAt: list.readAt)
     }
 
     /// Over a pull request's or an issue's detail: whatever stopped its read.
@@ -530,17 +662,23 @@ struct GitHubBanner: View {
     }
 
     static func retry(at date: Date, now: Date) -> String {
-        let seconds = Int(date.timeIntervalSince(now).rounded(.up))
-        guard seconds > 0 else { return String(localized: "Pull to try again.") }
-        let wait = Duration.seconds(seconds).formatted(
-            .units(allowed: [.hours, .minutes, .seconds], width: .narrow, maximumUnitCount: 2))
+        guard let wait = wait(until: date, now: now) else { return String(localized: "Pull to try again.") }
         return String(localized: "Try again in \(wait).")
+    }
+
+    /// "4m 12s" until a rate limit ends; nil once it has.
+    nonisolated static func wait(until date: Date, now: Date) -> String? {
+        let seconds = Int(date.timeIntervalSince(now).rounded(.up))
+        guard seconds > 0 else { return nil }
+        return Duration.seconds(seconds).formatted(
+            .units(allowed: [.hours, .minutes, .seconds], width: .narrow, maximumUnitCount: 2))
     }
 }
 
 // MARK: - When a list was read
 
-/// When a list was read, as the footer, banners and Host menu say it.
+/// When a list was read, as the footer, the title bar's status, a detail's
+/// banner and the Host menu say it.
 struct GitHubReadTime {
     enum Day {
         case today
@@ -573,6 +711,21 @@ struct GitHubReadTime {
         }
     }
 
+    /// "Read yesterday at 18:40", after the status under the title.
+    var read: String {
+        switch day {
+        case .today: String(localized: "Read at \(time)")
+        case .yesterday:
+            String(
+                localized: "Read yesterday at \(time)",
+                comment: "After a Host's status under the GitHub tab's title: when the list shown was read.")
+        case .earlier(let date):
+            String(
+                localized: "Read on \(date) at \(time)",
+                comment: "After a Host's status under the GitHub tab's title: when the list shown was read.")
+        }
+    }
+
     /// "Showing what was read at 14:05."
     var showing: String {
         switch day {
@@ -594,9 +747,17 @@ struct GitHubReadTime {
 
 // MARK: - Host menu
 
-/// The Host the tab reads, with what each Host's gh last said.
+/// The Host the tab reads, with what each Host's gh last said. While the
+/// selected Host has a status, the button carries its glyph on amber.
 private struct GitHubHostMenu: View {
     let store: GitHubStore
+    /// The selected Host's.
+    let status: GitHubHostStatus?
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
+
+    /// The widest the button's label fits in a 320-point sidebar's bar
+    /// beside its title menu.
+    private static let sidebarWidth: CGFloat = 143
 
     var body: some View {
         let selected = store.selectedHost
@@ -612,19 +773,56 @@ private struct GitHubHostMenu: View {
                     }
                 }
             }
+            // After a failed read, gh's words, which nothing else on
+            // screen shows: a section's title, which wraps where a Host's
+            // status line would be cut off, over Check Again as the
+            // full-screen failure offers it.
+            if case .failed(let failure) = status?.kind {
+                Section(GitHubBannerText.message(for: failure)) {
+                    Button("Check Again", systemImage: "arrow.clockwise") {
+                        Task { await store.checkAgain() }
+                    }
+                }
+            }
         } label: {
             HStack(spacing: 6) {
+                if let status {
+                    Image(systemName: status.symbol)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(GitHubInk.amber)
+                }
                 Text(selected?.name ?? "")
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 6)
+            // Beside a glyph the amber's margin stands in for most of the
+            // padding, so the button grows by less than the glyph.
+            .padding(.horizontal, status == nil ? 6 : 2)
+            // An iPad sidebar's bar moves a wider button into its overflow
+            // menu, so a long name, or one beside a status glyph, gives way.
+            .frame(maxWidth: isSidebarColumn ? Self.sidebarWidth : nil)
+            .background {
+                if status != nil {
+                    Capsule()
+                        .fill(Self.amberFill)
+                        .padding(.horizontal, -10)
+                        .padding(.vertical, -6)
+                }
+            }
         }
         .accessibilityLabel("GitHub Host")
-        .accessibilityValue(selected?.name ?? "")
+        .accessibilityValue([selected?.name, status?.title].compactMap(\.self).joined(separator: ", "))
     }
+
+    /// Behind the selected Host's name while it has a status: a pale amber
+    /// under dark text, a dim one under light text.
+    private static let amberFill = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 1, green: 214 / 255, blue: 10 / 255, alpha: 0.16)
+            : UIColor(red: 1, green: 241 / 255, blue: 194 / 255, alpha: 1)
+    })
 
     private func status(of host: GitHubHost) -> String? {
         let state = store.state(of: host)
@@ -642,7 +840,7 @@ private struct GitHubHostMenu: View {
         case .rateLimited:
             return String(
                 localized: "Rate limited",
-                comment: "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read.")
+                comment: "A Host's status in the GitHub tab: GitHub's rate limit stopped its read.")
         case .timedOut, .failed, .unsupported: return String(localized: "Could not read GitHub")
         default: return nil
         }

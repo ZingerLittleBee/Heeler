@@ -48952,6 +48952,29 @@
         }
       }
     },
+    "Pull to try again" : {
+      "comment" : "After \"Rate limited · \" under the GitHub tab's title.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引いて再試行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下拉以重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下拉可重試"
+          }
+        }
+      }
+    },
     "Pull to try again." : {
       "localizations" : {
         "ja" : {
@@ -49506,7 +49529,7 @@
       }
     },
     "Rate limited" : {
-      "comment" : "A Host's status in the GitHub tab's Host menu: GitHub's rate limit stopped its read.",
+      "comment" : "A Host's status in the GitHub tab: GitHub's rate limit stopped its read.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -49733,6 +49756,35 @@
         }
       }
     },
+    "Read on %@ at %@" : {
+      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Read on %1$@ at %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ に読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取于 %1$@ %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取於 %1$@ %2$@"
+          }
+        }
+      }
+    },
     "Read on %@ at %@ from %@" : {
       "localizations" : {
         "en" : {
@@ -49845,6 +49897,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "閱讀隱私詳細資料"
+          }
+        }
+      }
+    },
+    "Read yesterday at %@" : {
+      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "昨日 %@ に読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取于昨天 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取於昨天 %@"
           }
         }
       }
@@ -74987,6 +75062,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "嘗試 HTTPS"
+          }
+        }
+      }
+    },
+    "Try again in %@" : {
+      "comment" : "After \"Rate limited · \" under the GitHub tab's title. The wait counts down: 4m 12s.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@後に再試行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 %@后重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 %@後再試一次"
           }
         }
       }
