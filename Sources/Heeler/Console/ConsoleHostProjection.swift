@@ -85,8 +85,13 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func availableTemplates() async throws -> [AgentTemplate]
     @discardableResult func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent
     /// How the program at `paneID` ended, once it has for good and the Host still
-    /// knows it. Only a herdr-core Host keeps that.
+    /// knows it. A herdr-core Host keeps that; a tmux Host knows only that a
+    /// program New Agent just started ended before it showed running.
     func programExit(ofPane paneID: String) -> ProgramExit?
+    /// Whether the Agent listed at `paneID` is a launch whose shell has not yet
+    /// started its program, which New Agent waits through. Only a tmux Host
+    /// tells.
+    func isStartingProgram(ofPane paneID: String) -> Bool
     /// The names the Host's live Terminals hold, beyond those its Agents show.
     /// A herdr-core Host refuses to give any of them out again.
     var heldTerminalNames: Set<String> { get }
@@ -151,6 +156,11 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func withHostServices<Value: Sendable>(
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value
+
+    /// Runs one gh script on the Host for the GitHub tab, whichever Server
+    /// Kind runs (ADR 0065). A mutation is sent once: no layer runs it again
+    /// on a replacement connection.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult
 
     /// Borrows the connection for the plugin's Notification, Usage and sidebar
     /// files, which only a Herdr TUI Host has.
@@ -245,6 +255,12 @@ protocol CheckedChatTyping: AnyObject {
 extension ConsoleHostProjection {
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
 
+    /// For a Server Kind whose `withHostServices` never runs an operation
+    /// again on a new connection; one that does runs a mutation itself.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        try await withHostServices { try await $0.runGitHubScript(script, isMutation: isMutation) }
+    }
+
     var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }
 
     var inventoryCore: String? { nil }
@@ -277,6 +293,8 @@ extension ConsoleHostProjection {
     }
 
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }
+
+    func isStartingProgram(ofPane paneID: String) -> Bool { false }
 
     var heldTerminalNames: Set<String> { [] }
 

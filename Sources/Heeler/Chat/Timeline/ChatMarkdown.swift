@@ -17,7 +17,8 @@ struct ChatMarkdownBlock: Sendable, Equatable {
         /// The first block of a list item, drawn after its marker: a bullet
         /// that changes with depth, or the item's number, counting up from
         /// the list's first number as Markdown renderers do (`1.` `1.` `1.`
-        /// shows as 1, 2, 3).
+        /// shows as 1, 2, 3). A GFM task's box takes its bullet's place
+        /// (`openTask`, `doneTask`).
         case listItem(marker: String)
         /// A fenced or indented code block. The language is the first word
         /// of the fence's info string.
@@ -59,6 +60,11 @@ struct ChatMarkdownBlock: Sendable, Equatable {
             lhs.columns == rhs.columns && lhs.rows == rhs.rows
         }
     }
+
+    /// The markers of a bulleted item written `- [ ]` and `- [x]`, whose
+    /// box Foundation's parser leaves as text.
+    static let openTask = "☐"
+    static let doneTask = "☑"
 
     let table: Table?
     let kind: Kind
@@ -166,6 +172,16 @@ enum ChatMarkdown {
         var builder = BlockBuilder(
             parsed: parsed, lines: normalized.split(separator: "\n", omittingEmptySubsequences: false))
         return builder.build()
+    }
+
+    /// A bulleted item's marker, which changes with how many list items
+    /// contain it.
+    static func bullet(depth: Int) -> String {
+        switch depth {
+        case 1: "•"
+        case 2: "◦"
+        default: "▪"
+        }
     }
 
     private static func plainParagraph(_ source: String) -> ChatMarkdownBlock {
@@ -557,7 +573,12 @@ private struct BlockBuilder {
         case .thematicBreak?:
             return make(.thematicBreak, "")
         default:
-            let content = inlineContent(group.range)
+            var content = inlineContent(group.range)
+            var marker = marker
+            if let bullet = marker, let task = Self.taskMarker(starting: content, bullet: bullet) {
+                content.removeSubrange(..<content.characters.index(content.startIndex, offsetBy: 4))
+                marker = task
+            }
             let plain = String(content.characters)
             let kind: ChatMarkdownBlock.Kind
             let text: String
@@ -720,10 +741,21 @@ private struct BlockBuilder {
         if case .orderedList? = list?.kind, case .listItem(let ordinal) = item.kind {
             return "\(ordinal)."
         }
-        switch depth {
-        case 1: return "•"
-        case 2: return "◦"
-        default: return "▪"
+        return ChatMarkdown.bullet(depth: depth)
+    }
+
+    /// The task marker for a bulleted item whose text starts with a GFM
+    /// task box, `[ ]`, `[x]` or `[X]` and then a space or line break, and
+    /// is not code.
+    private static func taskMarker(starting content: AttributedString, bullet: String) -> String? {
+        guard (1...3).contains(where: { ChatMarkdown.bullet(depth: $0) == bullet }) else { return nil }
+        let start = content.characters.prefix(4)
+        guard start.count == 4, let space = start.last, space == " " || space == "\t" || space == "\n",
+            content.runs.first?.inlinePresentationIntent?.contains(.code) != true else { return nil }
+        switch String(start.prefix(3)) {
+        case "[ ]": return ChatMarkdownBlock.openTask
+        case "[x]", "[X]": return ChatMarkdownBlock.doneTask
+        default: return nil
         }
     }
 
@@ -872,7 +904,8 @@ extension ChatMarkdown {
                 for box in ["[ ] ", "[x] ", "[X] "] where item.hasPrefix(box) {
                     item = item.dropFirst(box.count)
                 }
-                return prefix + item
+                let isTask = marker == ChatMarkdownBlock.openTask || marker == ChatMarkdownBlock.doneTask
+                return (isTask ? bullet(depth: block.listDepth) + " " : prefix) + item
             default:
                 return block.text
             }

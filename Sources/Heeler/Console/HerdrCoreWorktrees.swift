@@ -47,10 +47,13 @@ enum HerdrCoreWorktrees {
         ["show-ref", "--verify", "--quiet", "refs/heads/\(branch)"]
     }
 
-    static func addArguments(path: String, branch: String, branchExists: Bool) -> [String] {
+    /// A branch that exists is checked out as it is; a new one starts at
+    /// `startPoint`, the source checkout's HEAD unless a launch names a
+    /// commit (a GitHub item's, ADR 0065).
+    static func addArguments(path: String, branch: String, branchExists: Bool, startPoint: String = "HEAD") -> [String] {
         branchExists
             ? ["worktree", "add", path, branch]
-            : ["worktree", "add", "-b", branch, path, "HEAD"]
+            : ["worktree", "add", "-b", branch, path, startPoint]
     }
 
     /// Never names the branch, which stays.
@@ -169,10 +172,14 @@ struct HerdrCoreWorktreeGit: Sendable {
     }
 
     /// One `git worktree add`, in the checkout it starts from so a new branch
-    /// begins at that checkout's HEAD.
-    func create(branch: String, from directory: String) async throws -> Created {
+    /// begins at that checkout's HEAD, or at `startPoint` when one is named.
+    func create(branch: String, from directory: String, startPoint: String? = nil) async throws -> Created {
         if let problem = GitBranchName.validationError(branch) {
             throw HerdrCoreWorktreeError.invalidBranch(problem)
+        }
+        // Never an option to git.
+        if let startPoint, startPoint.isEmpty || startPoint.hasPrefix("-") {
+            throw HerdrCoreWorktreeError.addRefused(String(localized: "\"\(startPoint)\" is not a commit to start from."))
         }
         let answers = try await gate.run { try await services.checkouts(for: [directory]) }
         guard let checkout = answers[directory], let mainCheckout = checkout.mainCheckout else {
@@ -195,7 +202,8 @@ struct HerdrCoreWorktreeGit: Sendable {
             result = try await run(
                 GitCommand(
                     arguments: HerdrCoreWorktrees.addArguments(
-                        path: path, branch: branch, branchExists: lookup.status == 0),
+                        path: path, branch: branch, branchExists: lookup.status == 0,
+                        startPoint: startPoint ?? "HEAD"),
                     directory: checkout.root, isMutation: true))
         } catch {
             throw HerdrCoreWorktreeError.addUnconfirmed(path: path)

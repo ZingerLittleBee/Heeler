@@ -29,7 +29,7 @@ struct OverlayNetworksSettingsView: View {
             if let loadError = store.catalogLoadError {
                 Section {
                     Label(loadError.message, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 }
             }
             if store.networks.isEmpty {
@@ -481,7 +481,7 @@ enum OverlayStatusTone: Equatable {
     var textColor: Color {
         switch self {
         case .attention: Self.attentionText
-        case .failed: .red
+        case .failed: .errorInk
         case .idle, .busy, .ok: .secondary
         }
     }

@@ -124,7 +124,7 @@ struct ComposerImageStrip: View {
             if let failureMessage = latestFailureMessage {
                 Label(failureMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
                     .lineLimit(2)
                     .accessibilityIdentifier("composer.image-strip.failure")
             }
@@ -332,7 +332,7 @@ private struct ComposerImagePill: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(verbatim: title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isFailed ? Color(uiColor: .systemRed) : .primary)
+                .foregroundStyle(isFailed ? Color.errorInk : .primary)
                 .lineLimit(1)
             Text(verbatim: attachment.subtitle)
                 .font(.system(size: 10.5))
@@ -392,7 +392,7 @@ private struct ComposerImagePill: View {
         case .uploading:
             Color.accentColor
         case .failed:
-            Color(uiColor: .systemRed).opacity(0.9)
+            Color.errorInk
         case .queued, .preparing, .ready:
             Color(uiColor: .secondaryLabel)
         }

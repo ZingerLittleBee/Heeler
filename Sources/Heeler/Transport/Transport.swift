@@ -469,6 +469,15 @@ struct ProgramExit: Sendable, Equatable {
     let code: Int?
 }
 
+/// A launch whose program ended before the launch finished: before Heeler
+/// finished setting up what it started (on tmux, the window closed with its
+/// program, and the session with it, before the session was marked), or
+/// before the program showed running. tmux keeps no exit code, so `exit` has
+/// none there.
+struct ProgramEndedAtLaunch: Error, Equatable {
+    let exit: ProgramExit
+}
+
 /// A Template launch on a herdr-core Host. Its name goes out as the core's
 /// `terminal.run` wants it, so it has no kind or arguments, and a nil `name` leaves
 /// the Terminal unnamed. `newWorkspace` is a browsed directory, in place of

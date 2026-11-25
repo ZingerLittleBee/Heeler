@@ -53,6 +53,10 @@ protocol RexTransport: Sendable {
     /// of it.
     nonisolated var extensionPlacing: any RexHostExtensionPlacing { get }
 
+    /// The gh runs of the GitHub tab, on this same SSH connection, and
+    /// nothing else of it (ADR 0065).
+    nonisolated var gitHub: any GitHubHostCLI { get }
+
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
@@ -140,7 +144,9 @@ protocol RexHostExtensionPlacing: Sendable {
 
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
-protocol RexHostConnection: ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing {
+protocol RexHostConnection:
+    ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI
+{
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -290,6 +296,9 @@ actor RexSSHTransport: RexTransport {
     nonisolated var extensionPlacing: any RexHostExtensionPlacing {
         RexExtensionPlacingOnly(connection: connection)
     }
+
+    /// And its gh runs, for the same reason.
+    nonisolated var gitHub: any GitHubHostCLI { RexGitHubOnly(connection: connection) }
 
     func close() async {
         await control.close()
@@ -461,6 +470,15 @@ private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
 
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
         try await connection.placeHeelersExtension(contents, inFolder: folder)
+    }
+}
+
+/// A Rex Host connection's gh runs, and nothing else of it.
+private struct RexGitHubOnly: GitHubHostCLI {
+    let connection: any GitHubHostCLI
+
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        try await connection.runGitHubScript(script, isMutation: isMutation)
     }
 }
 

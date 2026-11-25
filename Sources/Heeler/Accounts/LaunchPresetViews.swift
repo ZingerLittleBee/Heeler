@@ -120,7 +120,7 @@ struct LaunchPresetEditor: View {
 
             if let problem, !draft.name.isEmpty {
                 Section {
-                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.errorInk)
                 }
             }
         }

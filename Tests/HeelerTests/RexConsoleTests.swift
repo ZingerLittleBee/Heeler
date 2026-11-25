@@ -427,12 +427,12 @@ struct RexConsoleTests {
         #expect(store.detailAgent(for: id) == nil)
         #expect(missing().cause == .hostLoadingAgents)
 
-        // The reads held so far answer, and each later one as it arrives.
-        let held = await servers[0].requests.filter { $0.method == process }
+        // Each later read answers as it arrives, then every read held so far.
+        // Reads still arrive after the list shows, so the held ones are taken
+        // only once nothing more can be held.
         await world.install(on: servers[0])
         let blocks = world.sessions[0].windows.flatMap { $0.layers.flatMap(\.blocks) } + world.sessions[0].detached
-        for _ in held {
-            let request = await servers[0].nextRequest()
+        for request in await servers[0].takeUnanswered(process) {
             let block = try #require(blocks.first { $0.id == request.payload?["block_id"]?.stringValue })
             await servers[0].respond(to: request, with: FakeRexWorld.process(block))
         }
@@ -637,7 +637,13 @@ struct RexConsoleTests {
         let rex = rex
         console.setHosts([rex])
         await console.resume()
-        try await waitUntil("the Agent with its status") { console.agents.first?.agent.status == .working }
+        // The Agent's status publishes before the other terminals' reads
+        // answer (ADR 0054), and the inventory they bring lets its pooled
+        // connection go like any other: wait for those reads too, so it cannot
+        // land between the selections below and their count.
+        try await waitUntil("the Agent with its status, and every terminal's details") {
+            console.agents.first?.agent.status == .working && console.panesAwaitingForeground.isEmpty
+        }
         let agentRow = try #require(console.terminals.first { $0.isAgent })
         let soloPane = RexPaneAddress(sessionID: "session:studio", blockID: "block:solo").paneID
         let soloRow = try #require(console.terminals.first { $0.paneID == soloPane })
@@ -946,7 +952,12 @@ struct RexConsoleTests {
         defer { console.setHosts([]) }
         console.setHosts(records)
         await console.resume()
-        try await waitUntil("both Servers' problems") { console.hostIssues(for: records).count == 2 }
+        // Each Server reads Connecting before its connection fails, and that
+        // is a row too: wait for both failures, not for two rows.
+        try await waitUntil("both Servers' problems") {
+            let issues = console.hostIssues(for: records)
+            return issues.count == 2 && !issues.contains { $0.condition == .connecting }
+        }
 
         let issues = console.hostIssues(for: records)
         #expect(issues.map(\.hostID) == [tmux.id, rexServer.id])

@@ -936,14 +936,22 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// Chat reads the Host's files and processes through `RexHostReads`, an
     /// attachment is staged through `RexHostStaging`, and Heeler's extension
-    /// goes where the user asks through `RexHostExtensionPlacing`; nothing
-    /// else runs on it over SSH: Changes, Skills, harness edits, the agy
-    /// model list and the platform probe stay out, and the Host is POSIX
+    /// goes where the user asks through `RexHostExtensionPlacing`, and the
+    /// GitHub tab's gh and its checkout read run through `runGitHubScript`;
+    /// nothing else runs on it over SSH: Changes, Skills, harness edits, the
+    /// agy model list and the platform probe stay out, and the Host is POSIX
     /// without asking it (ADR 0056).
     func withHostServices<Value: Sendable>(
         _: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {
         throw Self.unavailable
+    }
+
+    /// The GitHub tab's gh runs, and its read of the Agents' checkouts, on
+    /// the connection the server's links use (ADR 0065).
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        let gitHub = try await session.withConnection { $0.transport.gitHub }
+        return try await gitHub.runGitHubScript(script, isMutation: isMutation)
     }
 
     /// A Rex Host has no plugin, Notifications or Usage files, and its plugin

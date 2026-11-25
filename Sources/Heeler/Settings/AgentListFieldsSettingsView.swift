@@ -290,7 +290,7 @@ struct AgentListFieldsHostDetailView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(verbatim: message)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(tipIdentifier)
                     Button("Retry") { Task { await sync() } }

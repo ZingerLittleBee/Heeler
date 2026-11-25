@@ -122,7 +122,7 @@ struct HostHelperSheet: View {
         if let failure = store.failure {
             Section {
                 Text(failure)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("hosts.helper.failure")
             }

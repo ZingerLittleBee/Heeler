@@ -548,11 +548,15 @@
         @MainActor
         static func makeConsoleStore() -> ConsoleStore {
             let defaults = makeDefaults()
+            // The demo's Hosts have no SSH for gh to run over, so the GitHub
+            // tab starts off and the tab bar keeps its screenshot layout.
+            defaults.set(false, forKey: GitHubSettings.enabledKey)
             return ConsoleStore(
                 snapshotRetryDelay: .seconds(30),
                 pins: PinnedAgentsStore(defaults: defaults),
                 rowLayouts: AgentRowLayoutStore(defaults: defaults),
                 usageSettings: AgentUsageSettings(defaults: defaults),
+                gitHubSettings: GitHubSettings(defaults: defaults),
                 makeSession: { host, subscriptions in
                     EventsSession(
                         subscriptions: subscriptions,

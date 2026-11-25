@@ -39,7 +39,7 @@ struct AgentTitleRenameSheet: View {
                     }
                 } footer: {
                     if !store.input.isEmpty, let message = AgentTitleNaming.validation(store.input) {
-                        Text(message).foregroundStyle(.red)
+                        Text(message).foregroundStyle(.errorInk)
                     } else if store.hasQueuedRename {
                         Text(
                             "Saved on this device. Will be sent once the Agent stops.",
@@ -63,7 +63,7 @@ struct AgentTitleRenameSheet: View {
                 if case .failed(let message) = store.state {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     }
                 }
             }

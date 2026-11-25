@@ -19,6 +19,7 @@ struct HandOffRequest: Identifiable, Equatable, Sendable {
 struct HandOffSheet: View {
     @State private var store: HandOffStore
     @State private var isStartingAgent = false
+    @State private var newAgentDetent = PresentationDetent.large
     let console: ConsoleStore
     let hosts: [Host]
     /// The Agent whose Composer now holds the Hand Off.
@@ -48,7 +49,7 @@ struct HandOffSheet: View {
                 if case .failed(let message) = store.state {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     }
                 }
                 Section {
@@ -111,6 +112,10 @@ struct HandOffSheet: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass),
                     fitsContent: true))
+                // This sheet's detents, opening at the large one this sheet
+                // takes on beneath it. Without them an iPad gave New Agent a
+                // form's height, and Hand Off showed below it.
+                .presentationDetents([.medium, .large], selection: $newAgentDetent)
             }
         }
         .presentationDetents([.medium, .large])
@@ -152,7 +157,10 @@ struct HandOffSheet: View {
     private var newAgentRow: some View {
         Button {
             Task {
-                if await store.prepareForNewAgent() { isStartingAgent = true }
+                if await store.prepareForNewAgent() {
+                    newAgentDetent = .large
+                    isStartingAgent = true
+                }
             }
         } label: {
             HStack(spacing: 12) {
@@ -185,17 +193,20 @@ struct HandOffSheetPresenter: ViewModifier {
 
     func body(content: Content) -> some View {
         content.sheet(item: $request) { request in
-            HandOffSheet(
-                store: HandOffStore(
-                    source: request.source,
-                    read: { [console] in try await console.handOffSource(for: request.source) },
-                    deliver: { [console] record, message, id in
-                        try await console.deliverHandOff(record, message: message, to: id)
-                    }),
-                console: console, hosts: hosts, onHandedOff: onHandedOff
-            )
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
+            // Fixed at open: following a resize rebuilt the sheet, closing
+            // New Agent over it and forgetting the chosen ask.
+            ConsoleSheetContent(ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)) { presentation in
+                HandOffSheet(
+                    store: HandOffStore(
+                        source: request.source,
+                        read: { [console] in try await console.handOffSource(for: request.source) },
+                        deliver: { [console] record, message, id in
+                            try await console.deliverHandOff(record, message: message, to: id)
+                        }),
+                    console: console, hosts: hosts, onHandedOff: onHandedOff
+                )
+                .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
+            }
         }
     }
 }

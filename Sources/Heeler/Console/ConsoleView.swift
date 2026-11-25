@@ -51,6 +51,23 @@ struct ConsoleView: View {
     @State private var isHostsTabSelected = false
     @State private var isSettingsTabSelected = false
     @State private var isUsageTabSelected = false
+    @State private var isGitHubTabSelected = false
+    @State private var isShowingGitHubListMenu = false
+    @State private var gitHubListMenuTitleFrame: CGRect?
+    /// Whether the Hosts tab has Settings on its stack, where Settings has
+    /// no tab of its own (`settingsUnderHosts`).
+    @State private var isSettingsShownUnderHosts = false
+    /// The Host whose Terminal the GitHub tab asked for, over the New
+    /// Terminal sheet's own choice.
+    @State private var gitHubTerminalHostID: Host.ID?
+    /// The pull request or issue the GitHub tab shows: in the detail column
+    /// beside an iPad's sidebar, pushed on the tab's stack without one.
+    /// One value for both, so resizing the window keeps what it shows.
+    @State private var gitHubSelection: GitHubItemLink?
+    @State private var gitHubSendRequest: GitHubSendRequest?
+    /// The GitHub tab's open write sheet, kept here, as Send to Agent's is,
+    /// so the sheet and its draft outlive the tab's layout changing.
+    @State private var gitHubWriteRequest: GitHubWriteSheetRequest?
     /// The Host the Usage tab reads; nil reads every Host.
     @State private var usageScopeHostID: Host.ID?
     @State private var usageMetric = AgentUsageMetric.cost
@@ -234,11 +251,17 @@ struct ConsoleView: View {
                 Label(ConsoleTab.terminals.title, systemImage: "terminal")
                     .environment(\.symbolVariants, .none)
             }
-            if console.isUsageEnabled {
-                Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
-                    MainActorContent { usageTab() }
-                }
+            // Hidden rather than left out: one switch can add a tab and take
+            // Settings away at once, and with the set of tabs changing the
+            // bar gave the new tab another tab's icon.
+            Tab(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol, value: ConsoleTab.github) {
+                MainActorContent { gitHubTab() }
             }
+            .hidden(!console.isGitHubEnabled)
+            Tab(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis", value: ConsoleTab.usage) {
+                MainActorContent { usageTab() }
+            }
+            .hidden(!console.isUsageEnabled)
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
                 // In a body of its own: the Hosts list reads every Host's
                 // status and latency, which change while another tab shows.
@@ -255,11 +278,12 @@ struct ConsoleView: View {
                 MainActorContent { settingsView() }
                     .id(settingsTabGeneration)
             } label: {
-                // Outlined, as Terminals is: filled, the gear is the heaviest
-                // icon in the bar.
+                // Outlined, as Terminals is: filled, the gear is the
+                // heaviest icon in the bar.
                 Label(ConsoleTab.settings.title, systemImage: "gearshape")
                     .environment(\.symbolVariants, .none)
             }
+            .hidden(settingsUnderHosts)
         }
         // `lastListTab` is every window's; this window keeps the list tab it
         // opened on even when another window picks a different one.
@@ -293,6 +317,19 @@ struct ConsoleView: View {
                 // The Agent that got the Hand Off opens, with it in its Composer.
                 selectAgent(id)
             })
+        .modifier(
+            GitHubSendSheetPresenter(
+                request: $gitHubSendRequest, console: console,
+                hosts: hosts.consoleHosts.offeringNewItem(
+                    listsTerminals: false, capabilities: { console.capabilities(for: $0) })
+            ) { id in
+                // The Agent opens with the message in its Composer.
+                selectAgent(id)
+            })
+        .modifier(
+            GitHubWriteSheetPresenter(
+                request: $gitHubWriteRequest, store: console.gitHub,
+                mayShowResult: { currentTab == .github && !isConsoleSheetUp }))
         .sheet(item: $startAgentRequest) { request in
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
@@ -329,20 +366,22 @@ struct ConsoleView: View {
             connectionDetailRequest: $connectionDetailRequest,
             savedChatRemovalMessage: savedChatRemovalMessage(for:),
             removeSavedChat: removeSavedChat,
-            leaveUsage: leaveUsage))
+            leaveUsage: leaveUsage,
+            leaveGitHub: leaveGitHub,
+            moveSettings: moveSettings(underHosts:)))
         .alert("Could Not Close", isPresented: tabCloseErrorPresented) {
             Button("OK", role: .cancel) { tabCloseError = nil }
         } message: {
             Text(tabCloseError ?? "")
         }
-        .sheet(isPresented: $isStartingTerminal) {
+        .sheet(isPresented: $isStartingTerminal, onDismiss: { gitHubTerminalHostID = nil }) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // NewTerminalView brings its own NavigationStack.
                 NewTerminalView(
                     hosts: hosts.consoleHosts.offeringNewItem(
                         listsTerminals: true, capabilities: { console.capabilities(for: $0) }),
                     console: console,
-                    initialHostID: newTerminalHostID
+                    initialHostID: gitHubTerminalHostID ?? newTerminalHostID
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
@@ -435,7 +474,15 @@ struct ConsoleView: View {
         // into their sheet, over the list tab beneath them.
         .onChange(of: usesSidebarNavigation) { _, usesSidebar in
             guard usesSidebar else { return }
-            if isHostsTabSelected {
+            if isHostsTabSelected, isSettingsShownUnderHosts {
+                // Settings under Hosts was the screen on show. The rebuilt
+                // Hosts tab opens on its list, and says so only once shown.
+                hostsTabRequest = nil
+                hostsTabGeneration += 1
+                isSettingsShownUnderHosts = false
+                isShowingSettingsSheet = true
+                isHostsTabSelected = false
+            } else if isHostsTabSelected {
                 hostsTabRequest = hostsTabRequest.map {
                     HostsTabRequest(hostID: $0.hostID, showsSetupGuide: $0.showsSetupGuide, origin: nil)
                 }
@@ -466,13 +513,29 @@ struct ConsoleView: View {
         Binding(
             get: {
                 if isHostsTabSelected { return .hosts }
-                if isSettingsTabSelected { return .settings }
-                if isUsageTabSelected { return .usage }
+                // Settings moved under Hosts a moment ago, before
+                // `moveSettings` caught up.
+                if isSettingsTabSelected { return settingsUnderHosts ? .hosts : .settings }
+                // Turned off a moment ago, before `leaveUsage` or
+                // `leaveGitHub` caught up: the tab is already hidden, and
+                // selecting a hidden tab stops the app.
+                if isUsageTabSelected, console.isUsageEnabled { return .usage }
+                if isGitHubTabSelected, console.isGitHubEnabled { return .github }
                 return shownListTab
             },
             set: { requested in
-                // Usage turned off behind a screen that opened from it.
-                let tab = requested == .usage && !console.isUsageEnabled ? shownListTab : requested
+                // Usage or GitHub turned off behind a screen that opened from it.
+                var tab = requested
+                if tab == .usage && !console.isUsageEnabled || tab == .github && !console.isGitHubEnabled {
+                    tab = shownListTab
+                }
+                // Where Settings has no tab, it opens on the Hosts tab's stack.
+                if tab == .settings, settingsUnderHosts, !usesSidebarNavigation {
+                    if !isSettingsShownUnderHosts {
+                        hostsTabRequest = HostsTabRequest(showsSettings: true, origin: nil)
+                    }
+                    tab = .hosts
+                }
                 let leavingList = shownListTab
                 // A search field keeping first responder through the switch
                 // can leave the arriving tab blank; its query stays.
@@ -480,6 +543,7 @@ struct ConsoleView: View {
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 isUsageTabSelected = tab == .usage
+                isGitHubTabSelected = tab == .github
                 guard tab.isList else { return }
                 if tab != leavingList, horizontalSizeClass == .regular {
                     swapListSelection(from: leavingList, to: tab)
@@ -536,13 +600,44 @@ struct ConsoleView: View {
             reconnectHost: { await reconnectMachine($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
             origin: origin,
+            settings: onDone == nil && settingsUnderHosts && !usesSidebarNavigation
+                ? HostListSettingsLink(
+                    page: { AnyView(settingsView(isPushed: true)) },
+                    isShownInitially: hostsTabRequest?.showsSettings ?? false,
+                    onShownChange: { isSettingsShownUnderHosts = $0 })
+                : nil,
             onDone: onDone)
         .id(hostsTabRequest?.id)
     }
 
-    /// Settings, as a tab or a sheet. SettingsView brings its own
-    /// NavigationStack.
-    private func settingsView(onDone: (@MainActor () -> Void)? = nil) -> some View {
+    /// With both GitHub and Usage on, Settings leaves the tab bar and opens
+    /// from a gear on the Hosts tab (ADR 0065).
+    private var settingsUnderHosts: Bool { console.isUsageEnabled && console.isGitHubEnabled }
+
+    /// Settings moved between its tab and the Hosts tab. Whoever stands on
+    /// Settings stays on it: it opens where it went.
+    private func moveSettings(underHosts: Bool) {
+        guard !usesSidebarNavigation else { return }
+        if underHosts {
+            guard isSettingsTabSelected else { return }
+            hostsTabRequest = HostsTabRequest(showsSettings: true, origin: nil)
+            isSettingsTabSelected = false
+            isHostsTabSelected = true
+        } else if isSettingsShownUnderHosts {
+            // The Hosts tab opens on its list again.
+            hostsTabRequest = nil
+            hostsTabGeneration += 1
+            isSettingsShownUnderHosts = false
+            if isHostsTabSelected {
+                isHostsTabSelected = false
+                isSettingsTabSelected = true
+            }
+        }
+    }
+
+    /// Settings, as a tab, a sheet, or a page the Hosts tab pushes.
+    /// SettingsView brings its own NavigationStack except where pushed.
+    private func settingsView(onDone: (@MainActor () -> Void)? = nil, isPushed: Bool = false) -> some View {
         SettingsView(
             terminal: terminal,
             appearance: appearance,
@@ -556,7 +651,8 @@ struct ConsoleView: View {
             hasOnlyRexServersOn: hosts.hasOnlyRexServersOn,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
-            onDone: onDone)
+            onDone: onDone,
+            isPushed: isPushed)
     }
 
     /// A Host page Settings asks for, once a Settings sheet is out of the way.
@@ -571,7 +667,123 @@ struct ConsoleView: View {
 
     /// The lists an iPad sidebar's title menu switches between.
     private var shownSidebarLists: [ConsoleTab] {
-        console.isUsageEnabled ? [.agents, .terminals, .usage] : [.agents, .terminals]
+        var lists: [ConsoleTab] = [.agents, .terminals]
+        if console.isGitHubEnabled { lists.append(.github) }
+        if console.isUsageEnabled { lists.append(.usage) }
+        return lists
+    }
+
+    /// GitHub, as a tab; beside an iPad's sidebar, its own split view whose
+    /// sidebar is the list, where the Agents list goes, and whose title
+    /// switches back to the other lists.
+    @ViewBuilder
+    private func gitHubTab() -> some View {
+        if usesSidebarNavigation {
+            let shown = gitHubShownSelection
+            NavigationSplitView {
+                GitHubListScreen(store: console.gitHub, terminals: gitHubTerminals, selection: gitHubSelectionID)
+                    // The column reports a compact size class beside a
+                    // detail, so the list is told it is the sidebar.
+                    .environment(\.isSidebarColumn, true)
+                    .modifier(SidebarListChrome(
+                        shown: .github, lists: shownSidebarLists,
+                        isPresented: $isShowingGitHubListMenu, titleFrame: $gitHubListMenuTitleFrame,
+                        select: { selectedTab.wrappedValue = $0 }, footer: tabSidebarFooter))
+            } detail: {
+                NavigationStack {
+                    if let shown {
+                        GitHubItemScreen(
+                            store: console.gitHub, host: shown.host, item: shown.item, send: gitHubSend,
+                            write: gitHubWrite
+                        )
+                        .id(shown.item.id)
+                    } else {
+                        ContentUnavailableView {
+                            Label(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol)
+                        } description: {
+                            Text("The pull requests and issues that involve you, as gh reads them on your Hosts.")
+                        }
+                    }
+                }
+                .readableColumn()
+            }
+            .background {
+                ConsoleTabBarBridge(chromeScheme: nil, hidesBar: true, request: tabBarRequest)
+            }
+            .toolbarVisibility(.hidden, for: .tabBar)
+        } else {
+            GitHubTabView(
+                store: console.gitHub, path: gitHubPath, terminals: gitHubTerminals, send: gitHubSend,
+                write: gitHubWrite)
+                // A pushed detail hides the bar as an Agent's does.
+                .background {
+                    ConsoleTabBarBridge(chromeScheme: nil, hidesBar: hidesTabBar, request: tabBarRequest)
+                }
+                .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
+        }
+    }
+
+    /// The selected item, while its Host is the one the GitHub tab shows.
+    private var gitHubShownSelection: GitHubItemLink? {
+        gitHubSelection.flatMap { $0.host.id == console.gitHub.selectedHost?.id ? $0 : nil }
+    }
+
+    /// The GitHub tab's stack without a sidebar: the selection, pushed.
+    private var gitHubPath: Binding<[GitHubItemLink]> {
+        Binding(
+            get: { gitHubShownSelection.map { [$0] } ?? [] },
+            set: { gitHubSelection = $0.last })
+    }
+
+    /// The sidebar row of the item in the detail column, on the Host shown.
+    /// The column keeps the item as it was picked, so a read that drops it
+    /// from the list leaves it on screen.
+    private var gitHubSelectionID: Binding<GitHubItem.ID?> {
+        Binding(
+            get: { gitHubShownSelection?.item.id },
+            set: { id in
+                guard let id else {
+                    gitHubSelection = nil
+                    return
+                }
+                guard let host = console.gitHub.selectedHost, let item = console.gitHub.listItem(id, on: host) else {
+                    return
+                }
+                gitHubSelection = GitHubItemLink(host: host, item: item)
+            })
+    }
+
+    /// Send to Agent, from a pull request's or an issue's detail.
+    private var gitHubSend: GitHubSendLink {
+        GitHubSendLink { gitHubSendRequest = $0 }
+    }
+
+    /// Comment, Approve or Merge, from a pull request's or an issue's detail.
+    private var gitHubWrite: GitHubWriteLink {
+        GitHubWriteLink { gitHubWriteRequest = $0 }
+    }
+
+    /// The GitHub tab's way to a Terminal on a Host: the New Terminal sheet,
+    /// on the Host's first Server that can start one.
+    private var gitHubTerminals: GitHubTerminalLink {
+        let offered = hosts.consoleHosts.offeringNewItem(
+            listsTerminals: true, capabilities: { console.capabilities(for: $0) })
+        return GitHubTerminalLink(
+            record: { host in offered.first { host.records.contains($0.id) }?.id },
+            open: { id in
+                gitHubTerminalHostID = id
+                isStartingTerminal = true
+            })
+    }
+
+    /// GitHub turned off, from this window or another: nothing of it stays
+    /// selected.
+    private func leaveGitHub() {
+        if isGitHubTabSelected { selectedTab.wrappedValue = shownListTab }
+        isShowingGitHubListMenu = false
+        gitHubSelection = nil
+        gitHubSendRequest = nil
+        gitHubWriteRequest = nil
     }
 
     /// Every Host the Usage tab can read, in catalog order, each once.
@@ -604,36 +816,10 @@ struct ConsoleView: View {
         if usesSidebarNavigation {
             NavigationSplitView {
                 AgentUsageSidebar(entries: usageEntries, scopeHostID: usageScope, metric: usageMetric)
-                    .navigationTitle(ConsoleTab.usage.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            SidebarListMenu(
-                                shown: .usage, lists: shownSidebarLists,
-                                isPresented: $isShowingUsageListMenu, frame: $usageListMenuTitleFrame)
-                        }
-                        .toolbarItemBackground(.hidden)
-                    }
-                    .toolbar(removing: .title)
-                    .toolbar(removing: .sidebarToggle)
-                    .bottomBar { usageSidebarFooter }
-                    .overlay {
-                        GeometryReader { proxy in
-                            let anchor = SidebarListMenu.anchor(
-                                under: usageListMenuTitleFrame, in: proxy.frame(in: .global))
-                            Color.clear
-                                .frame(width: 1, height: 1)
-                                .popover(isPresented: $isShowingUsageListMenu, arrowEdge: .top) {
-                                    SidebarListChoices(
-                                        shown: .usage, lists: shownSidebarLists,
-                                        isPresented: $isShowingUsageListMenu,
-                                        select: { selectedTab.wrappedValue = $0 })
-                                }
-                                .position(anchor)
-                        }
-                        .ignoresSafeArea(.container, edges: .top)
-                        .allowsHitTesting(false)
-                    }
+                    .modifier(SidebarListChrome(
+                        shown: .usage, lists: shownSidebarLists,
+                        isPresented: $isShowingUsageListMenu, titleFrame: $usageListMenuTitleFrame,
+                        select: { selectedTab.wrappedValue = $0 }, footer: tabSidebarFooter))
             } detail: {
                 NavigationStack {
                     AgentUsageDashboard(
@@ -657,8 +843,9 @@ struct ConsoleView: View {
         }
     }
 
-    /// The Usage sidebar's foot: Hosts and Settings, as the lists' foot has.
-    private var usageSidebarFooter: some View {
+    /// The Usage or GitHub sidebar's foot: Hosts and Settings, as the lists'
+    /// foot has.
+    private var tabSidebarFooter: some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
                 .overlay(alignment: .topTrailing) { SidebarIconBadge(label: hostUpdatesBadge) }
@@ -757,7 +944,10 @@ struct ConsoleView: View {
             || connectionDetailRequest != nil || isShowingHostIssues
             || isShowingHostsSheet || isShowingSettingsSheet
         if isPresentingOverConsole, !ownsPresentation {
-            if isHostsTabSelected { hostsTabGeneration += 1 }
+            if isHostsTabSelected {
+                hostsTabGeneration += 1
+                isSettingsShownUnderHosts = false
+            }
             if isSettingsTabSelected { settingsTabGeneration += 1 }
         }
         showAgentsList(parking: parked)
@@ -767,6 +957,7 @@ struct ConsoleView: View {
         isHostsTabSelected = false
         isSettingsTabSelected = false
         isUsageTabSelected = false
+        isGitHubTabSelected = false
         startAgentRequest = nil
         isStartingTerminal = false
         connectionDetailRequest = nil
@@ -862,10 +1053,12 @@ struct ConsoleView: View {
 
     /// A pushed detail owns the whole iPhone screen, as it did before the
     /// tab bar existed. A wide iPhone keeps the bar to switch lists; an
-    /// iPad's sidebar switches them itself.
+    /// iPad's sidebar switches them itself. The GitHub tab's detail covers
+    /// its list in every width, so it hides the bar in every width.
     private var hidesTabBar: Bool {
-        usesSidebarNavigation
-            || (horizontalSizeClass == .compact && selectedItem.wrappedValue != nil)
+        if usesSidebarNavigation { return true }
+        if currentTab == .github { return gitHubShownSelection != nil }
+        return horizontalSizeClass == .compact && selectedItem.wrappedValue != nil
     }
 
     /// Beside an opaque sidebar, the detail's leading safe area lies under
@@ -1168,7 +1361,7 @@ struct ConsoleView: View {
                     focus: $focusedSearch, tab: .terminals,
                     prompt: "Search Terminals", showsField: !usesSidebarNavigation))
             }
-        case .usage, .hosts, .settings:
+        case .github, .usage, .hosts, .settings:
             // These tabs show their own screens, not a split view.
             EmptyView()
         }
@@ -2764,9 +2957,18 @@ struct ConsoleView: View {
         var showsSetupGuide = false
         /// Opens the Host's Host Helper sheet over its page.
         var opensHostHelper = false
+        /// Opens Settings on the Hosts tab's stack, where it has no tab.
+        var showsSettings = false
         /// The tab the Host was opened from; its back button returns there.
         /// Nil when opened from the Hosts tab itself.
         let origin: ConsoleTab?
+    }
+
+    /// One of the Console's own sheets, other than a GitHub write's, is up.
+    private var isConsoleSheetUp: Bool {
+        titleRename != nil || movePaneRequest != nil || handOffRequest != nil || gitHubSendRequest != nil
+            || startAgentRequest != nil || isStartingTerminal || connectionDetailRequest != nil
+            || isShowingHostIssues || isShowingHostsSheet || isShowingSettingsSheet
     }
 
     /// How the Console's sheets present, resolved against this view.
@@ -3135,7 +3337,7 @@ private struct SidebarListMenu: View {
                 // gives way to one over the bar item's whole frame.
                 .contentShape(.hoverEffect, Capsule().inset(by: 4))
                 .hoverEffect(.highlight)
-                .accessibilityHint("Switches between Agents, Terminals and Usage")
+                .accessibilityHint("Switches to another list")
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     frame = $0
                 }
@@ -3150,6 +3352,8 @@ private struct SidebarListChoices: View {
     let lists: [ConsoleTab]
     @Binding var isPresented: Bool
     let select: (ConsoleTab) -> Void
+    /// The symbols' column, which grows with the text beside it.
+    @ScaledMetric(relativeTo: .body) private var symbolWidth: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -3165,7 +3369,7 @@ private struct SidebarListChoices: View {
                                 .opacity(list == shown ? 1 : 0)
                                 .accessibilityHidden(true)
                             Image(systemName: Self.symbol(for: list))
-                                .frame(width: 24)
+                                .frame(width: symbolWidth)
                                 .accessibilityHidden(true)
                             Text(list.title)
                             Spacer(minLength: 0)
@@ -3181,13 +3385,16 @@ private struct SidebarListChoices: View {
             }
         }
         .padding(.vertical, 6)
-        .frame(width: 220)
+        // A menu's width, and wider as the text grows, so a list's name
+        // stays on one line instead of breaking inside the word.
+        .frame(minWidth: 220)
         .presentationCompactAdaptation(.popover)
     }
 
     private static func symbol(for list: ConsoleTab) -> String {
         switch list {
         case .terminals: "terminal"
+        case .github: ConsoleTab.gitHubSymbol
         case .usage: "chart.bar.xaxis"
         default: "sparkles"
         }
@@ -3557,6 +3764,8 @@ private struct ConsoleNoticesAndResets: ViewModifier {
     let savedChatRemovalMessage: (ConsoleAgent) -> String
     let removeSavedChat: (ConsoleAgent) -> Void
     let leaveUsage: () -> Void
+    let leaveGitHub: () -> Void
+    let moveSettings: (_ underHosts: Bool) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -3572,7 +3781,9 @@ private struct ConsoleNoticesAndResets: ViewModifier {
                 pending: $pendingSavedChatRemoval,
                 message: savedChatRemovalMessage,
                 remove: removeSavedChat))
-            .modifier(UsageTurnedOffReset(isEnabled: console.isUsageEnabled, reset: leaveUsage))
+            .modifier(ConsoleTabSwitchResets(
+                isUsageEnabled: console.isUsageEnabled, isGitHubEnabled: console.isGitHubEnabled,
+                leaveUsage: leaveUsage, leaveGitHub: leaveGitHub, moveSettings: moveSettings))
     }
 }
 
@@ -3640,14 +3851,65 @@ private struct ConsoleHostIssuePresentationReset: ViewModifier {
     }
 }
 
-private struct UsageTurnedOffReset: ViewModifier {
-    let isEnabled: Bool
-    let reset: () -> Void
+private struct ConsoleTabSwitchResets: ViewModifier {
+    let isUsageEnabled: Bool
+    let isGitHubEnabled: Bool
+    let leaveUsage: () -> Void
+    let leaveGitHub: () -> Void
+    let moveSettings: (_ underHosts: Bool) -> Void
 
     func body(content: Content) -> some View {
-        content.onChange(of: isEnabled) { _, enabled in
-            if !enabled { reset() }
-        }
+        content
+            .onChange(of: isUsageEnabled) { _, enabled in
+                if !enabled { leaveUsage() }
+            }
+            .onChange(of: isGitHubEnabled) { _, enabled in
+                if !enabled { leaveGitHub() }
+            }
+            // With both on, Settings leaves the tab bar for the Hosts tab.
+            .onChange(of: isUsageEnabled && isGitHubEnabled) { _, underHosts in
+                moveSettings(underHosts)
+            }
+    }
+}
+
+/// A Usage or GitHub sidebar's chrome beside an iPad's sidebar: the title
+/// that switches lists, its choices, and the Hosts and Settings foot.
+private struct SidebarListChrome<Footer: View>: ViewModifier {
+    let shown: ConsoleTab
+    let lists: [ConsoleTab]
+    @Binding var isPresented: Bool
+    @Binding var titleFrame: CGRect?
+    let select: (ConsoleTab) -> Void
+    let footer: Footer
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(shown.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    SidebarListMenu(shown: shown, lists: lists, isPresented: $isPresented, frame: $titleFrame)
+                }
+                .toolbarItemBackground(.hidden)
+            }
+            .toolbar(removing: .title)
+            .toolbar(removing: .sidebarToggle)
+            .bottomBar { footer }
+            .overlay {
+                GeometryReader { proxy in
+                    let anchor = SidebarListMenu.anchor(under: titleFrame, in: proxy.frame(in: .global))
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .popover(isPresented: $isPresented, arrowEdge: .top) {
+                            SidebarListChoices(
+                                shown: shown, lists: lists, isPresented: $isPresented, select: select)
+                        }
+                        .position(anchor)
+                }
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
+            }
     }
 }
 

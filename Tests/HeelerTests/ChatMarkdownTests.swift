@@ -145,10 +145,11 @@ struct ChatMarkdownTests {
                 Shape(.paragraph, "quoted", list: 1, quote: 1),
             ]),
         Vector(
-            name: "Task items stay literal", source: "- [ ] open\n- [x] done",
+            name: "A task's box takes its bullet's place", source: "- [ ] open\n- [x] done\n1. [ ] numbered",
             expected: [
-                Shape(.listItem(marker: "•"), "• [ ] open", list: 1),
-                Shape(.listItem(marker: "•"), "• [x] done", list: 1),
+                Shape(.listItem(marker: "☐"), "☐ open", list: 1),
+                Shape(.listItem(marker: "☑"), "☑ done", list: 1),
+                Shape(.listItem(marker: "1."), "1. [ ] numbered", list: 1),
             ]),
         Vector(
             name: "Nested quotes", source: "> outer\n>\n> > inner\n\nafter",

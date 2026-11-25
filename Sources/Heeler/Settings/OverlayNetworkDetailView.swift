@@ -519,11 +519,11 @@ struct OverlayNetworkDetailView: View {
                         Text("Not running")
                         Text(error.asSentence)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     }
                 } icon: {
                     Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 }
                 .accessibilityElement(children: .combine)
             } else if !group.isRunning {

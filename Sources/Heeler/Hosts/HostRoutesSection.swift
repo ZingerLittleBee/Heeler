@@ -86,7 +86,7 @@ struct HostRoutesSection: View {
         } subtitle: {
             if let failure {
                 // Over the label's secondary: the reason is why it is red.
-                Text(failure).foregroundStyle(Color.red)
+                Text(failure).foregroundStyle(Color.errorInk)
             } else {
                 Text(description(route))
             }
@@ -136,7 +136,7 @@ struct HostRoutesSection: View {
             Text(text)
         case .problem(let text):
             Text(text)
-                .foregroundStyle(.red)
+                .foregroundStyle(.errorInk)
         }
     }
 

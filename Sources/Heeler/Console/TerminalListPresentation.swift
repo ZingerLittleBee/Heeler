@@ -3,10 +3,12 @@ import Observation
 
 /// The Console's bottom tabs (#316). Hosts is Host management, the screen
 /// the toolbar's Hosts button used to present, and Settings the sheet its
-/// gear used to. Agents and Terminals each search their own list.
+/// gear used to. Agents and Terminals each search their own list. With both
+/// GitHub and Usage on, Settings opens from the Hosts tab instead (ADR 0065).
 enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
     case agents
     case terminals
+    case github
     case usage
     case hosts
     case settings
@@ -17,14 +19,18 @@ enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .agents: String(localized: "Agents")
         case .terminals: String(localized: "Terminals")
+        case .github: String(localized: "GitHub")
         case .usage: String(localized: "Usage")
         case .hosts: String(localized: "Hosts")
         case .settings: String(localized: "Settings")
         }
     }
 
-    /// Agents and Terminals are the lists the Console reopens on; Usage,
-    /// Hosts and Settings sit on top of the remembered one.
+    /// The GitHub tab's symbol, wherever the tab is named.
+    static let gitHubSymbol = "arrow.triangle.pull"
+
+    /// Agents and Terminals are the lists the Console reopens on; GitHub,
+    /// Usage, Hosts and Settings sit on top of the remembered one.
     var isList: Bool { self == .agents || self == .terminals }
 }
 

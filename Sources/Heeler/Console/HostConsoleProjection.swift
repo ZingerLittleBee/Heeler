@@ -408,6 +408,15 @@ final class HostConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    /// `withHostServices` runs a read again on a replacement connection; a
+    /// gh write that may have reached GitHub never runs again (ADR 0065).
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        guard isMutation else {
+            return try await withHostServices { try await $0.runGitHubScript(script, isMutation: false) }
+        }
+        return try await session.withTransportOnce { try await $0.runGitHubScript(script, isMutation: true) }
+    }
+
     func withNotificationTransport<Value: Sendable>(
         _ operation: @escaping @Sendable (any Transport) async throws -> Value
     ) async throws -> Value {

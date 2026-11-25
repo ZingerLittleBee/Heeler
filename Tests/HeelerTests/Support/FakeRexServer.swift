@@ -143,6 +143,15 @@ actor FakeRexServer {
         return unanswered.removeFirst()
     }
 
+    /// Every request for `method` no scripted answer took so far, without
+    /// waiting for one. Taken after `answer` for that method, it is every
+    /// request left unanswered: none arrives unanswered between the two.
+    func takeUnanswered(_ method: String) -> [Request] {
+        let taken = unanswered.filter { $0.method == method }
+        unanswered.removeAll { $0.method == method }
+        return taken
+    }
+
     /// `seq` defaults to the last event pushed, as Rex numbers a response.
     func respond(to request: Request, with result: JSONValue = .object([:]), seq: UInt64? = nil) async {
         await send(Self.response(id: request.id, seq: seq ?? lastSeq, outcome: .result(result)))

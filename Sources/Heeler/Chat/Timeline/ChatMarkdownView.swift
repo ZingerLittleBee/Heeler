@@ -198,6 +198,10 @@ struct ChatHostLinkOpener {
 extension EnvironmentValues {
     @Entry var chatImageOpener: ChatImageOpener? = nil
     @Entry var chatHostLinkOpener: ChatHostLinkOpener? = nil
+    /// Whether VoiceOver reads the Markdown within one element, as a Chat
+    /// message (`accessibilityElement(children: .combine)`). That element
+    /// leaves out what a scroll view holds.
+    @Entry var chatMarkdownReadsAsOne = false
 }
 
 extension View {
@@ -270,10 +274,7 @@ private struct ChatMarkdownBlockView: View {
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let marker):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(marker)
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: indent - 6, alignment: .trailing)
+                markerView(marker)
                 styledText(in: .body)
             }
         case .code(let language):
@@ -283,8 +284,11 @@ private struct ChatMarkdownBlockView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+                // Chat's font sets a design on the whole row, which outranks
+                // a design set nearer or carried by `Font.system(_:design:)`,
+                // but not a font made fixed-width, as inline code's is.
                 Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil && block.hasImageLinks))
-                    .font(.system(.footnote, design: .monospaced))
+                    .font(.footnote.monospaced())
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -309,6 +313,31 @@ private struct ChatMarkdownBlockView: View {
         }
     }
 
+    /// A bullet or number, or a task's box as a symbol, read-only, sized and
+    /// set on the baseline like a bullet. The box's label goes on the view:
+    /// on the `Text` it was lost where the marker is its own element, as in
+    /// a GitHub description.
+    @ViewBuilder
+    private func markerView(_ marker: String) -> some View {
+        let box: (symbol: String, label: Text)? = switch marker {
+        case ChatMarkdownBlock.openTask:
+            ("square", Text("Unchecked", comment: "VoiceOver: a task in a message's or description's checklist that is not done."))
+        case ChatMarkdownBlock.doneTask:
+            ("checkmark.square", Text("Checked", comment: "VoiceOver: a task in a message's or description's checklist that is done."))
+        default:
+            nil
+        }
+        let view = (box.map { Text(Image(systemName: $0.symbol)).font(.subheadline) } ?? Text(marker))
+            .font(.body.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: indent - 6, alignment: .trailing)
+        if let box {
+            view.accessibilityLabel(box.label)
+        } else {
+            view
+        }
+    }
+
     @ViewBuilder
     private func styledText(in font: Font) -> some View {
         if imageOpener != nil, block.hasImageLinks {
@@ -328,16 +357,31 @@ struct ChatMarkdownTableView: View {
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
     @Environment(\.chatImageOpener) private var imageOpener
+    @Environment(\.chatMarkdownReadsAsOne) private var readsAsOne
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             grid
-            ScrollView(.horizontal) { grid }
+            scrollingGrid
         }
         .clipShape(.rect(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+        }
+    }
+
+    /// The grid, scrolling sideways. VoiceOver moves through its cells and
+    /// scrolls to each, but an element read as one, as a Chat message is,
+    /// leaves out a scroll view's content: there the grid stands in for the
+    /// scroll view, so its cells are read with the message, row by row.
+    @ViewBuilder
+    private var scrollingGrid: some View {
+        if readsAsOne {
+            ScrollView(.horizontal) { grid }
+                .accessibilityRepresentation { grid }
+        } else {
+            ScrollView(.horizontal) { grid }
         }
     }
 
@@ -360,7 +404,7 @@ struct ChatMarkdownTableView: View {
                                 .overlay(alignment: .trailing) {
                                     Rectangle().fill(Color(uiColor: .separator)).frame(width: 0.5)
                                 }
-                                .accessibilityAddTraits(row == 0 ? .isHeader : [])
+                                .modifier(ChatMarkdownTableCellAccessibility(table: table, row: row, column: column))
                         }
                     }
                 }
@@ -388,6 +432,32 @@ struct ChatMarkdownTableView: View {
         case .left: .leading
         case .center: .center
         case .right: .trailing
+        }
+    }
+}
+
+/// How VoiceOver reads a table cell. A header cell names its column; it is
+/// not a heading that starts a section, and with that trait every column
+/// read as one, and a message holding a table as a heading. A value is read
+/// after its column's name ("Route, exec"), as a data table's cells are, so
+/// the header row, which those names repeat, is not read on its own. A
+/// table of only a header row reads it as text.
+private struct ChatMarkdownTableCellAccessibility: ViewModifier {
+    let table: ChatMarkdownBlock.Table
+    let row: Int
+    let column: Int
+
+    func body(content: Content) -> some View {
+        let header = String(table.rows[0][column].characters).trimmingCharacters(in: .whitespaces)
+        if row == 0 {
+            content.accessibilityHidden(table.rows.count > 1)
+        } else if header.isEmpty || table.rows[row][column].characters.isEmpty {
+            content
+        } else {
+            content.accessibilityLabel { label in
+                Text(verbatim: header)
+                label
+            }
         }
     }
 }

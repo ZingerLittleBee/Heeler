@@ -69,7 +69,7 @@ struct LocalMachinePickerView: View {
                     }
                 }
                 if let error = model.resolveError {
-                    Section { Text(error.message).foregroundStyle(.red) }
+                    Section { Text(error.message).foregroundStyle(.errorInk) }
                 }
             }
             .navigationTitle("Local Network")

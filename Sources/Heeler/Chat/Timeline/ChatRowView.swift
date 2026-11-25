@@ -135,6 +135,7 @@ private struct ChatRowAccessibility: ViewModifier {
                 .accessibilityAction(named: "Copy") { actions.copy(text) }
                 .accessibilityAction(named: "Select Text") { actions.selectText(text) }
                 .accessibilityActions { imageActions }
+                .environment(\.chatMarkdownReadsAsOne, true)
         } else {
             content
                 .accessibilityElement(children: .contain)
@@ -318,7 +319,7 @@ private struct ChatPendingBubble: View {
         case .outcomeUnknown:
             (String(localized: "May or may not have reached the Agent. Check the terminal."), "exclamationmark.triangle", .orange)
         case .failed(let reason):
-            (String(localized: "Not sent. \(reason)"), "exclamationmark.triangle", .red)
+            (String(localized: "Not sent. \(reason)"), "exclamationmark.triangle", .errorInk)
         case .notDelivered:
             (String(localized: "Not delivered. The text is still in the Agent's input box."), "exclamationmark.triangle", .orange)
         case .discarded:
@@ -490,7 +491,7 @@ private struct ChatToolGroupRow: View {
                 } else if group.failed > 0 {
                     Label("\(group.failed) failed", systemImage: "xmark.circle")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                         .labelStyle(.titleAndIcon)
                         .fixedSize()
                 }
@@ -1121,7 +1122,7 @@ private struct ChatToolStatusBadge: View {
         if cardAnswer == .stopped { return .secondary }
         switch status {
         case .awaitingApproval, .declined: return .orange
-        case .failed: return .red
+        case .failed: return .errorInk
         default: return .secondary
         }
     }
@@ -1243,7 +1244,7 @@ private struct ChatNoticeRow: View {
                     .padding(.leading, isUserCommand ? 0 : ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
         }
-        .foregroundStyle(notice.kind == .error ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+        .foregroundStyle(notice.kind == .error ? AnyShapeStyle(.errorInk) : AnyShapeStyle(.secondary))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

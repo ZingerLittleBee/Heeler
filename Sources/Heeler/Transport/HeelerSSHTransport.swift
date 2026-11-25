@@ -3291,10 +3291,12 @@ actor HeelerSSHTransport: Transport {
     /// when the watchdog reports the feature's marker, the run throws the
     /// feature's `timedOut`. With a `lane`, a run waits for the previous one
     /// to drain, its wait counted against its own deadline.
+    /// `dispatched` hears when the exec is handed to SSH, after which the
+    /// script may have run whatever comes back.
     func runBoundedScript(
         _ script: Data, feature: String, deadline: Duration, remoteSeconds: Int64,
         timeoutMarkerPrefix: String, timedOut: TransportError, lane: GitExecGate? = nil,
-        priority: SSHChannelAdmission.Priority = .normal
+        priority: SSHChannelAdmission.Priority = .normal, dispatched: (@Sendable () -> Void)? = nil
     ) async throws -> GitExecResult {
         try await requirePOSIXHost(feature: feature)
         try requireConnected()
@@ -3314,6 +3316,7 @@ actor HeelerSSHTransport: Transport {
                     // Awaiting an unstructured task does not forward cancellation.
                     // Never cancel this task: its remote bound supplies the exit
                     // that lets libssh2 reclaim the channel without killing SSH.
+                    dispatched?()
                     let execution = Task.detached {
                         do {
                             return try await self.connection.execute(
@@ -3358,7 +3361,10 @@ actor HeelerSSHTransport: Transport {
     /// sshd gives each exec its own process group; non-interactive POSIX sh
     /// keeps its children in that group. The watchdog ends only this exec.
     /// Its marker descriptor is closed in sleep so a surviving timer cannot
-    /// hold an SSH output pipe open after normal script completion. Internal
+    /// hold an SSH output pipe open after normal script completion. A lost
+    /// connection or closed channel reaches the exec only as SIGPIPE at its
+    /// next write, so the watchdog ignores SIGPIPE: its marker write then
+    /// fails, and the kill still ends whatever the script started. Internal
     /// so a test can pin the bytes Changes sends.
     static func boundedScript(
         _ script: Data, remoteSeconds: Int64, timeoutMarker: String
@@ -3366,6 +3372,7 @@ actor HeelerSSHTransport: Transport {
         var input = Data("""
             {
             (
+                trap '' PIPE
                 sleep \(remoteSeconds) 3>&-
                 printf '\\n%s\\n' '\(timeoutMarker)' >&3
                 kill -KILL 0
@@ -4545,6 +4552,39 @@ extension HeelerSSHTransport: RexHostConnection {
         try await replaceHostHelperFile(
             contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
     }
+}
+
+// MARK: - gh on the Host (ADR 0065)
+extension HeelerSSHTransport {
+    /// One bounded exec, whatever Server Kind the connection serves. The
+    /// remote bound leaves room for a run in the exec and one in the
+    /// desktop session after it; a run past it is not sent again. A write
+    /// that fails once its exec was handed to SSH may have run, as a
+    /// herdr-core mutation may, and says so.
+    func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
+        let handedOver = GitHubExecHandover()
+        do {
+            return try await runBoundedScript(
+                script, feature: String(localized: "GitHub"), deadline: .seconds(60),
+                remoteSeconds: GitHubCLIScript.execSeconds,
+                timeoutMarkerPrefix: "__HEELER_GH_TIMEOUT_", timedOut: .hostFileTimedOut,
+                dispatched: { handedOver.mark() })
+        } catch TransportError.hostFileTimedOut {
+            // Already an unknown outcome for a write, and it says why.
+            throw TransportError.hostFileTimedOut
+        } catch where isMutation && handedOver.isMarked {
+            throw TransportError.coreMutationOutcomeUnknown
+        }
+    }
+}
+
+/// Whether a gh exec reached SSH, which decides what its failure means.
+private final class GitHubExecHandover: Sendable {
+    private let marked = Mutex(false)
+
+    func mark() { marked.withLock { $0 = true } }
+
+    var isMarked: Bool { marked.withLock { $0 } }
 }
 
 // MARK: - What a port preview uses of this connection

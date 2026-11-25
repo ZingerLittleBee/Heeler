@@ -638,7 +638,7 @@ struct AgentComposerView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(failure.detail, systemImage: "exclamationmark.triangle")
                 .font(.footnote)
-                .foregroundStyle(.red)
+                .foregroundStyle(.errorInk)
                 .lineLimit(2)
             HStack(spacing: 8) {
                 Button("Retry") {

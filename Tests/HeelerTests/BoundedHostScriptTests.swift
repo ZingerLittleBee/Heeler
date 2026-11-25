@@ -12,9 +12,10 @@ struct BoundedHostScriptTests {
         String(decoding: script, as: UTF8.self)
     }
 
-    /// The Changes wrapper's source text from before Chat shared it, with a
-    /// fixed script, bound and marker filled in. Changes keeps sending
-    /// exactly these bytes.
+    /// The Changes wrapper's source text, with a fixed script, bound and
+    /// marker filled in: the Chat-era bytes plus the watchdog's SIGPIPE
+    /// trap, which keeps a lost connection from ending it before its kill.
+    /// Changes sends exactly these bytes.
     @Test func changesWrapsItsScriptExactlyAsBefore() {
         let wrapped = HeelerSSHTransport.boundedScript(
             Data("printf 'body'\n".utf8), remoteSeconds: 10,
@@ -22,6 +23,7 @@ struct BoundedHostScriptTests {
         let expected = """
             {
             (
+                trap '' PIPE
                 sleep 10 3>&-
                 printf '\\n%s\\n' '__HEELER_GIT_TIMEOUT_F00D__' >&3
                 kill -KILL 0

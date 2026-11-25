@@ -153,7 +153,7 @@ struct SnippetEditorView: View {
                 Section {
                     Text(errorMessage)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 }
             }
         }

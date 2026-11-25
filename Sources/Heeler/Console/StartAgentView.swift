@@ -35,6 +35,7 @@ struct StartAgentView: View {
     init(
         hosts: [Host], console: ConsoleStore,
         origin: StartAgentStore.LaunchOrigin? = nil,
+        gitHubLaunch: StartAgentStore.GitHubLaunch? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
         self.init(console: console, onStarted: onStarted) {
@@ -62,6 +63,7 @@ struct StartAgentView: View {
                 isAgentListed: { id in console.agents.contains { $0.id == id } },
                 programExit: { console.programExit(of: $0) },
                 origin: origin,
+                gitHubLaunch: gitHubLaunch,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
@@ -140,6 +142,8 @@ struct StartAgentView: View {
                             Text(store.offersWorkspaceName
                                 ? String(localized: "Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                                 : String(localized: "Creates a Workspace in this directory, named after its folder."))
+                        } else if let note = store.gitHubWorkspaceNote {
+                            Text(note)
                         }
                     }
                 }
@@ -149,13 +153,10 @@ struct StartAgentView: View {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
                             .disabled(store.selectedWorkspaceID == nil)
                         if store.startsInNewWorktree {
+                            let branchTitle: LocalizedStringKey =
+                                store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
                             HStack(spacing: 10) {
-                                TextField(
-                                    store.worktreeNeedsBranch ? "Branch" : "Branch (optional)",
-                                    text: $store.worktreeBranch)
-                                    .font(.callout.monospaced())
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
+                                WorktreeRefField(title: branchTitle, text: $store.worktreeBranch)
                                     .accessibilityIdentifier("startAgent.worktreeBranch")
                                 if !store.worktreeBranch.isEmpty {
                                     Button {
@@ -191,19 +192,19 @@ struct StartAgentView: View {
                                     ))
                                 .accessibilityIdentifier("startAgent.regenerateBranch")
                             }
-                            if !store.worktreeNeedsBranch {
-                                TextField("Base (optional)", text: $store.worktreeBase)
-                                    .font(.callout.monospaced())
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
+                            // Following an item, the item decides the base.
+                            if !store.worktreeNeedsBranch && !store.followsGitHubItem {
+                                WorktreeRefField(title: "Base (optional)", text: $store.worktreeBase)
+                            }
+                            if let message = store.worktreeBranchErrorMessage {
+                                errorRow(message, .branch)
                             }
                         }
                     } header: {
                         Text("Worktree")
                     } footer: {
-                        if let message = store.worktreeBranchErrorMessage {
-                            Text(message)
-                                .foregroundStyle(.red)
+                        if let note = store.gitHubWorktreeNote {
+                            Text(note)
                         } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                             Text(
                                 "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
@@ -268,7 +269,7 @@ struct StartAgentView: View {
                         }
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                         if !store.availableTemplates.isEmpty {
                             agentPicker
                         }
@@ -285,7 +286,12 @@ struct StartAgentView: View {
                                 Text(template.description)
                             }
                             Text("Its first start can take up to 35 seconds.")
+                            if let note = store.gitHubAgentNote {
+                                Text(note)
+                            }
                         }
+                    } else if let note = store.gitHubAgentNote {
+                        Text(note)
                     } else {
                         Text(store.discoversThroughUserShell
                             ? String(localized: "Agents your own shell on this Host can run. Launch Presets live in Settings › Agents & Accounts.")
@@ -297,13 +303,13 @@ struct StartAgentView: View {
                     TextField("Agent name (optional)", text: $store.name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                    if let message = store.nameErrorMessage {
+                        errorRow(message, .name)
+                    }
                 } header: {
                     Text("Agent Name")
                 } footer: {
-                    if let message = store.nameErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else if let defaultName = store.defaultAgentName {
+                    if let defaultName = store.defaultAgentName {
                         Text("Empty names the agent \(Text(defaultName).monospaced()).")
                     } else {
                         Text("Empty names the agent after its kind.")
@@ -326,30 +332,33 @@ struct StartAgentView: View {
                         AgentArgumentsField(
                             text: $store.arguments,
                             placeholder: String(localized: "Arguments (optional)"))
+                        if let message = store.argumentErrorMessage {
+                            errorRow(message, .arguments)
+                        }
                     } header: {
                         Text("Arguments")
                     } footer: {
-                        if let message = store.argumentErrorMessage {
-                            Text(message)
-                                .foregroundStyle(.red)
-                        } else {
-                            Text(
-                                "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
-                            )
-                        }
+                        Text(
+                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                        )
                     }
                 }
 
-                if case .failed(let message) = store.state {
+                if let message = startFailure {
                     Section {
-                        Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                        errorRow(message, .start)
                     }
                 }
             }
             // The last footer ends clear of the sheet's rounded corners
             // when the form fits it.
             .contentMargins(.bottom, 20, for: .scrollContent)
+            .modifier(RevealsFormErrors(errors: [
+                .branch: store.worktreeBranchErrorMessage,
+                .name: store.nameErrorMessage,
+                .arguments: store.offersArguments ? store.argumentErrorMessage : nil,
+                .start: startFailure,
+            ]))
             // The form grows as a Host adds its Agent and argument rows; a
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
@@ -397,6 +406,20 @@ struct StartAgentView: View {
         }
     }
 
+    /// An error line, as a row of the field's own section: a section's
+    /// footer is no place a scroll can be sent to, and under a field the
+    /// keyboard covers it.
+    private func errorRow(_ message: String, _ error: FormError) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.errorInk)
+            .id(error)
+    }
+
+    /// Why Start failed, shown at the form's end.
+    private var startFailure: String? {
+        if case .failed(let message) = store.state { message } else { nil }
+    }
+
     private var agentPicker: some View {
         @Bindable var store = self.store
         return Picker("Agent", selection: $store.selectedAgent) {
@@ -430,6 +453,74 @@ struct StartAgentView: View {
         directoryBrowser = RemoteDirectoryBrowser(
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
+    }
+}
+
+/// The form's error lines, in the order the form shows them.
+private enum FormError: CaseIterable {
+    /// Under the Worktree's Branch and Base fields.
+    case branch
+    /// Under the Agent name field.
+    case name
+    /// Under the Arguments field.
+    case arguments
+    /// Why Start failed, at the form's end.
+    case start
+}
+
+/// Scrolls an error line into view as it appears or changes. A field's sits
+/// under it, where the keyboard covers it while the field is typed in, and a
+/// failed Start's at the form's end, below the fold, where Start would
+/// otherwise seem to have done nothing. It scrolls only as far as the line
+/// needs, so one already in view stays where it is.
+private struct RevealsFormErrors: ViewModifier {
+    let errors: [FormError: String?]
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content.onChange(of: errors) { old, new in
+                let shown = FormError.allCases.first { error in
+                    guard let message = new[error] ?? nil else { return false }
+                    return message != old[error] ?? nil
+                }
+                guard let shown else { return }
+                withAnimation { proxy.scrollTo(shown) }
+            }
+        }
+    }
+}
+
+/// A Worktree's branch or base: a git ref, typed as it is. At accessibility
+/// sizes it wraps, as the form's other rows put their values on lines of
+/// their own there; one line showed a few characters of a long branch name.
+/// Return still ends the field there instead of starting a line.
+private struct WorktreeRefField: View {
+    let title: LocalizedStringKey
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        TextField(
+            title,
+            text: Binding(
+                get: { text },
+                set: { value in
+                    guard value.contains(where: \.isNewline) else {
+                        text = value
+                        return
+                    }
+                    text = value.filter { !$0.isNewline }
+                    isFocused = false
+                }),
+            axis: dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal)
+            .focused($isFocused)
+            .font(.callout.monospaced())
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            // A placeholder is no label: once filled, VoiceOver read only
+            // the value.
+            .accessibilityLabel(Text(title))
     }
 }
 

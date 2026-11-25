@@ -72,6 +72,10 @@ final class StartAgentStore {
     private enum Launch {
         case kind(SupportedAgentKind, arguments: [String], name: String)
         case template(AgentTemplate, name: String?)
+
+        var kind: SupportedAgentKind? {
+            if case .kind(let kind, _, _) = self { kind } else { nil }
+        }
     }
 
     /// Context inherited when the flow opens from an agent's own screen: the
@@ -82,6 +86,49 @@ final class StartAgentStore {
         let hostID: Host.ID
         let workspaceID: String
         let cwd: String
+    }
+
+    /// New Agent from Send to Agent on a pull request or an issue (ADR 0065):
+    /// where the form opens, and how its Worktree follows the item while the
+    /// chosen Workspace is a checkout of the item's repository. The message
+    /// goes to the new Agent's Composer from the sheet, not from here.
+    struct GitHubLaunch {
+        /// A checkout of the item's repository that one of the Host's Agents
+        /// works in, from Send to Agent's checkout read.
+        struct Checkout: Equatable, Sendable {
+            let hostID: Host.ID
+            let workspaceID: String
+            /// The Agent that works in it, as its row names it.
+            let agentName: String
+            /// git's top level, where the starting commit is fetched.
+            let topLevel: String
+            /// The remote that names the item's repository.
+            let remote: String
+            /// Each branch checked out in one of the repository's
+            /// Worktrees, this checkout among them, with that Worktree's
+            /// directory as the Agent's row shows one.
+            let checkedOut: [String: String]
+        }
+
+        /// `owner/name`.
+        let repository: String
+        /// The Host's name, for the Workspace footer.
+        let hostName: String
+        /// The Server the form opens on.
+        let hostID: Host.ID?
+        /// The Workspace the form opens on; nil leaves the form's own choice.
+        let workspaceID: String?
+        /// What a Worktree starts from; nil leaves the Worktree to the
+        /// form's own rules, as for an issue whose repository's default
+        /// branch is unknown.
+        let source: GitHubWorktreeStart.Source?
+        /// The repository's default branch, when the detail read it.
+        let defaultBranch: String?
+        /// Every checkout of the repository the Host's Agents work in.
+        let checkouts: [Checkout]
+        /// Fetches the starting commit on a Server
+        /// (`GitHubStore.worktreeStart`).
+        let worktreeStart: (GitHubWorktreeStart, Host.ID) async throws -> String
     }
 
     /// Where a Console-originated launch should create the Agent (#230).
@@ -129,6 +176,9 @@ final class StartAgentStore {
     /// Console: Host, workspace, and working directory are already decided,
     /// so the form collapses to the agent fields.
     let origin: LaunchOrigin?
+
+    /// Non-nil when the flow was opened from a pull request or an issue.
+    let gitHubLaunch: GitHubLaunch?
 
     /// Whether a change of `selectedHostID` is someone's pick, to remember.
     /// The pick `init` makes is a default: remembered, it would write the
@@ -343,7 +393,7 @@ final class StartAgentStore {
             if startsInNewWorktree, !oldValue, offersWorktree,
                 Self.nonEmptyTrimmed(worktreeBranch) == nil
             {
-                worktreeBranch = generateWorktreeBranch()
+                worktreeBranch = suggestedGitHubBranch ?? generateWorktreeBranch()
             }
         }
     }
@@ -431,6 +481,7 @@ final class StartAgentStore {
         isAgentListed: @escaping (ConsoleAgent.ID) -> Bool = { _ in true },
         programExit: @escaping (ConsoleAgent.ID) -> ProgramExit? = { _ in nil },
         origin: LaunchOrigin? = nil,
+        gitHubLaunch: GitHubLaunch? = nil,
         recents: RecentLaunchStore = RecentLaunchStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
         offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false },
@@ -449,6 +500,7 @@ final class StartAgentStore {
         self.hosts = hosts
         self.hostChoices = hostChoices
         self.origin = origin
+        self.gitHubLaunch = gitHubLaunch
         self.workspacesProvider = workspaces
         self.existingAgentNames = existingAgentNames
         self.discoverAgentKinds = discoverAgentKinds
@@ -460,13 +512,116 @@ final class StartAgentStore {
         self.isAgentListed = isAgentListed
         self.programExit = programExit
         self.recents = recents
-        // Origin wins; else the Server last chosen here; else the one Host's
-        // first Server when there is only one Host.
+        // Origin wins; else the item's Server; else the Server last chosen
+        // here; else the one Host's first Server when there is only one Host.
         self.selectedHostID =
             origin?.hostID
+            ?? gitHubLaunch?.hostID
             ?? recents.preferredHostID(in: hosts)
             ?? (hostChoices.count == 1 ? hostChoices.first?.servers.first?.id : nil)
+        pickedWorkspaceID = gitHubLaunch?.workspaceID
         remembersHostPicks = true
+    }
+
+    // MARK: From a pull request or an issue
+
+    /// The checkout of the item's repository that the chosen Workspace is,
+    /// while the Agent starts in an existing Workspace.
+    var gitHubCheckout: GitHubLaunch.Checkout? {
+        guard let gitHubLaunch, origin == nil, launchTarget == .existingWorkspace,
+            let selectedHostID, let selectedWorkspaceID
+        else { return nil }
+        return gitHubLaunch.checkouts.first { $0.hostID == selectedHostID && $0.workspaceID == selectedWorkspaceID }
+    }
+
+    /// The Worktree follows the item: its branch, what it starts from, and
+    /// what the footer says. Only in a checkout of the item's repository.
+    var followsGitHubItem: Bool {
+        offersWorktree && gitHubWorktreeSource != nil
+    }
+
+    private var gitHubWorktreeSource: GitHubWorktreeStart.Source? {
+        guard gitHubCheckout != nil else { return nil }
+        return gitHubLaunch?.source
+    }
+
+    /// The directory on the Host where a checkout of the repository has
+    /// `branch` checked out, where git would refuse it a second time.
+    private func gitHubHolder(of branch: String) -> String? {
+        gitHubLaunch?.checkouts.lazy.compactMap { $0.checkedOut[branch] }.first
+    }
+
+    /// The pull request's branch, which a Worktree can check out at the pull
+    /// request's commits. A fork's branch named as the repository's default
+    /// one is not: on the Host that name is the user's own branch.
+    private var gitHubPullRequestBranch: String? {
+        guard case .pullRequest(_, let head, let isCrossRepository) = gitHubWorktreeSource, !head.isEmpty,
+            !(isCrossRepository && head == gitHubLaunch?.defaultBranch)
+        else { return nil }
+        return head
+    }
+
+    /// A pull request's own branch while no checkout on the Host holds it,
+    /// else a generated one; nil when the Worktree does not follow the item.
+    private var suggestedGitHubBranch: String? {
+        guard followsGitHubItem else { return nil }
+        if let head = gitHubPullRequestBranch, gitHubHolder(of: head) == nil {
+            return head
+        }
+        return generateWorktreeBranch()
+    }
+
+    /// The Workspace footer when opened from an item: which Agent's
+    /// checkout of the repository it is, or that the Host has none.
+    var gitHubWorkspaceNote: String? {
+        guard let gitHubLaunch, origin == nil, launchTarget == .existingWorkspace else { return nil }
+        if let checkout = gitHubCheckout {
+            return String(localized: "The checkout of \(gitHubLaunch.repository) that \(checkout.agentName) works in.")
+        }
+        guard gitHubLaunch.checkouts.isEmpty else { return nil }
+        return String(localized: "No Agent on \(gitHubLaunch.hostName) works in \(gitHubLaunch.repository) yet. Choose a folder.")
+    }
+
+    /// The Worktree footer while it follows the item and the branch is
+    /// usable; `worktreeBranchErrorMessage` says what is wrong otherwise.
+    var gitHubWorktreeNote: String? {
+        guard followsGitHubItem, let gitHubLaunch, let source = gitHubWorktreeSource else { return nil }
+        guard startsInNewWorktree else {
+            return String(localized: "Run the Agent in a clean checkout instead of the one above.")
+        }
+        let repository = gitHubLaunch.repository
+        let branch = worktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch source {
+        case .pullRequest(_, let head, _):
+            if branch == gitHubPullRequestBranch {
+                return String(localized: "A fresh checkout of \(repository) on this pull request's branch.")
+            }
+            // The new branch starts from the commits fetched at Start, never
+            // from a local branch of the same name, which may have diverged.
+            if let holder = gitHubHolder(of: head) {
+                return String(localized: "\(head) is checked out in \(holder), so the worktree gets a new branch that starts from the pull request's latest commits.")
+            }
+            return String(localized: "A fresh checkout of \(repository) on a new branch that starts from the pull request's latest commits.")
+        case .defaultBranch(let name):
+            return String(localized: "A fresh checkout of \(repository) on a new branch that starts from \(name).")
+        }
+    }
+
+    /// The Agent footer when opened from an item.
+    var gitHubAgentNote: String? {
+        guard gitHubLaunch != nil else { return nil }
+        return String(localized: "The message goes into the new Agent's Composer once it starts. Nothing is sent until you send it.")
+    }
+
+    /// What `submit()` fetches before it makes a Worktree that follows the
+    /// item.
+    private var pendingGitHubWorktreeStart: GitHubWorktreeStart? {
+        guard followsGitHubItem, startsInNewWorktree, let checkout = gitHubCheckout,
+            let source = gitHubWorktreeSource, let branch = Self.nonEmptyTrimmed(worktreeBranch)
+        else { return nil }
+        return GitHubWorktreeStart(
+            directory: checkout.topLevel, remote: checkout.remote, source: source, branch: branch,
+            isPullRequestBranch: branch == gitHubPullRequestBranch)
     }
 
     /// Whether the fresh-worktree variant is offered. An origin launch is
@@ -589,6 +744,16 @@ final class StartAgentStore {
     var worktreeBranchErrorMessage: String? {
         guard startsInNewWorktree else { return nil }
         let branch = worktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Following an item, the branch is the user's to name: there is no
+        // generated one to fall back to, and one checked out on the Host
+        // cannot be checked out again.
+        if followsGitHubItem {
+            if let problem = GitBranchName.validationError(branch) { return problem }
+            if let holder = gitHubHolder(of: branch) {
+                return String(localized: "\(branch) is already checked out in \(holder).")
+            }
+            return nil
+        }
         guard !branch.isEmpty else { return nil }
         return GitBranchName.validationError(branch)
     }
@@ -731,11 +896,12 @@ final class StartAgentStore {
                 return
             }
         }
-        guard let destination = launchDestination else { return }
+        guard let formDestination = launchDestination else { return }
         // A preset may await the Host below while the form stays editable:
         // what the launch is sent to is fixed here, and a form changed
         // meanwhile is not launched.
-        let target = SubmittedTarget(destination: destination, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
+        let target = SubmittedTarget(destination: formDestination, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
+        let worktreeStart = pendingGitHubWorktreeStart
         state = .starting
         var launchArguments: [String] = []
         if case .kind(_, let arguments, _) = launch { launchArguments = arguments }
@@ -766,6 +932,30 @@ final class StartAgentStore {
                 return
             } catch {
                 state = .failed(Self.homeProbeMessage(for: error))
+                return
+            }
+        }
+        // Following an item, the Worktree starts from the commit fetched now,
+        // and the form must still say what was submitted once it arrives.
+        var destination = formDestination
+        if let worktreeStart, let gitHubLaunch, case .newWorktree(let spec) = formDestination {
+            do {
+                let commit = try await gitHubLaunch.worktreeStart(worktreeStart, hostID)
+                guard selectedHostID == hostID, pendingGitHubWorktreeStart == worktreeStart,
+                    launchDestination.map({
+                        SubmittedTarget(destination: $0, workspaceID: selectedWorkspaceID, tabLabel: tabLabel)
+                    }) == target
+                else {
+                    state = .editing
+                    return
+                }
+                destination = .newWorktree(WorktreeSpec(branch: spec.branch, base: commit))
+            } catch let failure as GitHubWorktreeStartFailure {
+                state = .failed(failure.message)
+                return
+            } catch {
+                state = .failed(
+                    GitHubWorktreeStartFailure.unreachable(Self.ownWords(of: error) ?? String(describing: error)).message)
                 return
             }
         }
@@ -814,24 +1004,21 @@ final class StartAgentStore {
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            switch launch {
-            case .template(let template, _):
-                if let exit = programExit(startedID) {
-                    state = .failed(Self.message(forTemplate: template.name, endedWith: exit))
-                } else {
-                    state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+            if let exit = programExit(startedID) {
+                // The words of an end before the launch returned, which only
+                // the Host's timing tells apart from this one.
+                var ended: any Error = ProgramEndedAtLaunch(exit: exit)
+                if case .newWorktree = destination {
+                    ended = WorktreeAgentStartFailure(checkoutPath: agent.cwd, underlying: ended)
                 }
-            case .kind(let kind, _, _):
-                if let exit = programExit(startedID) {
-                    state = .failed(Self.message(forKind: kind, endedWith: exit))
-                } else {
-                    state = .started(startedID)
-                }
+                state = .failed(Self.message(for: ended, launched: launch))
+            } else if case .template = launch {
+                state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+            } else {
+                state = .started(startedID)
             }
         } catch {
-            var kind: SupportedAgentKind?
-            if case .kind(let launched, _, _) = launch { kind = launched }
-            state = .failed(Self.message(for: error, launchedKind: kind))
+            state = .failed(Self.message(for: error, launched: launch))
         }
     }
 
@@ -854,10 +1041,11 @@ final class StartAgentStore {
         case .existingWorkspace:
             guard selectedWorkspaceID != nil else { return nil }
             if offersWorktree && startsInNewWorktree {
+                // Following an item, `submit()` fetches the base.
                 return .newWorktree(
                     WorktreeSpec(
                         branch: Self.nonEmptyTrimmed(worktreeBranch),
-                        base: worktreeNeedsBranch ? nil : Self.nonEmptyTrimmed(worktreeBase)))
+                        base: worktreeNeedsBranch || followsGitHubItem ? nil : Self.nonEmptyTrimmed(worktreeBase)))
             }
             return .existingWorkspace
         case .newWorkspace:
@@ -1043,11 +1231,23 @@ final class StartAgentStore {
             String(localized: "Agent detection timed out.")
         case TransportError.hostFeatureUnavailable(let feature):
             feature
-        case TransportError.malformedResponse(let detail):
-            detail
         default:
-            TransportError.herdrCoreLinkMessage(for: error)
-                ?? String(localized: "Detecting Agents failed: \(String(describing: error))")
+            ownWords(of: error) ?? String(localized: "Detecting Agents failed: \(String(describing: error))")
+        }
+    }
+
+    /// An error's own words, when it has some: what tmux or a core said when
+    /// it refused, or a TransportError's presentation. Nil for an error only
+    /// its description names.
+    private static func ownWords(of error: any Error) -> String? {
+        switch error {
+        case TransportError.malformedResponse(let detail):
+            // Its presentation names herdr, which a tmux refusal is not.
+            detail
+        case let transportError as TransportError:
+            transportError.presentation.message
+        default:
+            nil
         }
     }
 
@@ -1060,7 +1260,7 @@ final class StartAgentStore {
         case TransportError.timedOut:
             String(localized: "Resolving the Host's home directory timed out.")
         default:
-            String(localized: "Could not determine the Host's home directory: \(String(describing: error))")
+            String(localized: "Could not determine the Host's home directory: \(ownWords(of: error) ?? String(describing: error))")
         }
     }
 
@@ -1093,9 +1293,14 @@ final class StartAgentStore {
         }
     }
 
-    private static func message(
-        for error: any Error, launchedKind: SupportedAgentKind?
-    ) -> String {
+    private static func message(for launch: Launch, endedWith exit: ProgramExit) -> String {
+        switch launch {
+        case .kind(let kind, _, _): message(forKind: kind, endedWith: exit)
+        case .template(let template, _): message(forTemplate: template.name, endedWith: exit)
+        }
+    }
+
+    private static func message(for error: any Error, launched launch: Launch) -> String {
         switch error {
         case TransportError.sshUnreachable:
             String(localized: "The Host is not connected.")
@@ -1111,8 +1316,10 @@ final class StartAgentStore {
             worktree.message
         case let template as HerdrCoreTemplateError:
             template.message
+        case let ended as ProgramEndedAtLaunch:
+            message(for: launch, endedWith: ended.exit)
         case let failure as WorktreeAgentStartFailure:
-            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launchedKind: launchedKind))")
+            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launched: launch))")
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
@@ -1121,7 +1328,7 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
             String(localized: "Creating the worktree failed: \(apiError.message)")
         case let apiError as HerdrAPIError
-            where apiError.code == "unsupported_agent_kind" && launchedKind == .muse:
+            where apiError.code == "unsupported_agent_kind" && launch.kind == .muse:
             // Kind captured at submit, not the picker after await. Discovery
             // does not prove herdr supports Muse (#289); keep the server
             // reason and tell the user how to recover.
@@ -1134,8 +1341,7 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             String(localized: "herdr rejected the command: \(apiError.message)")
         default:
-            TransportError.herdrCoreLinkMessage(for: error)
-                ?? String(localized: "Starting the agent failed: \(String(describing: error))")
+            ownWords(of: error) ?? String(localized: "Starting the agent failed: \(String(describing: error))")
         }
     }
 }

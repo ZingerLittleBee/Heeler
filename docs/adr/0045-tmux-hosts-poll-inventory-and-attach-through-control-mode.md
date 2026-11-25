@@ -167,7 +167,8 @@ for any size it takes part in sizing every window of that session.
   when that name is taken, carrying `@heeler-worktree` set to the checkout's
   path. Removing one ends the Panes of the session carrying that path, never a
   session that only shares its name, then runs `git worktree remove` under
-  ADR 0032's risk checks and force rule.
+  ADR 0032's risk checks and force rule. A new branch starts at the
+  Workspace's HEAD, or at a GitHub item's commit (ADR 0065).
 - The leaked-environment check (ADR 0034) reads tmux's global environment
   (`show-environment -g -s`), which new panes inherit, and each user session's
   (`show-environment -t <session> -s`), which overrides it for that session's

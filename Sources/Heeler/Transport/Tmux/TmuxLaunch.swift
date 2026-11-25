@@ -101,6 +101,13 @@ enum TmuxLaunch {
         command(["kill-pane", "-t", id], paths: paths, loginShell: false)
     }
 
+    /// Succeeds while the Pane exists, and fails once tmux has closed it.
+    /// `has-session` takes a Pane for its target; `display-message` does not
+    /// fail on a missing one.
+    static func hasPane(_ id: String, paths: TmuxPaths) -> Command {
+        command(["has-session", "-t", id], paths: paths, loginShell: false)
+    }
+
     static func killWindow(_ id: String, paths: TmuxPaths) -> Command {
         command(["kill-window", "-t", id], paths: paths, loginShell: false)
     }

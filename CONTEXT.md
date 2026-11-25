@@ -310,6 +310,10 @@ Terminals, and the branch survives. On tmux Heeler creates it the same way at
 `~/.heeler/worktrees/<repository>/<branch>`, opened as a new Workspace named
 after the branch, numbered when that name is taken; removing it first ends that
 Workspace's Panes, never those of a Workspace that only shares its name.
+A new branch starts from the Workspace's HEAD, except when New Agent opens from
+a pull request or an issue: then it starts from the pull request's head commit,
+or the repository's default branch, fetched first, and a pull request's own
+branch is made or moved forward to it.
 _Avoid_: sandbox, branch copy, checkout folder
 
 **Checkout**:
@@ -357,7 +361,7 @@ when asked, never watched (ADR 0062).
 _Avoid_: port scan, forwarded ports, services
 
 **Console**:
-The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, which an open Agent's switcher follows while keeping that Agent's own chip, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
+The native dashboard surface, split into Agents, Terminals, GitHub, Usage, Hosts, and Settings tabs. GitHub and Usage each have a switch in Settings; with both on, Settings leaves the tab bar and opens from the Hosts tab (ADR 0065). The two lists share one Host filter, which an open Agent's switcher follows while keeping that Agent's own chip, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch at its top between the two lists and the GitHub List and Usage when they are on, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -607,6 +611,40 @@ estimated cost of those tokens at API list prices. It counts only what the
 Transcripts of the Host's Accounts still hold, and is never an Account's Usage
 Limits or a bill.
 _Avoid_: spend, cost (alone), usage (unqualified), credits
+
+**GitHub List**:
+The pull requests, or the issues, that GitHub finds for the account gh is
+signed in to on one Host, across repositories, as one list under a row of
+filters: State, Person, Repository and Label, kept for each of the two on the
+device. At their defaults it holds the open ones that involve the account:
+pull requests the user opened or whose review is asked of them, issues
+assigned to the user or opened by them. Heeler reads it by running gh over the
+Host's connection and never holds the account's token; on a Mac whose SSH
+session cannot read the login keychain, gh runs once in the desktop session
+instead. It is read for one Host at a time, a Host and not a Server, kept on
+the device for display only at the filters' defaults, and read again when
+shown stale, when a filter changes, when pulled, and on Check Again, never in
+the background (ADR 0065).
+_Avoid_: inbox, notifications, feed, dashboard
+
+**GitHub Detail**:
+One pull request or issue from the GitHub List, read again on its own when it
+opens and on a pull: its description, and a pull request's branches, checks,
+review, changes and comments, or an issue's labels, assignees and comments.
+Kept in memory only; its row replaces the list's copy. Its "⋯" offers
+Comment, Approve, Merge and Close, each one run of gh's own command on the
+Host, sent once, between a read of the item before, which can stop it, and
+one after, which says what came of it (ADR 0065).
+_Avoid_: item page, PR view
+
+**Send to Agent**:
+Putting a message about a GitHub Detail's pull request or issue in a running
+Agent's Composer: one sentence asking it to review, fix failing checks,
+address review comments, work on, investigate or just read the item, and the
+item's address. Agents of the item's Host in a checkout of its repository come
+first, marked On this branch or This repository from what git says there.
+Nothing is sent: the user sends the draft, as with Hand Off (ADR 0065).
+_Avoid_: assign, dispatch, delegate
 
 **Blocked Card**:
 Chat's native answer to the dialog on a Blocked Agent's screen, shown in the

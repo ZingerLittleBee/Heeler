@@ -292,6 +292,8 @@ struct HostListView: View {
     /// Closes the list where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     private let onDone: (@MainActor () -> Void)?
+    /// Settings, pushed from a gear, where it has no tab of its own.
+    private let settings: HostListSettingsLink?
     @State private var removal: HostRemovalStore
     /// What each Host was last found to run.
     private let discoveries: HostServerDiscoveryStore
@@ -340,6 +342,7 @@ struct HostListView: View {
         stopConnecting: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil,
         discoveries: HostServerDiscoveryStore = .shared,
+        settings: HostListSettingsLink? = nil,
         onDone: (@MainActor () -> Void)? = nil
     ) {
         self.store = store
@@ -362,10 +365,13 @@ struct HostListView: View {
         self.stopConnecting = stopConnecting
         self.origin = origin
         self.onDone = onDone
+        self.settings = settings
         // On the stack from the first frame, so the requested detail never
         // renders with the list's back button first.
         _path = State(
-            initialValue: Self.requestedPath(initialHostID, opensHostHelper: opensHostHelper, in: store))
+            initialValue: settings?.isShownInitially == true
+                ? [.settings]
+                : Self.requestedPath(initialHostID, opensHostHelper: opensHostHelper, in: store))
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -454,6 +460,18 @@ struct HostListView: View {
                     Button("Add Host", systemImage: "plus") { isAddingHost = true }
                         .disabled(store.catalogLoadError != nil)
                 }
+                if settings != nil {
+                    // An app option, so it does not share the Hosts actions' glass.
+                    if #available(iOS 26.0, *) {
+                        ToolbarSpacer(.fixed, placement: .primaryAction)
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(ConsoleTab.settings.title, systemImage: "gearshape") {
+                            path = [.settings]
+                        }
+                        .accessibilityIdentifier("hosts.settings")
+                    }
+                }
             }
             .navigationDestination(for: HostDetailDestination.self) { route in
                 destination(for: route)
@@ -524,6 +542,9 @@ struct HostListView: View {
                 let requested = Self.requestedPath(id, opensHostHelper: opensHostHelper, in: store)
                 if !requested.isEmpty { path = requested }
             }
+            .onChange(of: path.contains(.settings), initial: true) { _, isShown in
+                settings?.onShownChange(isShown)
+            }
             .onChange(of: store.hosts.map(\.id)) { _, records in
                 // A Server turned off from its own page has no page left.
                 path.removeAll { route in
@@ -569,6 +590,8 @@ struct HostListView: View {
             } else {
                 ContentUnavailableView("Host removed", systemImage: "server.rack")
             }
+        case .settings:
+            settings?.page()
         }
     }
 
@@ -783,6 +806,20 @@ enum HostDetailDestination: Hashable {
     /// One Server's page, by its record, over its Host's detail.
     /// `opensHostHelper` opens the Host Helper sheet over it on arrival.
     case server(Host.ID, opensHostHelper: Bool = false)
+    /// Settings, where it has no tab of its own (ADR 0065).
+    case settings
+}
+
+/// Settings as the Hosts list pushes it, when both GitHub and Usage take a
+/// tab and Settings leaves the tab bar (ADR 0065).
+struct HostListSettingsLink {
+    /// The Settings page, without a navigation stack of its own.
+    let page: @MainActor () -> AnyView
+    /// Opens the list with Settings already pushed, as when Settings was the
+    /// screen on show when it moved here.
+    let isShownInitially: Bool
+    /// Hears whether Settings is on the list's stack.
+    let onShownChange: @MainActor (Bool) -> Void
 }
 
 /// The confirmation before a Host goes or a Server is turned off, and the

@@ -85,7 +85,8 @@ Server Kind is presented with Herdr TUI's Workspaces, Tabs, and Panes.
   made one `-` and `-` trimmed from both ends, through
   `git worktree add <path> <branch>` for a branch that exists and
   `git worktree add -b <branch> <path> HEAD` otherwise, where `<repository>`
-  is the main checkout's folder name. A labeled new Workspace opens there.
+  is the main checkout's folder name. New Agent from a GitHub item names a
+  commit in place of `HEAD` (ADR 0065). A labeled new Workspace opens there.
   Removing one ends that Workspace's Terminals, then runs
   `git worktree remove`, forced only when the checkout has changes or
   submodules, keeping the branch. Those two git commands run as the app's do,

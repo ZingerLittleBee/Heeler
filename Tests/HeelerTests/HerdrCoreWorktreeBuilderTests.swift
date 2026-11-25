@@ -157,8 +157,12 @@ struct GitCommandScriptTests {
             GitProbe.commandScript(
                 GitCommand(arguments: ["status"], directory: "/w", isMutation: false), nonce: nonce))
 
-        #expect(mutation.contains(#" git -C "$dir" 'worktree' 'prune'"#))
+        #expect(mutation.contains(#" mutate -C "$dir" 'worktree' 'prune'"#))
         #expect(read.contains(#" g -C "$dir" 'status'"#))
+        // A partial clone's checkout fetches what it lacks; a read never does.
+        // The fetch's detached maintenance must not hold the frame's 3 and 4.
+        #expect(mutation.contains("\nunset GIT_NO_LAZY_FETCH\nmutate() { git \"$@\" 3>&- 4>&-; }\nsec "))
+        #expect(!read.contains("unset GIT_NO_LAZY_FETCH"))
     }
 
     @Test func theAnswerCarriesGitsStatusOutputAndFirstError() throws {

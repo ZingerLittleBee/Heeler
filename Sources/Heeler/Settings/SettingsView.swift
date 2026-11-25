@@ -60,8 +60,9 @@ enum SettingsOverlayNetworksDestination: String, Sendable {
     }
 }
 
-/// The Settings tab's root, or on iPad a sheet's: a shallow menu into Agent
-/// fields, notifications and appearance (theme, terminal and Chat).
+/// The Settings tab's root, on iPad a sheet's, or with both GitHub and Usage
+/// on a page the Hosts tab pushes: a shallow menu into Agent fields,
+/// notifications and appearance (theme, terminal and Chat).
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
@@ -84,6 +85,8 @@ struct SettingsView: View {
     /// Closes Settings where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     var onDone: (@MainActor () -> Void)? = nil
+    /// Pushed on another page's navigation stack, so it brings none of its own.
+    var isPushed = false
     /// Injected app-wide by `ContentView`; absent in previews, where the
     /// Overlay Networks row is left out.
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
@@ -108,6 +111,8 @@ struct SettingsView: View {
     /// static label, and its id is `acknowledgementsRouteID`.
     static let usageFooter =
         String(localized: "Turn off to hide the Usage tab and stop reading usage from your Hosts. Usage widgets clear their figures.")
+    static let gitHubFooter =
+        String(localized: "Shows the pull requests and issues that the gh command on your Hosts reads. Turn off to hide the GitHub tab and remove the lists saved on this device.")
 
     static var aboutRows: [AboutRow] {
         var rows: [AboutRow] = [.version, .setupGuide]
@@ -161,114 +166,132 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
+        if isPushed {
+            form
+        } else {
+            NavigationStack { form }
+                // Covers every pushed page too.
+                .readableColumn()
+        }
+    }
+
+    private var form: some View {
+        Form {
+            Section {
+                NavigationLink {
+                    Self.agentListDestination.destinationView(console: console, hosts: rowLayoutHosts)
+                } label: {
+                    Label("Agent List Fields", systemImage: "list.bullet.rectangle")
+                }
+                .accessibilityIdentifier(Self.agentListDestination.rawValue)
+                NavigationLink {
+                    AgentsAndAccountsSettingsView(
+                        console: console, hosts: hosts, hasOnlyRexServersOn: hasOnlyRexServersOn)
+                } label: {
+                    Label("Agents & Accounts", systemImage: "person.crop.rectangle.stack")
+                }
+                .accessibilityIdentifier("settings.agentsAndAccounts")
+                NavigationLink {
+                    NotificationSettingsView(
+                        pushRegistration: pushRegistration,
+                        notificationPreferences: notificationPreferences,
+                        relaySettings: relaySettings,
+                        liveActivities: liveActivities,
+                        pluginStatuses: console.pluginStatuses,
+                        refreshPluginStatuses: { [console] in
+                            await console.refreshPluginStatuses(for: $0)
+                        },
+                        openHostHelper: openHostHelper)
+                } label: {
+                    Label("Notifications", systemImage: "bell.badge")
+                }
+                NavigationLink {
+                    AppearanceSettingsView(terminal: terminal, appearance: appearance)
+                } label: {
+                    Label("Appearance", systemImage: "paintpalette")
+                }
+                // iOS keeps an app's language in the app's own Settings page.
+                if let appSettings = URL(string: UIApplication.openSettingsURLString) {
+                    ExternalLinkRow(
+                        "Language", systemImage: "globe", destination: appSettings,
+                        value: Self.languageName)
+                        .accessibilityIdentifier("settings.language")
+                }
+                if let voiceInput {
                     NavigationLink {
-                        Self.agentListDestination.destinationView(console: console, hosts: rowLayoutHosts)
+                        VoiceInputSettingsView(settings: voiceInput.settings)
                     } label: {
-                        Label("Agent List Fields", systemImage: "list.bullet.rectangle")
-                    }
-                    .accessibilityIdentifier(Self.agentListDestination.rawValue)
-                    NavigationLink {
-                        AgentsAndAccountsSettingsView(
-                            console: console, hosts: hosts, hasOnlyRexServersOn: hasOnlyRexServersOn)
-                    } label: {
-                        Label("Agents & Accounts", systemImage: "person.crop.rectangle.stack")
-                    }
-                    .accessibilityIdentifier("settings.agentsAndAccounts")
-                    NavigationLink {
-                        NotificationSettingsView(
-                            pushRegistration: pushRegistration,
-                            notificationPreferences: notificationPreferences,
-                            relaySettings: relaySettings,
-                            liveActivities: liveActivities,
-                            pluginStatuses: console.pluginStatuses,
-                            refreshPluginStatuses: { [console] in
-                                await console.refreshPluginStatuses(for: $0)
-                            },
-                            openHostHelper: openHostHelper)
-                    } label: {
-                        Label("Notifications", systemImage: "bell.badge")
-                    }
-                    NavigationLink {
-                        AppearanceSettingsView(terminal: terminal, appearance: appearance)
-                    } label: {
-                        Label("Appearance", systemImage: "paintpalette")
-                    }
-                    // iOS keeps an app's language in the app's own Settings page.
-                    if let appSettings = URL(string: UIApplication.openSettingsURLString) {
-                        ExternalLinkRow(
-                            "Language", systemImage: "globe", destination: appSettings,
-                            value: Self.languageName)
-                            .accessibilityIdentifier("settings.language")
-                    }
-                    if let voiceInput {
-                        NavigationLink {
-                            VoiceInputSettingsView(settings: voiceInput.settings)
+                        LabeledContent {
+                            Text(voiceInput.settings.service?.displayName ?? String(localized: "Off"))
                         } label: {
-                            LabeledContent {
-                                Text(voiceInput.settings.service?.displayName ?? String(localized: "Off"))
-                            } label: {
-                                Label("Voice Input", systemImage: "mic")
-                            }
+                            Label("Voice Input", systemImage: "mic")
                         }
-                        .accessibilityIdentifier("settings.voiceInput")
                     }
-                }
-
-                Section {
-                    Toggle(isOn: Binding(
-                        get: { console.isUsageEnabled },
-                        set: { console.setUsageEnabled($0) }
-                    )) {
-                        Label(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis")
-                    }
-                    .accessibilityIdentifier("settings.usage")
-                } footer: {
-                    Text(Self.usageFooter)
-                }
-
-                if let overlayNetworks {
-                    Section {
-                        NavigationLink {
-                            Self.overlayNetworksDestination.destinationView(
-                                store: overlayNetworks, onHostAdded: onHostAdded)
-                        } label: {
-                            Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
-                        }
-                        .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
-                    } header: {
-                        Text("Connections")
-                    }
-                }
-
-                ChatCacheSettingsSection(cache: console.chatCache)
-
-                Section {
-                    ForEach(Self.aboutRows) { @Sendable row in
-                        MainActorContent { aboutRow(row) }
-                    }
-                } header: {
-                    Text("About")
-                } footer: {
-                    if Self.repositoryURL != nil {
-                        Text("Heeler is free and open source. If it helps you, a star on GitHub means a lot.")
-                    }
+                    .accessibilityIdentifier("settings.voiceInput")
                 }
             }
-            .readableColumnPage()
-            .navigationTitle("Settings")
-            .toolbar {
-                if let onDone {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done", action: onDone)
+
+            Section {
+                Toggle(isOn: Binding(
+                    get: { console.isUsageEnabled },
+                    set: { console.setUsageEnabled($0) }
+                )) {
+                    Label(ConsoleTab.usage.title, systemImage: "chart.bar.xaxis")
+                }
+                .accessibilityIdentifier("settings.usage")
+            } footer: {
+                Text(Self.usageFooter)
+            }
+
+            Section {
+                Toggle(isOn: Binding(
+                    get: { console.isGitHubEnabled },
+                    set: { console.setGitHubEnabled($0) }
+                )) {
+                    Label(ConsoleTab.github.title, systemImage: ConsoleTab.gitHubSymbol)
+                }
+                .accessibilityIdentifier("settings.github")
+            } footer: {
+                Text(Self.gitHubFooter)
+            }
+
+            if let overlayNetworks {
+                Section {
+                    NavigationLink {
+                        Self.overlayNetworksDestination.destinationView(
+                            store: overlayNetworks, onHostAdded: onHostAdded)
+                    } label: {
+                        Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
                     }
+                    .accessibilityIdentifier(Self.overlayNetworksDestination.rawValue)
+                } header: {
+                    Text("Connections")
+                }
+            }
+
+            ChatCacheSettingsSection(cache: console.chatCache)
+
+            Section {
+                ForEach(Self.aboutRows) { @Sendable row in
+                    MainActorContent { aboutRow(row) }
+                }
+            } header: {
+                Text("About")
+            } footer: {
+                if Self.repositoryURL != nil {
+                    Text("Heeler is free and open source. If it helps you, a star on GitHub means a lot.")
                 }
             }
         }
-        // Covers every pushed page too.
-        .readableColumn()
+        .readableColumnPage()
+        .navigationTitle("Settings")
+        .toolbar {
+            if let onDone {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done", action: onDone)
+                }
+            }
+        }
     }
 
     @ViewBuilder

@@ -308,13 +308,28 @@ extension ConsoleStore {
     /// the message: the staging adds the file's Host path after it. A draft
     /// already there stays above both.
     func deliverHandOff(_ record: URL, message: String, to id: ConsoleAgent.ID) async throws {
+        let session = try await receivingComposer(id)
+        guard session.staging.begin(.file(record)) != nil else { throw HandOffError.composerBusy }
+        Self.addBelowDraft(message, in: session)
+    }
+
+    /// Puts a message in an Agent's Composer by Hand Off's rules, with no
+    /// file: GitHub's Send to Agent (ADR 0065). Nothing is sent.
+    func deliverDraft(_ message: String, to id: ConsoleAgent.ID) async throws {
+        Self.addBelowDraft(message, in: try await receivingComposer(id))
+    }
+
+    private func receivingComposer(_ id: ConsoleAgent.ID) async throws -> AgentComposerSession {
         // A fresh launch is listed once its Host's next snapshot lands.
         await waitForAgent(id)
-        // A Hand Off closed in the meantime leaves that Composer alone.
+        // A delivery closed in the meantime leaves that Composer alone.
         try Task.checkCancellation()
         guard let target = agents.first(where: { $0.id == id }) else { throw HandOffError.targetGone }
-        let session = composerSession(for: target)
-        guard session.staging.begin(.file(record)) != nil else { throw HandOffError.composerBusy }
+        return composerSession(for: target)
+    }
+
+    /// A draft already there stays, above the message.
+    private static func addBelowDraft(_ message: String, in session: AgentComposerSession) {
         let draft = session.composer.draft
         session.composer.replaceDraft(with: draft.isEmpty ? message : "\(draft)\n\n\(message)")
     }

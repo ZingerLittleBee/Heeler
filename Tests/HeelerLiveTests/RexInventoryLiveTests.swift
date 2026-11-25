@@ -131,6 +131,9 @@ actor LocalRexTransport: RexTransport {
     /// Nor a folder to place Heeler's extension in.
     nonisolated var extensionPlacing: any RexHostExtensionPlacing { NoHostExtensionPlacing() }
 
+    /// Nor a gh to run.
+    nonisolated var gitHub: any GitHubHostCLI { NoHostGitHub() }
+
     func close() async {
         closed = true
         await control.close()
@@ -150,6 +153,9 @@ private struct NoHostReads: RexHostReads {
         throw Self.unavailable
     }
 }
+
+/// The gh runs of a transport with no SSH connection, which fail.
+private struct NoHostGitHub: GitHubHostCLI {}
 
 /// The placing of a transport with no SSH connection, which fails.
 private struct NoHostExtensionPlacing: RexHostExtensionPlacing {

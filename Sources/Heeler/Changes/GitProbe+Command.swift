@@ -6,7 +6,8 @@ struct GitCommand: Equatable, Sendable {
     let directory: String
     /// A read goes through the neutralized `g`, so it runs nothing the repository
     /// configured and changes nothing. A mutation runs plain `git`, as the user's
-    /// own would, hooks included, and has a longer bound. It is never sent twice.
+    /// own would, hooks included and objects a partial clone has yet to fetch,
+    /// and has a longer bound. It is never sent twice.
     let isMutation: Bool
 }
 
@@ -32,7 +33,15 @@ extension GitProbe {
     static func commandScript(_ command: GitCommand, nonce: String) -> Data {
         var body = Data("dir=".utf8)
         body.append(singleQuoted(Data(command.directory.utf8)))
-        let git = command.isMutation ? "git" : "g"
+        let git = command.isMutation ? "mutate" : "g"
+        // The preamble keeps reads from fetching a partial clone's missing
+        // objects; a Worktree's checkout needs them. That fetch, over the
+        // repository's auto-gc limit, starts git's detached maintenance,
+        // which keeps every descriptor but the standard three: given the
+        // frame's 3 and 4, it would hold the answer open until it ends.
+        if command.isMutation {
+            body.append(Data("\nunset GIT_NO_LAZY_FETCH\nmutate() { git \"$@\" 3>&- 4>&-; }".utf8))
+        }
         body.append(Data("\nsec \(Cap.command) \(commandSection) \(git) -C \"$dir\"".utf8))
         for argument in command.arguments {
             body.append(0x20)

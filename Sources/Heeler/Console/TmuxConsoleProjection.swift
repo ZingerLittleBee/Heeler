@@ -86,6 +86,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var pickLabelsBetweenSnapshots: [String: String] = [:]
     private(set) var pickRemoval: Task<Void, Never>?
     private var chatTypings: [String: TmuxChatTyping] = [:]
+    /// The Panes New Agent just opened, each watched until its program shows
+    /// running, tmux closes the Pane, or New Agent stops waiting.
+    private var launchWatches: [String: Task<Void, Never>] = [:]
+    /// Watched Panes tmux closed before their program showed running.
+    private var panesEndedAtLaunch: Set<String> = []
 
     /// `onPathsResolved` hears the paths a connection resolved again, after
     /// `host` already carries them.
@@ -184,6 +189,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         consumeTask = nil
         latencyTask = nil
         pickRemoval = nil
+        endLaunchWatches()
         Task { [session] in await session.end() }
     }
 
@@ -357,6 +363,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             pickLabelsBetweenSnapshots = [:]
             chatTypings = [:]
             inventory = nil
+            endLaunchWatches()
         }
         memory.noteCore(instance.id, for: host.id)
     }
@@ -398,6 +405,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
         self.inventory = inventory
         rebuildRows()
+        settleLaunchWatches()
         refreshMissingCheckouts(in: inventory)
     }
 
@@ -589,6 +597,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let hooks = await hookSettings(for: resolved)
         let made = try await created(
             try command { try TmuxLaunch.agentWindow(resolved, on: server, hookSettings: hooks) })
+        watchLaunch(made.paneID, paths: server.paths)
         return Agent(
             terminalID: made.paneID, kind: resolved.kind, title: "", status: .unknown,
             workspaceID: resolved.workspaceID ?? "", tabID: made.windowID, paneID: made.paneID,
@@ -601,7 +610,8 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let directory = try sourceDirectory(for: request)
         let server = try await launchServer()
         let hooks = await hookSettings(for: request)
-        let created = try await worktreeGit().create(branch: worktree.branch ?? "", from: directory)
+        let created = try await worktreeGit().create(
+            branch: worktree.branch ?? "", from: directory, startPoint: worktree.base)
         // Before the session's first row, so it already reads as the Worktree it is.
         knownCheckouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
@@ -625,9 +635,17 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             _ = try await perform(
                 TmuxLaunch.setWorktree(session: sessionID, path: created.path, paths: server.paths))
         } catch {
+            // A program that ends at once takes its window, and the session,
+            // with it: the option then has no session to go on.
+            if await isClosed(made.paneID, paths: server.paths) {
+                throw WorktreeAgentStartFailure(
+                    checkoutPath: created.path, underlying: ProgramEndedAtLaunch(exit: ProgramExit(code: nil)))
+            }
             await endOpened(made)
             throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
         }
+        // The program can still end now, after the session was marked.
+        watchLaunch(made.paneID, paths: server.paths)
         if self.server == nil { await session.askNow() }
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
@@ -642,11 +660,27 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let hooks = await hookSettings(for: request)
         let made = try await created(
             try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server, hookSettings: hooks) })
+        watchLaunch(made.paneID, paths: server.paths)
         if self.server == nil { await session.askNow() }
         return Agent(
             terminalID: made.paneID, kind: request.kind, title: "", status: .unknown,
             workspaceID: made.sessionID ?? "", tabID: made.windowID, paneID: made.paneID,
             cwd: workspace.directory, revision: 0, name: request.name)
+    }
+
+    /// tmux closes a Pane with its program and keeps no exit code (Heeler never
+    /// sets `remain-on-exit`, ADR 0044), so the only end known here is a
+    /// program New Agent just started whose Pane closed before it showed running.
+    func programExit(ofPane paneID: String) -> ProgramExit? {
+        panesEndedAtLaunch.contains(paneID) ? ProgramExit(code: nil) : nil
+    }
+
+    /// A Pane New Agent just opened, listed while its foreground is still the
+    /// shell its launch runs the program through, reading its startup files.
+    /// The Agent rule already names the program from that shell's arguments.
+    func isStartingProgram(ofPane paneID: String) -> Bool {
+        guard launchWatches[paneID] != nil, let pane = inventoryPane(paneID) else { return false }
+        return HerdrCoreShellLaunch.launch(in: pane.foregroundArguments ?? []) != nil
     }
 
     func createShellTerminal(
@@ -821,6 +855,64 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
         throw lastDuplicate
             ?? TransportError.malformedResponse(String(localized: "tmux: The session name is already taken."))
+    }
+
+    /// Whether tmux has closed `pane`. Only tmux refusing to find it says so;
+    /// a link that failed says nothing about the Pane.
+    private func isClosed(_ pane: String, paths: TmuxPaths) async -> Bool {
+        do {
+            _ = try await perform(TmuxLaunch.hasPane(pane, paths: paths))
+            return false
+        } catch TransportError.malformedResponse {
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// As long as New Agent waits for the row (`ConsoleStore.waitForAgent`).
+    private static let launchWatchLimit: Duration = .seconds(5)
+    /// Between two asks about a launched Pane that no snapshot lists.
+    private static let launchCheckInterval: Duration = .milliseconds(750)
+
+    /// Watches the Pane a launch opened until a snapshot shows its program
+    /// running or tmux no longer finds it. A Pane that opened and closed
+    /// between two of the inventory loop's asks changes no snapshot, so while
+    /// none lists it, tmux is asked.
+    private func watchLaunch(_ paneID: String, paths: TmuxPaths) {
+        launchWatches[paneID]?.cancel()
+        launchWatches[paneID] = Task { [weak self] in
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: Self.launchWatchLimit)
+            while clock.now < deadline {
+                guard (try? await Task.sleep(for: Self.launchCheckInterval)) != nil, let self else { return }
+                guard self.terminalsByPane[paneID] == nil else { continue }
+                let closed = await self.isClosed(paneID, paths: paths)
+                guard !Task.isCancelled else { return }
+                if closed {
+                    self.panesEndedAtLaunch.insert(paneID)
+                    break
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.launchWatches[paneID] = nil
+            self.onChange()
+        }
+    }
+
+    /// A watched Pane listed with its program running is an ordinary Agent,
+    /// whose later end is no end at launch.
+    private func settleLaunchWatches() {
+        for paneID in Array(launchWatches.keys)
+        where agentsByPane[paneID] != nil && !isStartingProgram(ofPane: paneID) {
+            launchWatches.removeValue(forKey: paneID)?.cancel()
+        }
+    }
+
+    private func endLaunchWatches() {
+        for watch in launchWatches.values { watch.cancel() }
+        launchWatches = [:]
+        panesEndedAtLaunch = []
     }
 
     /// The session Heeler opened and could not mark. The checkout stays.
