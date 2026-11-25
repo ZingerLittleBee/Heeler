@@ -372,7 +372,11 @@ struct ChatDeliveryPolicyTests {
             InputBoxState.text("draft"), .disabled("Working."), .overlay("/compact"), .dialog(title: nil),
             .noComposer(""), .unknown(""),
         ] {
-            #expect(try ending(.inputNotReady(state.holdReason(for: program))) == statuses)
+            let refusal: ComposerRefusal =
+                state.allowsSendAnyway
+                ? .unconfirmedInputBox(state.holdReason(for: program))
+                : .inputNotReady(state.holdReason(for: program))
+            #expect(try ending(refusal) == statuses)
         }
         for refusal in [busy.validate("!ls"), busy.validate("/nope")] {
             #expect(try ending(refusal).isEmpty)
@@ -397,22 +401,115 @@ struct ChatDeliveryPolicyTests {
         "grok-26-waiting-subagent",
     ])
     func grokNamesWhatHoldsTheSend(stem: String) async throws {
-        let reasons = [
-            "grok-02-idle-draft":
-                "Grok Build's input box already has text, such as a draft or a message Stop put back. Send or clear it in the terminal first.",
-            "grok-07-slash-popup": "A menu is open over the Agent's input box. Close it in the terminal first.",
-            "grok-11-dashboard":
-                "Grok Build is showing its dashboard, where a message starts a new agent. Go back to the conversation in the terminal first.",
-            "grok-21-resume-picker": "A menu is open over the Agent's input box. Close it in the terminal first.",
-            "grok-26-waiting-subagent":
-                "The Agent isn't taking messages: Grok Build is waiting on a subagent or a background task, and a message now would cancel that turn.",
+        let expected: [String: ComposerRefusal] = [
+            "grok-02-idle-draft": .inputNotReady(
+                "Grok Build's input box already has text, such as a draft or a message Stop put back. Send or clear it in the terminal first."
+            ),
+            // `/` is typed in the box beside the slash popup, so Send Anyway must not override it.
+            "grok-07-slash-popup": .inputNotReady(
+                "A menu is open over the Agent's input box. Close it in the terminal first."
+            ),
+            "grok-11-dashboard": .inputNotReady(
+                "Grok Build is showing its dashboard, where a message starts a new agent. Go back to the conversation in the terminal first."
+            ),
+            "grok-21-resume-picker": .inputNotReady(
+                "A menu is open over the Agent's input box. Close it in the terminal first."
+            ),
+            "grok-26-waiting-subagent": .inputNotReady(
+                "The Agent isn't taking messages: Grok Build is waiting on a subagent or a background task, and a message now would cancel that turn."
+            ),
         ]
-        let reason = try #require(reasons[stem])
+        let refusal = try #require(expected[stem])
         let screen = try ScreenFixture.screen(stem)
         let policy = ComposerDeliveryPolicy.chat(rules: Self.grokRules, activity: { .working }, readScreen: { screen })
         let preflight = try #require(policy.preflight)
 
-        #expect(await preflight("hello") == .inputNotReady(reason))
+        #expect(await preflight("hello") == refusal)
+    }
+
+    /// Send Anyway overrides overlay and unrecognized-box holds while still
+    /// keeping dialog, draft, shell-mode, Blocked, and send-concern checks.
+    @Test func sendAnywayOverridesOverlayAndUnknownWhileKeepingSafetyChecks() async throws {
+        let overlay = try ScreenFixture.screen("agy-85-model-picker-120x40")
+        let unknown = ScreenFixture.synthetic(["unrecognized screen"])
+        let dialog = try ScreenFixture.screen("agy-47-perm-file-edit-default-120x40")
+        let draft = try ScreenFixture.screen("agy-14-idle-draft-oneline-120x40")
+        let shell = try ScreenFixture.screen("agy-91-bang-typed-62x41")
+        let agyRules = ChatSendRules(
+            program: .agy, commands: ChatCommandMenu.commands(skills: [], agentIsIdle: true, program: .agy))
+
+        func policy(
+            screen: ANSIScreen,
+            activity: ChatAgentActivity = .idle,
+            sendConcern: @escaping @MainActor (String, ANSIScreen) -> String? = { _, _ in nil }
+        ) -> ComposerDeliveryPolicy {
+            ComposerDeliveryPolicy.chat(
+                rules: agyRules, activity: { activity }, readScreen: { screen }, sendConcern: sendConcern)
+        }
+
+        // Overlay and unknown hold with `.unconfirmedInputBox`, then pass with Send Anyway.
+        let overlayPolicy = policy(screen: overlay)
+        #expect(
+            await overlayPolicy.preflight?("hello")
+                == .unconfirmedInputBox("A menu is open over the Agent's input box. Close it in the terminal first."))
+        #expect(await overlayPolicy.admittingUnconfirmedInputBox().preflight?("hello") == nil)
+
+        let unknownPolicy = policy(screen: unknown)
+        #expect(
+            await unknownPolicy.preflight?("hello")
+                == .unconfirmedInputBox("Heeler can't find the Agent's input box on screen."))
+        #expect(await unknownPolicy.admittingUnconfirmedInputBox().preflight?("hello") == nil)
+
+        // Safety checks still hold under Send Anyway.
+        #expect(
+            await policy(screen: dialog).admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady("The Agent is showing a dialog. Answer it in the terminal first."))
+        #expect(
+            await policy(screen: draft).admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady(InputBoxState.text("x").holdReason(for: .agy)))
+        #expect(
+            await policy(screen: shell).admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady(InputBoxState.shellMode("").holdReason(for: .agy)))
+        #expect(
+            await policy(screen: overlay, activity: .blocked).admittingUnconfirmedInputBox().preflight?("hello")
+                == .agentBlocked)
+        #expect(
+            await policy(screen: overlay, sendConcern: { _, _ in "Wrong conversation." })
+                .admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady("Wrong conversation."))
+
+        // An overlay coexisting with a non-empty draft (`agy-26-slash-popup-filtered-co`,
+        // `grok-07-slash-popup`) or full-screen `/swarm board` must never offer or pass Send Anyway.
+        let agySlashDraft = try ScreenFixture.screen("agy-26-slash-popup-filtered-co-120x40")
+        #expect(
+            await policy(screen: agySlashDraft).preflight?("hello")
+                == .inputNotReady("A menu is open over the Agent's input box. Close it in the terminal first."))
+        #expect(
+            await policy(screen: agySlashDraft).admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady(InputBoxState.text("/co").holdReason(for: .agy)))
+
+        let grokSlashDraft = try ScreenFixture.screen("grok-07-slash-popup")
+        let grokPolicy = ComposerDeliveryPolicy.chat(
+            rules: Self.grokRules, activity: { .idle }, readScreen: { grokSlashDraft })
+        #expect(
+            await grokPolicy.preflight?("hello")
+                == .inputNotReady("A menu is open over the Agent's input box. Close it in the terminal first."))
+        #expect(
+            await grokPolicy.admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady(InputBoxState.text("/").holdReason(for: .grok)))
+
+        let swarmBoard = ScreenFixture.synthetic([
+            "  Swarm board \"Auth Audit\" — 2 working · 1 waiting · #4",
+            String(repeating: "─", count: 80),
+            "  #1 coordinator: @worker-a investigate",
+            "  tab switch pane · j/k scroll · esc back",
+        ])
+        #expect(
+            await policy(screen: swarmBoard).preflight?("hello")
+                == .inputNotReady("A menu is open over the Agent's input box. Close it in the terminal first."))
+        #expect(
+            await policy(screen: swarmBoard).admittingUnconfirmedInputBox().preflight?("hello")
+                == .inputNotReady("Antigravity CLI's swarm board is open in the terminal. Press Esc there first."))
     }
 
     /// The re-read compares what the box holds with the text sent: Grok

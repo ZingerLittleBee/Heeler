@@ -19,6 +19,9 @@ final actor ScriptedRexHost: RexHostConnection {
         /// SSH refuses it, as libssh2 reports any refused socket.
         case refused
         case fails(TransportError)
+        /// It opens and ends at once, as Rex's stdio bridge on Windows does
+        /// when no server listens.
+        case endsAtOnce
     }
 
     nonisolated let routeID: UUID? = nil
@@ -85,9 +88,25 @@ final actor ScriptedRexHost: RexHostConnection {
         return GitExecResult(stdout: Data(printed.utf8), stderr: Data(), exitStatus: 0)
     }
 
+    /// Only the Rex probe's PowerShell, which prints `probe` as a Windows Host would.
     func runWindowsCommand(_ command: String, for purpose: WindowsHostExec) async throws -> GitExecResult {
         log.append("windows")
-        throw TransportError.hostFeatureUnavailable(feature: "Windows commands")
+        guard let probe, let body = try? HerdrCoreWindowsLocatorTests.decoded(command),
+            let nonce = Self.nonce(in: body, before: " rex begin'")
+        else { throw TransportError.hostFeatureUnavailable(feature: "Windows commands") }
+        let printed = (["", "\(nonce) rex begin"] + probe + ["", "\(nonce) rex end"]).joined(separator: "\n") + "\n"
+        return GitExecResult(stdout: Data(printed.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    func openRexControlExec(command: String) async throws -> any HeelerSSHAPIChannel {
+        log.append("control exec \(command)")
+        return try await serve(try next(from: &controlChannels), at: command)
+    }
+
+    func openRexDataExec(command: String) async throws -> any HeelerSSHAPIChannel {
+        log.append("data exec \(command)")
+        guard isConnected else { throw TransportError.sshUnreachable(detail: "The SSH connection is closed.") }
+        return try await serve(try next(from: &dataChannels), at: command)
     }
 
     func openRexControlChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
@@ -251,6 +270,8 @@ final actor ScriptedRexHost: RexHostConnection {
             return channel
         case .refused:
             throw TransportError.streamLocalOpenFailed(path: socketPath)
+        case .endsAtOnce:
+            return EndedChannel()
         case .fails(let error):
             throw error
         }
@@ -263,4 +284,11 @@ final actor ScriptedRexHost: RexHostConnection {
         guard let quote = head.lastIndex(of: "'") else { return nil }
         return String(head[head.index(after: quote)...])
     }
+}
+
+/// A channel that ends before anything arrives.
+private struct EndedChannel: HeelerSSHAPIChannel {
+    func write(_ data: Data, timeout: Duration) async throws {}
+    func read(maximumBytes: Int, timeout: Duration) async throws -> Data? { nil }
+    func close(timeout: Duration) async throws {}
 }

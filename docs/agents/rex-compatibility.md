@@ -13,7 +13,10 @@ server has been observed yet.
   experimental for users
   ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
   Heeler reaches a running server's Unix socket over a direct-streamlocal SSH
-  channel and never runs `rex` or starts a server.
+  channel and never runs `rex` or starts a server. On native Windows it
+  reaches the server's named pipe through an exec of
+  `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
+  which starts none either.
 - One WebSocket control connection per Host carries everything but terminal
   data: hello at API revision 12 only, `server.status`, `session.attach_all`
   and the inventory reads
@@ -177,6 +180,14 @@ committed live test.
   and data in `~/Library/Application Support/rex` (review probe of the
   installed app). Detection reads these, not a `rex` on the PATH, which other
   software also ships.
+- On Windows 11, Rex 0.1.0-preview.23 installed with WinGet puts `rex.exe` in
+  `%LOCALAPPDATA%\Microsoft\WinGet\Links`, on the account's PATH, keeps its
+  logs under `%LOCALAPPDATA%\rex`, and its personal server listens on
+  `\\.\pipe\rex-<SID>`, which `rex server status` writes as
+  `npipe:////./pipe/rex-<SID>` (2026-11-25, over Win32-OpenSSH with a `cmd`
+  DefaultShell). `rex -S <that address> __internal dial-stdio
+  --autostart=false` bridged an SSH exec to it: the WebSocket upgrade, a hello
+  at revision 12 and `session.list` all answered as over a Unix socket.
 
 ### Control connection
 

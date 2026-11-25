@@ -159,6 +159,14 @@ protocol RexHostConnection:
     /// refusing it throws `.streamLocalOpenFailed`.
     func openRexDataChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel
 
+    /// A channel to a native Windows server for the control link: an exec of
+    /// `command` (`RexWindowsDial`) under the events slot, past whatever the
+    /// account's shell printed before it.
+    func openRexControlExec(command: String) async throws -> any HeelerSSHAPIChannel
+
+    /// The same exec under an attach slot, for a data link.
+    func openRexDataExec(command: String) async throws -> any HeelerSSHAPIChannel
+
     /// Runs a `RexSocketCheck` script in one bounded exec.
     func runRexSocketCheck(_ script: Data) async throws -> GitExecResult
 
@@ -171,8 +179,10 @@ extension RexHostConnection {
     }
 }
 
-/// A Rex Host over SSH: direct-streamlocal channels to the server's socket.
-/// It never runs `rex`, and connecting starts no server.
+/// A Rex Host over SSH: direct-streamlocal channels to the server's socket on
+/// macOS and Linux; on native Windows, execs of Rex's stdio bridge to its
+/// named pipe (`RexWindowsDial`), which start no server either. Connecting
+/// starts no server.
 actor RexSSHTransport: RexTransport {
     nonisolated let routeID: UUID?
     nonisolated let socket: RexSocket
@@ -265,6 +275,9 @@ actor RexSSHTransport: RexTransport {
     }
 
     func openDataChannel() async throws -> any HeelerSSHAPIChannel {
+        if let command = RexWindowsDial.command(for: socket) {
+            return try await connection.openRexDataExec(command: command)
+        }
         do {
             return try await connection.openRexDataChannel(socketPath: socket.path)
         } catch TransportError.streamLocalOpenFailed {
@@ -324,10 +337,13 @@ actor RexSSHTransport: RexTransport {
             throw TransportError.rexNotInstalled
         case .notRunning:
             throw TransportError.rexServerNotRunning(socketPath: nil)
+        case .notUsable(let path) where RexSocket.isWindowsPipeAddress(path):
+            throw TransportError.rexLookupFailed(reason: RexWindowsDial.notOnPathReason)
         case .notUsable(let path):
             throw TransportError.rexAccountRefused(socketPath: path)
         case .unsupported:
-            throw TransportError.rexLookupFailed(reason: String(localized: "Heeler finds Rex on macOS and Linux Hosts only."))
+            throw TransportError.rexLookupFailed(
+                reason: String(localized: "Heeler finds Rex on macOS, Linux and Windows Hosts only."))
         case .unreadable:
             throw TransportError.rexLookupFailed(
                 reason: String(localized: "Heeler could not read whether Rex is on this Host."))
@@ -338,6 +354,21 @@ actor RexSSHTransport: RexTransport {
         over connection: any RexHostConnection, socket: RexSocket, resuming previous: RexControlLink?,
         options: RexControlLink.Options, sleep: @escaping RexControlLink.Sleep, nonce: @Sendable () -> String
     ) async throws -> RexControlLink {
+        if let command = RexWindowsDial.command(for: socket) {
+            let channel = try await connection.openRexControlExec(command: command)
+            do {
+                return try await RexControlLink.open(
+                    over: channel, resuming: previous, options: options, sleep: sleep)
+            } catch let error as RexControlError {
+                // The bridge exits before the upgrade when no server listens
+                // or `rex` is not on the exec's PATH: say which, as a look can.
+                switch error {
+                case .upgradeFailed, .linkEnded:
+                    throw await windowsRefusal(of: socket, over: connection, nonce: nonce()) ?? error
+                default: throw error
+                }
+            }
+        }
         let channel: any HeelerSSHAPIChannel
         do {
             channel = try await connection.openRexControlChannel(socketPath: socket.path)
@@ -345,6 +376,18 @@ actor RexSSHTransport: RexTransport {
             throw await refusal(of: socket, over: connection, nonce: nonce())
         }
         return try await RexControlLink.open(over: channel, resuming: previous, options: options, sleep: sleep)
+    }
+
+    /// Why a native Windows server did not answer, when a fresh look can say.
+    private static func windowsRefusal(
+        of socket: RexSocket, over connection: any RexHostConnection, nonce: String
+    ) async -> TransportError? {
+        switch try? await RexProbe.run(over: connection, nonce: nonce) {
+        case .notInstalled: .rexNotInstalled
+        case .notRunning: .rexServerNotRunning(socketPath: socket.path)
+        case .notUsable: .rexLookupFailed(reason: RexWindowsDial.notOnPathReason)
+        default: nil
+        }
     }
 
     /// Why SSH refused the socket, as far as the Host can say.

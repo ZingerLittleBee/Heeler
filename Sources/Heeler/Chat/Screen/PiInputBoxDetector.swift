@@ -6,7 +6,20 @@ import Foundation
 /// guessing Enter's role.
 enum PiInputBoxDetector {
     static func detect(_ screen: ANSIScreen, program: ChatProgram) -> InputBoxState {
-        if program == .omp, let band = ompBand(screen) { return band }
+        detect(screen, program: program, ignoringOverlay: false)
+    }
+
+    /// Returns a hard hold (draft, shell mode, or OMP working turn) that
+    /// `Send Anyway` must never override even when an overlay is also visible.
+    static func hardHold(in screen: ANSIScreen, program: ChatProgram) -> InputBoxState? {
+        let state = detect(screen, program: program, ignoringOverlay: true)
+        return (!state.isSendable && !state.allowsSendAnyway) ? state : nil
+    }
+
+    private static func detect(
+        _ screen: ANSIScreen, program: ChatProgram, ignoringOverlay: Bool
+    ) -> InputBoxState {
+        if program == .omp, let band = ompBand(screen, ignoringOverlay: ignoringOverlay) { return band }
         let rows = screen.rows
         // Prefer the last editor on screen; rules in a tool's output above
         // it must never be mistaken for the input box.
@@ -33,24 +46,26 @@ enum PiInputBoxDetector {
                     || (program == .omp && row.text.contains("▏"))
             }
             guard hasCursor else { continue }
-            if program == .pi {
-                // Stock Pi's footer is a pwd row then a stats row, right
-                // under the editor; extension statuses may follow. A
-                // completion list draws between the editor and the footer.
-                guard let stats = rows.indices.dropFirst(bottom + 2).first(where: { piStats(rows[$0].trimmedText) })
-                else {
-                    return .unknown(String(localized: "Pi's footer is not recognized. Continue in the Agent terminal."))
-                }
-                if stats != bottom + 2 { return .overlay(rows[bottom + 1].trimmedText) }
-            } else {
-                // Every nonblank row below OMP's editors is footer chrome.
-                // Suggestions or an extension popup suspend sending.
-                for row in rows.dropFirst(bottom + 1) where !row.isBlank {
-                    let text = row.trimmedText
-                    if text.hasPrefix("❯") || text.hasPrefix(">") || text.hasPrefix("/")
-                        || text.lowercased().contains("esc to") || text.lowercased().contains("escape to")
-                    {
-                        return .overlay(text)
+            if !ignoringOverlay {
+                if program == .pi {
+                    // Stock Pi's footer is a pwd row then a stats row, right
+                    // under the editor; extension statuses may follow. A
+                    // completion list draws between the editor and the footer.
+                    guard let stats = rows.indices.dropFirst(bottom + 2).first(where: { piStats(rows[$0].trimmedText) })
+                    else {
+                        return .unknown(String(localized: "Pi's footer is not recognized. Continue in the Agent terminal."))
+                    }
+                    if stats != bottom + 2 { return .overlay(rows[bottom + 1].trimmedText) }
+                } else {
+                    // Every nonblank row below OMP's editors is footer chrome.
+                    // Suggestions or an extension popup suspend sending.
+                    for row in rows.dropFirst(bottom + 1) where !row.isBlank {
+                        let text = row.trimmedText
+                        if text.hasPrefix("❯") || text.hasPrefix(">") || text.hasPrefix("/")
+                            || text.lowercased().contains("esc to") || text.lowercased().contains("escape to")
+                        {
+                            return .overlay(text)
+                        }
                     }
                 }
             }
@@ -94,7 +109,7 @@ enum PiInputBoxDetector {
     /// and ask panels sit directly on the band without replacing the
     /// prompt. Every row after the prompt is consumed so a multiline draft
     /// cannot look empty.
-    private static func ompBand(_ screen: ANSIScreen) -> InputBoxState? {
+    private static func ompBand(_ screen: ANSIScreen, ignoringOverlay: Bool) -> InputBoxState? {
         let rows = screen.rows
         guard let prompt = rows.indices.last(where: { isOMPPrompt(rows[$0]) }), prompt > 0 else { return nil }
         let band = rows[prompt - 1]
@@ -108,7 +123,7 @@ enum PiInputBoxDetector {
         } else {
             return nil
         }
-        if prompt > 1, rows[prompt - 2].trimmedText.hasSuffix("╯") {
+        if !ignoringOverlay, prompt > 1, rows[prompt - 2].trimmedText.hasSuffix("╯") {
             return .overlay(rows[prompt - 2].trimmedText)
         }
         var lines: [String] = []
@@ -120,7 +135,10 @@ enum PiInputBoxDetector {
             // Suggestions/hints are not editor continuation rows. Unknown
             // chrome, such as the shell after OMP exits, also stays
             // non-sendable rather than being discarded.
-            if index > prompt, !row.text.hasPrefix("   ") { return .overlay(text) }
+            if index > prompt, !row.text.hasPrefix("   ") {
+                if ignoringOverlay { break }
+                return .overlay(text)
+            }
             if text == "▏" { continue }
             lines.append(text)
         }

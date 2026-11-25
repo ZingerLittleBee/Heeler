@@ -644,11 +644,18 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
             case .answers(let output): (0, output)
             case .fails(let status, let output): (status, output)
             }
-        let nonce = Self.windowsNonce(in: body)
-        var printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
-        if body.contains("$s = ") {
-            let lines = windowsLocator ?? []
-            printed += (["\(nonce) begin"] + lines + ["\(nonce) end"]).joined(separator: "\n") + "\n"
+        var printed = ""
+        // The Rex probe alone, for a Rex Host's checks, has no Herdr TUI part.
+        if body.contains(" herdr-tui begin'") {
+            let nonce = Self.windowsNonce(in: body)
+            printed = "\n\(nonce) herdr-tui begin\n\(output)\n\(nonce) herdr-tui status \(status)\n"
+            if body.contains("$s = ") {
+                let lines = windowsLocator ?? []
+                printed += (["\(nonce) begin"] + lines + ["\(nonce) end"]).joined(separator: "\n") + "\n"
+            }
+        }
+        if let rexProbe, let rex = Self.rexNonce(in: body) {
+            printed += (["", "\(rex) rex begin"] + rexProbe + ["", "\(rex) rex end"]).joined(separator: "\n") + "\n"
         }
         return GitExecResult(stdout: shellBanner + Data(printed.utf8), stderr: Data(), exitStatus: locatorStatus)
     }

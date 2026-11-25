@@ -705,8 +705,17 @@ struct AgentComposerView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .accessibilityHint("Sends the command as typed, though Chat's menu doesn't offer it")
+            .accessibilityHint(sendAnywayAccessibilityHint(for: notice.refusal))
             .accessibilityIdentifier("composer.sendAnyway")
+        }
+    }
+
+    private func sendAnywayAccessibilityHint(for refusal: ComposerRefusal) -> String {
+        switch refusal {
+        case .unconfirmedInputBox:
+            String(localized: "Sends the message even though Heeler couldn't confirm the input box is clear")
+        default:
+            String(localized: "Sends the command as typed, though Chat's menu doesn't offer it")
         }
     }
 

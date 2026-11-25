@@ -84,7 +84,7 @@ struct ServerKindDetection: Equatable, Sendable {
 
     /// The one exec. It throws when the exec failed or its output was cut short,
     /// which says nothing about what the Host runs. A native Windows Host is
-    /// never asked about tmux or Rex.
+    /// never asked about tmux; Rex is looked for by its named pipe.
     static func run(
         over connection: any ServerKindDetectionConnection, session: String,
         nonce: String = UUID().uuidString
@@ -115,7 +115,7 @@ struct ServerKindDetection: Equatable, Sendable {
         herdrCore = Self.herdrCore(output.location, session: session)
         tmuxReport = output.tmux
         tmux = Self.tmux(output.tmux, isNativeWindows: isNativeWindows)
-        rex = Self.rex(output.rex, isNativeWindows: isNativeWindows)
+        rex = Self.rex(output.rex)
     }
 
     private struct SessionList: Decodable {
@@ -165,8 +165,7 @@ struct ServerKindDetection: Equatable, Sendable {
 
     /// What a Rex probe's report says. Detection and a Rex Host's checks read
     /// it the same way.
-    static func rex(_ report: RexProbe.Report?, isNativeWindows: Bool = false) -> RexFinding {
-        guard !isNativeWindows else { return .unsupported }
+    static func rex(_ report: RexProbe.Report?) -> RexFinding {
         guard let report else { return .unreadable }
         guard let kernel = report.kernel, rexKernels.contains(kernel) else { return .unsupported }
         // A path this build cannot name as one shell word is no socket it could use.
@@ -179,7 +178,9 @@ struct ServerKindDetection: Equatable, Sendable {
         return report.isInstalled ? .notRunning : .notInstalled
     }
 
-    private static let rexKernels = [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel]
+    private static let rexKernels = [
+        HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel, HerdrCoreLocator.windowsKernel,
+    ]
 
     /// The socket a Rex Server turned on from this detection stores.
     var rexSocket: RexSocket? {
@@ -213,7 +214,7 @@ extension ServerKindDetection.TmuxFinding {
 
 extension RexProbe {
     /// The probe alone, in one bounded exec, for a Rex Host's checks: what
-    /// detection would say of Rex now. A native Windows Host is never asked.
+    /// detection would say of Rex now, on a native Windows Host by its pipe.
     static func run(
         over connection: any ServerKindDetectionConnection, nonce: String = UUID().uuidString
     ) async throws -> ServerKindDetection.RexFinding {
@@ -225,8 +226,13 @@ extension RexProbe {
     static func look(
         over connection: any ServerKindDetectionConnection, nonce: String = UUID().uuidString
     ) async throws -> (finding: ServerKindDetection.RexFinding, kernel: String?) {
-        guard try await connection.corePlatform() == .posix else { return (.unsupported, nil) }
-        let result = try await connection.runServerKindDetection(Data(script(nonce: nonce).utf8))
+        let result =
+            try await connection.corePlatform() == .nativeWindows
+            ? try await connection.runWindowsCommand(
+                PowerShellCommand.encoded(
+                    HerdrCoreLocator.windowsPrelude + "\n" + windowsBody(nonce: nonce) + "\nexit 0"),
+                for: .serverKindDetection)
+            : try await connection.runServerKindDetection(Data(script(nonce: nonce).utf8))
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
                 String(localized: "Server Kind detection exited with status \(result.exitStatus)."))

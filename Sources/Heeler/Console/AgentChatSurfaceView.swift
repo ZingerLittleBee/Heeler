@@ -1084,12 +1084,11 @@ struct AgentChatSurfaceView: View {
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         // A status-line switch types into the same input line.
-        let preflight = policy.preflight
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
         let session = session
         let isClaude = program == .claude
-        policy.preflight = { text in
+        policy.prependingPreflight { _ in
             if isSwitching() {
                 return .inputNotReady(
                     isClaude
@@ -1101,7 +1100,7 @@ struct AgentChatSurfaceView: View {
             // Stop's follow-through types there too (agy's `/tasks`).
             if let hold = session.heldSend() { return hold }
             if let reason = await settle() { return .inputNotReady(reason) }
-            return await preflight?(text)
+            return nil
         }
         return policy
     }

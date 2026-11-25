@@ -34,6 +34,17 @@ enum InputBoxState: Equatable, Sendable {
     var isSendable: Bool {
         if case .empty = self { true } else { false }
     }
+
+    /// Whether Send Anyway may override a hold on this screen state: only
+    /// overlay or unrecognized-box readings, where a CLI layout or custom
+    /// statusline change can false-positive. Dialogs, shell mode, existing
+    /// drafts, disabled states, and exited/dashboard screens never override.
+    var allowsSendAnyway: Bool {
+        switch self {
+        case .overlay, .unknown: true
+        case .empty, .text, .shellMode, .disabled, .dialog, .noComposer: false
+        }
+    }
 }
 
 enum InputBoxStateDetector {
@@ -54,6 +65,19 @@ enum InputBoxStateDetector {
         case .grok: return GrokInputBoxDetector.detect(screen)
         case .opencode: return OpenCodeScreenReader.read(screen).state
         case .agy: return AgyInputBoxDetector.detect(screen)
+        }
+    }
+
+    /// Returns a hard hold (such as a non-empty draft, shell mode, dialog, or
+    /// full-screen non-composer panel) that coexists with an `.overlay` reading
+    /// and must never be bypassed by `Send Anyway`.
+    static func hardHold(in screen: ANSIScreen, program: ChatProgram) -> InputBoxState? {
+        switch program {
+        case .claude, .codex: nil
+        case .pi, .omp: PiInputBoxDetector.hardHold(in: screen, program: program)
+        case .grok: GrokInputBoxDetector.hardHold(in: screen)
+        case .opencode: OpenCodeScreenReader.read(screen).hardHold
+        case .agy: AgyInputBoxDetector.hardHold(in: screen)
         }
     }
 

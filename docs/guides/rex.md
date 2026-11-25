@@ -1,6 +1,6 @@
 # Connect Rex
 
-Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
+Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
 > [!IMPORTANT]
 > Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals and Agents Rex already has: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
@@ -9,13 +9,13 @@ Connect Heeler over SSH to a Rex server that already runs on a Mac or Linux Host
 
 - A Heeler version after 0.1.20.
 - Rex running on the Host under the account you will sign in as over SSH. Heeler connects only to a Rex server that is already running and never starts one.
-- Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for Rex.
-- An SSH server that allows forwarding to a Unix socket, as OpenSSH does by default. If its `sshd_config` sets `AllowStreamLocalForwarding no` or `AllowTcpForwarding no`, Heeler cannot reach Rex.
+- Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. On Windows, run Win32-OpenSSH, with `rex.exe` on the account's PATH, as WinGet puts it; Heeler reaches the server through Rex's own stdio bridge, and Chat is not offered there yet.
+- On a Mac or Linux, an SSH server that allows forwarding to a Unix socket, as OpenSSH does by default. If its `sshd_config` sets `AllowStreamLocalForwarding no` or `AllowTcpForwarding no`, Heeler cannot reach Rex.
 - A way for your iPhone or iPad to reach the Host: directly on the same network, over an [overlay network](overlay-networks.md), or through a [Jump Host](vps-jump-host-setup.md). A Host can have [multiple routes](host-routes.md).
 
 ## Add a Host
 
-Heeler never starts Rex when connecting or checking, and never runs the `rex` command.
+Heeler never starts Rex when connecting or checking. On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
 
 ### 1. Connect
 

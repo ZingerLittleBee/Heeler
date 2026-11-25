@@ -558,12 +558,27 @@ final class AgentComposerStore: ComposerDraftOperations {
         noting(await sendDraft(policy: policy), policy: policy)
     }
 
-    /// The command the notice refused as outside the menu, which Send
-    /// Anyway can send now. Any edit ends the notice, so a refused draft is
+    private enum SendAnywayAction {
+        case unknownCommand(String)
+        case unconfirmedInputBox(admittedCommand: String?)
+    }
+
+    /// The refusal Send Anyway can override now: either a command outside
+    /// Chat's menu, or an unconfirmed input-box screen check (overlay /
+    /// unrecognized box). Any edit ends the notice, so a refused draft is
     /// still the text refused; a refused Retry must still be failed. Either
     /// waits for what Send or Retry would.
-    private var commandToSendAnyway: String? {
-        guard let notice, case .unknownCommand(let name) = notice.refusal else { return nil }
+    private var sendAnywayAction: SendAnywayAction? {
+        guard let notice else { return nil }
+        let action: SendAnywayAction
+        switch notice.refusal {
+        case .unknownCommand(let name):
+            action = .unknownCommand(name)
+        case .unconfirmedInputBox:
+            action = .unconfirmedInputBox(admittedCommand: notice.admittedCommand)
+        default:
+            return nil
+        }
         if let id = notice.retried {
             guard isConnectionAvailable,
                 let message = messages.first(where: { $0.id == id }),
@@ -572,20 +587,38 @@ final class AgentComposerStore: ComposerDraftOperations {
         } else if !canSend {
             return nil
         }
-        return name
+        return action
     }
 
-    var canSendAnyway: Bool { commandToSendAnyway != nil }
+    var canSendAnyway: Bool { sendAnywayAction != nil }
 
-    /// Sends a draft, or retries a failed message, refused only for a
-    /// command outside the menu, after the user chose to. The rest of
-    /// `policy` applies as for any Send.
+    /// Sends a draft, or retries a failed message, refused for a command
+    /// outside the menu or an unconfirmed input-box reading, after the user
+    /// chose to. Every other check on `policy` still applies.
     @discardableResult
     func sendAnyway(policy: ComposerDeliveryPolicy) async -> SendResult {
-        guard let name = commandToSendAnyway, let notice, notice.route == policy.route else { return .ignored }
-        let admitting = policy.admitting(unknownCommand: name)
-        if let id = notice.retried { return await retry(id, policy: admitting) }
-        return await send(policy: admitting)
+        guard let action = sendAnywayAction, let notice, notice.route == policy.route else { return .ignored }
+        let admitting: ComposerDeliveryPolicy
+        let admittedCommand: String?
+        switch action {
+        case .unknownCommand(let name):
+            admitting = policy.admitting(unknownCommand: name)
+            admittedCommand = name
+        case .unconfirmedInputBox(let priorCommand):
+            let base = priorCommand.map { policy.admitting(unknownCommand: $0) } ?? policy
+            admitting = base.admittingUnconfirmedInputBox()
+            admittedCommand = priorCommand
+        }
+        let result: SendResult
+        if let id = notice.retried {
+            result = await retry(id, policy: admitting)
+        } else {
+            result = await send(policy: admitting)
+        }
+        if let admittedCommand, case .refused(.unconfirmedInputBox) = result {
+            self.notice?.admittedCommand = admittedCommand
+        }
+        return result
     }
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
@@ -667,7 +700,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// change, as when the Send's own check moved Chat, it stays.
     func conversationDidChange(to conversation: Int) {
         guard let notice, let noted = notice.conversation, noted != conversation,
-            case .inputNotReady = notice.refusal
+            notice.refusal.clearsOnConversationChange
         else { return }
         self.notice = nil
     }

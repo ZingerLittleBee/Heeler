@@ -45,11 +45,14 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
   readers (ADRs 0044, 0045, and 0046).
 - Rex Hosts (experimental; one Rex Server per Host, listed by a look) target
-  one running macOS or Linux Rex server by its Unix socket, API revision 12
-  only: one WebSocket control link over direct-streamlocal carries inventory,
-  events and terminal input, and each open terminal adds a data link on a
-  channel of its own, painted from the server's redraw. Connecting never
-  starts a server or runs `rex`; a block's size is taken only for a terminal
+  one running Rex server, API revision 12 only: one WebSocket control link
+  carries inventory, events and terminal input, and each open terminal adds a
+  data link on a channel of its own, painted from the server's redraw. On
+  macOS and Linux each link is a direct-streamlocal channel to the server's
+  Unix socket, and connecting never runs `rex`. On native Windows each is an
+  SSH exec of `rex.exe -S <pipe> __internal dial-stdio --autostart=false` to its
+  named pipe, a platform branch like herdr-core's. Detection never runs
+  `rex`, and connecting never starts a server; a block's size is taken only for a terminal
   on screen, before its first paint, and given back when it leaves (ADRs 0049
   to 0053). Rex Agents open the Agent detail: Chat (Claude Code, Codex, Pi
   and Oh My Pi) reads over SSH (SFTP and bounded read-only execs, nothing

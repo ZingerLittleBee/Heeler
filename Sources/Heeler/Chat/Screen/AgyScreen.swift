@@ -222,6 +222,10 @@ struct AgyScreen: Sendable {
     /// the artifact review panel or the `/tasks` panel, each of which takes
     /// Enter.
     let below: String?
+    /// A footer mode that changes what Enter does, such as Vim's
+    /// `-- INSERT --` / `-- VISUAL --` / `-- V-LINE --`, code search mode,
+    /// or bash mode.
+    let blockingFooter: String?
     /// The footer while agy waits for a second press other than an exit's,
     /// such as `press %s again to send command to background` in its
     /// strings.
@@ -273,6 +277,8 @@ struct AgyScreen: Sendable {
         var footerHint: String?
         var footerRow: ScreenRow?
         var below: String?
+        var blockingFooter: String?
+        var pendingDoublePress: String?
         var showsRunningTasks = false
         var runningTaskStripRows: [RunningTaskStripRow] = []
         var footerRunningTaskCount: Int?
@@ -284,30 +290,41 @@ struct AgyScreen: Sendable {
                     footerRunningTaskCount = count
                 }
             }
-            // The status strip under the box: background tasks (`● [hh:mm:ss] …`),
-            // a swarm summary (`● Swarm(…)`), or running subagents (`● Agent(…)`),
-            // closed by a full-width rule in the box's palette.
-            if index < rows.count, Self.isStatusStripRow(rows[index]) {
-                while index < rows.count, Self.isStatusStripRow(rows[index]) {
-                    if Self.isTaskRow(rows[index]) {
-                        showsRunningTasks = true
-                        if let stripRow = Self.runningTaskStripRow(
-                            inText: rows[index].trimmedText, requireRunningSuffix: false)
-                        {
-                            runningTaskStripRows.append(stripRow)
-                        }
+            // The active-items tray under the box: background tasks, a swarm
+            // summary (`● Swarm(…)` or `● Swarm  Done · …`), running subagents,
+            // or future tray items — structurally bounded by a closing
+            // full-width rule in the box's palette, with no selection cursor.
+            if let closing = Self.passiveStatusTrayEnd(
+                in: rows, from: index, palette: box.palette, ruleWidth: ruleWidth)
+            {
+                for row in rows[index..<closing] where Self.isTaskRow(row) {
+                    showsRunningTasks = true
+                    if let stripRow = Self.runningTaskStripRow(
+                        inText: row.trimmedText, requireRunningSuffix: false)
+                    {
+                        runningTaskStripRows.append(stripRow)
                     }
-                    index += 1
                 }
-                if index < rows.count, Self.rulePalette(rows[index], width: ruleWidth) == box.palette { index += 1 }
+                index = closing + 1
             }
-            let later = rows.indices.contains(index) ? rows[(index + 1)...].filter { !$0.isBlank } : []
-            if later.isEmpty {
-                footerRow = rows.indices.contains(index) ? rows[index] : nil
-                footerHint = footerRow.map(Self.hint) ?? ""
+            let afterTray = index < rows.count ? rows[index...].filter { !$0.isBlank } : []
+            if afterTray.contains(where: Self.isOverlayRow) || afterTray.count > Self.maximumFooterRows {
+                below = afterTray.first?.trimmedText
+                footerRow = afterTray.last
             } else {
-                below = rows[index...].first { !$0.isBlank }?.trimmedText
-                footerRow = rows[index...].last { !$0.isBlank }
+                blockingFooter = afterTray.compactMap(Self.blockingFooterHint).first
+                let hints = afterTray.map(Self.hint)
+                pendingDoublePress = hints.first {
+                    $0.hasPrefix("press ") && $0.contains(" again to ") && !Self.readyHints.contains($0)
+                }
+                if let working = hints.first(where: Self.workingHints.contains) {
+                    footerHint = working
+                } else if let ready = hints.first(where: { !$0.isEmpty && Self.readyHints.contains($0) }) {
+                    footerHint = ready
+                } else {
+                    footerHint = afterTray.last.map(Self.hint) ?? ""
+                }
+                footerRow = afterTray.first { Self.footerModel(of: $0) != nil } ?? afterTray.last
             }
         }
         // Without colors a mode's hint is as plain as a draft. It is one of
@@ -338,13 +355,12 @@ struct AgyScreen: Sendable {
         self.composer = composer
         self.footerHint = footerHint
         self.below = below
+        self.blockingFooter = blockingFooter
         taskPanel = composer.flatMap { Self.taskPanel(in: rows, below: $0.bottomRule) }
         slashSelection = composer.flatMap { box in
             box.mode == .prompt && box.draft.hasPrefix("/") ? below.flatMap(Self.slashSelection) : nil
         }
-        pendingDoublePress = footerHint.flatMap { hint in
-            hint.hasPrefix("press ") && hint.contains(" again to ") && !Self.readyHints.contains(hint) ? hint : nil
-        }
+        self.pendingDoublePress = pendingDoublePress
         let tail = rows.dropFirst((composer?.bottomRule ?? -1) + 1).filter { !$0.isBlank }.suffix(Self.exitTailRows)
         let exited = tail.contains { $0.trimmedText.hasPrefix(Self.exitLine) }
         let dialog = composer == nil && Self.showsDialog(rows)
@@ -465,18 +481,72 @@ struct AgyScreen: Sendable {
 
     // MARK: Under the box
 
+    /// The most rows a passive active-items tray between full-width rules spans.
+    private static let maximumStatusTrayRows = 12
+    /// The most non-blank footer rows allowed without overlay markers (covers
+    /// default footer, multi-line custom `/statusline`, and `stack_with_default`).
+    private static let maximumFooterRows = 4
+
     /// A row of the background-task strip, such as `● [00:10:32]  sleep 30;
     /// echo probe-two  running`, or focused by Down (`> ● [03:08:03] ...`).
     private static func isTaskRow(_ row: ScreenRow) -> Bool {
         row.trimmedText.range(of: #"^(?:> )?\S \[\d{1,2}:\d{2}:\d{2}\] "#, options: .regularExpression) != nil
     }
 
-    /// Any status strip row agy draws between the input box's bottom rule and
-    /// a second full-width rule: background tasks, `● Swarm(<title>) …`, or
-    /// `● Agent(<role>: …)` (agy 1.5.9).
-    private static func isStatusStripRow(_ row: ScreenRow) -> Bool {
-        isTaskRow(row)
-            || row.trimmedText.range(of: #"^(?:> )?\S (?:Swarm|Agent)\("#, options: .regularExpression) != nil
+    /// Returns the row index of the closing full-width rule when `rows[from...]`
+    /// starts with an unfocused active-items tray (background tasks, Swarm,
+    /// subagents, or future tray rows) bounded by a rule in the box's palette.
+    /// No interactive popup or panel draws a closing full-width rule, and a
+    /// tray row focused by Down (`> `) is excluded because Enter acts on it.
+    private static func passiveStatusTrayEnd(
+        in rows: [ScreenRow], from start: Int, palette: Palette, ruleWidth: Int
+    ) -> Int? {
+        guard start < rows.count else { return nil }
+        let limit = min(rows.count, start + maximumStatusTrayRows + 1)
+        guard let closing = (start..<limit).first(where: { rulePalette(rows[$0], width: ruleWidth) == palette }),
+            closing > start
+        else { return nil }
+        let slice = rows[start..<closing]
+        guard !slice.allSatisfy(\.isBlank), !slice.contains(where: isOverlayRow) else { return nil }
+        return closing
+    }
+
+    /// Positive structural markers of an interactive popup, picker, help view,
+    /// artifact review panel, or `/tasks` panel drawn below the input box.
+    private static func isOverlayRow(_ row: ScreenRow) -> Bool {
+        let text = row.trimmedText
+        guard !text.isEmpty else { return false }
+        if text.hasPrefix("> ") || text == ">" || text.hasPrefix("› ") { return true }
+        if text.hasPrefix("Keyboard:")
+            || text.contains("↑/↓ Navigate")
+            || text.contains("enter Select")
+            || text.contains("enter Submit")
+            || text.contains("esc Close")
+            || text.contains("esc Go Back")
+        {
+            return true
+        }
+        if text == "No matches" || text == "Tasks" || text == "Switch Model"
+            || text.hasPrefix("Action required (")
+            || (text.hasPrefix("Antigravity CLI ") && text.contains("shortcuts"))
+        {
+            return true
+        }
+        return false
+    }
+
+    /// Footer badges/modes that change what Enter does (Vim Insert/Visual,
+    /// code search, or bash mode), unlike arbitrary user `/statusline` output.
+    private static func blockingFooterHint(of row: ScreenRow) -> String? {
+        let text = row.trimmedText
+        guard !text.isEmpty else { return nil }
+        if text.hasPrefix("-- INSERT --") || text.hasPrefix("-- VISUAL --") || text.hasPrefix("-- V-LINE --")
+            || text.hasPrefix("activated code search mode")
+            || text.hasPrefix("activated bash mode")
+        {
+            return text.components(separatedBy: "  ").first?.trimmingCharacters(in: .whitespaces) ?? text
+        }
+        return nil
     }
 
     /// The footer's count of running background tasks (`· N task(s)`).
@@ -575,7 +645,7 @@ struct AgyScreen: Sendable {
             right = trimmed
         }
         right = right.trimmingCharacters(in: .whitespaces)
-        guard !right.isEmpty, !right.hasSuffix(cutMark),
+        guard !right.isEmpty, !right.hasSuffix(cutMark), !right.contains(" | "),
             !footerNonModelPrefixes.contains(where: { right.hasPrefix($0) })
         else { return nil }
         right = right.replacing(/(?:\s*·\s*\d+\s+(?:task|subagent)\(s\)(?:\s*·\s*\/\S+)?)+$/, with: "")

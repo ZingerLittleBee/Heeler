@@ -560,6 +560,55 @@ struct AgentComposerChatRouteTests {
         #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
     }
 
+    @Test func sendAnywayOverridesUnconfirmedInputBoxRefusal() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let hold = ComposerRefusal.unconfirmedInputBox(
+            "A menu is open over the Agent's input box. Close it in the terminal first.")
+        var policy = Self.claudeRulesPolicy(preflight: { _ in hold })
+        policy.conversation = { 2 }
+
+        store.replaceDraft(with: "follow recommendation")
+        #expect(await store.send(policy: policy) == .refused(hold))
+        #expect(store.canSendAnyway)
+        #expect(store.notice == ComposerNotice(refusal: hold, route: .chat, conversation: 2))
+
+        // Switching conversations clears an unconfirmed-input-box notice.
+        store.conversationDidChange(to: 3)
+        #expect(store.notice == nil)
+        #expect(!store.canSendAnyway)
+
+        // Tapping Send Anyway delivers the draft past the unconfirmed check.
+        #expect(await store.send(policy: policy) == .refused(hold))
+        #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["follow recommendation "])
+        #expect(store.draft.isEmpty)
+        #expect(store.notice == nil)
+    }
+
+    @Test func sendAnywayAfterUnknownCommandDoesNotSkipUnconfirmedInputBoxInOneTap() async {
+        let transport = ScriptedTransport()
+        let store = Self.store(transport)
+        let hold = ComposerRefusal.unconfirmedInputBox(
+            "A menu is open over the Agent's input box. Close it in the terminal first.")
+        let policy = Self.claudeRulesPolicy(preflight: { _ in hold })
+        store.replaceDraft(with: "/clear")
+
+        #expect(await store.send(policy: policy) == .refused(.unknownCommand("clear")))
+        #expect(store.canSendAnyway)
+
+        // First Send Anyway admits `/clear`, then surfaces the screen check.
+        #expect(await store.sendAnyway(policy: policy) == .refused(hold))
+        #expect(store.canSendAnyway)
+        #expect(await transport.agentPromptParams.isEmpty)
+
+        // Second Send Anyway overrides the screen check while keeping `/clear` admitted.
+        #expect(await store.sendAnyway(policy: policy) == .deliveredViaPrompt)
+        #expect(await transport.agentPromptParams.map(\.text) == ["/clear "])
+        #expect(store.draft.isEmpty)
+        #expect(store.notice == nil)
+    }
+
     private func waitUntil(
         _ comment: Comment,
         timeout: Duration = .seconds(2),

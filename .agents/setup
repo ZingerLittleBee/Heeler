@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export CI=true PATH="$HOME/.local/bin:$PATH"
+
+# The app needs Xcode on a Mac. Only provision the Linux development tools here.
+missing=()
+for tool in make python3 tmux zsh fish; do
+  command -v "$tool" >/dev/null || missing+=("$tool")
+done
+if ((${#missing[@]})); then
+  echo "Installing ${missing[*]}"
+  time sudo -n apt-get update -qq
+  time sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+
+# Match the Node major used by CI and the docs site's package manager pin.
+if [[ $(node -p 'process.versions.node.split(".")[0]') != 24 ]]; then
+  time npm install --global --prefix "$HOME/.local" --no-audit --no-fund node@24
+fi
+manager=$(node -p 'require("./docs-site/package.json").packageManager')
+if [[ $(pnpm --version) != "${manager#pnpm@}" ]]; then
+  time npm install --global --prefix "$HOME/.local" --no-audit --no-fund "$manager"
+fi
+
+# npm ci always replaces node_modules, even when restored from a snapshot.
+npm_runtime="$(node --version) $(npm --version)"
+for project in plugin landing; do
+  stamp="$project/node_modules/.orb-install"
+  inputs="$npm_runtime $(sha256sum "$project"/package{,-lock}.json)"
+  if [[ -f "$stamp" && $(<"$stamp") == "$inputs" ]]; then
+    echo "Reusing $project dependencies"
+    continue
+  fi
+  echo "Installing $project dependencies"
+  time npm --prefix "$project" ci --include=dev --prefer-offline --no-audit --no-fund
+  printf '%s\n' "$inputs" > "$stamp"
+done
+for project in docs-site adhoc-host; do
+  echo "Installing $project dependencies"
+  time pnpm --dir "$project" install --frozen-lockfile --prefer-offline
+done

@@ -192,6 +192,14 @@ final class TerminalKeyboardInset {
                 self?.keyboardDidShow()
             }
         }
+        notificationCenter.addObserver(
+            forName: UIScene.didActivateNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let scene = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            MainActor.assumeIsolated {
+                self?.sceneDidActivate(scene)
+            }
+        }
     }
 
     /// Measures against the window the terminal is mounted in, which its view
@@ -300,6 +308,25 @@ final class TerminalKeyboardInset {
         guard let measuredHeight = measureWindowKeyboard(), measuredHeight > 0 else { return }
         coalesceTask?.cancel()
         settleDismissal(measuredHeight: measuredHeight)
+    }
+
+    /// A scene coming back to the foreground hears keyboard frames before it
+    /// is active (see `windowOwnsKeyboard`), and those are not always the
+    /// keyboard it settles on. Back from the Notification Center, an iPhone
+    /// showed Chat's Composer raised 59 pt and held open as if a keyboard were
+    /// leaving, with no keyboard on screen and no later frame to settle the
+    /// inset. Once the scene is active, the window's keyboard layout guide
+    /// has settled; where it shows no keyboard, a height still standing is
+    /// dismissed as a will-hide would. A keyboard the guide does show is left
+    /// to the frames, which stay authoritative.
+    private func sceneDidActivate(_ scene: ObjectIdentifier?) {
+        if let windowScene = window?.windowScene, scene != ObjectIdentifier(windowScene) {
+            return
+        }
+        guard !isHoldingHandoffHeight, height > 0 || keyboardRideTarget > 0,
+              measureWindowKeyboard() == 0
+        else { return }
+        keyboardWillDismiss(animates: true)
     }
 
     /// Adopts a keyboard that is already on screen when this inset's screen
