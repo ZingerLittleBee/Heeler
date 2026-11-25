@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Where the GitHub tab can start a Terminal on a Host, for a setup command.
 struct GitHubTerminalLink {
@@ -659,6 +660,11 @@ private struct GitHubStatusSubtitle: ViewModifier {
             // modifier added and removed would make the list a new view.
             content
                 .navigationSubtitle(isSidebarColumn ? "" : text ?? "")
+                .background {
+                    if !isSidebarColumn {
+                        LargeTitleRemeasure(hasSubtitle: text != nil)
+                    }
+                }
                 // An iPad sidebar's bar shows its own title menu in place
                 // of the title, and no subtitle with it, so the line goes
                 // in the bar's area just under it.
@@ -685,6 +691,58 @@ private struct GitHubStatusSubtitle: ViewModifier {
                 }
         } else {
             content
+        }
+    }
+}
+
+/// Gives a resting large title its new height when the subtitle comes or
+/// goes. UIKit (iOS 26.5 and 27) keeps the bar's old height until the list
+/// scrolls: a subtitle that comes pushes the title up beside the Host
+/// button, and one that goes leaves a gap above the title. The bar is
+/// measured again when the navigation controller lays out, which has to
+/// come after SwiftUI has set the subtitle, so on the main queue's next
+/// turn.
+@available(iOS 26.0, *)
+private struct LargeTitleRemeasure: UIViewRepresentable {
+    let hasSubtitle: Bool
+
+    func makeUIView(context: Context) -> RemeasureView { RemeasureView(hasSubtitle: hasSubtitle) }
+
+    func updateUIView(_ view: RemeasureView, context: Context) {
+        view.update(hasSubtitle: hasSubtitle)
+    }
+
+    final class RemeasureView: UIView {
+        private var hasSubtitle: Bool
+
+        init(hasSubtitle: Bool) {
+            self.hasSubtitle = hasSubtitle
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+        func update(hasSubtitle: Bool) {
+            guard hasSubtitle != self.hasSubtitle else { return }
+            self.hasSubtitle = hasSubtitle
+            DispatchQueue.main.async { [weak self] in
+                guard let navigation = self?.enclosingNavigationController() else { return }
+                navigation.view.setNeedsLayout()
+                navigation.view.layoutIfNeeded()
+            }
+        }
+
+        private func enclosingNavigationController() -> UINavigationController? {
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let controller = current as? UIViewController, let navigation = controller.navigationController {
+                    return navigation
+                }
+                responder = current.next
+            }
+            return nil
         }
     }
 }
