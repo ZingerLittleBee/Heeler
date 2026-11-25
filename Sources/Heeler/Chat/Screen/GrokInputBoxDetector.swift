@@ -54,4 +54,48 @@ enum GrokInputBoxDetector {
         if grok.isWelcome || grok.promptHasFocus { return .empty(placeholder: nil) }
         return .disabled(String(localized: "Grok Build's input box doesn't have focus. Go back to it in the terminal, then send again."))
     }
+
+    /// Returns a hard hold that `Send Anyway` must never override even when an
+    /// overlay is also visible (such as a `/` popup over a typed draft, bash
+    /// or remember mode, multiline mode, queued editing, or a sendable wait).
+    static func hardHold(in screen: ANSIScreen) -> InputBoxState? {
+        let grok = GrokScreen(screen)
+        if grok.isDashboard {
+            return .noComposer(
+                String(localized: "Grok Build is showing its dashboard, where a message starts a new agent. Go back to the conversation in the terminal first.")
+            )
+        }
+        if let press = grok.pendingDoublePress {
+            return .disabled(
+                String(localized: "Grok Build is waiting for a second key press (\u{201C}\(press)\u{201D}). Wait a second, then send again."))
+        }
+        guard let composer = grok.composer else {
+            return grok.isMinimal
+                ? .disabled(
+                    String(localized: "Grok Build is in minimal mode, which Chat can't read. Switch back with /fullscreen in the terminal."))
+                : nil
+        }
+        if composer.isMultiline {
+            return .disabled(
+                String(localized: "Grok Build is in /multiline mode, where Enter adds a line instead of sending. Turn it off in the terminal with /multiline.")
+            )
+        }
+        if composer.isEditingQueued {
+            return .disabled(String(localized: "Grok Build is editing a queued message. Finish it in the terminal first."))
+        }
+        switch composer.mode {
+        case .prompt: break
+        case .bash: return .shellMode(composer.draft)
+        case .remember:
+            return .disabled(
+                String(localized: "Grok Build's input box is in remember mode, where a message is saved as a memory. Leave it in the terminal first.")
+            )
+        }
+        if !composer.draft.isEmpty { return .text(composer.draft) }
+        if grok.sendableWait {
+            return .disabled(
+                String(localized: "Grok Build is waiting on a subagent or a background task, and a message now would cancel that turn."))
+        }
+        return nil
+    }
 }

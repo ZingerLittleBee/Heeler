@@ -23,6 +23,11 @@ enum ComposerRefusal: Equatable, Sendable {
     case commandUnavailable(String)
     /// The Agent's input box is not in a state to take a message.
     case inputNotReady(String)
+    /// The screen read couldn't confirm an unobstructed input box (an overlay
+    /// or unrecognized box shape). Unlike `inputNotReady`, the user may tap
+    /// Send Anyway to override only this check while keeping Blocked, dialog,
+    /// shell-mode, draft, and session checks in place.
+    case unconfirmedInputBox(String)
     /// The program has bracketed paste off, so a paste would read as typing.
     case programNotAcceptingPaste
     /// A paste went out and its submit did not. The reason says whether the
@@ -41,7 +46,7 @@ enum ComposerRefusal: Equatable, Sendable {
             String(localized: "/\(name) is available once the Agent is idle.")
         case .commandUnavailable(let reason):
             reason
-        case .inputNotReady(let reason):
+        case .inputNotReady(let reason), .unconfirmedInputBox(let reason):
             reason
         case .programNotAcceptingPaste:
             String(localized: "The program is not accepting a paste right now, so nothing was sent.")
@@ -54,7 +59,18 @@ enum ComposerRefusal: Equatable, Sendable {
     var suggestsTerminal: Bool {
         switch self {
         case .agentBlocked, .commandAwaitsIdle, .commandUnavailable, .programNotAcceptingPaste, .notSubmitted: false
-        case .unsafeText, .unknownCommand, .inputNotReady: true
+        case .unsafeText, .unknownCommand, .inputNotReady, .unconfirmedInputBox: true
+        }
+    }
+
+    /// Whether this refusal described the input box of the conversation Chat
+    /// followed, so switching conversations clears the notice.
+    var clearsOnConversationChange: Bool {
+        switch self {
+        case .inputNotReady, .unconfirmedInputBox: true
+        case .agentBlocked, .unsafeText, .unknownCommand, .commandAwaitsIdle, .commandUnavailable,
+            .programNotAcceptingPaste, .notSubmitted:
+            false
         }
     }
 
@@ -67,7 +83,7 @@ enum ComposerRefusal: Equatable, Sendable {
         switch self {
         case .agentBlocked: ChatAgentActivity(status) != .blocked
         case .commandAwaitsIdle: ChatAgentActivity(status) == .idle
-        case .inputNotReady, .programNotAcceptingPaste: true
+        case .inputNotReady, .unconfirmedInputBox, .programNotAcceptingPaste: true
         case .unsafeText, .unknownCommand, .commandUnavailable, .notSubmitted: false
         }
     }
@@ -87,6 +103,11 @@ struct ComposerDeliveryPolicy: Sendable {
     /// Runs once the echo shows and before anything is sent; a refusal
     /// returns the text to the draft.
     var preflight: (@MainActor (String) async -> ComposerRefusal?)?
+    /// Alternate preflight used when the user chooses Send Anyway after an
+    /// `.unconfirmedInputBox` refusal: still runs Blocked, session, dialog,
+    /// shell-mode, draft, and send-concern checks, bypassing only overlay /
+    /// unrecognized-box screen holds.
+    var unconfirmedInputBoxPreflight: (@MainActor (String) async -> ComposerRefusal?)? = nil
     /// Runs after `agent.prompt` succeeds with the text it sent; false means
     /// the text never left the Agent's input box. Nothing is resent.
     var verify: (@MainActor (String) async -> Bool)?
@@ -103,6 +124,24 @@ struct ComposerDeliveryPolicy: Sendable {
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
         validate: { _ in nil }, preflight: nil, verify: nil)
 
+    /// Prepends a guard that runs before both the regular preflight and the
+    /// Send Anyway unconfirmed-input-box preflight.
+    mutating func prependingPreflight(
+        _ before: @escaping @MainActor (String) async -> ComposerRefusal?
+    ) {
+        let regular = preflight
+        preflight = { text in
+            if let refusal = await before(text) { return refusal }
+            return await regular?(text)
+        }
+        if let override = unconfirmedInputBoxPreflight {
+            unconfirmedInputBoxPreflight = { text in
+                if let refusal = await before(text) { return refusal }
+                return await override(text)
+            }
+        }
+    }
+
     /// This policy with `/name` let past the menu, for a Send Anyway the
     /// user chose after `unknownCommand(name)`. Every other refusal, the
     /// input box read and the delivery check still apply.
@@ -112,6 +151,24 @@ struct ComposerDeliveryPolicy: Sendable {
         policy.validate = { text in
             let refusal = validate(text)
             return refusal == .unknownCommand(name) ? nil : refusal
+        }
+        return policy
+    }
+
+    /// This policy with an `.unconfirmedInputBox` screen-recognition hold
+    /// overridden, for a Send Anyway the user chose after that refusal.
+    /// Validation, Blocked, session, dialog, shell-mode, draft, and
+    /// send-concern checks still apply.
+    func admittingUnconfirmedInputBox() -> ComposerDeliveryPolicy {
+        var policy = self
+        if let override = unconfirmedInputBoxPreflight {
+            policy.preflight = override
+        } else if let regular = preflight {
+            policy.preflight = { text in
+                let refusal = await regular(text)
+                if case .unconfirmedInputBox = refusal { return nil }
+                return refusal
+            }
         }
         return policy
     }
@@ -129,4 +186,7 @@ struct ComposerNotice: Equatable {
     /// The failed message whose Retry was refused, or nil when the draft
     /// was. Send Anyway sends what was refused.
     var retried: UUID?
+    /// The `/command` already admitted by a prior Send Anyway on this draft,
+    /// carried forward if preflight then held with `.unconfirmedInputBox`.
+    var admittedCommand: String? = nil
 }
