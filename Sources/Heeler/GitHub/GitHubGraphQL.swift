@@ -3,11 +3,13 @@ import Foundation
 /// What every `gh api graphql -i` read shares (ADR 0065): the fields a list
 /// row needs, the decoding of GitHub's answer, and how a failed run reads.
 enum GitHubGraphQL {
-    /// A pull request's fields as a list row shows them.
+    /// A pull request's fields as a list row shows them, and its labels,
+    /// which the Label filter offers.
     static let pullRequestFragment = """
         fragment pullRequest on PullRequest {
           id number title url isDraft state updatedAt additions deletions reviewDecision
           author { login } repository { nameWithOwner } comments { totalCount }
+          labels(first: 10) { nodes { name color } }
           commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 1) {
             checkRunCountsByState { state count } statusContextCountsByState { state count }
           } } } } }
