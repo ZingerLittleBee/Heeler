@@ -115,14 +115,14 @@ struct RexTransportTests {
 
     @Test func anotherRevisionNamesWhatTheServerOffered() async {
         var welcome = FakeRexServer.Welcome()
-        welcome.apiRevision = 13
-        welcome.serverRevision = 14
+        welcome.apiRevision = 20
+        welcome.serverRevision = 21
         let server = FakeRexServer()
         let host = ScriptedRexHost(control: [.server(server, welcome: welcome)])
 
         let error = await failure(host)
 
-        #expect(error as? TransportError == .rexUnsupportedRevision(offered: 14))
+        #expect(error as? TransportError == .rexUnsupportedRevision(offered: 21))
         #expect(await server.clientClose?.code == .normalClosure)
     }
 
@@ -172,7 +172,7 @@ struct RexTransportTests {
         let host = ScriptedRexHost(control: [.server(server)], data: [.endpoint(endpoint)], platform: .nativeWindows)
 
         let transport = try await connect(host, socket: RexSocket(path: Self.pipe))
-        #expect(await server.nextHello()["api_revision"] == .number(12))
+        #expect(await server.nextHello()["api_revision"] == .number(19))
         _ = try await transport.openDataChannel()
 
         #expect(await host.log == ["control exec \(Self.dial)", "data exec \(Self.dial)"])
@@ -268,10 +268,10 @@ struct RexTransportTests {
         #expect(forwarding.detail?.contains("Rex is running") == true)
 
         #expect(TransportError.rexAccountRefused(socketPath: nil).presentation.summary == "Rex did not let this account in")
-        let newer = TransportError.rexUnsupportedRevision(offered: 14).presentation.message
-        #expect(newer.contains("14") && newer.contains("revision 12") && newer.contains("Update Heeler"))
+        let newer = TransportError.rexUnsupportedRevision(offered: 21).presentation.message
+        #expect(newer.contains("21") && newer.contains("revisions 12 to 19") && newer.contains("Update Heeler"))
         #expect(TransportError.rexUnsupportedRevision(offered: 11).presentation.message.contains("Update Rex"))
-        #expect(TransportError.rexUnsupportedRevision(offered: nil).presentation.message.contains("revision 12"))
+        #expect(TransportError.rexUnsupportedRevision(offered: nil).presentation.message.contains("12 to 19"))
 
         #expect(TransportError.rexServerNotRunning(socketPath: nil).isRetryable)
         #expect(TransportError.rexSocketUnreachable(socketPath: Self.path).isRetryable)

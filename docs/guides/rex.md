@@ -53,7 +53,7 @@ If the Host's page reads **Rex** with **Socket found, but this account cannot us
 | **The SSH server refuses socket forwarding** | Allow forwarding to a Unix socket in the Host's SSH server (see [Before you start](#before-you-start)), then tap **Run Checks Again**. |
 | **Rex is not answering** | Heeler could not tell which of the two above it is. Check both, then tap **Run Checks Again**. |
 | **Rex did not let this account in** | Rex runs under another account. Add the machine again as another Host with that account's **User**. |
-| **This version of Rex is not supported** | Heeler works with Rex API revision 12 only. Update Rex if the message says it offers an older revision; if it offers a newer one, wait for a Heeler update. |
+| **This version of Rex is not supported** | Heeler works with Rex API revisions 12 to 19. Update Rex if the message says it offers an older revision; if it offers a newer one, wait for a Heeler update. |
 | **Rex was not found on this Host** | Install and start Rex, then tap **Run Checks Again**. |
 
 ## The Console
@@ -159,7 +159,7 @@ Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extens
 
 ## Known limits
 
-- **Rex API revision 12 only:** A Rex that does not offer revision 12 is refused. Heeler was built and tested against Rex 0.1.0-preview.14.
+- **Rex API revisions 12 to 19:** Heeler offers revision 19 and accepts any from 12, and Rex picks the newest both speak. A Rex that speaks none of them is refused. Heeler was built against Rex 0.1.0-preview.14 (revision 12) and checked against 0.1.0-preview.23 (revision 19).
 - **Linux not yet tried:** Heeler looks where Rex keeps its socket on Linux, but no Linux Rex server has been tried yet.
 - **What the first paint leaves out:** Rex's redraw does not carry the cursor shape or the terminal's own default colors, so the cursor keeps Heeler's shape until the program sets it again, and the terminal wears your Heeler theme. While a full-screen program is open, the history behind it appears only after the program closes.
 - **Another device's size does not fit:** While a terminal stays at a size another device set wider than your screen (see [Sized for another device](#sized-for-another-device)), its lines wrap at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, the cursor, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.

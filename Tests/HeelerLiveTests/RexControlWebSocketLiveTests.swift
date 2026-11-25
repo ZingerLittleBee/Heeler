@@ -86,7 +86,7 @@ struct RexControlWebSocketLiveTests {
         // Pings every second, so idling for a few proves Rex answers them.
         options.keepalive = .init(interval: .seconds(1), pongDeadline: .seconds(2))
         let link = try await RexControlLink.open(over: try UnixDomainSocketChannel(path: socketPath), options: options)
-        #expect(link.apiRevision == 12)
+        #expect(RexControlProtocol.apiRevisions.contains(link.apiRevision))
         #expect(!link.resumed)
         #expect(link.maxMessageBytes >= 65536)
 

@@ -18,7 +18,7 @@ server has been observed yet.
   `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
   which starts none either.
 - One WebSocket control connection per Host carries everything but terminal
-  data: hello at API revision 12 only, `server.status`, `session.attach_all`
+  data: hello at API revisions 12 to 19, `server.status`, `session.attach_all`
   and the inventory reads
   ([ADR 0050](../adr/0050-rex-hosts-follow-inventory-on-one-control-connection.md)).
   `RexHostSession` owns it; `RexInventoryFollower` and `RexInventoryBook` read
@@ -97,9 +97,11 @@ What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.14 (API
 revision 12). The user guide, [Connect Rex](../guides/rex.md), says the same
 in users' words.
 
-- **One API revision.** Only revision 12 is accepted; a server that welcomes
-  no hello at revision 12 is refused as `rexUnsupportedRevision`, naming the
-  revision it offers when it says ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
+- **Revisions 12 to 19.** The hello offers 19 with a floor of 12; a welcome
+  at any other revision, or a close before the welcome, is refused as
+  `rexUnsupportedRevision`, naming the revision the server offers when it says
+  ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-api-revisions-12-to-19)).
+  Only preview.14 at 12 and preview.23 at 19 have been seen.
 - **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
@@ -211,6 +213,35 @@ committed live test.
   after it were numbered 1, 2, 3 and on with no gaps (`f_control` watchers).
 - A text frame that was not valid UTF-8 closed the control connection with
   1007 (input run).
+
+### API revision 19
+
+Rex 0.1.0-preview.23 on macOS 27.2, API revision 19 (supports 0 to 19), local
+socket, 2026-11-25, from a review probe that said hello at 12 and then at 19
+and made the same requests in a session of its own:
+
+- The server picks the newest revision both sides speak: a hello of 19 or 25
+  with `api_min_revision` 12 was welcomed with `api_revision` 19, one of 12 at
+  12, one of 11 with floor 0 at 11, and one of 25 with floor 20 was closed
+  with 1008 and the reason `no common API revision: server speaks 0 to 19,
+  client needs 20 to 25; update the server`. Every welcome named
+  `api_server_revision` 19 and no `api_min_revision`.
+- `server.status`, `server.version`, `session.list`, `session.attach_all`,
+  `session.create`, `session.attach`, `session.view`, `session.list_blocks`,
+  `session.new_window`, `session.own_block`, `session.disown_block`, the
+  terminal's `title`, `process`, `program_status`, `size`, `modes`, `format`,
+  `resize` and `write`, and `block.event` with a paste and a focus answered
+  with the same fields at both revisions; an unknown terminal method answered
+  `method_not_found` and a request without `session_id` `bad_request` at both.
+- The events in between (`session_created`, `client_connected`,
+  `block_created`, `block_owner_changed`, `window_created`,
+  `session_view_changed`, `block_event` `process_changed` and `size_changed`,
+  `block_closed`, `session_destroyed`) carried the same fields at both.
+- A `data.connect` ticket from either revision opened `rex.data.terminal.v1`
+  with the same 32-byte welcome and a `GHOSTSNP` snapshot of the same length.
+- `help.all` names no method or field as new since revision 12.
+- Over the stdio bridge to Rex 0.1.0-preview.23 on Windows 11, a hello of 19
+  with floor 12 was welcomed at 19 and `session.list` answered.
 
 ### Attach scopes
 

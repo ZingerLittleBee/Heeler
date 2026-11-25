@@ -17,6 +17,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Speak Rex API revision 19, the newest Rex 0.1.0-preview.23 offers, and keep working with Rex servers that offer revisions 12 to 18. Heeler worked with revision 12 only. Checked against Rex 0.1.0-preview.23 on macOS and Windows. (PR #TBD)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
 
 ### Fixed

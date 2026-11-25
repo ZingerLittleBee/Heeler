@@ -17,9 +17,10 @@ actor FakeRexServer {
         /// Nil leaves `resumed` out, as Rex does for a new client.
         var resumed: Bool?
         var protocolName = RexControlProtocol.subprotocol
-        var apiRevision = 12
-        var serverRevision = 12
-        var minimumRevision = 12
+        /// Rex 0.1.0-preview.23 welcomes this build's hello at revision 19.
+        var apiRevision = 19
+        var serverRevision = 19
+        var minimumRevision = 0
         var maxMessageBytes: Int? = 1_048_576
 
         init() {}

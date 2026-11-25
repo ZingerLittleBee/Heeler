@@ -394,3 +394,34 @@ reason `create`, `window_created` and `session_view_changed`. The shell's
 foreground reported the `cwd` asked (`/private/tmp` for `/tmp`).
 `session.create` with `initial_windows` answered `session_id` and each
 window's `window_id` and `block_ids` without an attach.
+
+## Update 2026-11-25: API revisions 12 to 19
+
+Heeler said hello at revision 12 alone, and Rex 0.1.0-preview.23 speaks 0 to
+19. Heeler now offers 19 with a floor of 12 (`api_revision` 19,
+`api_min_revision` 12), accepts a welcome at any revision from 12 to 19, and
+keeps the revision agreed on with the control link. Rex picks the newest
+revision both sides speak, so an older Rex such as 0.1.0-preview.14 still
+welcomes the hello at 12, and a server whose oldest revision is newer than
+19 closes with a policy code before welcoming, read as unsupported as
+before.
+
+Nothing Heeler sends or reads differs between 12 and 19, so no behavior is
+gated on the revision: when a later change uses something newer than 12, it
+checks the agreed revision first.
+
+Evidence: against Rex 0.1.0-preview.23 on macOS (2026-11-25), the same probe
+said hello at 12 and at 19 and made the same requests in a session of its
+own: `server.status`, `server.version`, `session.list`, `session.attach_all`,
+`session.create`, `session.attach`, `session.view`, `session.list_blocks`,
+`session.new_window`, `session.own_block` and `session.disown_block`, the
+terminal's `title`, `process`, `program_status`, `size`, `modes`, `format`,
+`resize` and `write`, `block.event` with a paste and a focus, an unknown
+method, a malformed request and `data.connect`. Every answer, every event
+and the terminal data connection's handshake and first snapshot had the same
+shape at both revisions. A hello of 19 with floor 12, or 25 with floor 12,
+was welcomed at 19, one of 12 at 12, and one of 25 with floor 20 was closed
+with 1008 (`no common API revision: server speaks 0 to 19, client needs 20 to
+25; update the server`). Over the Windows stdio bridge to Rex
+0.1.0-preview.23 on Windows 11, a hello of 19 with floor 12 was welcomed at
+19 and `session.list` answered.

@@ -1,7 +1,8 @@
 import Foundation
 
 /// The messages of a Rex server's control connection (ADR 0049), written by
-/// hand from what Rex 0.1.0-preview.14 (API revision 12) was seen to send.
+/// hand from what Rex 0.1.0-preview.14 (API revision 12) was seen to send,
+/// and checked unchanged at revision 19 against 0.1.0-preview.23.
 ///
 /// Reading is tolerant: unknown fields are ignored, and a message of an
 /// unknown type, an event this build does not know, or a field of the wrong
@@ -9,8 +10,13 @@ import Foundation
 enum RexControlProtocol {
     static let path = "/api/control"
     static let subprotocol = "rex.control.v1"
-    /// The only API revision this build speaks.
-    static let apiRevision = 12
+    /// The newest API revision this build speaks, offered in each hello.
+    static let apiRevision = 19
+    /// The oldest API revision this build speaks. A server picks the newest
+    /// revision both sides speak, so a server whose newest is older than this
+    /// one, or whose oldest is newer than `apiRevision`, is refused.
+    static let minimumAPIRevision = 12
+    static let apiRevisions = minimumAPIRevision...apiRevision
     /// Rex drops a client whose hello is 512 bytes or more.
     static let helloByteLimit = 511
     /// Every Rex server accepts messages at least this large; used when a
@@ -89,7 +95,7 @@ struct RexHello {
         let reconnectToken: String?
         let client: Client
         let apiRevision = RexControlProtocol.apiRevision
-        let apiMinRevision = RexControlProtocol.apiRevision
+        let apiMinRevision = RexControlProtocol.minimumAPIRevision
 
         private enum CodingKeys: String, CodingKey {
             case type

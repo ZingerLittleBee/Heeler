@@ -54,7 +54,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | **The SSH server refuses socket forwarding** | 在 Host 的 SSH 服务端中允许转发到 Unix socket（参见[开始之前](#开始之前)），然后轻点 **Run Checks Again**。 |
 | **Rex is not answering** | Heeler 无法判断是以上哪一种情况。请两项都检查，然后轻点 **Run Checks Again**。 |
 | **Rex did not let this account in** | Rex 以另一个账户运行。请以该账户作为 **User**，把这台机器另外添加为一个 Host。 |
-| **This version of Rex is not supported** | Heeler 只支持 Rex API revision 12。如果提示中 Rex 提供的 revision 更旧，请升级 Rex；如果更新，请等待 Heeler 更新。 |
+| **This version of Rex is not supported** | Heeler 支持 Rex API revision 12 到 19。如果提示中 Rex 提供的 revision 更旧，请升级 Rex；如果更新，请等待 Heeler 更新。 |
 | **Rex was not found on this Host** | 安装并启动 Rex，然后轻点 **Run Checks Again**。 |
 
 ## 控制台
@@ -160,7 +160,7 @@ Pi 和 Oh My Pi 通过 Heeler 的扩展告诉 Chat 自己正处于哪个对话�
 
 ## 已知限制
 
-- **只支持 Rex API revision 12：** 不提供 revision 12 的 Rex 会被拒绝。Heeler 基于 Rex 0.1.0-preview.14 开发和测试。
+- **支持 Rex API revision 12 到 19：** Heeler 提供 revision 19，并接受 12 及以上的 revision，由 Rex 选择双方都支持的最新 revision。两者没有共同 revision 的 Rex 会被拒绝。Heeler 基于 Rex 0.1.0-preview.14（revision 12）开发，并在 Rex 0.1.0-preview.23（revision 19）上核对过。
 - **尚未在 Linux 上试用：** Heeler 会在 Linux 上 Rex 存放 socket 的位置查找，但还没有用 Linux 上的 Rex 服务端实际试过。
 - **首次绘制不包含的内容：** Rex 的重绘不包含光标形状和终端自身的默认颜色，因此在程序重新设置之前光标保持 Heeler 的形状，终端使用你的 Heeler 主题配色。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
 - **其他设备的尺寸不会适配屏幕：** 当终端保持着其他设备设定的、比你的屏幕更宽的尺寸时（见 [Sized for another device](#sized-for-another-device)），终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，光标、新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
