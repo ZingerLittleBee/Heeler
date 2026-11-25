@@ -320,6 +320,12 @@ private struct GitHubItemBody: View {
             } else {
                 ChatMarkdownView(blocks: ChatMarkdown.blocks(from: markdown))
                     .textSelection(.enabled)
+                    // The list row offers exactly the height it measured as
+                    // a limit, which the blocks' stack shares out by
+                    // flexibility: a long code block lost its last lines and
+                    // a quote's bar took them as a blank band. Chat's rows
+                    // take their ideal height for the same reason.
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.vertical, 6)
