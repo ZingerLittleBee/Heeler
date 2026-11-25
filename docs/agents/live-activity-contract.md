@@ -71,8 +71,10 @@ Decrypted plaintext (canonical form):
   order (`blocked` > `done` > `working`, ties by `pane` ascending byte
   order). Cap at **5** after that sort. `counts` still covers everything.
   Pins never change eligibility: idle/unknown stay hidden. A pinned
-  working agent may displace an unpinned blocked agent from the visible
-  rows. The widget renders rows in envelope order and does not re-sort.
+  working Agent may displace an unpinned Blocked Agent from the capped
+  envelope. The expanded Dynamic Island uses envelope order. The Lock
+  Screen orders the entries it receives by status, keeping envelope
+  order within each status.
 - `title` is `terminal_title_stripped ?? terminal_title`, trimmed to ≤80
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
@@ -119,58 +121,49 @@ Decrypted plaintext (canonical form):
 
 ## Widget rendering
 
-The widget preserves configured Agent List Fields, including field colors,
-bold and dim styles. When `rows` is absent it uses workspace and friendly
-Agent kind as the legacy identity. Agent order stays in the sender's pin-aware
-order. Error remains Blocked on the wire and reads "Needs you" on the Lock
-Screen and expanded Dynamic Island; a configured status field may still say
-"Error".
+The widget uses the configured Agent List Fields. When `rows` is absent,
+it uses workspace and friendly Agent kind as the legacy identity. Error
+remains Blocked on the wire and reads "Needs you" on the Lock Screen. A
+configured status field may still say "Error".
 
-The Lock Screen uses the system background material through
-`.activityBackgroundTint(nil)`, with no painted background layer. Text and
-status colors remain unresolved dynamic UIKit colors so an existing activity
-can follow system appearance changes when ActivityKit refreshes it. The End
-control receives unresolved `UIColor.label` through `Color(uiColor:)`.
-ActivityKit's SwiftUI `colorScheme` is never consulted. Status glyphs use
-dynamic Lock Screen inks from `AgentActivityStatusStyle`.
+### Lock Screen
 
-A separate, one-line semibold Host heading on the Lock Screen and expanded
-Dynamic Island uses middle truncation. Its name
-comes from the local Host snapshot by attributes `hostID`, then the envelope's
-`host`, then no heading when neither supplies a nonempty name. There are no
-header count chips. Each linked Agent entry starts with an open ring for
-Working, a filled exclamation circle for Blocked, or a check circle for Done.
-Its configured fields stay between that glyph and a secondary status word,
-"Working", "Needs you", or "Done". Accessibility reads those same fields and
-the displayed status word. Each entry opens its Agent; surrounding chrome
-keeps the Console fallback link.
+The Lock Screen shows up to two linked Agent tiles in attention order
+(Blocked, Done, Working, then other statuses), keeping sender order within
+each status. One tile spans the banner. Each tile uses the status glyph and
+word above a one-line task and byline. The second field row supplies the task
+when present. The first row supplies the byline, with the kind appended when
+absent. With one field row, that row is the task and the kind is the byline
+when it differs. Each tile opens its Agent and VoiceOver reads the configured
+fields and status. The rest of the banner opens the Console.
 
-The list fits complete entries within 160 pt, including the optional 20 pt
-heading, 6 pt vertical padding on each edge, and one overflow/stale caption.
-It shows at most four entries. One or two entries have a 44 pt minimum target;
-three or four use a 28 pt dense minimum. Configured entries are budgeted at,
-and held to, their rendered height: their text lines plus 1 pt of padding on
-each edge, so 31 pt for two lines and 44 pt for three. A named Host therefore
-fits four two-line entries without a caption or three with one, and two
-three-line entries plus the caption. Lock Screen text retains the system
-Dynamic Type size; only the Dynamic Island caps it through `islandTypeSize()`.
-Overflow uses the full plaintext inventory count minus the number of visible
-entries.
-Stale content adds "May be out of date", sharing the overflow line when
-needed. Debug decrypt diagnostics remain outside the production height budget.
+The footer shows the Host name from the local snapshot by attributes `hostID`,
+then the envelope's `host` as a fallback. The name truncates in the middle.
+The Host's letter tile appears before the name under the same rule as the
+Dynamic Island. The footer counts Agents beyond the tiles by subtracting
+visible tiles from the plaintext count of each status. Positive remainders
+appear in attention order as gray phrases such as "+1 needs you", "+2 done",
+and "+2 working". A stale update fades the tile row to half opacity and adds
+"May be out of date" after the count phrases. When no phrases apply, the
+footer shows the total number of Agents.
 
-An absent or undecryptable envelope, or empty decrypted Agent details, shows
-only the optional Host heading and localized count phrases in Blocked,
-Working, Done order, such as "1 needs you · 2 working". English plurals use
-"2 need you". Staleness remains visible. Counts-only does not imply a
-connection failure and has no overflow from an Agent list.
+If the envelope is absent, fails to decrypt, or contains no Agent entries,
+the banner shows one column per nonzero status in attention order. Each
+column shows the status glyph and word above the count. The footer shows the
+total unless the update is stale, when it shows "May be out of date" and the
+count row is faded.
+
+The banner caps Dynamic Type at `.large` to stay within 160 pt. ActivityKit
+supplies the background material through `.activityBackgroundTint(nil)`.
+Text, status inks, and the End control use dynamic UIKit colors so they
+follow system appearance on refresh.
 
 ### Dynamic Island
 
 Compact presentations show one status mark per Agent in attention order,
 Blocked, Done, Working, using the full plaintext counts even without decrypted
-details. Marks use the same open ring, filled exclamation circle, and check
-circle as the Agent rows. At most four slots appear. When the inventory exceeds
+details. Marks use an open ring, a filled exclamation circle, and a check
+mark. At most four slots appear. When the inventory exceeds
 four, the first three marks remain and the last slot becomes a plus mark.
 The first two slots lead the camera and the rest trail it. One Agent leaves
 the trailing region empty. There are no visible count numbers or status words.
@@ -191,10 +184,9 @@ snapshot listing at least two Hosts adds the Host name to that summary.
 
 The expanded header shows the full Host name with the eligible tile before
 it. Its trailing region may summarize the status marks. The bottom preserves
-configured Agent List Fields, status marks, and the displayed status words
-used by the Lock Screen. Complete linked entries remain in envelope order,
-with at most three entries inside the existing 100 pt row budget, including
-the overflow caption. Surrounding chrome keeps the Console fallback link.
+configured Agent List Fields and status marks. Up to three linked entries
+appear in envelope order, followed by the overflow summary.
+Surrounding chrome keeps the Console fallback link.
 Without Agent details, expanded content shows the localized count phrases
 instead of Agent rows.
 Island type sizes cap at `.large` through `islandTypeSize()`. Island inks

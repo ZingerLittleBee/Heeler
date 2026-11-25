@@ -1,7 +1,7 @@
 import Foundation
 
 /// Decrypted Live Activity details: the Host's short name plus the capped
-/// agent list in the sender's pin-aware order, rendered as given
+/// Agent list in the sender's pin-aware order
 /// (docs/agents/live-activity-contract.md).
 struct AgentActivityDetails: Sendable, Equatable {
     var hostName: String

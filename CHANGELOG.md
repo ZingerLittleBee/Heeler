@@ -15,6 +15,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- See up to two Agent tasks on a Host's Lock Screen Live Activity, with the remaining Agents counted by status in the footer. Tap a task to open its Agent. (PR #TBD)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
 
 ### Fixed

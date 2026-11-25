@@ -94,8 +94,9 @@ The source path is [HostLiveActivityCoordinator](../../Sources/Heeler/LiveActivi
 → [ActivityKitLiveActivityController](../../Sources/Heeler/LiveActivities/LiveActivityControlling.swift)
 → [AgentLiveActivityWidget](../../Sources/HeelerWidgets/AgentLiveActivityWidget.swift).
 [AgentActivityDecryptor](../../Sources/HeelerWidgets/AgentActivityDecryptor.swift)
-selects the rows that fit. Wire shapes and eligibility belong to the existing
-[Live Activity contract](live-activity-contract.md).
+selects the Lock Screen tiles and computes the footer counts.
+The [Live Activity contract](live-activity-contract.md) defines the wire
+format and Agent eligibility.
 
 For a real activity on an agreed test Host, enable Notifications in
 **Settings > Notifications**, allow the system permission, then turn on that
@@ -117,9 +118,11 @@ than crediting a different presentation.
 | Working only, Done only, Blocked only | Each glyph, count, and corner is visible; a dim Working ring can conceal clipping. |
 | Mixed Blocked + Done + Working | Leading/trailing tokens clear the system's rounded clipping shape. |
 | Two-digit counts, including mixed statuses | Counts remain complete; record any status-bar changes. |
-| More Agents than visible rows | Complete final row and `+N more`, with the configured Agent List Fields. |
-| Default and accessibility content sizes | Header and overflow fit the system height limit; inspect the Lock Screen separately. |
-| Counts-only fallback | No decrypted rows; counts still convey status. |
+| More Agents than visible tiles | The Lock Screen shows the two Agents that come first in attention order. Check the remaining count for each status in the footer. |
+| One Agent and long task titles | A single tile spans the Lock Screen banner. Long tasks truncate on one line. |
+| Stale activity | The Lock Screen tiles or count columns fade and the footer shows “May be out of date”. |
+| Default and accessibility content sizes | Check that the Lock Screen banner fits within 160 pt at both sizes. |
+| Counts-only fallback | Check that each nonzero status has a column on the Lock Screen and that the footer shows the total or the stale notice. |
 
 Read current size with `xcrun simctl ui "$SIMULATOR_UDID" content_size`; if the
 task authorizes changing it, set a supported category such as
@@ -131,8 +134,8 @@ provides invented data and process-local settings, but its Live Activity
 coordinator has a nil device token and fresh opt-in preferences. Therefore
 `--demo-screenshots` alone is not a real ActivityKit state harness.
 [AgentActivityPresentationTests](../../Tests/HeelerTests/AgentActivityPresentationTests.swift)
-exercise widget subviews and height calculations; they do not prove the
-system island's clipping or touch behavior. Use these existing seams for
+exercise widget subviews and measure the Lock Screen banner. Check system
+clipping and touch behavior in a running activity. Use these existing seams for
 future deterministic scenarios instead of repeating transient production
 source injections. This guide and helper add no such scenario feature.
 

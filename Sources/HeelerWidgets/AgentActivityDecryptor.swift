@@ -29,49 +29,85 @@ enum AgentActivityPresentation: Equatable, Sendable {
             return []
         }
     }
+}
 
-    /// Reserve the Host heading before fitting complete linked Agent entries.
-    func lockScreenAgents(
-        isStale: Bool, hasHeader: Bool = true
-    ) -> [AgentActivityDetails.AgentDetail] {
-        let total = counts.total
-        guard total > 0 else { return [] }
-        let candidates = Array(agents.prefix(min(total, 4)))
-        guard !candidates.isEmpty else { return [] }
-        for shown in stride(from: candidates.count, through: 1, by: -1) {
-            let prefix = Array(candidates.prefix(shown))
-            let target = AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: shown)
-            let rowHeight = prefix.reduce(0) {
-                $0 + max(target, AgentActivityRowMetrics.minimumHeight(for: $1))
+struct AgentActivityLockScreenPresentation: Equatable, Sendable {
+    struct CountColumn: Equatable, Sendable {
+        let status: String
+        let count: Int
+    }
+
+    enum Footer: Equatable, Sendable {
+        case total(String)
+        case phrases([String])
+    }
+
+    struct TileText: Equatable, Sendable {
+        let task: String?
+        let byline: String?
+
+        init(agent: AgentActivityDetails.AgentDetail) {
+            let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
+            let kind = AgentNotificationIdentity.kindLabel(agent.kind)
+            guard let first = rows.first else {
+                task = nil
+                byline = nil
+                return
             }
-            let captionHeight = isStale || total > shown
-                ? AgentActivityRowMetrics.lockScreenCaptionHeight : 0
-            let padding = AgentActivityRowMetrics.lockScreenBannerVerticalPadding * 2
-            let headerHeight = hasHeader ? AgentActivityRowMetrics.lockScreenHeaderHeight : 0
-            if rowHeight + padding + captionHeight + headerHeight
-                <= AgentActivityRowMetrics.lockScreenHeightBudget
-            {
-                return prefix
+            if rows.count > 1 {
+                task = rows[1]
+                byline = first.contains(kind) ? first : "\(first) · \(kind)"
+            } else {
+                task = first
+                byline = first == kind ? nil : kind
             }
         }
-        return Array(candidates.prefix(1))
     }
 
-    /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
-    func lockScreenOverflowCount(isStale: Bool, hasHeader: Bool = true) -> Int {
-        let shown = lockScreenAgents(isStale: isStale, hasHeader: hasHeader)
-        guard !shown.isEmpty else { return 0 }
-        return max(0, counts.total - shown.count)
+    let tiles: [AgentActivityDetails.AgentDetail]
+    let countColumns: [CountColumn]
+    let footer: Footer
+
+    init(presentation: AgentActivityPresentation, isStale: Bool) {
+        // Swift's sort is not documented as stable; the offset keeps the
+        // sender's order within a status.
+        let tiles = presentation.agents.enumerated()
+            .sorted {
+                (Self.priority(of: $0.element.status), $0.offset)
+                    < (Self.priority(of: $1.element.status), $1.offset)
+            }
+            .prefix(2)
+            .map(\.element)
+        self.tiles = tiles
+
+        let counts = presentation.counts
+        let tallies = counts.attentionItems
+        countColumns = tiles.isEmpty ? tallies.map { CountColumn(status: $0.status, count: $0.count) } : []
+
+        var phrases = [String]()
+        if !tiles.isEmpty {
+            phrases = tallies.compactMap { item in
+                let hidden = item.count - tiles.filter { $0.status == item.status }.count
+                guard hidden > 0 else { return nil }
+                return AgentActivityCopy.lockScreenOverflow(hidden, status: item.status)
+            }
+        }
+        if isStale {
+            phrases.append(String(localized: "May be out of date",
+                comment: "Lock Screen Live Activity footer when updates have stopped."))
+        }
+        let total = counts.total
+        footer = phrases.isEmpty
+            ? .total(String(localized: "\(total) agents", comment: "Total number of Agents on a Host in a Live Activity."))
+            : .phrases(phrases)
     }
 
-    /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
-    func lockScreenTrailingCaption(isStale: Bool, hasHeader: Bool = true) -> String? {
-        let overflow = lockScreenOverflowCount(isStale: isStale, hasHeader: hasHeader)
-        switch (isStale, overflow > 0) {
-        case (true, true): return String(localized: "+\(overflow) more · May be out of date")
-        case (true, false): return String(localized: "May be out of date")
-        case (false, true): return String(localized: "+\(overflow) more")
-        case (false, false): return nil
+    private static func priority(of status: String) -> Int {
+        switch status {
+        case "blocked": 0
+        case "done": 1
+        case "working": 2
+        default: 3
         }
     }
 }
@@ -297,9 +333,6 @@ enum AgentActivityDecryptor {
         store: NotificationKeyStore = NotificationKeyStore(),
         mirror: NotificationKeyMirror = NotificationKeyMirror()
     ) -> AgentActivityPresentation {
-        #if DEBUG
-            lastFailureReason = nil
-        #endif
         guard let envelope = state.envelope,
             let data = try? JSONEncoder().encode(envelope),
             let kid = SealedEnvelopeCodec.peekKeyID(in: data)
@@ -331,13 +364,6 @@ enum AgentActivityDecryptor {
         return .detailed(details: opened, counts: state.counts)
     }
 
-    /// Debug-only: why the last `presentation(for:)` in this process fell
-    /// back to counts-only, for on-lock-screen diagnosis of device-only
-    /// failures. Rendered by the lock-screen view in Debug builds.
-    #if DEBUG
-        nonisolated(unsafe) static var lastFailureReason: String?
-    #endif
-
     /// Debug-only render-time trace into the shared app-group container, so
     /// a countsOnly fallback on a physical device can name its cause
     /// (`devicectl device copy from --domain-type appGroupDataContainer`).
@@ -345,7 +371,6 @@ enum AgentActivityDecryptor {
         #if DEBUG
             let container = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: NotificationKeyStore.sharedAccessGroup)
-            lastFailureReason = "\(reason) | group: \(container == nil ? "nil" : "ok")"
             guard let url = container else { return }
             let line = "\(Date()) \(reason)\n"
             let file = url.appendingPathComponent("activity-decrypt-debug.txt")
@@ -386,8 +411,16 @@ enum AgentActivityCopy {
         }
     }
 
-    static func lockScreenCounts(_ counts: AgentActivityAttributes.ContentState.Counts) -> String {
-        countPhrases(counts).joined(separator: " · ")
+    static func lockScreenOverflow(_ count: Int, status: String) -> String? {
+        switch status {
+        case "blocked":
+            String(localized: "+\(count) needs you", comment: "Lock Screen footer count of additional Agents waiting for input.")
+        case "done":
+            String(localized: "+\(count) done", comment: "Lock Screen footer count of additional Agents with a result to read.")
+        case "working":
+            String(localized: "+\(count) working", comment: "Lock Screen footer count of additional Agents still working.")
+        default: nil
+        }
     }
 
     static func countPhrases(_ counts: AgentActivityAttributes.ContentState.Counts) -> [String] {
