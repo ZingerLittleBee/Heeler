@@ -23,6 +23,7 @@ COMMANDS: list[tuple[str, list[str]]] = [
     ("test-node-toolchain-probe", [PY, "scripts/test-node-toolchain-probe.py"]),
     ("test-server-kind-detection", [PY, "scripts/test-server-kind-detection.py"]),
     ("test-tmux-probe", [PY, "scripts/test-tmux-probe.py"]),
+    ("test-bounded-host-script", [PY, "scripts/test-bounded-host-script.py"]),
     ("test-herdr-core-locator", [PY, "scripts/test-herdr-core-locator.py"]),
     ("test-run-app-simulator-tests", [PY, "scripts/test-run-app-simulator-tests.py"]),
     ("test-herdr-core-start", [PY, "scripts/test-herdr-core-start.py"]),
