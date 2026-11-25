@@ -29073,7 +29073,7 @@
         }
       }
     },
-    "Heeler finds Rex on macOS and Linux Hosts only." : {},
+    "Heeler finds Rex on macOS, Linux and Windows Hosts only." : {},
     "Heeler hasn't found this conversation's transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -62636,6 +62636,7 @@
         }
       }
     },
+    "The command that reaches Rex did not start." : {},
     "The command that runs herdr-core connect did not start." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
