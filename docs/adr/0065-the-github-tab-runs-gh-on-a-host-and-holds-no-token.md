@@ -459,7 +459,8 @@ Close.
   with no fill of its own inside iOS 26's glass. A line under the list's
   title is there whenever the list area is, from its first frame, so the
   header keeps its height and the list does not move for anything that
-  comes and goes: Reading… while a read has nothing to show yet or runs over
+  comes and goes (at accessibility sizes it takes the lines its words need,
+  with none kept empty under a short one): Reading… while a read has nothing to show yet or runs over
   the rows, then when the rows were read, or the status with when they were
   read or when to try again, the status alone where no rows show. It is the
   only place the list says so: no footer or heading among the rows repeats

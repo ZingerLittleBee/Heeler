@@ -1088,9 +1088,9 @@ enum GitHubSubtitle: Equatable {
     }
 }
 
-/// The line under the list header's title. One line, two at accessibility
-/// sizes, whatever it says: a longer status that wrapped further would
-/// move the rows.
+/// The line under the list header's title. One line; at accessibility
+/// sizes the lines it takes, so a short status leaves no blank line under
+/// it and a long one is not cut off.
 struct GitHubSubtitleText: View {
     let subtitle: GitHubSubtitle
     @State private var now = Date()
@@ -1099,7 +1099,7 @@ struct GitHubSubtitleText: View {
     var body: some View {
         Text(subtitle.text(now: now))
             .monospacedDigit()
-            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1, reservesSpace: true)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             .task(id: subtitle) { await GitHubSubtitle.keepCurrent(subtitle) { now = $0 } }
     }
 }
