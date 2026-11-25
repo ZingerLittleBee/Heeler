@@ -377,6 +377,9 @@ private struct GitHubShowMoreRow: View {
         Button(action: showMore) {
             HStack(spacing: 8) {
                 Text("Show More")
+                    // The iPad's sidebar draws a button's words in the
+                    // primary colour.
+                    .foregroundStyle(isReading ? AnyShapeStyle(Color.secondary) : AnyShapeStyle(.tint))
                 Spacer(minLength: 8)
                 if isReading {
                     ProgressView()
