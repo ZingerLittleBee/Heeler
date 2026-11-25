@@ -4103,8 +4103,11 @@ extension ConsoleStore: GitHubHostAccess {
         hostStatuses[recordID] == .connected && projections[recordID] != nil
     }
 
+    /// A Rex Host reached by a Windows named pipe (ADR 0049) is one from
+    /// its record: its connection reports no platform of its own.
     func isNativeWindows(_ recordID: Host.ID) -> Bool {
-        hostPlatforms[recordID] == .nativeWindows
+        catalog.first(where: { $0.id == recordID })?.rexSocket?.isWindowsPipe == true
+            || hostPlatforms[recordID] == .nativeWindows
     }
 
     /// Straight to the desktop session on a connection whose gh needed it
