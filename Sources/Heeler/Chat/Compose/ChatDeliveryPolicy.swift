@@ -63,6 +63,12 @@ extension ComposerDeliveryPolicy {
                 return .agentBlocked
             case .hold(let state):
                 if state.allowsSendAnyway {
+                    if let hardHold = InputBoxStateDetector.hardHold(in: screen, program: program) {
+                        return .inputNotReady(
+                            allowUnconfirmed
+                                ? hardHold.holdReason(for: program)
+                                : state.holdReason(for: program))
+                    }
                     if allowUnconfirmed {
                         return sendConcern(rules.outgoingText(text), screen).map { .inputNotReady($0) }
                     }

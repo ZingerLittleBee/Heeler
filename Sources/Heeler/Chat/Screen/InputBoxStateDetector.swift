@@ -68,6 +68,19 @@ enum InputBoxStateDetector {
         }
     }
 
+    /// Returns a hard hold (such as a non-empty draft, shell mode, dialog, or
+    /// full-screen non-composer panel) that coexists with an `.overlay` reading
+    /// and must never be bypassed by `Send Anyway`.
+    static func hardHold(in screen: ANSIScreen, program: ChatProgram) -> InputBoxState? {
+        switch program {
+        case .claude, .codex: nil
+        case .pi, .omp: PiInputBoxDetector.hardHold(in: screen, program: program)
+        case .grok: GrokInputBoxDetector.hardHold(in: screen)
+        case .opencode: OpenCodeScreenReader.read(screen).hardHold
+        case .agy: AgyInputBoxDetector.hardHold(in: screen)
+        }
+    }
+
     // MARK: Claude
 
     /// Dim text in Claude's box is a placeholder: a hint

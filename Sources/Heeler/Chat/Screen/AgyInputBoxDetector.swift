@@ -48,4 +48,31 @@ enum AgyInputBoxDetector {
         }
         return .empty(placeholder: composer.placeholder)
     }
+
+    /// Returns a hard hold that `Send Anyway` must never override even when an
+    /// overlay is also visible (such as a `/` or `@` completion popup over a
+    /// non-empty draft, bash mode, a pending double-press, a dialog, or the
+    /// full-screen `/swarm board` view with no input box).
+    static func hardHold(in screen: ANSIScreen) -> InputBoxState? {
+        let agy = AgyScreen(screen)
+        if agy.hasExited {
+            return .noComposer(String(localized: "Antigravity CLI has exited. Start it again in the terminal first."))
+        }
+        guard let composer = agy.composer else {
+            if agy.showsSwarmBoard {
+                return .noComposer(
+                    String(localized: "Antigravity CLI's swarm board is open in the terminal. Press Esc there first."))
+            }
+            return agy.showsDialog ? .dialog(title: nil) : nil
+        }
+        if composer.mode == .bash { return .shellMode(composer.draft) }
+        if !composer.draft.isEmpty { return .text(composer.draft) }
+        if let press = agy.pendingDoublePress {
+            return .disabled(
+                String(
+                    localized: "Antigravity CLI is waiting for a second key press (\u{201C}\(press)\u{201D}). Finish it in the terminal first.",
+                    comment: "Why Chat holds a message: the hint Antigravity CLI shows, such as press ctrl+b again to send command to background"))
+        }
+        return nil
+    }
 }

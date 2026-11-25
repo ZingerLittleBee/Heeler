@@ -25,6 +25,10 @@ struct OpenCodeScreen: Equatable, Sendable {
     /// The title of a picker or menu over the screen, or the first row of a
     /// `/` or `@` popup over the input box.
     var overlayTitle: String?
+    /// A hard hold on the underlying box or screen (shell mode, non-empty
+    /// draft, home screen, or running turn) that `Send Anyway` must never
+    /// override even when `overlayTitle` is also present.
+    var hardHold: InputBoxState? = nil
 }
 
 /// Reads OpenCode 2.0.32's prompt from a visible-screen read, anchored on
@@ -65,7 +69,8 @@ enum OpenCodeScreenReader {
         let overlayTitle = modalTitle(above: edge, in: rows) ?? popupRow(above: top, column: column, in: rows)
         var screenRead = OpenCodeScreen(
             route: hasLogo ? .home : .unknown, state: .unknown(String(localized: "OpenCode's input box is not recognized.")),
-            isRunning: isRunning, isArmed: isArmed, overlayTitle: overlayTitle)
+            isRunning: isRunning, isArmed: isArmed, overlayTitle: overlayTitle,
+            hardHold: hasLogo ? .noComposer(homeReason) : (isRunning ? .disabled(working) : nil))
         if let overlayTitle { screenRead.state = .overlay(overlayTitle) }
 
         // A padding row, the input rows, a padding row, the agent row.
@@ -78,24 +83,28 @@ enum OpenCodeScreenReader {
         let input = Array(box[1..<(box.count - 2)])
         let showsPlaceholder = isPlaceholder(input, column: column, muted: footer?.visibleRuns.first?.style.foreground)
         screenRead.route = hasLogo || showsPlaceholder ? .home : .session
-        guard overlayTitle == nil else { return screenRead }
 
         let lines = showsPlaceholder ? [] : input.map { content($0, column: column) }.filter { !$0.isEmpty }
         let draft = lines.joined(separator: "\n")
         // Blank rows past the first are newlines typed into the box.
         let isEmpty = lines.isEmpty && (showsPlaceholder || input.count == 1)
+        let boxState: InputBoxState
         if label == "Shell" || footerText.hasSuffix("exit shell mode") {
-            screenRead.state = .shellMode(draft)
+            boxState = .shellMode(draft)
         } else if screenRead.route == .home {
-            screenRead.state = isEmpty ? .noComposer(homeReason) : .text(draft)
+            boxState = isEmpty ? .noComposer(homeReason) : .text(draft)
         } else if !isEmpty {
-            screenRead.state = .text(draft)
+            boxState = .text(draft)
         } else if isRunning {
             // Enter would steer the turn, and a prompt that appears before
             // herdr's Enter would take it as its answer.
-            screenRead.state = .disabled(working)
+            boxState = .disabled(working)
         } else {
-            screenRead.state = .empty(placeholder: nil)
+            boxState = .empty(placeholder: nil)
+        }
+        screenRead.hardHold = boxState.isSendable ? nil : boxState
+        if overlayTitle == nil {
+            screenRead.state = boxState
         }
         return screenRead
     }
