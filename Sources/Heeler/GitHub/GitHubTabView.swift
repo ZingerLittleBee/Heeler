@@ -804,10 +804,13 @@ private struct GitHubHostMenu: View {
             // menu, so a long name, or one beside a status glyph, gives way.
             .frame(maxWidth: isSidebarColumn ? Self.sidebarWidth : nil)
             .background {
+                // Out to just inside the glass. iOS 26 cuts a toolbar
+                // label off about 6 points to either side of it, which
+                // would square off a wider capsule's ends.
                 if status != nil {
                     Capsule()
                         .fill(Self.amberFill)
-                        .padding(.horizontal, -10)
+                        .padding(.horizontal, -5)
                         .padding(.vertical, -6)
                 }
             }
