@@ -15,7 +15,7 @@ server has been observed yet.
   Heeler reaches a running server's Unix socket over a direct-streamlocal SSH
   channel and never runs `rex` or starts a server. On native Windows it
   reaches the server's named pipe through an exec of
-  `rex -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
+  `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
   which starts none either.
 - One WebSocket control connection per Host carries everything but terminal
   data: hello at API revision 12 only, `server.status`, `session.attach_all`

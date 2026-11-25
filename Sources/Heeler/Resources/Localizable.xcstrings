@@ -49580,6 +49580,7 @@
     "Rex is not answering" : {},
     "Rex is not running" : {},
     "Rex is running, but SSH will not open %@" : {},
+    "Rex is running, but rex.exe is not on the PATH of this account's SSH sessions." : {},
     "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
       "localizations" : {
         "en" : {
@@ -49592,6 +49593,7 @@
     },
     "Rex refused the connection with HTTP status %lld." : {},
     "Rex rejected the request" : {},
+    "Rex runs, but rex.exe is not on this account's PATH" : {},
     "Rex sent an answer Heeler cannot read" : {},
     "Rex server running" : {},
     "Rex stopped sending this terminal's output" : {},
@@ -51631,6 +51633,7 @@
       }
     },
     "Sends the command as typed, though Chat's menu doesn't offer it" : {},
+    "Sends the message even though Heeler couldn't confirm the input box is clear" : {},
     "Sends this key directly to the Agent" : {
       "localizations" : {
         "ja" : {

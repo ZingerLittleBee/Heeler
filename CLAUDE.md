@@ -50,7 +50,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   data link on a channel of its own, painted from the server's redraw. On
   macOS and Linux each link is a direct-streamlocal channel to the server's
   Unix socket, and connecting never runs `rex`. On native Windows each is an
-  SSH exec of `rex -S <pipe> __internal dial-stdio --autostart=false` to its
+  SSH exec of `rex.exe -S <pipe> __internal dial-stdio --autostart=false` to its
   named pipe, a platform branch like herdr-core's. Detection never runs
   `rex`, and connecting never starts a server; a block's size is taken only for a terminal
   on screen, before its first paint, and given back when it leaves (ADRs 0049

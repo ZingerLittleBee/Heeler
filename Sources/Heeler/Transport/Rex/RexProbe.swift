@@ -29,7 +29,7 @@ enum RexProbe {
         /// `uname -s`.
         var kernel: String?
         /// A Rex app, named in its bundle, or Rex's own data folder is
-        /// there. A `rex` on the exec's PATH is not enough: other software
+        /// there (on Windows, `%LOCALAPPDATA%\rex`). A `rex` on the exec's PATH is not enough: other software
         /// has a command of that name.
         var isInstalled = false
         /// The sockets found, in the order the script looks: the account's own
@@ -103,24 +103,30 @@ enum RexProbe {
     }
 
     /// The Windows read, for PowerShell after `HerdrCoreLocator.windowsPrelude`.
-    /// Rex names a personal server's pipe `rex-` and the account's SID; the
-    /// read tests that the pipe is there and that `rex.exe` is on the exec's
-    /// PATH, which is how a channel reaches it (`RexWindowsDial`). It never
-    /// runs `rex`. Everything from outside is a single-quoted literal.
+    /// Rex names a personal server's pipe `rex-` and the account's SID. The
+    /// read lists the pipe namespace by name, which opens no pipe, so the
+    /// server sees no client and a busy pipe still counts. Rex looks installed
+    /// when its data folder, `%LOCALAPPDATA%\rex`, is there, as on the Unix
+    /// side; `rex.exe` on the exec's PATH, which the bridge needs
+    /// (`RexWindowsDial`), is what makes a found pipe usable. It never runs
+    /// `rex`. Everything from outside is a single-quoted literal.
     static func windowsBody(nonce: String) -> String {
-        """
+        #"""
         say ''
-        say \(PowerShellCommand.literal(beginMarker(nonce)))
-        say 'kernel \(HerdrCoreLocator.windowsKernel)'
-        if (Get-Command rex.exe -CommandType Application -ErrorAction SilentlyContinue) { say 'installed' }
-        $rexSid = $null
-        try { $rexSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { $rexSid = $null }
-        if ($rexSid -match '^S-[0-9-]+$' -and (Test-Path -LiteralPath ('\\\\.\\pipe\\rex-' + $rexSid))) {
-            say ('socket 1 1 \(windowsPipePrefix)rex-' + $rexSid)
+        say \#(PowerShellCommand.literal(beginMarker(nonce)))
+        say 'kernel \#(HerdrCoreLocator.windowsKernel)'
+        if ($env:LOCALAPPDATA -and (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'rex') -PathType Container)) { say 'installed' }
+        $rexOk = 0; if (Get-Command rex.exe -CommandType Application) { $rexOk = 1 }
+        $rexSid = $null; try { $rexSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value } catch { }
+        if ($rexSid -match '^S-[0-9-]+$') {
+            $rexPipe = 'rex-' + $rexSid
+            $rexPipes = $null; try { $rexPipes = [IO.Directory]::GetFiles('\\.\pipe\') } catch { }
+            if ($null -eq $rexPipes) { $rexPipes = Get-ChildItem -LiteralPath '\\.\pipe\' -Name }
+            if ($rexPipes | Where-Object { ($_ -replace '^\\\\\.\\pipe\\', '') -ceq $rexPipe }) { say ('socket 1 ' + $rexOk + ' \#(windowsPipePrefix)' + $rexPipe) }
         }
         say ''
-        say \(PowerShellCommand.literal(endMarker(nonce)))
-        """
+        say \#(PowerShellCommand.literal(endMarker(nonce)))
+        """#
     }
 
     /// The prefix Rex gives a named pipe's address.

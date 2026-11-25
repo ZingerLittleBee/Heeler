@@ -328,6 +328,8 @@ actor RexSSHTransport: RexTransport {
             throw TransportError.rexNotInstalled
         case .notRunning:
             throw TransportError.rexServerNotRunning(socketPath: nil)
+        case .notUsable(let path) where RexSocket.isWindowsPipeAddress(path):
+            throw TransportError.rexLookupFailed(reason: RexWindowsDial.notOnPathReason)
         case .notUsable(let path):
             throw TransportError.rexAccountRefused(socketPath: path)
         case .unsupported:
@@ -374,6 +376,7 @@ actor RexSSHTransport: RexTransport {
         switch try? await RexProbe.run(over: connection, nonce: nonce) {
         case .notInstalled: .rexNotInstalled
         case .notRunning: .rexServerNotRunning(socketPath: socket.path)
+        case .notUsable: .rexLookupFailed(reason: RexWindowsDial.notOnPathReason)
         default: nil
         }
     }

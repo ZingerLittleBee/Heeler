@@ -162,7 +162,7 @@ struct RexTransportTests {
     // MARK: Native Windows
 
     static let pipe = "npipe:////./pipe/rex-S-1-5-21-1111111111-2222222222-3333333333-1001"
-    static let dial = "cmd /d /c \"echo __HEELER_STREAM_READY__&& rex -S \(pipe) __internal dial-stdio --autostart=false\""
+    static let dial = "cmd /d /c \"echo __HEELER_STREAM_READY__&& cd /d %USERPROFILE%&& rex.exe -S \(pipe) __internal dial-stdio --autostart=false\""
 
     /// SSH forwards no named pipe: the control and data links are execs of
     /// Rex's stdio bridge, carrying the same WebSocket.
@@ -197,6 +197,8 @@ struct RexTransportTests {
     @Test(arguments: [
         (["kernel Windows", "installed"], TransportError.rexServerNotRunning(socketPath: pipe)),
         (["kernel Windows"], .rexNotInstalled),
+        (["kernel Windows", "socket 1 0 \(pipe)", "installed"],
+         .rexLookupFailed(reason: "Rex is running, but rex.exe is not on the PATH of this account's SSH sessions.")),
     ])
     func aWindowsBridgeThatEndsSaysWhy(probe: [String], expected: TransportError) async {
         let host = ScriptedRexHost(probe: probe, control: [.endsAtOnce], platform: .nativeWindows)
@@ -205,6 +207,25 @@ struct RexTransportTests {
 
         #expect(error as? TransportError == expected)
         #expect(await host.log == ["control exec \(Self.dial)", "windows", "close"])
+    }
+
+    /// A pipe found while `rex.exe` is not on the exec's PATH is no server
+    /// the bridge can reach, and the lookup says so.
+    @Test func aWindowsPipeWithoutRexOnPathSaysSo() async {
+        let host = ScriptedRexHost(
+            probe: ["kernel Windows", "socket 1 0 \(Self.pipe)", "installed"], platform: .nativeWindows)
+
+        let error = await failure(host, socket: nil)
+
+        #expect(
+            error as? TransportError
+                == .rexLookupFailed(reason: "Rex is running, but rex.exe is not on the PATH of this account's SSH sessions."))
+        #expect(await host.log == ["windows", "close"])
+    }
+
+    @Test func aWindowsServersPlatformNamesItsKernel() {
+        #expect(RexServerPlatform.kernel(reading: ["platform": "windows_amd64"]) == HerdrCoreLocator.windowsKernel)
+        #expect(RexServerPlatform.kernel(reading: ["platform": "darwin_arm64"]) == HerdrCoreLocator.macOSKernel)
     }
 
     @Test func aDataChannelGoesToTheSameSocket() async throws {

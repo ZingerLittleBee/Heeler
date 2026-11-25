@@ -59,15 +59,23 @@ struct RexSocket: Codable, Hashable, Sendable {
 /// connecting still starts nothing.
 enum RexWindowsDial {
     /// `cmd /d /c` skips AutoRun and reads the same under a `cmd` or
-    /// PowerShell DefaultShell, as herdr-core's `connect` line does (ADR 0031).
-    /// The marker comes first, so whatever the account's shell prints at
-    /// startup is dropped before the WebSocket's upgrade
-    /// (`BootstrappedExecChannel`). `rex.exe` is found on the exec's PATH,
-    /// where the Windows probe found it; the pipe's address needs no quoting
-    /// (`RexSocket.isWindowsPipeAddress`).
+    /// PowerShell DefaultShell, as herdr-core's `connect` line does (ADR 0031),
+    /// and `cd /d %USERPROFILE%` keeps a profile's `Set-Location` from choosing
+    /// where cmd looks first. The marker comes first, so whatever the
+    /// account's shell prints at startup is dropped before the WebSocket's
+    /// upgrade (`BootstrappedExecChannel`). `rex.exe` is named in full and
+    /// found on the exec's PATH, where the Windows probe found it, so no
+    /// `rex.cmd` or `rex.bat` takes its place; the pipe's address needs no
+    /// quoting (`RexSocket.isWindowsPipeAddress`).
+    /// Why a running Windows server cannot be reached: the bridge runs
+    /// `rex.exe` from the exec's PATH, and it is not there.
+    static var notOnPathReason: String {
+        String(localized: "Rex is running, but rex.exe is not on the PATH of this account's SSH sessions.")
+    }
+
     static func command(for socket: RexSocket) -> String? {
         guard socket.isWindowsPipe else { return nil }
-        return "cmd /d /c \"echo \(PowerShellCommand.streamMarker)&& "
-            + "rex -S \(socket.path) __internal dial-stdio --autostart=false\""
+        return "cmd /d /c \"echo \(PowerShellCommand.streamMarker)&& cd /d %USERPROFILE%&& "
+            + "rex.exe -S \(socket.path) __internal dial-stdio --autostart=false\""
     }
 }

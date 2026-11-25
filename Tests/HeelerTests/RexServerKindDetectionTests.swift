@@ -220,7 +220,12 @@ struct RexServerKindDetectionTests {
         #expect(detection.rex == .socketFound(socketPath: Self.windowsPipe))
         #expect(detection.rexSocket?.isWindowsPipe == true)
         let body = try #require(await host.scripts.first)
-        #expect(body.contains(#"Test-Path -LiteralPath ('\\.\pipe\rex-' + $rexSid)"#))
+        // The pipe namespace is listed by name: no pipe is opened, so the
+        // server sees no client and a busy pipe still counts.
+        #expect(body.contains(#"[IO.Directory]::GetFiles('\\.\pipe\')"#))
+        #expect(!body.contains(#"Test-Path -LiteralPath ('\\.\pipe"#))
+        // Installed reads Rex's data folder, not a `rex.exe` on PATH.
+        #expect(body.contains(#"Join-Path $env:LOCALAPPDATA 'rex'"#))
         // Testing the pipe and PATH starts nothing: `rex` itself never runs.
         #expect(!body.contains("& rex"))
         #expect(!body.contains("__internal"))
@@ -235,6 +240,23 @@ struct RexServerKindDetectionTests {
                 windowsLocator: ScriptedCoreHost.windowsLocatorLines(), rexProbe: lines, channel: .refused)
             #expect(try await ServerKindDetection.run(over: host, session: "work").rex == expected)
         }
+    }
+
+    /// A pipe with no `rex.exe` on the exec's PATH is a server the bridge
+    /// cannot reach: named missing, with why, and nothing to store.
+    @Test func aWindowsPipeWithoutRexOnPathIsNotUsable() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            rexProbe: ScriptedCoreHost.rexLines(kernel: "Windows", sockets: [(Self.windowsPipe, true, false)]),
+            channel: .refused)
+
+        let detection = try await ServerKindDetection.run(over: host, session: "work")
+
+        #expect(detection.rex == .notUsable(socketPath: Self.windowsPipe))
+        #expect(detection.rexSocket == nil)
+        #expect(
+            HostServerScan(detection).missing.filter { $0.kind == .rex }.map(\.note)
+                == ["Rex runs, but rex.exe is not on this account's PATH"])
     }
 
     /// Only Rex's own name for a personal server's pipe is an address to
