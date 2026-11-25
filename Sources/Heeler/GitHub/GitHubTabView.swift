@@ -102,7 +102,18 @@ struct GitHubListScreen: View {
     /// What stopped the selected Host's last read, which the title bar
     /// shows rather than the list.
     private var status: GitHubHostStatus? {
-        store.selectedHost.flatMap { GitHubHostStatus(of: $0, in: store) }
+        guard let host = store.selectedHost else { return nil }
+        let state = store.state(of: host)
+        let isConnected = store.isConnected(host)
+        // Dated by the rows on screen: a filter's results by their own
+        // read, and nothing over a filter's Is Offline or failure screen.
+        let readAt: Date? =
+            if case .rows(let shown) = content(on: host, isOffline: !isConnected || state.failure == .offline) {
+                shown.readAt
+            } else {
+                nil
+            }
+        return GitHubHostStatus(failure: state.failure, isConnected: isConnected, readAt: readAt)
     }
 
     /// With more than one Host to pick; with one, while it has a status,
@@ -584,12 +595,6 @@ struct GitHubHostStatus: Equatable {
             }
         }
         self.readAt = readAt
-    }
-
-    @MainActor
-    init?(of host: GitHubHost, in store: GitHubStore) {
-        let state = store.state(of: host)
-        self.init(failure: state.failure, isConnected: store.isConnected(host), readAt: state.list?.readAt)
     }
 
     var symbol: String {
