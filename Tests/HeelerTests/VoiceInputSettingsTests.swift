@@ -39,6 +39,29 @@ struct VoiceInputSettingsTests {
         }
     }
 
+    @Test func volcengineStreamsUnlessTheUserChoosesAfterRecording() throws {
+        try withDefaults { defaults in
+            let settings = VoiceInputSettings(defaults: defaults, secrets: InMemorySecretStore())
+            let service = VoiceInputService.preset(.volcengine)
+            #expect(service.recognitionModes == [.stream, .batch])
+            #expect(service.takesKeywords && !service.acceptsPrompt && !service.keywordsAreOptional)
+
+            try settings.save(service: service, custom: .init(), apiKey: "volc-key", consented: true)
+            #expect(settings.recognitionMode == .stream)
+            try settings.save(service: service, custom: .init(), apiKey: "", consented: false, options: .init(mode: .batch))
+            #expect(settings.recognitionMode == .batch)
+
+            try settings.save(service: .preset(.openAI), custom: .init(), apiKey: "sk", consented: true, options: .init(mode: .stream))
+            #expect(settings.recognitionMode == .batch, "a service that cannot stream keeps its own way")
+        }
+    }
+
+    @Test func optionsSavedBeforeRecognitionModesStillDecode() throws {
+        let saved = Data(#"{"languages":["zh"],"fields":[],"sendsKeywords":true}"#.utf8)
+        let options = try JSONDecoder().decode(VoiceInputRequestOptions.self, from: saved)
+        #expect(options.languages == ["zh"] && options.sendsKeywords && options.mode == nil)
+    }
+
     @Test func elevenLabsHasItsOwnKeyAgreementAndLanguage() throws {
         try withDefaults { defaults in
             let secrets = InMemorySecretStore()

@@ -17,6 +17,10 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
     /// (`VoiceInputUploadFormat.optionalKeywords`). Off until the user turns
     /// it on; other services ignore it.
     var sendsKeywords = false
+    /// How the user chose to recognize speech, for a service that offers
+    /// more than one way; nil keeps the service's default
+    /// (`VoiceInputSettings.recognitionMode`).
+    var mode: VoiceRecognitionMode?
 
     enum Problem: Error, Equatable {
         case languagesUnavailable
@@ -80,13 +84,15 @@ struct VoiceInputRequestOptions: Codable, Equatable, Sendable {
 }
 
 extension VoiceInputRequestOptions {
-    /// Options saved before `sendsKeywords` existed have no value for it, and
-    /// one entry that fails to decode would drop every saved option.
+    /// Options saved before `sendsKeywords` or `mode` existed have no value
+    /// for them, and one entry that fails to decode would drop every saved
+    /// option.
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         languages = try container.decode([String].self, forKey: .languages)
         fields = try container.decode([VoiceInputCustomField].self, forKey: .fields)
         sendsKeywords = try container.decodeIfPresent(Bool.self, forKey: .sendsKeywords) ?? false
+        mode = try container.decodeIfPresent(VoiceRecognitionMode.self, forKey: .mode)
     }
 }
 
@@ -115,7 +121,7 @@ enum VoiceInputLanguage {
         case .openAI: commonCodes + ["zh-cn", "zh-tw", "zh-hk"]
         case .deepInfra: commonCodes
         case .elevenLabs: scribeCodes
-        case .siliconFlowCN: []
+        case .siliconFlowCN, .volcengine: []
         }
     }
 

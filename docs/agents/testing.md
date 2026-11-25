@@ -91,6 +91,7 @@ and fails rather than skips when selected without it.
 | `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
 | `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing |
 | `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests`, `RexProgramStatusLiveTests`, `RexChatTypingLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
+| `VolcengineSpeechLiveTests` | `HEELER_VOLCENGINE_LIVE_KEY`, a Volcengine API Key, and `HEELER_VOLCENGINE_LIVE_AUDIO`, a 16 kHz mono WAV path on this Mac | Doubao streaming speech recognition 2.0 on that key; each test is billed by the recording's length |
 | `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
 
 Set the gate, run one suite, then unset it:

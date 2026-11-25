@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// On Device Voice Input in the Composer's input place (ADR 0043): what the
-/// device hears, then the microphone's level and time, Stop, and Send. Stop
+/// Streaming Voice Input in the Composer's input place (ADR 0043): what the
+/// recognizer hears, then the microphone's level and time, Stop, and Send. Stop
 /// puts the text in the draft; Send puts it there and sends the draft once
 /// the last words settle. A failure or a model download shows here too,
 /// until it is dismissed.
@@ -14,12 +14,15 @@ struct ComposerLiveVoiceRecorder: View {
     let send: () -> Void
     let downloadModel: () -> Void
     let restart: () -> Void
+    /// Sends the kept recording again, after a service that streamed it
+    /// could not turn it into text.
+    let retry: () -> Void
     let openVoiceInputSettings: () -> Void
 
     var body: some View {
         if let failure = voice.failure {
             ComposerLiveVoiceFailure(
-                failure: failure, downloadModel: downloadModel, restart: restart,
+                failure: failure, downloadModel: downloadModel, restart: restart, retry: retry,
                 openVoiceInputSettings: openVoiceInputSettings,
                 dismiss: { voice.dismissFailure() })
         } else if case .downloadingModel(let progress) = voice.phase {
@@ -143,7 +146,7 @@ struct ComposerLiveVoiceRecorder: View {
     }
 }
 
-/// The draft, then what the device has heard joined to its end, as the draft
+/// The draft, then what has been heard joined to its end, as the draft
 /// will read: the draft and settled words in full, words it may still revise
 /// faint and underlined, and the caret after them. The box grows a line at a time up to three and
 /// never shrinks while recording, so the terminal above resizes at most
@@ -232,11 +235,12 @@ private struct ComposerRecordingDot: View {
     }
 }
 
-/// Why On Device could not record, with what can fix it.
+/// Why a streaming recording could not start or finish, with what can fix it.
 private struct ComposerLiveVoiceFailure: View {
     let failure: VoiceInputFailure
     let downloadModel: () -> Void
     let restart: () -> Void
+    let retry: () -> Void
     let openVoiceInputSettings: () -> Void
     let dismiss: () -> Void
     @Environment(\.openURL) private var openURL
@@ -277,6 +281,10 @@ private struct ComposerLiveVoiceFailure: View {
                 }
                 if failure.downloadsModel {
                     Button("Download", action: downloadModel)
+                        .buttonStyle(.borderedProminent)
+                }
+                if failure.canRetry {
+                    Button("Retry", action: retry)
                         .buttonStyle(.borderedProminent)
                 }
                 if failure.restarts {

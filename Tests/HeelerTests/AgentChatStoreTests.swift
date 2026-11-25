@@ -4773,6 +4773,88 @@ struct AgentChatStoreTests {
         #expect(fixture.store.backgroundWork.rows.isEmpty)
     }
 
+    @Test func claudeTeammateLaunchedAboveTheWindowFollowsItsOwnTranscript() async throws {
+        let session = Self.first
+        let path = Self.path(session)
+        let folder = "/home/dev/.claude/projects/-home-dev-proj/\(session)/subagents"
+        let agentID = "aparser-0123456789abcdef"
+        let mate = "\(folder)/agent-\(agentID).jsonl"
+        var adapter = try #require(ChatTranscriptAdapter.standard(for: .claude))
+        adapter.limits.tailWindow = 4096
+        let fixture = Fixture(session: session, program: .claude, adapter: adapter)
+        // The files' modification clock starts at 1_780_000_000.
+        fixture.clock.now = Date(timeIntervalSince1970: 1_780_000_060)
+
+        var lead = [
+            #"{"type":"user","uuid":"u1","timestamp":"2026-05-28T20:00:00.000Z","message":{"role":"user","content":"Split the work"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-05-28T20:00:05.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","prompt":"Review it."}}]}}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-05-28T20:00:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":"Spawned successfully."}]},"toolUseResult":{"status":"teammate_spawned","agentId":"\#(agentID)","name":"parser"}}"#,
+        ]
+        // Enough after the spawn that the window starts below it.
+        for index in 0..<12 {
+            let parent = index == 0 ? "r1" : "f\(index - 1)"
+            lead.append(
+                #"{"type":"assistant","uuid":"f\#(index)","parentUuid":"\#(parent)","timestamp":"2026-05-28T20:1\#(index % 10):00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"\#(String(repeating: "Still waiting on the parser. ", count: 16))"}]}}"#)
+        }
+        await fixture.files.write(lead.joined(separator: "\n") + "\n", at: path)
+        await fixture.files.write(
+            #"{"agentType":"parser","description":"Review the parser","name":"parser","taskKind":"in_process_teammate"}"#,
+            at: "\(folder)/agent-\(agentID).meta.json")
+        await fixture.files.write(
+            [
+                #"{"type":"user","timestamp":"2026-05-28T20:00:06.000Z","message":{"role":"user","content":"<teammate-message teammate_id=\"team-lead\">Review it.</teammate-message>"}}"#,
+                #"{"type":"assistant","timestamp":"2026-05-28T20:00:10.000Z","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}"#,
+            ].joined(separator: "\n") + "\n", at: mate)
+
+        // The first read finds it on the Host; the next shows its row.
+        await fixture.store.step()
+        await fixture.store.step()
+        let found = try #require(fixture.store.backgroundWork.rows.first)
+        #expect(fixture.store.backgroundWork.rows.count == 1)
+        #expect(found.item.id == "teammate:\(agentID)")
+        #expect(found.item.title == "Review the parser")
+        #expect(found.item.subtitle == "parser")
+        #expect(found.item.state == .running)
+        #expect(found.item.launchedAt == ClaudeTranscriptProjection.date("2026-05-28T20:00:06.000Z"))
+
+        // Its own transcript says its turn ended, before the lead's does.
+        await fixture.files.append(
+            #"{"type":"assistant","timestamp":"2026-05-28T20:21:00.000Z","message":{"role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"Reviewed."}]}}"#
+                + "\n", to: mate)
+        fixture.advance(11)
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .completed)
+        #expect(
+            fixture.store.backgroundWork.rows.first?.item.endedAt
+                == ClaudeTranscriptProjection.date("2026-05-28T20:21:00.000Z"))
+
+        // Another teammate's message, which the lead never records, starts
+        // its next turn.
+        await fixture.files.append(
+            #"{"type":"user","timestamp":"2026-05-28T20:25:00.000Z","message":{"role":"user","content":"<teammate-message teammate_id=\"lexer\">Check the tokens too.</teammate-message>"}}"#
+                + "\n", to: mate)
+        fixture.advance(31)
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.first?.item.state == .running)
+        #expect(
+            fixture.store.backgroundWork.rows.first?.item.launchedAt
+                == ClaudeTranscriptProjection.date("2026-05-28T20:25:00.000Z"))
+
+        // One whose transcript stopped changing long ago mid-turn, as when
+        // its Claude Code was stopped, is not listed.
+        let stoppedID = "alexer-0123456789abcdef"
+        await fixture.files.write(
+            #"{"description":"Check the lexer","name":"lexer","taskKind":"in_process_teammate"}"#,
+            at: "\(folder)/agent-\(stoppedID).meta.json")
+        await fixture.files.write(
+            #"{"type":"user","timestamp":"2026-05-28T20:01:00.000Z","message":{"role":"user","content":"<teammate-message teammate_id=\"team-lead\">Check it.</teammate-message>"}}"#
+                + "\n", at: "\(folder)/agent-\(stoppedID).jsonl")
+        fixture.advance(3_600)
+        await fixture.store.step()
+        await fixture.store.step()
+        #expect(fixture.store.backgroundWork.rows.map(\.item.id) == ["teammate:\(agentID)"])
+    }
+
     @Test func claudePrefetchContinuesWatchingBackgroundCommandWhileHiddenAndStopsOnceDone() async throws {
         let session = Self.first
         let path = Self.path(session)

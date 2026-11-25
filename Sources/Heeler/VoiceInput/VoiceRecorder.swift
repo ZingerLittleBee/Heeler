@@ -61,6 +61,13 @@ enum VoicePCM {
         AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: true)
     }
 
+    /// The samples of a buffer in `format`, as a streaming service takes
+    /// them.
+    static func data(of buffer: AVAudioPCMBuffer) -> Data? {
+        guard let channel = buffer.int16ChannelData?[0] else { return nil }
+        return Data(bytes: channel, count: Int(buffer.frameLength) * MemoryLayout<Int16>.size)
+    }
+
     /// `pcm` behind a WAV header.
     static func wav(_ pcm: Data) -> Data {
         var data = Data()
@@ -217,8 +224,9 @@ final class SystemVoiceRecorder: VoiceRecorder {
     func stop() throws -> VoiceRecording {
         guard let tap else { throw VoiceRecorderError.recordingFailed }
         end()
+        // A stop before the first buffer arrived leaves no frames: an empty
+        // recording, which the session ends without a notice.
         let (pcm, frames) = tap.finish()
-        guard frames > 0 else { throw VoiceRecorderError.recordingFailed }
         return VoiceRecording(audio: VoicePCM.wav(pcm), duration: Double(frames) / VoicePCM.sampleRate)
     }
 

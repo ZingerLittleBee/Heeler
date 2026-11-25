@@ -176,12 +176,21 @@ final class StartAgentStore {
     /// Non-nil when the flow was opened from a pull request or an issue.
     let gitHubLaunch: GitHubLaunch?
 
+    /// Whether a change of `selectedHostID` is someone's pick, to remember.
+    /// The pick `init` makes is a default: remembered, it would write the
+    /// defaults each time a sheet's parent builds the form again, and on
+    /// iOS 27.3 that write invalidates the parent's `@AppStorage`, which
+    /// builds the form again, without end.
+    @ObservationIgnored private var remembersHostPicks = false
+
     var selectedHostID: Host.ID? {
         didSet {
             // A workspace belongs to one Host; switching Hosts drops a stale
             // pick so it can never target the wrong session.
             if selectedHostID != oldValue {
-                if origin == nil, let selectedHostID, hosts.contains(where: { $0.id == selectedHostID }) {
+                if remembersHostPicks, origin == nil, let selectedHostID,
+                    hosts.contains(where: { $0.id == selectedHostID })
+                {
                     recents.rememberHost(selectedHostID)
                 }
                 pickedWorkspaceID = nil
@@ -507,6 +516,7 @@ final class StartAgentStore {
             ?? recents.preferredHostID(in: hosts)
             ?? (hostChoices.count == 1 ? hostChoices.first?.servers.first?.id : nil)
         pickedWorkspaceID = gitHubLaunch?.workspaceID
+        remembersHostPicks = true
     }
 
     // MARK: From a pull request or an issue

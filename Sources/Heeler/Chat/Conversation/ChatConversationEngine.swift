@@ -319,6 +319,21 @@ actor ChatConversationEngine {
         /// that has run for hours from reading as quiet.
         var commandOutputsPerCall = 4
         var commandOutputCheckInterval: TimeInterval = 30
+        /// How often `<session>/subagents/` is listed for teammates, and how
+        /// many new meta files one call reads.
+        var teammateListInterval: TimeInterval = 60
+        var teammateMetasPerCall = 8
+        /// How many teammate transcripts one call stats, least recently
+        /// looked at first, how long one waits before it is looked at again,
+        /// a running one sooner, and how much of a changed one's end is read.
+        var teammatesPerCall = 4
+        var runningTeammateCheckInterval: TimeInterval = 10
+        var idleTeammateCheckInterval: TimeInterval = 30
+        var teammateTailBytes = 64 << 10
+        /// A teammate whose launch is not loaded joins the list only when
+        /// its transcript changed this recently: one whose Claude Code
+        /// stopped mid-turn leaves a transcript that never ends.
+        var foundTeammateQuiet: TimeInterval = 30 * 60
         /// Waits after a failed look at a journal, one per failure; the
         /// last repeats.
         var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
@@ -364,6 +379,24 @@ actor ChatConversationEngine {
         var isUnreadable = false
         /// When the Host last wrote the file, as of the last look.
         var lastSeenAt: Date?
+    }
+
+    /// One Claude Code teammate under `<session>/subagents/`, followed in
+    /// its own transcript.
+    private struct FollowedTeammate {
+        let name: String
+        let title: String?
+        /// When its meta file was written, as it was spawned.
+        let spawnedAt: Date?
+        let path: String
+        var size: UInt64?
+        var turn: ClaudeTeammateTurn?
+        /// When the Host last wrote its transcript, as of the last look.
+        var lastSeenAt: Date?
+        var lastLook = 0
+        var failures = 0
+        var nextLook: Date?
+        var isUnreadable = false
     }
 
     /// One request for older history, across the calls that read its pages.
@@ -425,6 +458,16 @@ actor ChatConversationEngine {
     private var workflowRunEndCalls = 0
     private var commandOutputs: [String: FollowedCommandOutput] = [:]
     private var commandOutputCalls = 0
+    /// The `subagents/` folder the teammates below are in.
+    private var teammateFolder: String?
+    /// Teammates by agent id, and the named agents whose meta names none.
+    private var teammates: [String: FollowedTeammate] = [:]
+    private var notTeammates: Set<String> = []
+    private var teammatesListedAt: Date?
+    private var teammateCalls = 0
+    /// Teammates the Host showed running that no loaded record launched,
+    /// by agent id, carried into every projection like saved work.
+    private var foundTeammates: [String: ChatBackgroundWorkItem] = [:]
     private let agyBackgroundWorkLimits: AgyBackgroundWorkFollower.Limits
     private var agyBackgroundWork = AgyBackgroundWorkFollower()
     private struct FollowedSwarmWorker {
@@ -817,7 +860,10 @@ actor ChatConversationEngine {
             coverageStart: coverageStart, coverageEnd: source.readOffset,
             reachedStart: (joined?.reachedStart ?? (windowStart == 0)) || olderUnreadable,
             title: transcript.title, entries: entries, savedAt: date,
-            backgroundWork: transcript.listedBackgroundWork,
+            // A teammate found on the Host is looked for there again.
+            backgroundWork: transcript.savedBackgroundWork.filter { item in
+                item.taskID.flatMap { foundTeammates[$0] }?.id != item.id
+            },
             latestPromptOffset: transcript.latestPromptOffset, turns: transcript.turns,
             precedingTurnEnd: transcript.precedingTurnEnd, model: transcript.model,
             effort: transcript.effort, permissionMode: transcript.permissionMode,
@@ -1068,6 +1114,164 @@ actor ChatConversationEngine {
             commandOutputs[id] = followed
         }
         return claudeCommandOutputEvidence
+    }
+
+    /// Follows the session's teammates in their own transcripts under
+    /// `<session>/subagents/`, which say when a turn ends before the lead's
+    /// transcript does, and when another teammate's message starts one,
+    /// which it never records. Lists the folder now and then, reads a new
+    /// teammate's meta once, and stats a few transcripts a call, reading the
+    /// end of one that grew. A teammate the Host shows running that no
+    /// loaded record launched joins the transcript's Background Work.
+    func followClaudeTeammates() async -> [String: ChatBackgroundWorkEvidence] {
+        guard reference.program == .claude else { return [:] }
+        guard case .following(let path) = snapshot.phase, !snapshot.isFromCache, snapshot.readFailure == nil,
+            let folder = ClaudeTranscriptLocation.subagentsDirectory(transcriptPath: path)
+        else { return claudeTeammateEvidence }
+        if folder != teammateFolder {
+            teammateFolder = folder
+            teammates = [:]
+            notTeammates = []
+            teammatesListedAt = nil
+            foundTeammates = [:]
+        }
+        let date = now()
+        if teammatesListedAt.map({ date.timeIntervalSince($0) >= workflowLimits.teammateListInterval }) ?? true {
+            do {
+                try await listTeammates(in: folder, at: date)
+            } catch {
+                if Self.isCancellation(error) { return claudeTeammateEvidence }
+                teammatesListedAt = date
+            }
+        }
+        teammateCalls += 1
+        let due = teammates
+            .filter { !$0.value.isUnreadable && ($0.value.nextLook.map { date >= $0 } ?? true) }
+            .sorted { ($0.value.lastLook, $0.key) < ($1.value.lastLook, $1.key) }
+            .prefix(workflowLimits.teammatesPerCall)
+        for (id, var followed) in due {
+            followed.lastLook = teammateCalls
+            do {
+                if let status = try await files.status(followed.path), let size = status.size {
+                    followed.failures = 0
+                    if size != followed.size {
+                        let tail = UInt64(workflowLimits.teammateTailBytes)
+                        let start = size > tail ? size - tail : 0
+                        let slice = try await files.read(
+                            RemoteFileRange(path: followed.path, offset: start, maxBytes: Int(size - start)))
+                        followed.size = size
+                        if let turn = ClaudeTeammateTurn.latest(in: slice.data, startsAtFileStart: start == 0) {
+                            // A tail that missed the prompt keeps the start an
+                            // earlier look read.
+                            let keepsStart =
+                                if case .running(nil) = turn, case .running(_?)? = followed.turn { true } else { false }
+                            if !keepsStart { followed.turn = turn }
+                        }
+                    }
+                    let writtenAt = status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                    followed.lastSeenAt = [followed.lastSeenAt, writtenAt].compactMap(\.self).max()
+                    let isRunning = if case .running? = followed.turn { true } else { false }
+                    followed.nextLook = date.addingTimeInterval(
+                        isRunning
+                            ? workflowLimits.runningTeammateCheckInterval : workflowLimits.idleTeammateCheckInterval)
+                } else {
+                    backOff(&followed.failures, &followed.nextLook, at: date)
+                }
+            } catch {
+                if Self.isCancellation(error) { return claudeTeammateEvidence }
+                if case .hostFileUnreadable? = error as? TransportError {
+                    followed.isUnreadable = true
+                } else {
+                    backOff(&followed.failures, &followed.nextLook, at: date)
+                }
+            }
+            teammates[id] = followed
+        }
+        addFoundTeammates(at: date)
+        return claudeTeammateEvidence
+    }
+
+    /// Lists `folder` for named agents' meta files and reads a few new ones
+    /// a call, keeping the teammates. The folder is listed again once every
+    /// meta it names has been read and the interval has passed.
+    private func listTeammates(in folder: String, at date: Date) async throws {
+        guard
+            let listing = try await files.list(
+                RemoteFileListingRequest(directory: folder, kinds: [.regular], nameSuffixes: [".meta.json"]))
+        else {
+            teammatesListedAt = date
+            return
+        }
+        var unread = 0
+        for entry in listing.entries {
+            guard let agentID = ClaudeTeammateFiles.agentID(metaFileName: entry.name),
+                teammates[agentID] == nil, !notTeammates.contains(agentID)
+            else { continue }
+            guard unread < workflowLimits.teammateMetasPerCall else {
+                unread += 1
+                continue
+            }
+            unread += 1
+            let slice = try await files.read(
+                RemoteFileRange(path: RemoteFilePath.join(folder, entry.name), offset: 0, maxBytes: 16 << 10))
+            guard let meta = ClaudeTeammateFiles.teammate(meta: slice.data) else {
+                notTeammates.insert(agentID)
+                continue
+            }
+            teammates[agentID] = FollowedTeammate(
+                name: meta.name, title: meta.description,
+                spawnedAt: entry.status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+                path: RemoteFilePath.join(folder, "agent-\(agentID).jsonl"))
+        }
+        if unread <= workflowLimits.teammateMetasPerCall { teammatesListedAt = date }
+    }
+
+    /// Adds each teammate the Host shows running that the transcript has no
+    /// row for: its launch is above the window, and no saved conversation
+    /// carried it. A conversation read from its start launched all of its.
+    private func addFoundTeammates(at date: Date) {
+        guard let source, (source.windowStart ?? source.readOffset) > 0 else { return }
+        let known = Set(snapshot.transcript.backgroundWork.compactMap { $0.kind == .teammate ? $0.taskID : nil })
+        var found: [ChatBackgroundWorkItem] = []
+        for (agentID, followed) in teammates.sorted(by: { $0.key < $1.key })
+        where foundTeammates[agentID] == nil && !known.contains(agentID) {
+            guard case .running(let since)? = followed.turn, let seenAt = followed.lastSeenAt,
+                date.timeIntervalSince(seenAt) <= workflowLimits.foundTeammateQuiet
+            else { continue }
+            var item = ChatBackgroundWorkItem(
+                id: "teammate:\(agentID)", kind: .teammate,
+                title: followed.title ?? String(localized: "Teammate @\(followed.name)"), subtitle: followed.name,
+                launchOffset: 0, launchedAt: since ?? followed.spawnedAt)
+            item.taskID = agentID
+            foundTeammates[agentID] = item
+            found.append(item)
+        }
+        guard !found.isEmpty else { return }
+        let windowStart = source.windowStart ?? source.readOffset
+        update { $0.transcript.carryBackgroundWork(found, launchedBefore: windowStart, latestPromptOffset: nil) }
+    }
+
+    /// What each teammate's own transcript shows, for its row: when it
+    /// last wrote, and that its latest turn ended or that one runs.
+    private var claudeTeammateEvidence: [String: ChatBackgroundWorkEvidence] {
+        var rows: [String: String] = [:]
+        for item in snapshot.transcript.backgroundWork where item.kind == .teammate {
+            if let agentID = item.taskID { rows[agentID] = item.id }
+        }
+        var evidence: [String: ChatBackgroundWorkEvidence] = [:]
+        for (agentID, followed) in teammates {
+            guard let id = rows[agentID], let turn = followed.turn else { continue }
+            var entry = ChatBackgroundWorkEvidence(lastSeenAt: followed.lastSeenAt)
+            switch turn {
+            case .running(let since):
+                entry.resumedAt = since
+            case .ended(let at, let state):
+                entry.endedState = state
+                entry.endedAt = at
+            }
+            evidence[id] = entry
+        }
+        return evidence
     }
 
     private var claudeCommandOutputEvidence: [String: ChatBackgroundWorkEvidence] {
@@ -1683,6 +1887,10 @@ actor ChatConversationEngine {
                     content: .divider(ChatDivider(kind: .historyUnavailable))),
                 at: 0)
             reachedStart = true
+        }
+        if !foundTeammates.isEmpty {
+            transcript.carryBackgroundWork(
+                foundTeammates.values.sorted { $0.id < $1.id }, launchedBefore: windowStart, latestPromptOffset: nil)
         }
         if let directory = transcript.links.relocatedCwd { relocatedDirectory = directory }
         let older: ChatOlderHistory =

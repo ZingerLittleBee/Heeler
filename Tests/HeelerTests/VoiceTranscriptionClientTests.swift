@@ -41,12 +41,12 @@ struct VoiceInputEndpointTests {
         let openAI = try #require(VoiceInputEndpoint.preset(.openAI))
         let deepInfra = try #require(VoiceInputEndpoint.preset(.deepInfra))
         let siliconFlow = try #require(VoiceInputEndpoint.preset(.siliconFlowCN))
-        #expect(openAI.transcriptionURL.absoluteString == "https://api.openai.com/v1/audio/transcriptions")
+        #expect(openAI.upload?.url.absoluteString == "https://api.openai.com/v1/audio/transcriptions")
         #expect(
-            deepInfra.transcriptionURL.absoluteString
+            deepInfra.upload?.url.absoluteString
                 == "https://api.deepinfra.com/v1/openai/audio/transcriptions")
         #expect(
-            siliconFlow.transcriptionURL.absoluteString
+            siliconFlow.upload?.url.absoluteString
                 == "https://api.siliconflow.cn/v1/audio/transcriptions")
         #expect(openAI.model == "gpt-transcribe")
         #expect(deepInfra.model == "Qwen/Qwen3-ASR-1.7B")
@@ -129,12 +129,20 @@ struct VoiceTranscriptionClientTests {
         #expect(try fieldNames(custom, keywords: terms) == ["model=whisper-1", "response_format=json"])
     }
 
-    @Test func automaticDetectionSendsNoDeviceLanguageForAnyPreset() throws {
-        for preset in VoiceInputPreset.allCases {
+    @Test func automaticDetectionSendsNoDeviceLanguageForAnyUploadPreset() throws {
+        for preset in VoiceInputPreset.allCases where VoiceInputEndpoint.preset(preset)?.upload != nil {
             let endpoint = try #require(VoiceInputEndpoint.preset(preset))
             let fields = try VoiceTranscriptionClient.fields(for: request(endpoint, options: .init()))
             let expected = preset == .elevenLabs ? ["model_id", "tag_audio_events"] : ["model"]
             #expect(fields.map(\.name) == expected)
+        }
+    }
+
+    @Test func volcengineTakesNoUpload() throws {
+        let endpoint = try #require(VoiceInputEndpoint.preset(.volcengine))
+        #expect(endpoint.upload == nil)
+        #expect(throws: VoiceTranscriptionError.self) {
+            try VoiceTranscriptionClient.makeRequest(request(endpoint))
         }
     }
 

@@ -110,7 +110,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 guard let detail else { return nil }
                 let clean = Self.singleLine(detail)
                 return clean.isEmpty ? nil : clean
-            case .subagent, .timer:
+            case .subagent, .teammate, .timer:
                 let clean = Self.singleLine(title)
                 return clean.isEmpty ? title : clean
             case .workflow:
@@ -135,7 +135,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 let cleanTitle = Self.singleLine(title)
                 guard !cleanDetail.isEmpty, !cleanTitle.isEmpty, cleanDetail != cleanTitle else { return nil }
                 return cleanTitle
-            case .subagent, .timer:
+            case .subagent, .teammate, .timer:
                 return nil
             }
         }
@@ -148,7 +148,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 return trimmed.isEmpty ? nil : "$ \(trimmed)"
             case .workflow:
                 return terminalPreview
-            case .subagent, .timer:
+            case .subagent, .teammate, .timer:
                 return nil
             }
         }
@@ -168,11 +168,13 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
         }
 
         /// The kind in the strip's room: a Workflow's phase says more
-        /// there than the word, a Subagent's type less.
+        /// there than the word, a Subagent's type less, and a teammate's
+        /// name, which the lead's messages use, more.
         var stripKind: String {
             switch kind {
             case .command, .workflow: caption
             case .subagent: String(localized: "Subagent")
+            case .teammate: "@\(caption)"
             case .timer: kindBadge
             }
         }
@@ -184,6 +186,8 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             case .subagent:
                 let base = String(localized: "Subagent")
                 return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
+            case .teammate:
+                return String(localized: "Teammate @\(caption)")
             case .workflow:
                 let base = String(localized: "Workflow")
                 return caption.isEmpty || caption == base ? base : "\(base) · \(caption)"
@@ -296,6 +300,8 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
             let caption =
                 switch item.kind {
                 case .subagent: item.subtitle ?? String(localized: "Subagent")
+                // Always named: a teammate without a name is not listed.
+                case .teammate: item.subtitle ?? ""
                 // The phase it is in: its last running agent's, or with none
                 // running, its last agent's.
                 case .workflow:
@@ -382,6 +388,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
         private func kindPhrase(_ item: ChatBackgroundWorkItem) -> String {
             switch item.kind {
             case .subagent: item.subtitle.map { String(localized: "\($0) subagent") } ?? String(localized: "Subagent")
+            case .teammate: String(localized: "Teammate @\(item.subtitle ?? "")")
             case .workflow: String(localized: "Workflow")
             case .command: String(localized: "Command")
             case .timer: item.subtitle.map { String(localized: "Timer \($0)") } ?? String(localized: "Timer")

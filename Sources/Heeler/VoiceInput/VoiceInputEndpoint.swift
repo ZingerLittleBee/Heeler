@@ -1,12 +1,14 @@
 import CryptoKit
 import Foundation
 
-/// A built-in speech service, including its upload format and language hints.
+/// A built-in speech service, including how recordings reach it and its
+/// language hints.
 enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
     case openAI = "openai"
     case deepInfra = "deepinfra"
     case elevenLabs = "elevenlabs"
     case siliconFlowCN = "siliconflow-cn"
+    case volcengine = "volcengine"
 
     var id: String { rawValue }
 
@@ -16,6 +18,7 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         case .deepInfra: "DeepInfra"
         case .elevenLabs: "ElevenLabs"
         case .siliconFlowCN: String(localized: "SiliconFlow (China)")
+        case .volcengine: String(localized: "Volcengine (China)")
         }
     }
 
@@ -26,14 +29,18 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         case .deepInfra: "DeepInfra"
         case .elevenLabs: "ElevenLabs"
         case .siliconFlowCN: "SiliconFlow"
+        case .volcengine: "Volcengine"
         }
     }
 
+    /// Volcengine names its model by the resource it bills, sent as
+    /// `X-Api-Resource-Id`: Doubao streaming speech recognition 2.0.
     var model: String {
         switch self {
         case .openAI: "gpt-transcribe"
         case .elevenLabs: "scribe_v3"
         case .deepInfra, .siliconFlowCN: "Qwen/Qwen3-ASR-1.7B"
+        case .volcengine: "volc.seedasr.sauc.duration"
         }
     }
 
@@ -43,30 +50,60 @@ enum VoiceInputPreset: String, CaseIterable, Identifiable, Sendable {
         case .elevenLabs: "https://api.elevenlabs.io/v1"
         case .deepInfra: "https://api.deepinfra.com/v1/openai"
         case .siliconFlowCN: "https://api.siliconflow.cn/v1"
+        case .volcengine: "https://openspeech.bytedance.com/api/v3/sauc"
         }
     }
 
     /// OpenAI and ElevenLabs accept several hints. DeepInfra accepts one language,
     /// whose effect on hosted Qwen3-ASR still needs a real-key smoke test.
-    /// SiliconFlow documents neither field, so nothing is sent.
+    /// SiliconFlow documents neither field, so nothing is sent. Volcengine
+    /// hears Mandarin, Chinese dialects and English, mixed, without a hint.
     var languageField: VoiceInputLanguageField {
         switch self {
         case .openAI: .candidates(first: "languages[]", additional: "languages[]")
         case .deepInfra: .primary
         case .elevenLabs: .candidates(first: "language_code", additional: "secondary_language_codes")
-        case .siliconFlowCN: .none
+        case .siliconFlowCN, .volcengine: .none
         }
     }
 
-    var uploadFormat: VoiceInputUploadFormat {
-        self == .elevenLabs ? .scribe : .openAI
+    var wire: VoiceInputWire {
+        switch self {
+        case .openAI, .deepInfra, .siliconFlowCN: .upload(.openAI)
+        case .elevenLabs: .upload(.scribe)
+        case .volcengine: .volcengine
+        }
     }
 
-    /// Only `gpt-transcribe` reads `keywords`; it spelled listed terms from
-    /// them but barely from `prompt` in testing.
+    /// `gpt-transcribe` reads `keywords`; it spelled listed terms from them
+    /// but barely from `prompt` in testing. Volcengine takes them as
+    /// hotwords, at no charge.
     var takesKeywords: Bool {
-        self == .openAI
+        self == .openAI || self == .volcengine
     }
+
+    var acceptsPrompt: Bool {
+        if case .upload(let format) = wire { format.acceptsPrompt } else { false }
+    }
+
+    /// Where Keywords go once the user turns them on, for a service that
+    /// bills them.
+    var optionalKeywords: VoiceInputOptionalKeywords? {
+        if case .upload(let format) = wire { format.optionalKeywords } else { nil }
+    }
+
+    /// Volcengine streams by default and takes a finished recording too.
+    var recognitionModes: [VoiceRecognitionMode] {
+        self == .volcengine ? [.stream, .batch] : [.batch]
+    }
+}
+
+/// How a recording reaches a service.
+enum VoiceInputWire: Sendable {
+    /// One multipart upload of the finished recording, in this shape.
+    case upload(VoiceInputUploadFormat)
+    /// Volcengine's binary WebSocket protocol (`VolcengineConnection`).
+    case volcengine
 }
 
 /// How a service hears which languages to expect.
@@ -78,7 +115,7 @@ enum VoiceInputLanguageField: Equatable, Sendable {
     case candidates(first: String, additional: String)
 }
 
-/// The service owns these wire names. Custom always uses the OpenAI format.
+/// The service owns these upload names. Custom always uses the OpenAI format.
 struct VoiceInputUploadFormat: Sendable {
     let path: String
     let keyHeader: String
@@ -135,7 +172,8 @@ struct VoiceInputEndpoint: Equatable, Sendable {
     let baseURL: URL
     let model: String
     let languageField: VoiceInputLanguageField
-    /// Whether Keywords go in `keywords[]`.
+    /// Whether the service reads Keywords: `keywords[]` in an upload,
+    /// hotwords on Volcengine.
     let takesKeywords: Bool
     /// Custom servers get an explicit `response_format=json`; some require it.
     let sendsResponseFormat: Bool
@@ -157,15 +195,18 @@ struct VoiceInputEndpoint: Equatable, Sendable {
             sendsResponseFormat: true)
     }
 
-    var uploadFormat: VoiceInputUploadFormat {
+    var wire: VoiceInputWire {
         switch source {
-        case .preset(let preset): preset.uploadFormat
-        case .custom: .openAI
+        case .preset(let preset): preset.wire
+        case .custom: .upload(.openAI)
         }
     }
 
-    var transcriptionURL: URL {
-        baseURL.appending(path: uploadFormat.path)
+    /// The upload's shape and where it goes; nil for a service that takes
+    /// no upload.
+    var upload: (format: VoiceInputUploadFormat, url: URL)? {
+        guard case .upload(let format) = wire else { return nil }
+        return (format, baseURL.appending(path: format.path))
     }
 
     var host: String {

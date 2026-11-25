@@ -476,21 +476,78 @@ struct ClaudeSyntheticTranscriptTests {
         #expect(failed.listedBackgroundWork.count == 1)
     }
 
-    @Test("A teammate reads as Started and is never listed: nothing in the transcript says when one is done")
-    func teammateNotListed() {
-        let (transcript, _) = Self.read(
-            #"""
-            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":"Split the work"},"promptSource":"typed","origin":{"kind":"human"}}
-            {"type":"assistant","uuid":"a1","parentUuid":"p1","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","subagent_type":"general-purpose","prompt":"Review it.","run_in_background":true}}]},"apiBlockIndex":0}
-            {"type":"user","uuid":"r1","parentUuid":"a1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agent_id":"parser@team","name":"parser","team_name":"team"}}
-            """#)
-        // Claude Code 2.1.301 (CL-42) spawns a teammate for an Agent call
-        // with `name`; the pane still lists it running.
-        let row = Self.tool("tool:toolu_mate", in: transcript)
+    @Test("A teammate is listed for each run: ended by its idle notification, run again by the lead's message")
+    func teammateRuns() {
+        // Claude Code 2.1.331 spawns a teammate for an Agent call with
+        // `name`. Its idle notification says when it went idle, and can be
+        // recorded after the lead's next message, which started a new run.
+        let lines = [
+            #"{"type":"user","uuid":"p1","parentUuid":null,"timestamp":"2026-10-07T10:00:00.000Z","message":{"role":"user","content":"Split the work"},"promptSource":"typed","origin":{"kind":"human"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"p1","timestamp":"2026-10-07T10:00:05.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","subagent_type":"general-purpose","prompt":"Review it."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-07T10:00:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agent_id":"aparser-0123","name":"parser","team_name":"team"}}"#,
+            #"{"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-10-07T10:30:00.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_send","name":"SendMessage","input":{"to":"parser","summary":"next","message":"Now fix it."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r2","parentUuid":"a2","timestamp":"2026-10-07T10:30:00.100Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_send","content":[{"type":"text","text":"{\"success\":true}"}]}]},"toolUseResult":{"success":true,"message":"Message sent to parser's inbox"}}"#,
+            #"{"type":"user","uuid":"i1","parentUuid":"r2","timestamp":"2026-10-07T10:30:02.000Z","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"parser\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"parser\",\"timestamp\":\"2026-10-07T10:29:58.000Z\",\"idleReason\":\"available\",\"result\":\"Reviewed.\"}\n</teammate-message>"}}"#,
+            #"{"type":"user","uuid":"i2","parentUuid":"i1","timestamp":"2026-10-07T10:40:01.000Z","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"parser\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"parser\",\"timestamp\":\"2026-10-07T10:40:00.000Z\",\"idleReason\":\"available\",\"result\":\"Fixed.\"}\n</teammate-message>"}}"#,
+            #"{"type":"assistant","uuid":"a3","parentUuid":"i2","timestamp":"2026-10-07T10:50:00.000Z","message":{"id":"m3","role":"assistant","content":[{"type":"tool_use","id":"toolu_send2","name":"SendMessage","input":{"to":"parser","summary":"tests","message":"Add tests."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r3","parentUuid":"a3","timestamp":"2026-10-07T10:50:00.100Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_send2","content":[{"type":"text","text":"{\"success\":true}"}]}]},"toolUseResult":{"success":true,"message":"Message sent to parser's inbox"}}"#,
+            #"{"type":"system","subtype":"agents_killed","uuid":"k1","parentUuid":"r3","timestamp":"2026-10-07T10:55:00.000Z","level":"info"}"#,
+        ]
+        let (_, chatLines) = Self.read(lines.joined(separator: "\n"))
+        func work(_ count: Int) -> ChatBackgroundWorkItem? {
+            Self.read(lines.prefix(count).joined(separator: "\n")).0.listedBackgroundWork.first
+        }
+
+        let spawned = Self.read(lines.prefix(3).joined(separator: "\n")).0
+        let row = Self.tool("tool:toolu_mate", in: spawned)
         #expect(row?.status == .started)
-        #expect(row?.title == "Review the parser")
         #expect(row?.subtitle == "Teammate @parser")
-        #expect(transcript.backgroundWork.isEmpty)
+        #expect(
+            spawned.listedBackgroundWork == [
+                ChatBackgroundWorkItem(
+                    id: "toolu_mate", kind: .teammate, title: "Review the parser", subtitle: "parser",
+                    launchOffset: chatLines[1].offset, launchedAt: Self.date("2026-10-07T10:00:05.000Z"))
+            ])
+
+        // The first run ended at 10:29:58, before the message woke it again.
+        #expect(work(6)?.state == .running)
+        #expect(work(6)?.launchedAt == Self.date("2026-10-07T10:30:00.100Z"))
+
+        #expect(work(7)?.state == .completed)
+        #expect(work(7)?.endedAt == Self.date("2026-10-07T10:40:00.000Z"))
+        #expect(work(7)?.endOffset == chatLines[6].offset)
+
+        // A later window from the late notification on reads the same, the
+        // teammate carried from an earlier read that saw it running.
+        let windowStart = chatLines[5].offset
+        let earlier = ClaudeSample.reducer(Array(chatLines.prefix(5))).transcript(ChatProjectionContext(activity: .idle))
+        var later = ClaudeSample.reducer(Array(chatLines[5..<7])).transcript(
+            ChatProjectionContext(windowStart: windowStart, activity: .idle))
+        later.carryBackgroundWork(
+            earlier.savedBackgroundWork, launchedBefore: windowStart, latestPromptOffset: earlier.latestPromptOffset)
+        #expect(later.listedBackgroundWork == [work(7)].compactMap(\.self))
+
+        #expect(work(10)?.state == .stopped)
+        #expect(work(10)?.launchedAt == Self.date("2026-10-07T10:50:00.100Z"))
+        #expect(work(10)?.endedAt == Self.date("2026-10-07T10:55:00.000Z"))
+    }
+
+    @Test("A message sent while a teammate runs starts its next turn as that one ends")
+    func teammateMessageWaits() {
+        // A teammate reads its mailbox only between turns (2.1.331).
+        let lines = [
+            #"{"type":"user","uuid":"p1","parentUuid":null,"timestamp":"2026-10-07T10:00:00.000Z","message":{"role":"user","content":"Split the work"},"promptSource":"typed","origin":{"kind":"human"}}"#,
+            #"{"type":"assistant","uuid":"a1","parentUuid":"p1","timestamp":"2026-10-07T10:00:05.000Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"toolu_mate","name":"Agent","input":{"description":"Review the parser","name":"parser","prompt":"Review it."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-07T10:00:05.200Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_mate","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agentId":"aparser-0123456789abcdef","name":"parser"}}"#,
+            #"{"type":"assistant","uuid":"a2","parentUuid":"r1","timestamp":"2026-10-07T10:10:00.000Z","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"toolu_send","name":"SendMessage","input":{"to":"parser","message":"Check the lexer too."}}]},"apiBlockIndex":0}"#,
+            #"{"type":"user","uuid":"r2","parentUuid":"a2","timestamp":"2026-10-07T10:10:00.100Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_send","content":[{"type":"text","text":"{\"success\":true}"}]}]},"toolUseResult":{"success":true,"message":"Message sent to parser's inbox"}}"#,
+            #"{"type":"user","uuid":"i1","parentUuid":"r2","timestamp":"2026-10-07T10:20:01.000Z","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"parser\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"parser\",\"timestamp\":\"2026-10-07T10:20:00.000Z\",\"idleReason\":\"available\"}\n</teammate-message>"}}"#,
+        ]
+        let item = Self.read(lines.joined(separator: "\n")).0.listedBackgroundWork.first
+        #expect(item?.state == .running)
+        #expect(item?.launchedAt == Self.date("2026-10-07T10:20:00.000Z"))
+        // Its own files are named for its agent id.
+        #expect(item?.taskID == "aparser-0123456789abcdef")
     }
 
     // MARK: - Commands

@@ -79,6 +79,28 @@ struct TranscriptFollowerTests {
         #expect(lines.first?.offset == 40)
     }
 
+    @Test func aBacklogLongerThanOnePollOpensAtTheTail() async throws {
+        var (follower, files, _) = try await Self.makeFollower(Self.lines(0..<4))
+        let backlogStart = UInt64(Self.lines(0..<4).utf8.count)
+        await files.append(Self.lines(4..<200), to: Self.path)
+        await files.clearRecords()
+
+        guard case .reset(let lines, replaced: false) = try await follower.poll(files.hostFiles()) else {
+            Issue.record("expected the tail of the same file")
+            return
+        }
+        let texts = Self.texts(lines)
+        #expect(texts.last == #"{"n":199}"#)
+        #expect(Self.expected(0..<200).suffix(texts.count) == ArraySlice(texts))
+        #expect(!follower.hasUnreadRecords)
+        // The skipped records are older history; only the head and the
+        // tail were read.
+        #expect(follower.hasOlder)
+        let size = UInt64(Self.lines(0..<200).utf8.count)
+        #expect(await files.reads.allSatisfy { $0.offset < 32 || $0.offset >= size - 64 })
+        #expect(try #require(follower.windowStart) > backlogStart)
+    }
+
     @Test func shortReadsGiveTheSameLines() async throws {
         let files = VirtualHostFiles()
         await files.write(Self.lines(0..<30), at: Self.path)

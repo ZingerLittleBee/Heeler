@@ -4,9 +4,9 @@ import Observation
 /// Why a recording produced no text, and what the Composer offers next.
 struct VoiceInputFailure: Equatable, Sendable {
     let message: String
-    /// More about the cause, where the On Device recorder has room for it.
+    /// More about the cause, where the streaming recorder has room for it.
     var detail: String?
-    /// The SF Symbol the On Device recorder shows beside the message.
+    /// The SF Symbol the streaming recorder shows beside the message.
     var symbol = "exclamationmark.triangle"
     /// The recording is kept, so it can be sent again.
     var canRetry = false
@@ -22,14 +22,10 @@ struct VoiceInputFailure: Equatable, Sendable {
     static let microphoneDenied = VoiceInputFailure(
         message: String(localized: "Heeler can't use the microphone. Turn it on in Settings."),
         symbol: "mic.slash", opensMicrophoneSettings: true)
-    static let tooShort = VoiceInputFailure(message: String(localized: "The recording was too short."))
     static let notSetUp = VoiceInputFailure(
         message: String(localized: "Set up Voice Input to transcribe this recording."),
         canRetry: true, opensVoiceInputSettings: true)
-    static let noSpeech = VoiceInputFailure(
-        message: String(localized: "No speech was recognized."),
-        detail: String(localized: "Hold the phone a little closer and try again."),
-        symbol: "mic", restarts: true)
+    static let couldNotStart = VoiceInputFailure(message: String(localized: "Speech recognition could not start."))
 
     init(
         message: String, detail: String? = nil, symbol: String = "exclamationmark.triangle",
@@ -48,13 +44,27 @@ struct VoiceInputFailure: Equatable, Sendable {
 
     init(_ error: VoiceTranscriptionError) {
         self.init(
-            message: error.message, canRetry: error != .emptyTranscript,
-            opensVoiceInputSettings: error.suggestsSettings)
+            message: error.message, canRetry: true, opensVoiceInputSettings: error.suggestsSettings)
+    }
+
+    /// Why listening could not begin. Nothing was recorded, so there is
+    /// nothing to send again; speaking again may work.
+    init(startError error: any Error) {
+        switch error {
+        case let error as DeviceVoiceTranscriberError:
+            self = error.failure
+        case let error as VoiceTranscriptionError:
+            self.init(
+                message: error.message, opensVoiceInputSettings: error.suggestsSettings,
+                restarts: !error.suggestsSettings)
+        default:
+            self = .couldNotStart
+        }
     }
 }
 
-/// What the device has heard so far: words it has settled, then words it
-/// may still revise.
+/// What has been heard so far: words the recognizer has settled, then
+/// words it may still revise.
 struct VoiceHeard: Equatable, Sendable {
     var settled = ""
     var revising = ""
@@ -77,11 +87,12 @@ struct VoiceDraftText: Equatable, Sendable {
 final class ComposerVoiceInput {
     enum Phase: Equatable {
         case idle
-        /// Asking for the microphone, or loading the device's model.
+        /// Asking for the microphone, loading the device's model, or
+        /// connecting to a streaming service.
         case starting
         case recording(since: Date)
-        /// Uploading, settling the device's last words, or holding text
-        /// until the input method's composition ends.
+        /// Uploading, settling the last words heard, or holding text until
+        /// the input method's composition ends.
         case transcribing
         /// Fetching the device's speech model before recording again.
         case downloadingModel(progress: Double)
@@ -94,10 +105,10 @@ final class ComposerVoiceInput {
     /// the bar keeps showing what was heard, and clears when the next
     /// recording starts.
     fileprivate(set) var levels: [Double] = []
-    /// This recording is transcribed on the device, and the recorder takes
+    /// This recording is recognized as it is heard, and the recorder takes
     /// the input's place (ADR 0043).
-    fileprivate(set) var isOnDevice = false
-    /// What the device has heard so far.
+    fileprivate(set) var streams = false
+    /// What has been heard so far.
     fileprivate(set) var heard = VoiceHeard()
     /// The draft is sent as soon as this recording's text lands.
     fileprivate(set) var sendsWhenSettled = false
@@ -108,7 +119,10 @@ final class ComposerVoiceInput {
     @ObservationIgnored var onTranscript: (@MainActor () -> Void)?
     @ObservationIgnored fileprivate weak var session: VoiceInputSession?
     @ObservationIgnored fileprivate var recording: VoiceRecording?
-    @ObservationIgnored fileprivate var transcriber: (any LiveVoiceTranscriber)?
+    @ObservationIgnored fileprivate var transcriber: (any VoiceStreamRecognizer)?
+    /// Where this stream's recording goes if the stream cannot settle: the
+    /// service it started with, even if Settings change meanwhile.
+    @ObservationIgnored fileprivate var fallback: (any VoiceBatchRecognizer)?
     @ObservationIgnored fileprivate var task: Task<Void, Never>?
     @ObservationIgnored fileprivate var levelTask: Task<Void, Never>?
     @ObservationIgnored fileprivate var generation = 0
@@ -135,13 +149,13 @@ final class ComposerVoiceInput {
 
     var blocksSend: Bool { isBusy || isHoldingSend }
 
-    /// The On Device recorder holds the input's place: from the first tap
+    /// The streaming recorder holds the input's place: from the first tap
     /// until the text lands, and while a failure or a download waits.
-    var showsRecorder: Bool { isOnDevice && phase != .idle }
+    var showsRecorder: Bool { streams && phase != .idle }
 
     /// Recording mode, which the Composer's border marks.
     var isInRecordingMode: Bool {
-        guard isOnDevice else { return false }
+        guard streams else { return false }
         switch phase {
         case .starting, .recording, .transcribing: return true
         case .idle, .downloadingModel, .failed: return false
@@ -210,6 +224,7 @@ final class ComposerVoiceInput {
     fileprivate func fail(_ failure: VoiceInputFailure) {
         task = nil
         transcriber = nil
+        fallback = nil
         sendsWhenSettled = false
         stopSamplingLevels()
         phase = .failed(failure)
@@ -235,9 +250,21 @@ final class ComposerVoiceInput {
         task = nil
         recording = nil
         transcriber = nil
+        fallback = nil
         pending = VoiceDraftText(text: text, sends: sendsWhenSettled)
         sendsWhenSettled = false
         onTranscript?()
+    }
+
+    /// Nothing was heard. Stopping right after starting is how a recording
+    /// is abandoned, so it ends without a notice; a requested send still
+    /// sends the draft.
+    fileprivate func landNothing() {
+        if sendsWhenSettled {
+            deliver("")
+        } else {
+            reset()
+        }
     }
 
     fileprivate func reset() {
@@ -246,6 +273,7 @@ final class ComposerVoiceInput {
         task = nil
         transcriber?.cancel()
         transcriber = nil
+        fallback = nil
         stopSamplingLevels()
         recording = nil
         pending = nil
@@ -283,9 +311,7 @@ final class VoiceInputSession {
 
     let settings: VoiceInputSettings
     @ObservationIgnored private let recorder: any VoiceRecorder
-    @ObservationIgnored private let transcribe: @Sendable (VoiceTranscriptionRequest) async throws -> String
-    /// The device's own recognition, nil where the system has none.
-    @ObservationIgnored private let makeLiveTranscriber: @MainActor () -> (any LiveVoiceTranscriber)?
+    @ObservationIgnored private let recognizers: VoiceRecognizers
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     /// The input whose recording holds the microphone.
@@ -298,27 +324,19 @@ final class VoiceInputSession {
     }
 
     convenience init(settings: VoiceInputSettings) {
-        let client = VoiceTranscriptionClient()
-        self.init(
-            settings: settings, recorder: SystemVoiceRecorder(),
-            transcribe: { try await client.transcribe($0) },
-            makeLiveTranscriber: {
-                if #available(iOS 26.0, *) { DeviceVoiceTranscriber() } else { nil }
-            })
+        self.init(settings: settings, recorder: SystemVoiceRecorder(), recognizers: .system())
     }
 
     init(
         settings: VoiceInputSettings,
         recorder: any VoiceRecorder,
-        transcribe: @escaping @Sendable (VoiceTranscriptionRequest) async throws -> String,
-        makeLiveTranscriber: @escaping @MainActor () -> (any LiveVoiceTranscriber)? = { nil },
+        recognizers: VoiceRecognizers,
         now: @escaping @MainActor () -> Date = { Date() },
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.settings = settings
         self.recorder = recorder
-        self.transcribe = transcribe
-        self.makeLiveTranscriber = makeLiveTranscriber
+        self.recognizers = recognizers
         self.now = now
         self.sleep = sleep
         recorder.onEnded = { [weak self] in self?.stopRecording() }
@@ -350,8 +368,8 @@ final class VoiceInputSession {
         input.levels = []
         input.heard = VoiceHeard()
         input.sendsWhenSettled = false
-        let onDevice = settings.service == .onDevice
-        input.isOnDevice = onDevice
+        let streams = settings.recognitionMode == .stream
+        input.streams = streams
         let generation = input.begin(.starting)
         input.task = Task { [weak self, weak input] in
             guard let self else { return }
@@ -362,8 +380,8 @@ final class VoiceInputSession {
                 return
             }
             var onAudio: VoiceAudioSink?
-            if onDevice {
-                guard let sink = await startTranscriber(for: input, generation: generation) else { return }
+            if streams {
+                guard let sink = await startStream(for: input, generation: generation) else { return }
                 onAudio = sink
             }
             beginRecording(input, onAudio: onAudio)
@@ -397,10 +415,10 @@ final class VoiceInputSession {
             return
         }
         guard recording.duration >= Self.minimumDuration else {
-            input.fail(.tooShort)
+            input.landNothing()
             return
         }
-        upload(recording, for: input)
+        upload(recording, with: recognizers.batch(for: settings), for: input)
     }
 
     /// Sends a kept recording again.
@@ -408,28 +426,27 @@ final class VoiceInputSession {
         guard case .failed(let failure) = input.phase, failure.canRetry,
             let recording = input.recording
         else { return }
-        upload(recording, for: input)
+        upload(recording, with: recognizers.batch(for: settings), for: input)
     }
 
     /// Fetches the device's speech model for the chosen language, then
     /// starts recording.
     func downloadModel(_ input: ComposerVoiceInput) {
         guard case .failed(let failure) = input.phase, failure.downloadsModel else { return }
-        guard let transcriber = makeLiveTranscriber() else {
-            input.fail(LiveVoiceTranscriberError.unavailable.failure)
-            return
-        }
         let generation = input.begin(.downloadingModel(progress: 0))
         let language = settings.onDeviceLanguage
+        let install = recognizers.installOnDeviceModel
         input.task = Task { [weak self, weak input] in
             do {
-                try await transcriber.downloadModel(locale: language) { [weak input] progress in
+                try await install(language) { [weak input] progress in
                     guard let input, input.generation == generation else { return }
                     input.phase = .downloadingModel(progress: progress)
                 }
             } catch {
                 guard let input, input.generation == generation else { return }
-                input.fail(LiveVoiceTranscriberError.downloadFailed.failure)
+                let reason: DeviceVoiceTranscriberError =
+                    error as? DeviceVoiceTranscriberError == .unavailable ? .unavailable : .downloadFailed
+                input.fail(reason.failure)
                 return
             }
             guard let self, let input, input.generation == generation else { return }
@@ -459,28 +476,31 @@ final class VoiceInputSession {
         }
     }
 
-    /// Loads the device's model; nil when the recording failed or was
-    /// dropped meanwhile.
-    private func startTranscriber(
+    /// Gets the streaming recognizer listening: the device loads its
+    /// model, a service connects. Nil when it could not start, or the
+    /// recording was dropped meanwhile.
+    private func startStream(
         for input: ComposerVoiceInput, generation: Int
     ) async -> VoiceAudioSink? {
-        guard let transcriber = makeLiveTranscriber() else {
-            input.fail(LiveVoiceTranscriberError.unavailable.failure)
+        let transcriber: any VoiceStreamRecognizer
+        do {
+            transcriber = try recognizers.stream(for: settings)
+        } catch {
+            input.fail(VoiceInputFailure(startError: error))
             return nil
         }
         input.transcriber = transcriber
+        input.fallback = recognizers.batch(for: settings)
         let sink: VoiceAudioSink
         do {
-            sink = try await transcriber.start(
-                locale: settings.onDeviceLanguage, keywords: settings.keywords
-            ) { [weak input, weak transcriber] heard in
+            sink = try await transcriber.start { [weak input, weak transcriber] heard in
                 guard let input, let transcriber, input.transcriber === transcriber else { return }
                 input.show(heard)
             }
         } catch {
             transcriber.cancel()
             guard input.generation == generation else { return nil }
-            input.fail((error as? LiveVoiceTranscriberError ?? .failed).failure)
+            input.fail(VoiceInputFailure(startError: error))
             return nil
         }
         guard input.generation == generation else {
@@ -511,21 +531,38 @@ final class VoiceInputSession {
         sampleLevels(of: input)
     }
 
-    /// The device settles its last words. If settling fails, what was
-    /// already heard lands instead; a recording that heard nothing lands
-    /// nothing, though a requested send still goes.
+    /// The recognizer settles its last words, and its text stands even when
+    /// empty. If settling fails, a service that also takes finished
+    /// recordings is sent the whole recording, which the recorder kept, when
+    /// it is long enough to hold speech; otherwise what was already heard
+    /// lands. A recording that heard nothing lands nothing, though a
+    /// requested send still goes.
     private func settle(
-        _ transcriber: any LiveVoiceTranscriber, recording: VoiceRecording,
+        _ transcriber: any VoiceStreamRecognizer, recording: VoiceRecording,
         for input: ComposerVoiceInput
     ) {
         input.recording = recording
         let generation = input.begin(.transcribing)
-        input.task = Task { [weak input] in
-            let text = try? await transcriber.finish()
+        let fallback = recording.duration >= Self.minimumDuration ? input.fallback : nil
+        input.task = Task { [weak self, weak input] in
+            let text: String?
+            do {
+                text = try await transcriber.finish()
+            } catch VoiceTranscriptionError.emptyTranscript {
+                text = ""
+            } catch {
+                guard let self, let input, input.generation == generation else { return }
+                if let fallback {
+                    input.transcriber = nil
+                    upload(recording, with: fallback, for: input)
+                    return
+                }
+                text = nil
+            }
             guard let input, input.generation == generation else { return }
-            let heard = text.flatMap { $0.isEmpty ? nil : $0 } ?? input.heard.text
-            if heard.isEmpty, !input.sendsWhenSettled {
-                input.fail(.noSpeech)
+            let heard = text ?? input.heard.text
+            if heard.isEmpty {
+                input.landNothing()
             } else {
                 input.deliver(heard)
             }
@@ -543,24 +580,20 @@ final class VoiceInputSession {
         }
     }
 
-    private func upload(_ recording: VoiceRecording, for input: ComposerVoiceInput) {
+    /// `recognizer` is nil when the saved service has no key or agreement.
+    private func upload(
+        _ recording: VoiceRecording, with recognizer: (any VoiceBatchRecognizer)?, for input: ComposerVoiceInput
+    ) {
         input.recording = recording
-        guard let endpoint = settings.endpoint, settings.hasConsent(for: endpoint),
-            let apiKey = settings.apiKey(for: endpoint)
-        else {
+        guard let recognizer else {
             input.fail(.notSetUp)
             return
         }
         let generation = input.begin(.transcribing)
-        let request = VoiceTranscriptionRequest(
-            endpoint: endpoint, apiKey: apiKey, audio: recording.audio,
-            options: settings.options(for: endpoint), keywords: settings.keywords,
-            prompt: settings.prompt)
-        let transcribe = transcribe
         input.task = Task { [weak input] in
             let result: Result<String, any Error>
             do {
-                result = .success(try await transcribe(request))
+                result = .success(try await recognizer.recognize(recording))
             } catch {
                 result = .failure(error)
             }
@@ -568,6 +601,8 @@ final class VoiceInputSession {
             switch result {
             case .success(let text):
                 input.deliver(text)
+            case .failure(VoiceTranscriptionError.emptyTranscript):
+                input.landNothing()
             case .failure(let error as VoiceTranscriptionError):
                 input.fail(VoiceInputFailure(error))
             case .failure(is CancellationError):

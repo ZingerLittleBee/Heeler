@@ -53,6 +53,9 @@ struct VoiceInputSettingsView: View {
                     LabeledContent("Model", value: preset.model)
                 }
                 VoiceInputLanguagesSection(preset: preset, languages: $connection.options.languages)
+                if preset.recognitionModes.count > 1 {
+                    recognitionSection(preset.recognitionModes)
+                }
                 keySection
             case .custom:
                 customSection
@@ -127,6 +130,35 @@ struct VoiceInputSettingsView: View {
         } footer: {
             Text(
                 String(localized: "For services that take OpenAI's audio/transcriptions request. Language and other options can be set in Advanced Request Fields after entering the URL and model."))
+        }
+    }
+
+    /// Only a service that offers more than one way shows this; the choice
+    /// is saved with its options.
+    private func recognitionSection(_ modes: [VoiceRecognitionMode]) -> some View {
+        Section {
+            Picker(
+                "Recognition",
+                selection: Binding(
+                    get: { connection.service?.recognitionMode(chosen: connection.options.mode) ?? .batch },
+                    set: { connection.options.mode = $0 })
+            ) {
+                ForEach(modes, id: \.self) { mode in
+                    Text(Self.name(of: mode)).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Recognition")
+        } footer: {
+            Text("As You Speak shows the text while you talk. After Recording sends the whole recording once you stop, and if As You Speak loses its connection, the recording is sent that way instead.")
+        }
+    }
+
+    private static func name(of mode: VoiceRecognitionMode) -> String {
+        switch mode {
+        case .stream: String(localized: "As You Speak", comment: "Voice Input recognition: text appears while the user talks")
+        case .batch: String(localized: "After Recording", comment: "Voice Input recognition: the whole recording is sent once the user stops")
         }
     }
 
@@ -318,6 +350,11 @@ struct VoiceInputSettingsView: View {
     static func consentMessage(_ endpoint: VoiceInputEndpoint) -> String {
         guard let operatorName = endpoint.operatorName else {
             return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under the terms of whoever runs it. Heeler keeps no copy once the text arrives.")
+        }
+        if case .volcengine = endpoint.wire {
+            return String(
+                localized: "Voice Input sends what you say to \(endpoint.host) as you speak, or the whole recording once you stop, to be turned into text under \(operatorName)'s terms. Heeler keeps no copy once the text arrives.",
+                comment: "Voice Input consent for a service that can stream. %1$@ is the service host name, %2$@ the company that runs it.")
         }
         return String(localized: "Each Voice Input recording is uploaded to \(endpoint.host) and turned into text under \(operatorName)'s terms. Heeler keeps no copy once the text arrives.")
     }

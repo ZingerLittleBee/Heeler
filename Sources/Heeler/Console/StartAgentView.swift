@@ -7,7 +7,10 @@ import SwiftUI
 /// started Agent's identity to `onStarted`; the owner opens it, so a fresh
 /// launch lands in its terminal instead of back on the list.
 struct StartAgentView: View {
-    @State private var store: StartAgentStore
+    /// The form's store, made once per presentation. A sheet's parent builds
+    /// this view again on every pass of its `body`; a store made in `init`
+    /// would be made each time, only for `@State` to keep the first.
+    @State private var storage: LazyStore
     @State private var directoryBrowser: RemoteDirectoryBrowser?
     private let onStarted: (ConsoleAgent.ID) -> Void
     private let console: ConsoleStore
@@ -17,9 +20,16 @@ struct StartAgentView: View {
         store: StartAgentStore, console: ConsoleStore,
         onStarted: @escaping (ConsoleAgent.ID) -> Void = { _ in }
     ) {
+        self.init(console: console, onStarted: onStarted) { store }
+    }
+
+    private init(
+        console: ConsoleStore, onStarted: @escaping (ConsoleAgent.ID) -> Void,
+        makeStore: @escaping () -> StartAgentStore
+    ) {
         self.onStarted = onStarted
         self.console = console
-        _store = State(initialValue: store)
+        _storage = State(initialValue: LazyStore(make: makeStore))
     }
 
     init(
@@ -28,8 +38,8 @@ struct StartAgentView: View {
         gitHubLaunch: StartAgentStore.GitHubLaunch? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
-        self.init(
-            store: StartAgentStore(
+        self.init(console: console, onStarted: onStarted) {
+            StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
                 existingAgentNames: { console.takenAgentNames(on: $0) },
@@ -57,12 +67,14 @@ struct StartAgentView: View {
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
                 offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
                 presets: { console.launchPresets.presets },
-                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) }),
-            console: console,
-            onStarted: onStarted)
+                accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) })
+        }
     }
 
+    private var store: StartAgentStore { storage.store }
+
     var body: some View {
+        @Bindable var store = self.store
         NavigationStack {
             Form {
                 if let origin = store.origin {
@@ -411,7 +423,8 @@ struct StartAgentView: View {
     }
 
     private var agentPicker: some View {
-        Picker("Agent", selection: $store.selectedAgent) {
+        @Bindable var store = self.store
+        return Picker("Agent", selection: $store.selectedAgent) {
             ForEach(store.availableAgentKinds) { @Sendable kind in
                 AgentKindMenuLabel(kind.displayName, kind: kind)
                     .tag(StartAgentStore.AgentChoice?.some(.kind(kind)))
@@ -562,5 +575,16 @@ struct StartWorkspacePicker: View {
         .menuOrder(.fixed)
         .disabled(!canBrowse)
         .accessibilityIdentifier("start-workspace-picker")
+    }
+}
+
+/// Makes the form's store the first time the form asks for it.
+@MainActor
+private final class LazyStore {
+    private let make: () -> StartAgentStore
+    private(set) lazy var store = make()
+
+    init(make: @escaping () -> StartAgentStore) {
+        self.make = make
     }
 }
