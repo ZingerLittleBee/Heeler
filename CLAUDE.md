@@ -52,7 +52,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   Unix socket, and connecting never runs `rex`. On native Windows each is an
   SSH exec of `rex.exe -S <pipe> __internal dial-stdio --autostart=false` to its
   named pipe, a platform branch like herdr-core's. Detection never runs
-  `rex`, and connecting never starts a server; a block's size is taken only for a terminal
+  `rex`, and connecting never starts a server. New Terminal is the one thing it
+  starts: a shell in a new background window of a session (`session.new_window`),
+  or in a new session (`session.create`), given back at once; a block's size is taken only for a terminal
   on screen, before its first paint, and given back when it leaves (ADRs 0049
   to 0053). Rex Agents open the Agent detail: Chat (Claude Code, Codex, Pi
   and Oh My Pi) reads over SSH (SFTP and bounded read-only execs, nothing

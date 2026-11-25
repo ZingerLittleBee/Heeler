@@ -54098,6 +54098,7 @@
     },
     "Rex Hosts" : {},
     "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
+    "Rex did not answer. The terminal may still have been made, so check the list before trying again." : {},
     "Rex did not finish opening the connection." : {},
     "Rex did not let this account in" : {},
     "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
@@ -54107,6 +54108,7 @@
     "Rex is not running" : {},
     "Rex is running, but SSH will not open %@" : {},
     "Rex is running, but rex.exe is not on the PATH of this account's SSH sessions." : {},
+    "Rex made the terminal, but its answer did not name it." : {},
     "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
       "localizations" : {
         "en" : {
@@ -73253,6 +73255,7 @@
         }
       }
     },
+    "This Workspace is no longer on the Rex server." : {},
     "This account may not use the socket at %@" : {},
     "This action on a Rex Host" : {},
     "This action on a tmux Host" : {

@@ -93,9 +93,13 @@ struct HostCapabilities: Equatable, Sendable {
         return ShellTerminalCreationRequest(workspaceID: workspaceID, cwd: cwd)
     }
 
+    /// A Host whose directories, as it reports them, may be a native Windows
+    /// machine's: a Rex Host's, on whichever system its server runs.
+    var startsInWindowsDirectories = false
+
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore)
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore || startsInWindowsDirectories)
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -127,11 +131,12 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A Rex Host starts and closes no Agent, Terminal or Tab, renames
+        // A Rex Host starts a shell for New Terminal, in a new window of a
+        // session or in a new session it names (ADR 0049's update of
+        // 2026-11-25), and starts no Agent and closes nothing, renames
         // nothing, has no Worktrees, Host scripts or layout, and is never
-        // taken over (ADR 0049), so it stays out of New Agent and New
-        // Terminal. Its Terminals and Agents open and take input (ADRs 0051 to
-        // 0054). Its Agents offer Composer Send and Stop, and Chat for
+        // taken over (ADR 0049), so it stays out of New Agent. Its Terminals
+        // and Agents open and take input (ADRs 0051 to 0054). Its Agents offer Composer Send and Stop, and Chat for
         // `rexChatPrograms` once the server has named Linux or macOS, read and
         // typed over the Host's own connection (ADRs 0055 and 0056). Named
         // so, it also stages images and files over SFTP for them, as a tmux
@@ -143,11 +148,12 @@ extension HostCapabilities {
                 default: nil
                 }
             self.init(
-                startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
+                startsAgents: false, startsTerminals: true, renameAgent: false, renamesWorkspaces: false,
                 worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
-                rowsReadChanges: false, terminalsShowInOneWindow: true)
+                rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
+                startsInWindowsDirectories: true)
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -262,9 +268,9 @@ extension Host {
     var capabilities: HostCapabilities { HostCapabilities(serverKind: serverKind) }
 
     /// For a directory the Host reported, which says its own platform: a core
-    /// Host's is a Windows path only on native Windows.
+    /// or Rex Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore)
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore || serverKind == .rex)
     }
 }
 

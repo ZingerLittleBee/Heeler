@@ -4,7 +4,7 @@
 通过 SSH 将 Heeler 连接到 Mac、Linux 或 Windows Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
 
 > [!IMPORTANT]
-> Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，只能打开 Rex 中已有的终端和 Agent：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
+> Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
 
 ## 开始之前
 
@@ -16,7 +16,7 @@
 
 ## 添加 Host
 
-Heeler 在连接或检查时绝不会启动 Rex。在 Mac 或 Linux 上它从不运行 `rex` 命令；在 Windows 上，由于 SSH 无法直接访问 Rex 的命名管道，每个连接都会运行 `rex __internal dial-stdio --autostart=false`，即 Rex 自己的命令通过 SSH 使用的桥接，它不会启动服务端。
+Heeler 在连接或检查时绝不会启动 Rex；在你轻点 [New Terminal](#new-terminal) 之前，也不会在其中启动任何东西。在 Mac 或 Linux 上它从不运行 `rex` 命令；在 Windows 上，由于 SSH 无法直接访问 Rex 的命名管道，每个连接都会运行 `rex __internal dial-stdio --autostart=false`，即 Rex 自己的命令通过 SSH 使用的桥接，它不会启动服务端。
 
 ### 1. 连接
 
@@ -59,10 +59,10 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 
 ## 控制台
 
-Heeler 按原样显示你的 Rex 结构，不做任何改动：
+Heeler 按原样显示你的 Rex 结构，只有在你新建 [New Terminal](#new-terminal) 时才会改动它：
 
 - **Workspaces、Tabs 与 Panes：** 按 Rex 自身的顺序，每个 Rex 会话（session）是一个 Workspace，每个窗口（window）是一个 Tab，每个终端是一个 Pane。会话中不属于任何窗口的终端共用一个名为 **Detached** 的 Tab。没有终端的会话不会列出。
-- **Agents 与 Terminals：** 程序为 Claude Code、Codex 或 Heeler 认识的其他编程 Agent 的终端显示在 **Agents** 中，并带有该 Agent 向 Rex 上报的状态。Shell 和其他程序显示在 **Terminals** 中；Agent 退出后，终端会回到 **Terminals**。终端全是 Agent 的会话只显示在 **Agents** 中。标题、程序与目录会随 Rex 中的变化同步更新。
+- **Agents 与 Terminals：** 程序为 Claude Code、Codex 或 Heeler 认识的其他编程 Agent 的终端显示在 **Agents** 中，并带有该 Agent 向 Rex 上报的状态。Shell 和其他程序显示在 **Terminals** 中；Agent 退出后，终端会回到 **Terminals**。终端全是 Agent 的会话在 **Terminals** 中显示为只含 **New Terminal** 的卡片。标题、程序与目录会随 Rex 中的变化同步更新。
 
 | 状态 | 含义 |
 | --- | --- |
@@ -108,6 +108,17 @@ Rex 终端只有一个尺寸，同一时间由一台设备设定。从 **Termina
 
 在 iPad 上，同一 Host 的 Rex Agent 终端同一时间只在一个窗口中显示。另一个窗口打开它时会显示 **Live in Another Window**；轻点 **Take Over Here** 即可移到该窗口。
 
+## New Terminal
+
+Heeler 会像 Rex 自己的 New Terminal 一样，在 Rex 的新窗口中启动一个 Shell：
+
+- **在现有 Workspace 中：** 在 **Terminals** 中轻点 Workspace 卡片末尾的 **New Terminal**，或轻点 **+** 并选择该 Workspace。Rex 会在该会话的新窗口中、以 Workspace 的目录打开 Shell。新窗口在后台打开：Mac 上的 Rex app 仍显示原来的窗口。
+- **在新 Workspace 中：** 在 **+** 面板中选择 **New Workspace**，浏览到某个目录，或留空以使用你的主目录。Rex 会新建一个包含该 Shell 的会话，名称为你输入的名字；名字留空时以目录名命名。这里没有 Tab 名称可填。
+- **打开：** Rex 列出新终端后，它会立即在这里打开，像其他终端一样适配你的屏幕，离开时交还尺寸。
+- **Rex 没有应答时：** Heeler 绝不会向 Rex 发送两次请求。如果错误提示 Rex 没有应答，终端可能仍已创建：请先查看 **Terminals** 再重试。
+
+要启动 Agent，请先打开 New Terminal，再在其中启动。Agent 运行后会移到 **Agents**。
+
 ## Chat
 
 在 macOS 和 Linux 上，Rex 中的 Claude Code、Codex、Pi 和 Oh My Pi 可以使用 **Chat**。Claude Code 和 Codex 无需在 Host 上安装任何东西；Pi 和 Oh My Pi 需要 [Heeler 的扩展](#pi-与-oh-my-pi)，Chat 会提示你添加。Heeler 通过 Host 的 SSH 连接读取对话，并经由 Rex 向终端输入，不会调整终端尺寸。你可以阅读对话、**Send** 消息、**Stop** 一轮对话，以及在 **Blocked** 提示上轻点按钮作答：
@@ -144,7 +155,7 @@ Pi 和 Oh My Pi 通过 Heeler 的扩展告诉 Chat 自己正处于哪个对话�
 ## 尚未支持的功能
 
 - **只有状态、Chat 和附件：** Rex 没有 Changes、Skills、Agent Notifications、Live Activities、Usage 或小组件。同一 Host 的其他 Server 不受影响。
-- **不能新建、重命名或关闭：** 不提供 New Agent、New Terminal、New Workspace、Rename 与 Close。请在 Rex 中完成这些操作，Heeler 会显示结果。
+- **不提供 New Agent、Rename 与 Close：** Heeler 只启动 Shell。请在 [New Terminal](#new-terminal) 中启动 Agent，并在 Rex 中重命名或关闭；Heeler 会显示结果。
 - **Rex 不支持 Worktrees、Host Helper 与 Add by Name。**
 
 ## 已知限制

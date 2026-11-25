@@ -83,6 +83,13 @@ server has been observed yet.
   (`RexConsoleProjection.checkedTerminalStop`) press keys through it, and
   `RexComposerSend` pastes and submits. See
   [Chat's reads and input](#chats-reads-and-input).
+- New Terminal and New Workspace are the one thing Heeler starts on a Rex
+  server ([ADR 0049's update of 2026-11-25](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-new-terminal)):
+  `RexHostSession.createTerminal` attaches to the session and sends
+  `session.new_window` (`focus: false`), or sends `session.create`, with one
+  `com.superlogical.terminal.shell` block in `cwd`, once, and gives the new
+  block back with `session.disown_block`. See
+  [Starting a terminal](#starting-a-terminal).
 
 ## Known limits
 
@@ -268,6 +275,31 @@ All from `f_control`. Session events arrive wrapped with their session id;
   with a generation and the foreground process (or none) whenever the
   foreground changes, its directory included. (Seen again 2026-11-16: only
   once the terminal prints; see [Program Status](#program-status).)
+
+### Starting a terminal
+
+Rex 0.1.0-preview.23 on macOS, API revision 19 (supports 0 to 19), with a
+client that said hello at revision 12 (2026-11-25):
+
+- `session.new_window` from a client attached to no session was refused with
+  409 `conflict`, `stream is not attached to session <id>`; `session.view`,
+  `session.disown_block` and `session.destroy` likewise. After
+  `session.attach` it answered `window_id`, `block_ids` and `revision`.
+- With `focus: false` the session's `active_window_id` stayed the window it
+  was. The events were `block_created`, `block_owner_changed` naming the
+  creating client with reason `create`, a `process_changed` with no
+  foreground, `window_created` (labeled `Window <last eight digits>`) and
+  `session_view_changed`, all before the response; the shell's foreground
+  followed with the `cwd` asked (`/private/tmp` for `/tmp`).
+- `session.create` with `label` and one `initial_windows` entry answered
+  `session_id` and each window's `window_id`, `block_ids` and `revision`
+  without an attach. `session.list_blocks` then listed the block labeled
+  `shell`, flavor `com.superlogical.terminal.shell`. Destroying that session
+  disconnected the other clients attached to it, the Rex app's among them.
+- `block_creator.list` names the shell flavor's options, `cwd` among them:
+  a `cwd` that is empty, missing, not a directory or not enterable starts in
+  the account's home directory.
+- Not observed: the same requests on Linux or on a native Windows server.
 
 ### Program Status
 

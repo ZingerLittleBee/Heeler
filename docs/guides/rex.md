@@ -3,7 +3,7 @@
 Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
 > [!IMPORTANT]
-> Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals and Agents Rex already has: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
+> Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals and Agents Rex has and starts new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
 
 ## Before you start
 
@@ -15,7 +15,7 @@ Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Win
 
 ## Add a Host
 
-Heeler never starts Rex when connecting or checking. On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
+Heeler never starts Rex when connecting or checking, and starts nothing in it until you tap [New Terminal](#new-terminal). On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
 
 ### 1. Connect
 
@@ -58,10 +58,10 @@ If the Host's page reads **Rex** with **Socket found, but this account cannot us
 
 ## The Console
 
-Heeler shows your Rex layout as it is and changes nothing in it:
+Heeler shows your Rex layout as it is and changes it only when you start a [New Terminal](#new-terminal):
 
 - **Workspaces, Tabs, and Panes:** Each Rex session is a Workspace, each window is a Tab, and each terminal is a Pane, in Rex's order. A session's terminals that are in none of its windows share a Tab named **Detached**. A session with no terminal is not listed.
-- **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. A session whose terminals are all Agents appears in **Agents** only. Titles, programs, and directories follow Rex as they change.
+- **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. A session whose terminals are all Agents appears in **Terminals** as a card holding only **New Terminal**. Titles, programs, and directories follow Rex as they change.
 
 | Status | What it means |
 | --- | --- |
@@ -107,6 +107,17 @@ Leaving the terminal and coming back fits it to your screen again.
 
 On iPad, one window at a time shows a Rex Host's Agent terminals. Another window that opens one reads **Live in Another Window**; tap **Take Over Here** to move it there.
 
+## New Terminal
+
+Heeler starts a shell in Rex, in a new window, the way Rex's own New Terminal does:
+
+- **In a Workspace:** Tap **New Terminal** at the end of a Workspace's card in **Terminals**, or **+** in **Terminals** and pick the Workspace. Rex opens the shell in a new window of that session, in the Workspace's directory. The window opens in the background: the Rex app on your Mac keeps showing the window it had.
+- **In a new Workspace:** In the **+** sheet, choose **New Workspace**, and browse to a directory or leave it empty for your home directory. Rex makes a new session with the shell in it, named as you type it, or after the directory when you leave the name empty. There is no tab name to give.
+- **Opening it:** The new terminal opens here as soon as Rex lists it, fitted to your screen as any other, and gives its size back when you leave it.
+- **If Rex does not answer:** Heeler never asks Rex twice. When the error says Rex did not answer, the terminal may still have been made: look in **Terminals** before trying again.
+
+To start an Agent, open a New Terminal and start it there. It moves to **Agents** once it runs.
+
 ## Chat
 
 **Chat** works for Claude Code, Codex, Pi, and Oh My Pi in Rex on macOS and Linux. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
@@ -143,7 +154,7 @@ Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extens
 ## What Heeler does not do yet
 
 - **Status, Chat and attachments only:** no Changes, Skills, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
-- **Nothing started, renamed, or closed:** New Agent, New Terminal, New Workspace, Rename, and Close are not offered. Do these in Rex; Heeler shows the result.
+- **No New Agent, Rename, or Close:** Heeler starts only shells. Start an Agent in a [New Terminal](#new-terminal), and rename or close in Rex; Heeler shows the result.
 - **No Worktrees, Host Helper, or Add by Name** for Rex.
 
 ## Known limits
