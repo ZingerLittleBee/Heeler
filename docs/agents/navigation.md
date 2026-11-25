@@ -330,7 +330,9 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   menu and that line are the list's first row, `GitHubListHeader` (over a
   screen in the list's place too); `GitHubListTitle` keeps the bar inline
   and shows the bar's title, menu and subtitle (`GitHubSubtitleLine`) only
-  once the header has scrolled under it, crossfaded by `BarTitleFade`.
+  once the header has scrolled under it, crossfaded by `BarTitleFade`; the
+  header fades with the scroll (`FadesUnderBar`) and waits for that fade
+  on the way back.
   Beside an iPad's detail, `GitHubKindPicker` and `GitHubSubtitleLine`'s
   line under the sidebar's bar stand in for the header.
   Settings' switch and each segment's filters:

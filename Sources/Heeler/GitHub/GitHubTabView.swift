@@ -555,29 +555,41 @@ private struct GitHubListHeader<Below: View>: View {
 }
 
 /// The header's title in the large title's font and the line under it.
-/// Once both have scrolled under the bar, the bar shows them and they fade
-/// out here, as a large title crossfades into the bar's.
+/// Each fades with the scroll as it passes under the bar, which shows them
+/// once both are gone; coming back out, they wait for the bar's to fade
+/// first. The bar's glass shows what is under it, so the two never overlap.
 private struct GitHubHeaderTitle: View {
     let kind: Binding<GitHubItem.Kind>?
     let subtitle: GitHubSubtitle?
     let barBottom: CGFloat
     @Binding var isUnderBar: Bool
+    /// Out from under the bar while the bar still fades its title out.
+    @State private var waitsForBar = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             title
+                .modifier(FadesUnderBar(barBottom: barBottom, isHeld: waitsForBar))
             if let subtitle {
                 GitHubSubtitleText(subtitle: subtitle)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .modifier(FadesUnderBar(barBottom: barBottom, isHeld: waitsForBar))
             }
         }
-        .opacity(isUnderBar ? 0 : 1)
-        .accessibilityHidden(isUnderBar)
+        .accessibilityHidden(isUnderBar || waitsForBar)
         .onGeometryChange(for: Bool.self) { proxy in
             proxy.frame(in: .global).maxY <= barBottom
         } action: { isUnder in
-            withAnimation(.easeInOut(duration: 0.2)) { isUnderBar = isUnder }
+            if isUnderBar && !isUnder { waitsForBar = true }
+            isUnderBar = isUnder
+        }
+        .task(id: isUnderBar) {
+            guard !isUnderBar, waitsForBar else { return }
+            // The bar's crossfade takes 0.2 seconds.
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.15)) { waitsForBar = false }
         }
     }
 
@@ -612,6 +624,25 @@ private struct GitHubHeaderTitle: View {
 
     static func title(of kind: GitHubItem.Kind) -> Text {
         kind == .pullRequest ? Text("Pull Requests") : Text("Issues")
+    }
+}
+
+/// Fades a piece of the list's header with the scroll: opaque until its top
+/// meets the bar's bottom, clear once its bottom has passed it.
+private struct FadesUnderBar: ViewModifier {
+    let barBottom: CGFloat
+    /// Kept clear whatever the scroll, while the bar fades its own out.
+    let isHeld: Bool
+    @State private var shown: CGFloat = 1
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isHeld ? 0 : shown)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                let frame = proxy.frame(in: .global)
+                guard frame.height > 0 else { return 1 }
+                return min(max((frame.maxY - barBottom) / frame.height, 0), 1)
+            } action: { shown = $0 }
     }
 }
 

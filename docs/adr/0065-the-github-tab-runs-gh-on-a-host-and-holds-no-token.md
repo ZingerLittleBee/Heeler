@@ -94,12 +94,14 @@ Close.
   the list's first row is its own header: "Pull Requests" or "Issues" in the
   large title's font with a chevron, a menu of the two (`GitHubListHeader`),
   the line under it, then the chips. It scrolls with the rows and does not
-  pin. Once the title and its line have scrolled under the bar, they fade out
-  there and the bar's own title fades in, with the same menu
+  pin. The title and its line each fade with the scroll as they pass under
+  the bar (`FadesUnderBar`), since iOS 26's glass shows what is under it;
+  once both are gone the bar's own title fades in, with the same menu
   (`toolbarTitleMenu`) and, on iOS 26, the line as its subtitle
-  (`GitHubListTitle`); the bar is crossfaded because SwiftUI swaps a bar's
-  title without animation (`BarTitleFade`). The rows never move when it
-  switches. A pushed detail's back button reads the segment. A screen that
+  (`GitHubListTitle`). Scrolling back, the header stays clear until the
+  bar's title has faded out, so no frame shows both. The bar is crossfaded
+  because SwiftUI swaps a bar's title without animation (`BarTitleFade`).
+  The rows never move when it switches. A pushed detail's back button reads the segment. A screen that
   takes the list's place shows GitHub in the same place, without a menu, so
   going between it and the list leaves the title where it is. iOS 18 has the
   same header. Beside an iPad's detail the sidebar's title is its menu of
