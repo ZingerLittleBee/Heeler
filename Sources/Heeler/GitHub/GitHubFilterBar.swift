@@ -417,7 +417,7 @@ struct GitHubFilterEntrySheet: View {
                             .accessibilityAddTraits(self.role == role ? .isSelected : [])
                         }
                     } header: {
-                        Text("Show", comment: "GitHub Someone Else sheet: which of the person's items to show.")
+                        Text("Show")
                     }
                 }
             }

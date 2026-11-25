@@ -382,7 +382,11 @@ private struct GitHubShowMoreRow: View {
                 if isReading {
                     ProgressView()
                 } else {
-                    Text("\(shown) of \(total)", comment: "Under a GitHub list: rows shown of what GitHub found.")
+                    // Its own key: "%lld of %lld" is a question card's.
+                    Text(
+                        String(
+                            localized: "GitHub list rows shown of found", defaultValue: "\(shown) of \(total)",
+                            comment: "Under a GitHub list: rows shown of what GitHub found, such as 30 of 182."))
                         .font(.subheadline)
                         .monospacedDigit()
                         // Not `.secondary`, which in a button is the tint's.
