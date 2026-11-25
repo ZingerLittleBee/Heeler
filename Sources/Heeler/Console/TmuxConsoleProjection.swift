@@ -626,6 +626,12 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             _ = try await perform(
                 TmuxLaunch.setWorktree(session: sessionID, path: created.path, paths: server.paths))
         } catch {
+            // A program that ends at once takes its window, and the session,
+            // with it: the option then has no session to go on.
+            if await isClosed(made.paneID, paths: server.paths) {
+                throw WorktreeAgentStartFailure(
+                    checkoutPath: created.path, underlying: ProgramEndedAtLaunch(exit: ProgramExit(code: nil)))
+            }
             await endOpened(made)
             throw WorktreeAgentStartFailure(checkoutPath: created.path, underlying: error)
         }
@@ -822,6 +828,19 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         }
         throw lastDuplicate
             ?? TransportError.malformedResponse(String(localized: "tmux: The session name is already taken."))
+    }
+
+    /// Whether tmux has closed `pane`. Only tmux refusing to find it says so;
+    /// a link that failed says nothing about the Pane.
+    private func isClosed(_ pane: String, paths: TmuxPaths) async -> Bool {
+        do {
+            _ = try await perform(TmuxLaunch.hasPane(pane, paths: paths))
+            return false
+        } catch TransportError.malformedResponse {
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// The session Heeler opened and could not mark. The checkout stays.

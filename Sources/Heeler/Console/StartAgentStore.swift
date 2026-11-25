@@ -72,6 +72,10 @@ final class StartAgentStore {
     private enum Launch {
         case kind(SupportedAgentKind, arguments: [String], name: String)
         case template(AgentTemplate, name: String?)
+
+        var kind: SupportedAgentKind? {
+            if case .kind(let kind, _, _) = self { kind } else { nil }
+        }
     }
 
     /// Context inherited when the flow opens from an agent's own screen: the
@@ -950,7 +954,8 @@ final class StartAgentStore {
                 state = .failed(failure.message)
                 return
             } catch {
-                state = .failed(GitHubWorktreeStartFailure.unreachable(String(describing: error)).message)
+                state = .failed(
+                    GitHubWorktreeStartFailure.unreachable(Self.ownWords(of: error) ?? String(describing: error)).message)
                 return
             }
         }
@@ -1014,9 +1019,7 @@ final class StartAgentStore {
                 }
             }
         } catch {
-            var kind: SupportedAgentKind?
-            if case .kind(let launched, _, _) = launch { kind = launched }
-            state = .failed(Self.message(for: error, launchedKind: kind))
+            state = .failed(Self.message(for: error, launched: launch))
         }
     }
 
@@ -1229,11 +1232,23 @@ final class StartAgentStore {
             String(localized: "Agent detection timed out.")
         case TransportError.hostFeatureUnavailable(let feature):
             feature
-        case TransportError.malformedResponse(let detail):
-            detail
         default:
-            TransportError.herdrCoreLinkMessage(for: error)
-                ?? String(localized: "Detecting Agents failed: \(String(describing: error))")
+            ownWords(of: error) ?? String(localized: "Detecting Agents failed: \(String(describing: error))")
+        }
+    }
+
+    /// An error's own words, when it has some: what tmux or a core said when
+    /// it refused, or a TransportError's presentation. Nil for an error only
+    /// its description names.
+    private static func ownWords(of error: any Error) -> String? {
+        switch error {
+        case TransportError.malformedResponse(let detail):
+            // Its presentation names herdr, which a tmux refusal is not.
+            detail
+        case let transportError as TransportError:
+            transportError.presentation.message
+        default:
+            nil
         }
     }
 
@@ -1246,7 +1261,7 @@ final class StartAgentStore {
         case TransportError.timedOut:
             String(localized: "Resolving the Host's home directory timed out.")
         default:
-            String(localized: "Could not determine the Host's home directory: \(String(describing: error))")
+            String(localized: "Could not determine the Host's home directory: \(ownWords(of: error) ?? String(describing: error))")
         }
     }
 
@@ -1279,9 +1294,14 @@ final class StartAgentStore {
         }
     }
 
-    private static func message(
-        for error: any Error, launchedKind: SupportedAgentKind?
-    ) -> String {
+    private static func message(for launch: Launch, endedWith exit: ProgramExit) -> String {
+        switch launch {
+        case .kind(let kind, _, _): message(forKind: kind, endedWith: exit)
+        case .template(let template, _): message(forTemplate: template.name, endedWith: exit)
+        }
+    }
+
+    private static func message(for error: any Error, launched launch: Launch) -> String {
         switch error {
         case TransportError.sshUnreachable:
             String(localized: "The Host is not connected.")
@@ -1297,8 +1317,10 @@ final class StartAgentStore {
             worktree.message
         case let template as HerdrCoreTemplateError:
             template.message
+        case let ended as ProgramEndedAtLaunch:
+            message(for: launch, endedWith: ended.exit)
         case let failure as WorktreeAgentStartFailure:
-            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launchedKind: launchedKind))")
+            String(localized: "The worktree is ready at \(failure.checkoutPath), but the Agent did not start. \(message(for: failure.underlying, launched: launch))")
         case let apiError as HerdrAPIError where apiError.code == "not_git_worktree":
             // The one dedicated worktree.create error code (#97); everything
             // else collapses into worktree_create_failed with raw git stderr,
@@ -1307,7 +1329,7 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError where apiError.code == "worktree_create_failed":
             String(localized: "Creating the worktree failed: \(apiError.message)")
         case let apiError as HerdrAPIError
-            where apiError.code == "unsupported_agent_kind" && launchedKind == .muse:
+            where apiError.code == "unsupported_agent_kind" && launch.kind == .muse:
             // Kind captured at submit, not the picker after await. Discovery
             // does not prove herdr supports Muse (#289); keep the server
             // reason and tell the user how to recover.
@@ -1320,8 +1342,7 @@ final class StartAgentStore {
         case let apiError as HerdrAPIError:
             String(localized: "herdr rejected the command: \(apiError.message)")
         default:
-            TransportError.herdrCoreLinkMessage(for: error)
-                ?? String(localized: "Starting the agent failed: \(String(describing: error))")
+            ownWords(of: error) ?? String(localized: "Starting the agent failed: \(String(describing: error))")
         }
     }
 }
