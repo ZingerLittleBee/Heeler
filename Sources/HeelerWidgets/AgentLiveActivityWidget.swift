@@ -922,7 +922,7 @@ enum AgentActivityFields {
         }
     }
 
-    private func previewLockScreenBanner(
+    @MainActor private func previewLockScreenBanner(
         _ presentation: AgentActivityPresentation,
         colorScheme: ColorScheme = .dark,
         isStale: Bool = false
