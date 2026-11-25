@@ -3361,7 +3361,10 @@ actor HeelerSSHTransport: Transport {
     /// sshd gives each exec its own process group; non-interactive POSIX sh
     /// keeps its children in that group. The watchdog ends only this exec.
     /// Its marker descriptor is closed in sleep so a surviving timer cannot
-    /// hold an SSH output pipe open after normal script completion. Internal
+    /// hold an SSH output pipe open after normal script completion. A lost
+    /// connection or closed channel reaches the exec only as SIGPIPE at its
+    /// next write, so the watchdog ignores SIGPIPE: its marker write then
+    /// fails, and the kill still ends whatever the script started. Internal
     /// so a test can pin the bytes Changes sends.
     static func boundedScript(
         _ script: Data, remoteSeconds: Int64, timeoutMarker: String
@@ -3369,6 +3372,7 @@ actor HeelerSSHTransport: Transport {
         var input = Data("""
             {
             (
+                trap '' PIPE
                 sleep \(remoteSeconds) 3>&-
                 printf '\\n%s\\n' '\(timeoutMarker)' >&3
                 kill -KILL 0
