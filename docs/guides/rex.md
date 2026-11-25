@@ -15,7 +15,7 @@ Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Win
 
 ## Add a Host
 
-Heeler never starts Rex when connecting or checking, and never runs the `rex` command.
+Heeler never starts Rex when connecting or checking. On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
 
 ### 1. Connect
 
