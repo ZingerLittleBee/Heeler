@@ -223,7 +223,7 @@ struct RexServerKindDetectionTests {
         #expect(body.contains(#"Test-Path -LiteralPath ('\\.\pipe\rex-' + $rexSid)"#))
         // Testing the pipe and PATH starts nothing: `rex` itself never runs.
         #expect(!body.contains("& rex"))
-        #expect(!body.contains("rex.exe -"))
+        #expect(!body.contains("__internal"))
     }
 
     @Test func aWindowsHostWithoutRexsPipeSaysWhy() async throws {
