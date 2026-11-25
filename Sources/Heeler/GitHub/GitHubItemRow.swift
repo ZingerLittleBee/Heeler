@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// One pull request or issue in three lines: where it is and how old, its
-/// title, and how it stands (ADR 0065).
+/// One pull request or issue in two parts (ADR 0065): an over line with its
+/// state glyph, where it is and how old, and how it stands at the trailing
+/// end; then its title across the row. An issue with labels adds them on a
+/// third line.
 struct GitHubItemRow: View {
     let item: GitHubItem
     let context: GitHubRowContext
@@ -9,33 +11,40 @@ struct GitHubItemRow: View {
 
     var body: some View {
         // At accessibility sizes a line that fits a phone holds a word or
-        // two, so the lines wrap rather than cut off what they say.
+        // two, so the lines wrap rather than cut off what they say, and the
+        // status goes under the over line rather than squeeze it.
         let wraps = dynamicTypeSize.isAccessibilitySize
-        HStack(alignment: .gitHubRowTitle, spacing: 10) {
-            // In the title's face, on its first baseline: the glyph sits
-            // on the title's first line as one set in its text would, at
-            // every text size, wherever the line above leaves it.
-            Image(systemName: Self.symbol(for: item))
-                .foregroundStyle(Self.tint(for: item))
-                .font(.body.weight(.medium))
-                .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 3) {
-                overLine(wraps: wraps)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(item.title)
-                    .font(.body.weight(.medium))
-                    .lineLimit(wraps ? 4 : 2)
-                    .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
-                status(wraps: wraps)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Group {
+                if wraps {
+                    overLine(wraps: true)
+                    status
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        overLine(wraps: false)
+                        Spacer(minLength: 0)
+                        // Never cut off: the repository and the author give
+                        // way first.
+                        status?.fixedSize()
+                    }
+                }
             }
-            // Every row's separator starts at its text, rather than where
-            // the list guesses its first text begins.
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            Text(item.title)
+                .font(.body.weight(.medium))
+                .lineLimit(wraps ? 4 : 2)
+            if let labels {
+                Text(verbatim: labels)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(wraps ? nil : 1)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Every row's separator starts at its text, rather than where the
+        // list guesses its first text begins.
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -83,18 +92,22 @@ struct GitHubItemRow: View {
         return parts.joined(separator: ", ")
     }
 
-    /// "Heeler #712 · riley-dev · 2h": the author where it is someone else
-    /// and the list is not of one person's items. On one line a long
-    /// repository or author name gives way, never the number or the age.
+    /// "Heeler #712 · riley-dev · 2h" after the state glyph: the author
+    /// where it is someone else and the list is not of one person's items.
+    /// On one line a long repository or author name gives way, never the
+    /// number or the age.
     @ViewBuilder
     private func overLine(wraps: Bool) -> some View {
         let author = context.shownAuthor(of: item)
         let age = Self.age(of: item.updatedAt)
+        let glyph = Text(Image(systemName: Self.symbol(for: item))).foregroundStyle(Self.tint(for: item))
         if wraps {
-            Text(verbatim: ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
-                .joined(separator: " · "))
+            glyph
+                + Text(verbatim: " " + ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
+                    .joined(separator: " · "))
         } else {
             HStack(spacing: 0) {
+                glyph.padding(.trailing, 5).layoutPriority(2)
                 Text(verbatim: item.repositoryName).layoutPriority(1)
                 Text(verbatim: " #\(item.number)").layoutPriority(2)
                 if let author {
@@ -106,36 +119,33 @@ struct GitHubItemRow: View {
         }
     }
 
-    @ViewBuilder
-    private func status(wraps: Bool) -> some View {
+    /// How the item stands, in one word at the over line's end. A pull
+    /// request: its checks' glyph, then what asks for attention (your
+    /// review, the change size, the review decision), else the checks'
+    /// word; with no checks, Draft for a draft, else that ask alone. Merged
+    /// and closed say only that, in their colours. An issue: its comment
+    /// count, if any.
+    private var status: Text? {
         switch item.kind {
-        case .pullRequest: pullRequestStatus.lineLimit(wraps ? nil : 1)
-        case .issue: issueStatus(wraps: wraps)
+        case .pullRequest:
+            if item.state == .merged {
+                return Text("Merged").foregroundStyle(GitHubInk.purple)
+            }
+            if item.state == .closed {
+                return Text(GitHubItemWords.state(of: item)).foregroundStyle(GitHubInk.red)
+            }
+            let checks = item.checks?.summary ?? .none
+            if let symbol = Self.symbol(for: checks) {
+                return Text(Image(systemName: symbol)).font(.caption2).foregroundStyle(Self.tint(for: checks))
+                    + Text(verbatim: " \(pullRequestRest ?? Self.title(for: checks))")
+            }
+            if item.state == .draft { return Text("Draft") }
+            return pullRequestRest.map { Text(verbatim: $0) }
+        case .issue:
+            guard item.commentCount > 0 else { return nil }
+            return Text(Image(systemName: "bubble.left")).font(.caption2)
+                + Text(verbatim: " \(item.commentCount.formatted())")
         }
-    }
-
-    /// One Text, so it wraps as a sentence at accessibility sizes.
-    private var pullRequestStatus: Text {
-        if item.state == .merged {
-            return Text("Merged").foregroundStyle(GitHubInk.purple)
-        }
-        if item.state == .closed {
-            return Text(GitHubItemWords.state(of: item)).foregroundStyle(GitHubInk.red)
-        }
-        let checks = item.checks?.summary ?? .none
-        var line = Text(verbatim: "")
-        if item.state == .draft {
-            line = Text("Draft") + Text(verbatim: " · ")
-        }
-        if let symbol = Self.symbol(for: checks) {
-            line = line + Text(Image(systemName: symbol)).font(.caption2).foregroundStyle(Self.tint(for: checks))
-                + Text(verbatim: " ")
-        }
-        line = line + Text(Self.title(for: checks))
-        if let rest = pullRequestRest {
-            line = line + Text(verbatim: " · \(rest)")
-        }
-        return line
     }
 
     /// After the checks: where someone else asks for your review, that, or
@@ -149,7 +159,7 @@ struct GitHubItemRow: View {
             }
             return String(
                 localized: "Needs your review",
-                comment: "In a GitHub list row's status line: the pull request asks for the account's review.")
+                comment: "At the end of a GitHub list row's first line: the pull request asks for the account's review.")
         }
         if let review = item.review, item.state != .draft {
             return GitHubItemWords.decision(review)
@@ -157,28 +167,10 @@ struct GitHubItemRow: View {
         return nil
     }
 
-    /// Labels, then the comment count, which long labels never push off
-    /// the line.
-    @ViewBuilder
-    private func issueStatus(wraps: Bool) -> some View {
-        let labels = item.labels.prefix(3).map(\.name).joined(separator: " · ")
-        let comments =
-            item.commentCount > 0
-            ? String(localized: "\(item.commentCount) comments", comment: "An issue's comment count in the GitHub list.")
-            : nil
-        if labels.isEmpty {
-            Text(comments ?? String(localized: "No comments"))
-        } else if wraps {
-            Text(verbatim: [labels, comments].compactMap(\.self).joined(separator: " · "))
-        } else {
-            HStack(spacing: 0) {
-                Text(verbatim: labels)
-                if let comments {
-                    Text(verbatim: " · \(comments)").layoutPriority(1)
-                }
-            }
-            .lineLimit(1)
-        }
+    /// An issue's first three labels, on a line of their own.
+    private var labels: String? {
+        guard item.kind == .issue, !item.labels.isEmpty else { return nil }
+        return item.labels.prefix(3).map(\.name).joined(separator: " · ")
     }
 
     // MARK: Glyphs and words
@@ -250,7 +242,8 @@ struct GitHubItemRow: View {
             .units(allowed: [.days, .hours, .minutes, .seconds], width: width, maximumUnitCount: 1))
     }
 
-    /// A row's shape while the first read runs.
+    /// A row's shape while the first read runs: an over line with a
+    /// status, and a title of two lines.
     static var placeholder: some View {
         GitHubItemRow(
             item: GitHubItem(
@@ -261,21 +254,11 @@ struct GitHubItemRow: View {
                 additions: nil, deletions: nil, labels: []),
             context: GitHubRowContext())
             .redacted(reason: .placeholder)
-            // Redacted, its label reads as a run of blank glyphs; the
-            // section's "Reading from…" heading says what is happening.
+            // Redacted, its label reads as a run of blank glyphs; the line
+            // under the title, or before iOS 26 the section's "Reading
+            // from…" heading, says what is happening.
             .accessibilityHidden(true)
     }
-}
-
-extension VerticalAlignment {
-    private enum GitHubRowTitle: AlignmentID {
-        static func defaultValue(in context: ViewDimensions) -> CGFloat {
-            context[.firstTextBaseline]
-        }
-    }
-
-    /// A GitHub row's title's first baseline, which its icon shares.
-    fileprivate static let gitHubRowTitle = VerticalAlignment(GitHubRowTitle.self)
 }
 
 /// What the list around a row says of it, which its words leave out or add.

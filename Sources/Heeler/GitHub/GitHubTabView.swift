@@ -28,7 +28,6 @@ struct GitHubTabView: View {
     var body: some View {
         NavigationStack(path: $path) {
             GitHubListScreen(store: store, terminals: terminals, selection: nil)
-                .navigationTitle(ConsoleTab.github.title)
                 .navigationDestination(for: GitHubItemLink.self) { link in
                     GitHubItemScreen(store: store, host: link.host, item: link.item, send: send, write: write)
                 }
@@ -46,25 +45,38 @@ struct GitHubListScreen: View {
     let selection: Binding<GitHubItem.ID?>?
     @SceneStorage("github.kind") private var kind = GitHubItem.Kind.pullRequest
     @State private var filterSheet: GitHubFilterSheet?
+    /// Where the bar ends on screen, which the header's title scrolls under.
+    @State private var barBottom: CGFloat = 0
+    /// The header's title has scrolled under the bar, which then shows it.
+    @State private var titleIsUnderBar = false
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
 
     var body: some View {
         Group {
             if let host = store.selectedHost {
                 content(for: host)
             } else if store.hasHiddenHostsOnly {
-                ContentUnavailableView {
-                    Label("No Host Can Run gh", systemImage: "server.rack")
-                } description: {
-                    Text("The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there.")
+                fullScreen {
+                    ContentUnavailableView {
+                        Label("No Host Can Run gh", systemImage: "server.rack")
+                    } description: {
+                        Text("The GitHub tab needs a macOS or Linux Host. Heeler reads pull requests and issues through the gh command there.")
+                    }
                 }
             } else {
-                ContentUnavailableView {
-                    Label("No Hosts", systemImage: "server.rack")
-                } description: {
-                    Text("Add a Host in Hosts. Heeler reads pull requests and issues through the gh command there.")
+                fullScreen {
+                    ContentUnavailableView {
+                        Label("No Hosts", systemImage: "server.rack")
+                    } description: {
+                        Text("Add a Host in Hosts. Heeler reads pull requests and issues through the gh command there.")
+                    }
                 }
             }
         }
+        // The content starts under the bar, so its top is the bar's bottom.
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).minY
+        } action: { barBottom = $0 }
         .toolbar {
             if showsHostMenu {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -72,7 +84,10 @@ struct GitHubListScreen: View {
                 }
             }
         }
-        .modifier(GitHubSubtitleLine(subtitle: subtitle))
+        .modifier(
+            GitHubListTitle(
+                kind: $kind, showsKind: showsList, subtitle: subtitle, isUnderBar: titleIsUnderBar,
+                isSidebarColumn: isSidebarColumn))
         .sheet(item: $filterSheet) { sheet in
             if let host = store.selectedHost {
                 GitHubFilterEntrySheet(
@@ -108,7 +123,7 @@ struct GitHubListScreen: View {
     }
 
     /// The line under the title whenever the list area shows, from its
-    /// first frame, so the title bar keeps its height while a read runs, the
+    /// first frame, so the header keeps its height while a read runs, the
     /// Host drops or a read fails. Nil over a screen that takes the list's
     /// place, and going to or from one replaces the whole content anyway.
     private var subtitle: GitHubSubtitle? {
@@ -144,8 +159,15 @@ struct GitHubListScreen: View {
         store.hosts.count > 1 || status != nil
     }
 
+    /// The list area shows, so the title is the kind shown; over a screen
+    /// in its place, GitHub.
+    private var showsList: Bool {
+        guard let host = store.selectedHost, case .list = screen(for: host) else { return false }
+        return true
+    }
+
     /// What takes the tab for the selected Host: the list area under the
-    /// picker and the filters, or a screen in its place.
+    /// filters, or a screen in its place.
     private enum Screen {
         case setup(GitHubSetupView.Step)
         case list
@@ -177,19 +199,48 @@ struct GitHubListScreen: View {
         let state = store.state(of: host)
         switch screen(for: host) {
         case .setup(let step):
-            GitHubSetupView(
-                step: step, host: host, terminals: terminals, isReading: state.isReading
-            ) { Task { await store.checkAgain(showing: kind) } }
+            fullScreen {
+                GitHubSetupView(
+                    step: step, host: host, terminals: terminals, isReading: state.isReading
+                ) { Task { await store.checkAgain(showing: kind) } }
+            }
         case .list:
             listView(host: host, state: state, isConnected: store.isConnected(host))
         case .offline:
-            ContentUnavailableView {
-                Label("\(host.name) Is Offline", systemImage: "wifi.slash")
-            } description: {
-                Text("Heeler reads GitHub through gh on \(host.name) once it connects.")
+            fullScreen {
+                ContentUnavailableView {
+                    Label("\(host.name) Is Offline", systemImage: "wifi.slash")
+                } description: {
+                    Text("Heeler reads GitHub through gh on \(host.name) once it connects.")
+                }
             }
         case .failed:
-            GitHubReadFailureView(failure: state.failure) { Task { await store.checkAgain(showing: kind) } }
+            fullScreen {
+                GitHubReadFailureView(failure: state.failure) { Task { await store.checkAgain(showing: kind) } }
+            }
+        }
+    }
+
+    /// A screen in the list's place. Beside an iPad's detail it fills the
+    /// column; elsewhere it sits under GitHub, in the header's place, so
+    /// going between it and the list leaves the title where it is.
+    @ViewBuilder
+    private func fullScreen(@ViewBuilder _ content: () -> some View) -> some View {
+        if isSidebarColumn {
+            content()
+        } else {
+            List {
+                GitHubListHeader(kind: nil, subtitle: nil, barBottom: barBottom, isUnderBar: $titleIsUnderBar) {
+                    EmptyView()
+                }
+                Section {
+                    content()
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.plain)
         }
     }
 
@@ -210,7 +261,7 @@ struct GitHubListScreen: View {
         .refreshable { await store.refresh(showing: kind) }
     }
 
-    /// What the list area shows under the picker and the filters.
+    /// What the list area shows under the filters.
     private enum Content {
         case rows(GitHubStore.Shown)
         /// The placeholder rows, while a read finds something to show.
@@ -238,42 +289,36 @@ struct GitHubListScreen: View {
     @ViewBuilder
     private func listRows(host: GitHubHost, state: GitHubStore.HostState, isOffline: Bool) -> some View {
         let filter = store.filter(for: kind)
-        // The Host's status is in the title bar, never in the list: this
-        // section is only the picker and the filters.
-        Section {
-        } header: {
-            VStack(alignment: .leading, spacing: 10) {
-                GitHubKindPicker(kind: $kind)
-                GitHubFilterBar(
-                    kind: kind, filter: filter, options: GitHubFilterOptions(store: store, host: host, kind: kind),
-                    apply: { store.setFilter($0, for: kind) }, openSheet: { filterSheet = $0 })
+        let filters = GitHubFilterBar(
+            kind: kind, filter: filter, options: GitHubFilterOptions(store: store, host: host, kind: kind),
+            apply: { store.setFilter($0, for: kind) }, openSheet: { filterSheet = $0 })
+        // The Host's status is in the title bar, never in the list.
+        if isSidebarColumn {
+            // The sidebar's title is its menu of lists, so the kind is a
+            // segmented control over the filters.
+            Section {
+            } header: {
+                VStack(alignment: .leading, spacing: 10) {
+                    GitHubKindPicker(kind: $kind)
+                    filters
+                }
+                .textCase(nil)
+                .padding(.bottom, 14)
+                .listRowInsets(EdgeInsets())
             }
-            .textCase(nil)
-            .padding(.bottom, 14)
-            .listRowInsets(EdgeInsets())
+            .listSectionSpacing(.custom(0))
+        } else {
+            GitHubListHeader(kind: $kind, subtitle: subtitle, barBottom: barBottom, isUnderBar: $titleIsUnderBar) {
+                filters
+            }
         }
-        .listSectionSpacing(.custom(0))
         switch content(on: host, isOffline: isOffline) {
         case .rows(let shown):
             rows(shown, filter: filter, host: host, isOffline: isOffline)
         case .reading:
-            if GitHubSubtitle.isShown {
-                // The line under the title says a read runs.
-                Section {
-                    placeholderRows
-                }
-            } else {
-                Section {
-                    placeholderRows
-                } header: {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Reading from \(host.name)…")
-                    }
-                    // One heading: the spinner alone read as an unnamed one.
-                    .accessibilityElement(children: .combine)
-                    .textCase(nil)
-                }
+            // The line under the title says a read runs.
+            Section {
+                placeholderRows
             }
         case .offline:
             unavailable {
@@ -316,28 +361,10 @@ struct GitHubListScreen: View {
                 }
             }
         }
-        if GitHubSubtitle.isShown {
-            // The line under the title says when the rows were read, and
-            // that a read runs over them.
-            Section {
-                itemRows(shown, context: context, host: host, isOffline: isOffline)
-            }
-        } else {
-            Section {
-                itemRows(shown, context: context, host: host, isOffline: isOffline)
-            } footer: {
-                HStack(spacing: 6) {
-                    // A read on its way over the list read earlier.
-                    if shown.isReading {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .accessibilityLabel(Text("Refreshing"))
-                    }
-                    Text(GitHubReadTime(shown.readAt).footer(host: host.name))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-            }
+        // The line under the title says when the rows were read, and that
+        // a read runs over them.
+        Section {
+            itemRows(shown, context: context, host: host, isOffline: isOffline)
         }
     }
 
@@ -373,6 +400,7 @@ struct GitHubListScreen: View {
             content()
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
     }
 
@@ -381,27 +409,31 @@ struct GitHubListScreen: View {
     }
 
     /// A row opens its detail, except from a list shown while the Host is
-    /// offline, which has nothing to read it with.
+    /// offline, which has nothing to read it with. No row shows a
+    /// disclosure chevron, so a row is as wide offline as online.
     @ViewBuilder
     private func row(
         _ item: GitHubItem, context: GitHubRowContext, host: GitHubHost, isOffline: Bool
     ) -> some View {
         let row = GitHubItemRow(item: item, context: context)
             .opacity(isOffline ? 0.55 : 1)
-        if selection != nil {
+        if let selection {
             row
                 .tag(item.id)
-                .selectionDisabled(isOffline)
+                // Offline the open item keeps its highlight: a disabled
+                // row loses it.
+                .selectionDisabled(isOffline && item.id != selection.wrappedValue)
         } else if isOffline {
             row
         } else {
             NavigationLink(value: GitHubItemLink(host: host, item: item)) { row }
+                .navigationLinkIndicatorVisibility(.hidden)
         }
     }
 }
 
-/// Cards on an iPhone; beside an iPad's detail column, the sidebar's
-/// selectable rows, as the Agents list has.
+/// A plain full-width list on an iPhone; beside an iPad's detail column,
+/// the sidebar's selectable rows, as the Agents list has.
 private struct GitHubListStyle: ViewModifier {
     @Environment(\.isSidebarColumn) private var isSidebarColumn
 
@@ -411,13 +443,197 @@ private struct GitHubListStyle: ViewModifier {
                 .listStyle(.sidebar)
                 .modifier(ConsoleSidebarListTint())
         } else {
-            content.listStyle(.insetGrouped)
+            content.listStyle(.plain)
         }
+    }
+}
+
+/// The list's title in the bar. Beside an iPad's detail the sidebar's
+/// chrome titles the column, and the line goes under its bar. Elsewhere the
+/// bar stays inline, and its title is hidden while the list's header shows
+/// it; once the header's title scrolls under the bar, the bar shows it, with
+/// the kind's menu and, on iOS 26, the line under it. Hidden, it still names
+/// a pushed detail's back button.
+private struct GitHubListTitle: ViewModifier {
+    @Binding var kind: GitHubItem.Kind
+    /// The list area shows, so the title is the kind; otherwise GitHub.
+    let showsKind: Bool
+    let subtitle: GitHubSubtitle?
+    let isUnderBar: Bool
+    let isSidebarColumn: Bool
+
+    func body(content: Content) -> some View {
+        if isSidebarColumn {
+            content.modifier(GitHubSubtitleLine(subtitle: subtitle))
+        } else {
+            Group {
+                // An empty title menu still shows its chevron. The content
+                // changes along with it, so the branch costs nothing more.
+                if showsKind {
+                    content
+                        .navigationTitle(GitHubHeaderTitle.title(of: kind))
+                        .toolbarTitleMenu { GitHubKindChoices(kind: $kind) }
+                } else {
+                    content.navigationTitle(ConsoleTab.github.title)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(removing: isUnderBar ? nil : .title)
+            .modifier(GitHubSubtitleLine(subtitle: isUnderBar ? subtitle : nil))
+            .background(BarTitleFade(isShown: isUnderBar))
+        }
+    }
+}
+
+/// Crossfades the navigation bar when its title comes or goes, as a large
+/// title's collapse does: SwiftUI swaps a bar's title without animation.
+private struct BarTitleFade: UIViewRepresentable {
+    let isShown: Bool
+
+    func makeUIView(context: Context) -> FadeView { FadeView(isShown: isShown) }
+
+    func updateUIView(_ view: FadeView, context: Context) {
+        view.update(isShown: isShown)
+    }
+
+    final class FadeView: UIView {
+        private var isShown: Bool
+
+        init(isShown: Bool) {
+            self.isShown = isShown
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+        func update(isShown: Bool) {
+            guard isShown != self.isShown else { return }
+            self.isShown = isShown
+            // In the same update as the title's change, so the fade
+            // covers it.
+            guard let bar = enclosingNavigationController()?.navigationBar else { return }
+            UIView.transition(
+                with: bar, duration: 0.2,
+                options: [.transitionCrossDissolve, .allowUserInteraction, .curveEaseInOut],
+                animations: nil)
+        }
+
+        private func enclosingNavigationController() -> UINavigationController? {
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let controller = current as? UIViewController, let navigation = controller.navigationController {
+                    return navigation
+                }
+                responder = current.next
+            }
+            return nil
+        }
+    }
+}
+
+/// The list's first row, where a large title would be: the kind, whose
+/// menu switches it, over the line under it and the filters; over a screen
+/// in the list's place, GitHub alone. It scrolls with the rows.
+private struct GitHubListHeader<Below: View>: View {
+    /// The kind the menu switches; nil for GitHub, without a menu.
+    let kind: Binding<GitHubItem.Kind>?
+    let subtitle: GitHubSubtitle?
+    let barBottom: CGFloat
+    @Binding var isUnderBar: Bool
+    @ViewBuilder let below: () -> Below
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            GitHubHeaderTitle(kind: kind, subtitle: subtitle, barBottom: barBottom, isUnderBar: $isUnderBar)
+            below()
+                .padding(.top, 12)
+        }
+        .listRowSeparator(.hidden)
+    }
+}
+
+/// The header's title in the large title's font and the line under it.
+/// Once both have scrolled under the bar, the bar shows them and they fade
+/// out here, as a large title crossfades into the bar's.
+private struct GitHubHeaderTitle: View {
+    let kind: Binding<GitHubItem.Kind>?
+    let subtitle: GitHubSubtitle?
+    let barBottom: CGFloat
+    @Binding var isUnderBar: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            title
+            if let subtitle {
+                GitHubSubtitleText(subtitle: subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .opacity(isUnderBar ? 0 : 1)
+        .accessibilityHidden(isUnderBar)
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.frame(in: .global).maxY <= barBottom
+        } action: { isUnder in
+            withAnimation(.easeInOut(duration: 0.2)) { isUnderBar = isUnder }
+        }
+    }
+
+    @ViewBuilder
+    private var title: some View {
+        if let kind {
+            Menu {
+                GitHubKindChoices(kind: kind)
+            } label: {
+                // One Text, so at accessibility sizes the chevron follows
+                // the last word rather than truncating it.
+                (Self.title(of: kind.wrappedValue) + Text(verbatim: " ")
+                    + Text(Image(systemName: "chevron.down"))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary))
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                Text(
+                    "Showing \(kind.wrappedValue == .pullRequest ? String(localized: "Pull Requests") : String(localized: "Issues"))",
+                    comment: "VoiceOver label of the GitHub list's title, a menu that switches between pull requests and issues."))
+            .accessibilityAddTraits(.isHeader)
+        } else {
+            Text(ConsoleTab.github.title)
+                .font(.largeTitle.bold())
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    static func title(of kind: GitHubItem.Kind) -> Text {
+        kind == .pullRequest ? Text("Pull Requests") : Text("Issues")
     }
 }
 
 // MARK: - Pieces
 
+/// Pull Requests and Issues, each with its list's open glyph, the one
+/// shown checked.
+private struct GitHubKindChoices: View {
+    @Binding var kind: GitHubItem.Kind
+
+    var body: some View {
+        Picker("Show", selection: $kind) {
+            Label("Pull Requests", systemImage: ConsoleTab.gitHubSymbol)
+                .tag(GitHubItem.Kind.pullRequest)
+            Label("Issues", systemImage: "smallcircle.filled.circle")
+                .tag(GitHubItem.Kind.issue)
+        }
+    }
+}
+
+/// Beside an iPad's detail, whose sidebar title is its menu of lists:
+/// sized to its words and leading, like the filters under it.
 private struct GitHubKindPicker: View {
     @Binding var kind: GitHubItem.Kind
 
@@ -428,6 +644,7 @@ private struct GitHubKindPicker: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        .fixedSize()
     }
 }
 
@@ -481,9 +698,6 @@ private struct GitHubShowMoreRow: View {
                         .foregroundStyle(Color.secondary)
                 }
             }
-            // In line with the rows' titles, past their 22-point icon and
-            // its 10-point gap.
-            .padding(.leading, 32)
             .contentShape(Rectangle())
         }
         .disabled(isReading)
@@ -525,28 +739,24 @@ private struct GitHubShowMoreFailureRow: View {
         // under both, which a sidebar's column needs. At accessibility
         // sizes it goes under the words, or the line would hold a word.
         let isLarge = dynamicTypeSize.isAccessibilitySize
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            // In the rows' icon column, so the words line up with their titles.
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(Color.errorInk)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(verbatim: title)
-                        .foregroundStyle(Color.errorInk)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if !isLarge { tryAgainButton }
-                }
-                Text(verbatim: message)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.secondary)
-                if isLarge {
-                    tryAgainButton
-                        .padding(.top, 6)
-                }
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                // The glyph leads the words, as a row's state glyph leads
+                // its first line.
+                (Text(Image(systemName: "exclamationmark.triangle")) + Text(verbatim: " \(title)"))
+                    .foregroundStyle(Color.errorInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !isLarge { tryAgainButton }
             }
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            Text(verbatim: message)
+                .font(.subheadline)
+                .foregroundStyle(Color.secondary)
+            if isLarge {
+                tryAgainButton
+                    .padding(.top, 6)
+            }
         }
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         // The iPad's sidebar greys its tint.
         .tint(GitHubFilterBar.accent)
         .accessibilityElement(children: .ignore)
@@ -623,53 +833,62 @@ private struct GitHubSetupView: View {
     let terminals: GitHubTerminalLink?
     let isReading: Bool
     let checkAgain: () -> Void
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: step == .signIn ? "person.crop.circle.badge.questionmark" : "shippingbox")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 4)
-                        .accessibilityHidden(true)
-                    Text(title)
-                        .font(.title2.bold())
-                        .multilineTextAlignment(.center)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(message)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                command
-                VStack(spacing: 12) {
-                    if let terminals, let record = terminals.record(host) {
-                        Button {
-                            terminals.open(record)
-                        } label: {
-                            Label("Open Terminal on \(host.name)", systemImage: "terminal")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    }
-                    Button(action: checkAgain) {
-                        HStack(spacing: 8) {
-                            if isReading { ProgressView() }
-                            Text("Check Again")
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .disabled(isReading)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 32)
-            .frame(maxWidth: 480)
-            .frame(maxWidth: .infinity)
+        // Elsewhere it is a row of a list under the tab's title, which
+        // scrolls it.
+        if isSidebarColumn {
+            ScrollView { card }
+        } else {
+            card
         }
+    }
+
+    private var card: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Image(systemName: step == .signIn ? "person.crop.circle.badge.questionmark" : "shippingbox")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.title2.bold())
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            command
+            VStack(spacing: 12) {
+                if let terminals, let record = terminals.record(host) {
+                    Button {
+                        terminals.open(record)
+                    } label: {
+                        Label("Open Terminal on \(host.name)", systemImage: "terminal")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+                Button(action: checkAgain) {
+                    HStack(spacing: 8) {
+                        if isReading { ProgressView() }
+                        Text("Check Again")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isReading)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 32)
+        .frame(maxWidth: 480)
+        .frame(maxWidth: .infinity)
     }
 
     private var title: String {
@@ -789,10 +1008,10 @@ struct GitHubHostStatus: Equatable {
     }
 }
 
-/// The line under a GitHub title: the list's and a detail's (ADR 0065).
-/// While either shows it is never empty, so the title bar keeps its height
-/// whatever comes and goes; only a screen that takes the list's place has
-/// none.
+/// The line under a GitHub title: the list header's and a detail's (ADR
+/// 0065). While either shows it is never empty, so nothing that comes and
+/// goes moves what is under it; only a screen that takes the list's place
+/// has none.
 enum GitHubSubtitle: Equatable {
     /// A read with nothing to show yet, or one running over what shows.
     case reading
@@ -802,9 +1021,8 @@ enum GitHubSubtitle: Equatable {
     /// anything read shows.
     case status(GitHubHostStatus, readAt: Date?)
 
-    /// iOS 26 shows the line under the title, and an iPad sidebar under its
-    /// bar. Before it there is none: the list's footer, its placeholder
-    /// rows' heading and a detail's banner say it instead.
+    /// iOS 26 shows the line under a detail's title. Before it there is
+    /// none, and the detail's banner says it instead.
     static var isShown: Bool {
         if #available(iOS 26.0, *) { true } else { false }
     }
@@ -823,108 +1041,81 @@ enum GitHubSubtitle: Equatable {
         guard case .status(let status, _) = self, case .rateLimited(let retryAt?) = status.kind else { return nil }
         return retryAt
     }
+
+    /// Gives `tick` the time now, then each second until a rate limit
+    /// ends, so the line counts down to it.
+    @MainActor
+    static func keepCurrent(_ subtitle: GitHubSubtitle?, tick: (Date) -> Void) async {
+        var now = Date()
+        tick(now)
+        guard let retryAt = subtitle?.retryAt else { return }
+        while !Task.isCancelled, now < retryAt {
+            try? await Task.sleep(for: .seconds(1))
+            now = Date()
+            tick(now)
+        }
+    }
+}
+
+/// The line under the list header's title. One line, two at accessibility
+/// sizes, whatever it says: a longer status that wrapped further would
+/// move the rows.
+struct GitHubSubtitleText: View {
+    let subtitle: GitHubSubtitle
+    @State private var now = Date()
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Text(subtitle.text(now: now))
+            .monospacedDigit()
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1, reservesSpace: true)
+            .task(id: subtitle) { await GitHubSubtitle.keepCurrent(subtitle) { now = $0 } }
+    }
 }
 
 /// Puts the line under the title where iOS 26 shows a navigation subtitle,
-/// and under an iPad sidebar's bar; before iOS 26 it does nothing.
+/// and under an iPad sidebar's bar, whose title is its menu of lists.
 struct GitHubSubtitleLine: ViewModifier {
     let subtitle: GitHubSubtitle?
     @State private var now = Date()
     @Environment(\.isSidebarColumn) private var isSidebarColumn
 
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            let text = subtitle?.text(now: now)
-            // Each always set, empty when there is nothing to say: a
-            // modifier added and removed would make the list a new view.
-            content
-                .navigationSubtitle(isSidebarColumn ? "" : text ?? "")
-                .background {
-                    if !isSidebarColumn {
-                        LargeTitleRemeasure(hasSubtitle: text != nil)
+        let text = subtitle?.text(now: now)
+        Group {
+            if #available(iOS 26.0, *) {
+                // Always set, empty when there is nothing to say: a modifier
+                // added and removed would make the list a new view.
+                content
+                    .navigationSubtitle(isSidebarColumn ? "" : text ?? "")
+                    .safeAreaBar(edge: .top, alignment: .leading) {
+                        sidebarLine(text)
                     }
-                }
-                // An iPad sidebar's bar shows its own title menu in place
-                // of the title, and no subtitle with it, so the line goes
-                // in the bar's area just under it.
-                .safeAreaBar(edge: .top, alignment: .leading) {
-                    if isSidebarColumn, let text {
-                        Text(text)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            // One line, as a navigation subtitle keeps: a
-                            // longer status that wrapped would move the list.
-                            .lineLimit(1)
-                            // In line with the title menu's name.
-                            .padding(.leading, 22)
-                            .padding(.trailing, 16)
-                            .padding(.bottom, 6)
+            } else {
+                content
+                    .safeAreaInset(edge: .top, alignment: .leading, spacing: 0) {
+                        sidebarLine(text)
                     }
-                }
-                .task(id: subtitle) {
-                    now = Date()
-                    // A rate limit counts down to when it ends.
-                    guard let retryAt = subtitle?.retryAt else { return }
-                    while !Task.isCancelled, now < retryAt {
-                        try? await Task.sleep(for: .seconds(1))
-                        now = Date()
-                    }
-                }
-        } else {
-            content
-        }
-    }
-}
-
-/// Gives a resting large title its new height when the subtitle comes or
-/// goes. UIKit (iOS 26.5 and 27) keeps the bar's old height until the list
-/// scrolls: a subtitle that comes pushes the title up beside the Host
-/// button, and one that goes leaves a gap above the title. The bar is
-/// measured again when the navigation controller lays out, which has to
-/// come after SwiftUI has set the subtitle, so on the main queue's next
-/// turn.
-@available(iOS 26.0, *)
-private struct LargeTitleRemeasure: UIViewRepresentable {
-    let hasSubtitle: Bool
-
-    func makeUIView(context: Context) -> RemeasureView { RemeasureView(hasSubtitle: hasSubtitle) }
-
-    func updateUIView(_ view: RemeasureView, context: Context) {
-        view.update(hasSubtitle: hasSubtitle)
-    }
-
-    final class RemeasureView: UIView {
-        private var hasSubtitle: Bool
-
-        init(hasSubtitle: Bool) {
-            self.hasSubtitle = hasSubtitle
-            super.init(frame: .zero)
-            isUserInteractionEnabled = false
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-
-        func update(hasSubtitle: Bool) {
-            guard hasSubtitle != self.hasSubtitle else { return }
-            self.hasSubtitle = hasSubtitle
-            DispatchQueue.main.async { [weak self] in
-                guard let navigation = self?.enclosingNavigationController() else { return }
-                navigation.view.setNeedsLayout()
-                navigation.view.layoutIfNeeded()
             }
         }
+        .task(id: subtitle) { await GitHubSubtitle.keepCurrent(subtitle) { now = $0 } }
+    }
 
-        private func enclosingNavigationController() -> UINavigationController? {
-            var responder: UIResponder? = self
-            while let current = responder {
-                if let controller = current as? UIViewController, let navigation = controller.navigationController {
-                    return navigation
-                }
-                responder = current.next
-            }
-            return nil
+    /// In the bar's area just under the sidebar's title menu.
+    @ViewBuilder
+    private func sidebarLine(_ text: String?) -> some View {
+        if isSidebarColumn, let text {
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                // One line, as a navigation subtitle keeps: a longer
+                // status that wrapped would move the list.
+                .lineLimit(1)
+                // In line with the title menu's name.
+                .padding(.leading, 22)
+                .padding(.trailing, 16)
+                .padding(.bottom, 6)
         }
     }
 }
@@ -1045,8 +1236,8 @@ struct GitHubBanner: View {
 
 // MARK: - When a list was read
 
-/// When a list or a detail was read, as the line under a title, the list's
-/// footer and a detail's banner before iOS 26, and the Host menu say it.
+/// When a list or a detail was read, as the line under a title, a detail's
+/// banner before iOS 26, and the Host menu say it.
 struct GitHubReadTime {
     enum Day {
         case today
@@ -1067,15 +1258,6 @@ struct GitHubReadTime {
             day = .yesterday
         } else {
             day = .earlier(date.formatted(.dateTime.month(.abbreviated).day()))
-        }
-    }
-
-    /// "Read at 14:05 from studio-mac".
-    func footer(host: String) -> String {
-        switch day {
-        case .today: String(localized: "Read at \(time) from \(host)")
-        case .yesterday: String(localized: "Read yesterday at \(time) from \(host)")
-        case .earlier(let date): String(localized: "Read on \(date) at \(time) from \(host)")
         }
     }
 
