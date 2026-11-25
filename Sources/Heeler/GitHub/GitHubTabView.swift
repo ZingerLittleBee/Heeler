@@ -89,12 +89,11 @@ struct GitHubListScreen: View {
         store.selectedHost.flatMap { GitHubHostStatus(of: $0, in: store) }
     }
 
-    /// With more than one Host to pick; with one, before iOS 26, while it
-    /// has a status, which no subtitle can show there.
+    /// With more than one Host to pick; with one, while it has a status,
+    /// so its glyph shows and a failed read's gh words and Check Again stay
+    /// in reach from its menu.
     private var showsHostMenu: Bool {
-        if store.hosts.count > 1 { return true }
-        if #available(iOS 26.0, *) { return false }
-        return status != nil
+        store.hosts.count > 1 || status != nil
     }
 
     @ViewBuilder

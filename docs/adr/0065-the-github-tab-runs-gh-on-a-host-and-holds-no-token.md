@@ -57,7 +57,8 @@ Close.
   goes on to the next Server when one cannot run gh this way or its link
   fails; a timeout ends it, since trying on would double the wait. One Host
   is read at a time, chosen from a menu at the top of the list; the menu is
-  hidden when there is one Host, and the choice is remembered.
+  hidden when there is one Host, unless that Host has a status to show, and
+  the choice is remembered.
 - **Reads are GraphQL, parsed on the device.** The list is one
   `gh api graphql -i` request (`GitHubListRead`): the account's login and four
   searches of open, unarchived items across repositories, 30 each, most
@@ -393,8 +394,8 @@ Close.
   says it with when the list was read, or when to try again; an iPad sidebar,
   whose bar shows its title menu instead of a title, has that line just under
   the bar. After a failed read the Host menu holds gh's own words and Check
-  Again. Before iOS 26 the button shows with one Host too while it has a
-  status. Without a list, the tab says why in its place: offline, rate limited
+  Again, so the button shows with one Host too while it has a status.
+  Without a list, the tab says why in its place: offline, rate limited
   (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and
   read their own.
