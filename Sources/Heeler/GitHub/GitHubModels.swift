@@ -42,10 +42,38 @@ struct GitHubItem: Codable, Sendable, Equatable, Hashable, Identifiable {
     /// A closed issue's reason; nil for anything else, and when GitHub or a
     /// list saved before Heeler read it gave none.
     var closedReason: ClosedReason? = nil
+    /// Who it is assigned to, as the list read them; nil where a read did
+    /// not ask, as a pull request's detail does not.
+    var assignees: [String]? = nil
+    /// Whether an organization owns the repository, which GitHub's search
+    /// names with `org:` rather than `user:`; nil where a read did not ask.
+    var ownerIsOrganization: Bool? = nil
+    /// A GitHub App's bot opened it, which no person filter can name; nil
+    /// where a read did not ask.
+    var authorIsApp: Bool? = nil
+    /// A pull request asks the account for its review, of it or of a team
+    /// it is in; nil for an issue and where a read did not ask.
+    var asksViewerToReview: Bool? = nil
 
     /// The repository's name without its owner.
     var repositoryName: String {
         repository.split(separator: "/").last.map(String.init) ?? repository
+    }
+
+    /// The login that owns the repository.
+    var repositoryOwner: String {
+        repository.split(separator: "/").first.map(String.init) ?? repository
+    }
+
+    /// This item as another read found it, keeping what only the list read
+    /// asks for where that read did not.
+    func updated(to newer: GitHubItem) -> GitHubItem {
+        var item = newer
+        item.assignees = newer.assignees ?? assignees
+        item.ownerIsOrganization = newer.ownerIsOrganization ?? ownerIsOrganization
+        item.authorIsApp = newer.authorIsApp ?? authorIsApp
+        item.asksViewerToReview = newer.asksViewerToReview ?? asksViewerToReview
+        return item
     }
 }
 
@@ -82,62 +110,146 @@ struct GitHubLabel: Codable, Sendable, Equatable, Hashable {
     let color: String
 }
 
-/// The four lists that involve the account: what each holds of GitHub's
-/// open items, and how many GitHub counted.
-struct GitHubListSection: Codable, Sendable, Equatable, Identifiable {
-    enum Kind: String, Codable, Sendable, CaseIterable {
-        /// Pull requests whose review was requested of the account.
-        case reviewRequested
-        /// Pull requests the account opened.
-        case authored
-        /// Issues assigned to the account.
-        case assigned
-        /// Issues the account opened that are not assigned to it.
-        case created
-
-        var itemKind: GitHubItem.Kind {
-            switch self {
-            case .reviewRequested, .authored: .pullRequest
-            case .assigned, .created: .issue
-            }
-        }
-
-        var title: String {
-            switch self {
-            case .reviewRequested: String(localized: "Needs Your Review")
-            case .authored: String(localized: "Your Pull Requests")
-            case .assigned: String(localized: "Assigned to You")
-            case .created: String(localized: "Created by You")
-            }
-        }
-    }
-
-    let kind: Kind
-    /// GitHub's count, which can be more than `items` holds.
+/// One page of one GitHub search, newest first.
+struct GitHubSearchPage: Sendable, Equatable {
+    /// GitHub's count of everything the search matches.
     let totalCount: Int
-    var items: [GitHubItem]
-
-    var id: Kind { kind }
+    /// Where the next page starts.
+    let endCursor: String?
+    let hasNextPage: Bool
+    let items: [GitHubItem]
 }
 
-/// One read of the lists on one Host: what involves the account gh is
-/// signed in to there.
-struct GitHubList: Codable, Sendable, Equatable {
-    let login: String
-    var sections: [GitHubListSection]
-    let readAt: Date
+/// A segment's list as GitHub's searches answered it, read a page at a time
+/// (ADR 0065): the items shown, newest first, and what each search holds
+/// beyond them. With two searches, which never share an item, the list
+/// shows the newest of both, so an item waits until every search that could
+/// hold a newer one has been read that far.
+struct GitHubItemList: Codable, Sendable, Equatable {
+    struct Search: Codable, Sendable, Equatable {
+        /// GitHub's search query, which reads its later pages.
+        let query: String
+        var totalCount: Int
+        var endCursor: String?
+        var hasNextPage: Bool
+        /// Read and not shown yet, newest first.
+        var waiting: [GitHubItem]
+    }
 
-    func sections(of kind: GitHubItem.Kind) -> [GitHubListSection] {
-        sections.filter { $0.kind.itemKind == kind }
+    /// Which list a later page belongs to: a read of the first pages makes
+    /// a new one.
+    let id: UUID
+    private(set) var items: [GitHubItem]
+    private(set) var searches: [Search]
+
+    /// The first page of each search, `count` items shown.
+    init(firstPages: [(query: String, page: GitHubSearchPage)], showing count: Int = GitHubListRead.pageSize) {
+        id = UUID()
+        items = []
+        searches = firstPages.map { query, page in
+            Search(
+                query: query, totalCount: page.totalCount, endCursor: page.endCursor,
+                hasNextPage: page.hasNextPage, waiting: [])
+        }
+        for (index, entry) in firstPages.enumerated() { add(entry.page.items, to: index) }
+        show(count)
+    }
+
+    /// GitHub's count across the searches, never less than what is shown.
+    var totalCount: Int {
+        max(items.count, searches.reduce(0) { $0 + $1.totalCount })
+    }
+
+    /// Something is left to show, read or not.
+    var hasMore: Bool {
+        searches.contains { !$0.waiting.isEmpty || $0.hasNextPage }
+    }
+
+    /// The searches whose next page must be read before `count` more items
+    /// can be shown in order.
+    func searchesToRead(for count: Int = GitHubListRead.pageSize) -> [Int] {
+        searches.indices.filter { searches[$0].hasNextPage && searches[$0].waiting.count < count }
+    }
+
+    /// Takes in the next page of the search at `index`.
+    mutating func add(_ page: GitHubSearchPage, to index: Int) {
+        guard searches.indices.contains(index) else { return }
+        searches[index].totalCount = page.totalCount
+        searches[index].endCursor = page.endCursor
+        searches[index].hasNextPage = page.hasNextPage
+        add(page.items, to: index)
+    }
+
+    /// Shows up to `count` more items, newest first, stopping where a
+    /// search that has run out of read items has more on GitHub.
+    mutating func show(_ count: Int = GitHubListRead.pageSize) {
+        var shown = 0
+        while shown < count {
+            if searches.contains(where: { $0.waiting.isEmpty && $0.hasNextPage }) { return }
+            var newest: Int?
+            for index in searches.indices {
+                guard let head = searches[index].waiting.first else { continue }
+                if let current = newest, let best = searches[current].waiting.first,
+                    head.updatedAt <= best.updatedAt
+                {
+                    continue
+                }
+                newest = index
+            }
+            guard let newest else { return }
+            let item = searches[newest].waiting.removeFirst()
+            // An item updated between two pages can come back on the later one.
+            guard !items.contains(where: { $0.id == item.id }) else { continue }
+            items.append(item)
+            shown += 1
+        }
     }
 
     /// Replaces every copy of an item that was read again.
     mutating func replace(_ item: GitHubItem) {
-        for index in sections.indices {
-            for itemIndex in sections[index].items.indices where sections[index].items[itemIndex].id == item.id {
-                sections[index].items[itemIndex] = item
+        for index in items.indices where items[index].id == item.id {
+            items[index] = items[index].updated(to: item)
+        }
+        for search in searches.indices {
+            for index in searches[search].waiting.indices where searches[search].waiting[index].id == item.id {
+                searches[search].waiting[index] = searches[search].waiting[index].updated(to: item)
             }
         }
+    }
+
+    private mutating func add(_ items: [GitHubItem], to index: Int) {
+        let known = Set(self.items.map(\.id)).union(searches[index].waiting.map(\.id))
+        searches[index].waiting += items.filter { !known.contains($0.id) }
+    }
+}
+
+/// One read of the lists on one Host at the filters' defaults: what
+/// involves the account gh is signed in to there. The device keeps it.
+struct GitHubList: Codable, Sendable, Equatable {
+    let login: String
+    var pullRequests: GitHubItemList
+    var issues: GitHubItemList
+    let readAt: Date
+
+    subscript(kind: GitHubItem.Kind) -> GitHubItemList {
+        get {
+            switch kind {
+            case .pullRequest: pullRequests
+            case .issue: issues
+            }
+        }
+        set {
+            switch kind {
+            case .pullRequest: pullRequests = newValue
+            case .issue: issues = newValue
+            }
+        }
+    }
+
+    /// Replaces every copy of an item that was read again.
+    mutating func replace(_ item: GitHubItem) {
+        pullRequests.replace(item)
+        issues.replace(item)
     }
 }
 

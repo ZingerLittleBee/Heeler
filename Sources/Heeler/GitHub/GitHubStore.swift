@@ -34,18 +34,48 @@ protocol GitHubHostAccess: AnyObject {
     func forgetGitHubRoutes(_ recordIDs: [Host.ID])
 }
 
-/// The GitHub tab's lists, one per Host (ADR 0065). A list read from disk
-/// shows at once; a read runs when the tab opens on a stale list, on
-/// pull-to-refresh and on Check Again, never in the background.
+/// The GitHub tab's lists, one per Host (ADR 0065). The list at the
+/// filters' defaults, read from disk, shows at once; a read runs when the
+/// tab opens on a stale list, when a filter changes, on pull-to-refresh and
+/// on Check Again, never in the background.
 @MainActor
 @Observable
 final class GitHubStore {
     struct HostState: Equatable {
-        /// The last list read, from this launch or saved on the device.
+        /// The last list read at the filters' defaults, from this launch or
+        /// saved on the device.
         var list: GitHubList?
+        /// That list is being read.
         var isReading = false
-        /// Why the last read failed; nil after one that worked.
+        /// Why the Host's last read failed, of either list; nil after one
+        /// that worked.
         var failure: GitHubReadFailure?
+        /// What a segment's filter changed from the default found, never
+        /// saved: only the list at the defaults is shown offline.
+        var results: [GitHubItem.Kind: Results] = [:]
+        /// Segments whose next page is being read.
+        var readingMore: Set<GitHubItem.Kind> = []
+    }
+
+    /// A segment's list under a filter changed from the default.
+    struct Results: Equatable {
+        let filter: GitHubListFilter
+        var list: GitHubItemList?
+        /// The account the read answered for.
+        var login: String?
+        var readAt: Date?
+        var isReading = false
+        /// Why its last read failed; nil after one that worked.
+        var failure: GitHubReadFailure?
+    }
+
+    /// What a segment's list area shows of what was read.
+    struct Shown: Equatable {
+        let list: GitHubItemList
+        let login: String
+        let readAt: Date
+        /// A read is on its way over it.
+        let isReading: Bool
     }
 
     /// One pull request's or issue's detail on one Host, in memory only.
@@ -59,6 +89,11 @@ final class GitHubStore {
     struct DetailKey: Hashable {
         let host: Host.ID
         let item: GitHubItem.ID
+    }
+
+    private struct ResultsKey: Hashable {
+        let host: Host.ID
+        let kind: GitHubItem.Kind
     }
 
     /// A detail read that answered, and the Server it answered on.
@@ -94,6 +129,10 @@ final class GitHubStore {
     @ObservationIgnored private var unsupported: Set<Host.ID> = []
     @ObservationIgnored private var loadedCaches: Set<Host.ID> = []
     @ObservationIgnored private var reads: [Host.ID: Task<Void, Never>] = [:]
+    /// Filtered reads, one per segment of a Host, with the filter each reads.
+    @ObservationIgnored private var resultsReads: [ResultsKey: (filter: GitHubListFilter, task: Task<Void, Never>)] = [:]
+    /// Which owners GitHub said are organizations, by lowercased login.
+    @ObservationIgnored private var ownerKinds: [String: Bool] = [:]
     @ObservationIgnored private var detailReads: [DetailKey: Task<Result<DetailAnswer, GitHubReadFailure>, Never>] = [:]
     /// Bumped when the switch goes off, so a read already running keeps
     /// nothing it finds.
@@ -145,6 +184,8 @@ final class GitHubStore {
         for move in moves {
             if var state = states[move.from] {
                 state.isReading = false
+                state.readingMore = []
+                for kind in state.results.keys { state.results[kind]?.isReading = false }
                 states[move.to] = state
             }
             if settings.selectedHostID == move.from { settings.selectHost(move.to) }
@@ -160,6 +201,10 @@ final class GitHubStore {
         for (id, task) in reads where !ids.contains(id) {
             task.cancel()
             reads[id] = nil
+        }
+        for (key, read) in resultsReads where !ids.contains(key.host) {
+            read.task.cancel()
+            resultsReads[key] = nil
         }
         let retained = hostsOutOfSight?.union(catalogHosts.map(\.id))
         if isEnabled, retained != nil || !moves.isEmpty {
@@ -208,38 +253,146 @@ final class GitHubStore {
         settings.selectHost(host.id)
     }
 
+    // MARK: Filters
+
+    /// What the filter row shows on a segment.
+    func filter(for kind: GitHubItem.Kind) -> GitHubListFilter {
+        settings.filter(for: kind)
+    }
+
+    /// The user picked a filter; the screen showing it reads.
+    func setFilter(_ filter: GitHubListFilter, for kind: GitHubItem.Kind) {
+        settings.setFilter(filter, for: kind)
+    }
+
+    /// What a segment's list area shows: the list at the defaults, or what
+    /// its filter found. Nil while nothing has been read for it, and for a
+    /// filter while the Host is offline, since only the list at the
+    /// defaults is kept.
+    func shown(_ kind: GitHubItem.Kind, on host: GitHubHost) -> Shown? {
+        let state = state(of: host)
+        let filter = filter(for: kind)
+        if filter.isDefault {
+            return state.list.map { Shown(list: $0[kind], login: $0.login, readAt: $0.readAt, isReading: state.isReading) }
+        }
+        guard let results = state.results[kind], results.filter == filter, let list = results.list,
+            let login = results.login, let readAt = results.readAt
+        else { return nil }
+        return Shown(list: list, login: login, readAt: readAt, isReading: results.isReading)
+    }
+
+    /// The segment's filtered read, while its filter is changed from the
+    /// default.
+    func results(_ kind: GitHubItem.Kind, on host: GitHubHost) -> Results? {
+        let filter = filter(for: kind)
+        guard !filter.isDefault, let results = state(of: host).results[kind], results.filter == filter else {
+            return nil
+        }
+        return results
+    }
+
     // MARK: Reading
 
-    /// The tab is showing: show what the device saved for every Host, then
-    /// read the shown Host's lists again when they are stale.
-    func appear() async {
+    /// The tab is showing `kind`: show what the device saved for every
+    /// Host, then read what the segment shows when it is stale or its
+    /// filter changed.
+    func appear(showing kind: GitHubItem.Kind) async {
         guard isEnabled else { return }
         await loadSavedLists()
         guard let host = selectedHost else { return }
         let state = state(of: host)
-        guard !state.isReading else { return }
-        // Until a rate limit ends, only a pull or Check Again asks again.
-        if case .rateLimited(let retryAt?) = state.failure, now() < retryAt { return }
-        if let list = state.list, state.failure == nil,
-            now().timeIntervalSince(list.readAt) < Self.staleAfter
-        {
+        let filter = filter(for: kind)
+        if filter.isDefault {
+            guard !state.isReading else { return }
+            // Until a rate limit ends, only a pull or Check Again asks again.
+            if case .rateLimited(let retryAt?) = state.failure, now() < retryAt { return }
+            if let list = state.list, state.failure == nil,
+                now().timeIntervalSince(list.readAt) < Self.staleAfter
+            {
+                return
+            }
+            await read(host)
             return
         }
-        await read(host)
+        // Offline, a filter has nothing to show until the Host connects.
+        guard isConnected(host) else { return }
+        if let results = state.results[kind], results.filter == filter {
+            if results.isReading { return }
+            if case .rateLimited(let retryAt?) = state.failure, now() < retryAt { return }
+            if results.failure == nil, let readAt = results.readAt, now().timeIntervalSince(readAt) < Self.staleAfter {
+                return
+            }
+        }
+        await readResults(kind, filter: filter, on: host)
     }
 
-    /// Pull-to-refresh: reads the shown Host's lists and returns when done.
-    func refresh() async {
+    /// Pull-to-refresh: reads what the segment shows and returns when done.
+    func refresh(showing kind: GitHubItem.Kind) async {
         guard isEnabled, let host = selectedHost else { return }
-        await read(host)
+        let filter = filter(for: kind)
+        if filter.isDefault {
+            await read(host)
+        } else {
+            await readResults(kind, filter: filter, on: host)
+        }
     }
 
     /// Check Again, after the user installed gh or signed in on the Host:
-    /// the next run tries the exec first, then reads.
-    func checkAgain() async {
+    /// the next run tries the exec first, then reads what the segment shows.
+    func checkAgain(showing kind: GitHubItem.Kind) async {
         guard isEnabled, let host = selectedHost else { return }
         access?.forgetGitHubRoutes(host.records)
-        await read(host)
+        await refresh(showing: kind)
+    }
+
+    /// Show More: the next page of what the segment shows, read from the
+    /// searches that need it.
+    func showMore(_ kind: GitHubItem.Kind) async {
+        guard isEnabled, let host = selectedHost, isConnected(host) else { return }
+        let filter = filter(for: kind)
+        guard !state(of: host).readingMore.contains(kind), let shown = shown(kind, on: host), shown.list.hasMore
+        else { return }
+        var list = shown.list
+        let toRead = list.searchesToRead()
+        if !toRead.isEmpty {
+            let generation = generation
+            states[host.id, default: HostState()].readingMore.insert(kind)
+            let searches = toRead.map { index in
+                GitHubListRead.Search(kind: kind, query: list.searches[index].query, after: list.searches[index].endCursor)
+            }
+            let answer = await run(GitHubListRead.request(searches), on: host).flatMap {
+                GitHubListRead.result(of: $0, searches: searches, at: now())
+            }
+            guard generation == self.generation, machines.contains(where: { $0.id == host.id }) else { return }
+            states[host.id]?.readingMore.remove(kind)
+            switch answer {
+            case .success(let answer):
+                // A read of the first pages may have replaced the list.
+                guard let current = self.shown(kind, on: host)?.list, current.id == list.id,
+                    self.filter(for: kind) == filter
+                else { return }
+                list = current
+                for (index, page) in zip(toRead, answer.pages) { list.add(page, to: index) }
+            case .failure(let failure):
+                states[host.id]?.failure = failure
+                return
+            }
+        }
+        list.show()
+        keep(list, of: kind, filter: filter, on: host)
+    }
+
+    /// Puts a segment's list back where it came from, saving the list at
+    /// the defaults.
+    private func keep(_ list: GitHubItemList, of kind: GitHubItem.Kind, filter: GitHubListFilter, on host: GitHubHost) {
+        if filter.isDefault {
+            guard var saved = states[host.id]?.list else { return }
+            saved[kind] = list
+            states[host.id]?.list = saved
+            Task { [cache] in await cache.save(saved, for: host.id) }
+        } else if states[host.id]?.results[kind]?.filter == filter {
+            states[host.id]?.results[kind]?.list = list
+        }
     }
 
     /// The switch went off: stops reading and forgets every list, here and
@@ -247,8 +400,10 @@ final class GitHubStore {
     func reset() {
         generation += 1
         for task in reads.values { task.cancel() }
+        for read in resultsReads.values { read.task.cancel() }
         for task in detailReads.values { task.cancel() }
         reads = [:]
+        resultsReads = [:]
         detailReads = [:]
         states = [:]
         details = [:]
@@ -285,38 +440,137 @@ final class GitHubStore {
         let generation = generation
         let started = now()
         states[host.id, default: HostState()].isReading = true
-        let failure: GitHubReadFailure?
-        var list: GitHubList?
-        switch await run(GitHubListRead.request, on: host) {
-        case .success(let outcome):
-            switch GitHubListRead.result(of: outcome, at: now()) {
-            case .success(let read):
-                list = read
-                failure = nil
-            case .failure(let readFailure):
-                failure = readFailure
-            }
-        case .failure(let runFailure):
-            failure = runFailure
+        let searches = GitHubListRead.defaultSearches
+        let answer = await run(GitHubListRead.request(searches), on: host).flatMap {
+            GitHubListRead.result(of: $0, searches: searches, at: now())
         }
         guard generation == self.generation, machines.contains(where: { $0.id == host.id }) else { return }
         var state = states[host.id] ?? HostState()
         state.isReading = false
-        state.failure = failure
-        if var list {
-            // An item read on its own since this read began, as a write's
-            // read after it is, is newer than its row here.
-            for (key, detailState) in details where key.host == host.id {
-                if let detail = detailState.detail, detail.readAt > started { list.replace(detail.item) }
-            }
+        switch answer {
+        case .success(let answer):
+            var list = GitHubListRead.list(from: answer, at: now())
+            replaceNewerDetails(in: &list, on: host, since: started)
             state.list = list
+            state.failure = nil
             Task { [cache] in await cache.save(list, for: host.id) }
+        case .failure(let failure):
+            state.failure = failure
         }
         states[host.id] = state
-        if failure == .unsupported {
-            unsupported.insert(host.id)
-            refreshHosts()
+        noteUnsupported(state.failure, on: host)
+    }
+
+    /// An item read on its own since a list read began, as a write's read
+    /// after it is, is newer than its row there.
+    private func replaceNewerDetails(in list: inout GitHubList, on host: GitHubHost, since started: Date) {
+        for (key, detailState) in details where key.host == host.id {
+            if let detail = detailState.detail, detail.readAt > started { list.replace(detail.item) }
         }
+    }
+
+    private func noteUnsupported(_ failure: GitHubReadFailure?, on host: GitHubHost) {
+        guard failure == .unsupported else { return }
+        unsupported.insert(host.id)
+        refreshHosts()
+    }
+
+    /// One filtered read per segment of a Host: a second caller for the same
+    /// filter waits for the first, and a new filter cancels the old one's.
+    private func readResults(_ kind: GitHubItem.Kind, filter: GitHubListFilter, on host: GitHubHost) async {
+        let key = ResultsKey(host: host.id, kind: kind)
+        if let running = resultsReads[key] {
+            if running.filter == filter {
+                await running.task.value
+                return
+            }
+            running.task.cancel()
+        }
+        let task = Task { await performResultsRead(kind, filter: filter, on: host) }
+        resultsReads[key] = (filter, task)
+        await task.value
+        if resultsReads[key]?.task == task { resultsReads[key] = nil }
+    }
+
+    private func performResultsRead(_ kind: GitHubItem.Kind, filter: GitHubListFilter, on host: GitHubHost) async {
+        let generation = generation
+        let started = now()
+        var results = states[host.id]?.results[kind]
+        if results?.filter != filter { results = Results(filter: filter) }
+        results?.isReading = true
+        states[host.id, default: HostState()].results[kind] = results
+        let answer = await searchResults(kind, filter: filter, on: host)
+        // The switch went off, the Host went, or the filter changed on.
+        guard generation == self.generation, machines.contains(where: { $0.id == host.id }), !Task.isCancelled,
+            var landed = states[host.id]?.results[kind], landed.filter == filter
+        else { return }
+        landed.isReading = false
+        switch answer {
+        case .success(let answer):
+            var list = answer.list
+            for (detailKey, detailState) in details where detailKey.host == host.id {
+                if let detail = detailState.detail, detail.readAt > started { list.replace(detail.item) }
+            }
+            landed.list = list
+            landed.login = answer.login
+            landed.readAt = now()
+            landed.failure = nil
+            states[host.id]?.failure = nil
+        case .failure(let failure):
+            landed.failure = failure
+            states[host.id]?.failure = failure
+        }
+        states[host.id]?.results[kind] = landed
+        noteUnsupported(landed.failure, on: host)
+    }
+
+    /// The first pages of a filter's searches, learning first whether an
+    /// owner the lists have not shown is an organization.
+    private func searchResults(
+        _ kind: GitHubItem.Kind, filter: GitHubListFilter, on host: GitHubHost
+    ) async -> Result<(list: GitHubItemList, login: String), GitHubReadFailure> {
+        var isOrganization: Bool?
+        if case .owner(let login) = filter.repository {
+            if let known = ownerIsOrganization(login, on: host) {
+                isOrganization = known
+            } else {
+                let found = await run(GitHubListRead.ownerRequest(login), on: host).flatMap {
+                    GitHubListRead.ownerResult(of: $0, at: now())
+                }
+                switch found {
+                case .success(let found?):
+                    ownerKinds[login.lowercased()] = found
+                    isOrganization = found
+                case .success(nil):
+                    // No such account: nothing on GitHub matches.
+                    let empty = GitHubItemList(firstPages: [])
+                    return .success((empty, state(of: host).list?.login ?? ""))
+                case .failure(let failure):
+                    return .failure(failure)
+                }
+            }
+        }
+        let searches = GitHubListRead.queries(for: filter, kind: kind, ownerIsOrganization: isOrganization)
+            .map { GitHubListRead.Search(kind: kind, query: $0) }
+        return await run(GitHubListRead.request(searches), on: host)
+            .flatMap { GitHubListRead.result(of: $0, searches: searches, at: now()) }
+            .map { answer in
+                (GitHubItemList(firstPages: zip(searches, answer.pages).map { ($0.0.query, $0.1) }), answer.login)
+            }
+    }
+
+    /// Whether GitHub said the owner is an organization: the account itself
+    /// is a person, and a repository read in a list says so of its owner.
+    private func ownerIsOrganization(_ login: String, on host: GitHubHost) -> Bool? {
+        let key = login.lowercased()
+        if let known = ownerKinds[key] { return known }
+        let state = state(of: host)
+        if let viewer = state.list?.login, viewer.lowercased() == key { return false }
+        let lists = [state.list?.pullRequests, state.list?.issues].compactMap(\.self)
+            + state.results.values.compactMap(\.list)
+        return lists.lazy.flatMap(\.items)
+            .first { $0.repositoryOwner.lowercased() == key && $0.ownerIsOrganization != nil }?
+            .ownerIsOrganization
     }
 
     // MARK: An item's detail
@@ -325,9 +579,12 @@ final class GitHubStore {
         details[DetailKey(host: host.id, item: item.id)] ?? DetailState()
     }
 
-    /// The item as the Host's list last showed it, if it still does.
+    /// The item as one of the Host's lists last showed it, if one still does.
     func listItem(_ id: GitHubItem.ID, on host: GitHubHost) -> GitHubItem? {
-        state(of: host).list?.sections.lazy.flatMap(\.items).first { $0.id == id }
+        let state = state(of: host)
+        let lists = [state.list?.pullRequests, state.list?.issues].compactMap(\.self)
+            + state.results.values.compactMap(\.list)
+        return lists.lazy.flatMap(\.items).first { $0.id == id }
     }
 
     /// The detail opened: its row shows at once, and the rest is read
@@ -395,6 +652,9 @@ final class GitHubStore {
                     states[host.id]?.list = list
                     Task { [cache] in await cache.save(list, for: host.id) }
                 }
+            }
+            for kind in states[host.id]?.results.keys.map(\.self) ?? [] {
+                states[host.id]?.results[kind]?.list?.replace(detail.item)
             }
         case .failure(let failure):
             state.failure = failure

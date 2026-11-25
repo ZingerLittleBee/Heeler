@@ -44,6 +44,7 @@ struct GitHubListScreen: View {
     /// where a row pushes its detail instead.
     let selection: Binding<GitHubItem.ID?>?
     @SceneStorage("github.kind") private var kind = GitHubItem.Kind.pullRequest
+    @State private var filterSheet: GitHubFilterSheet?
 
     var body: some View {
         Group {
@@ -70,16 +71,31 @@ struct GitHubListScreen: View {
                 }
             }
         }
+        .sheet(item: $filterSheet) { sheet in
+            if let host = store.selectedHost {
+                GitHubFilterEntrySheet(
+                    sheet: sheet, kind: kind, options: GitHubFilterOptions(store: store, host: host, kind: kind),
+                    filter: store.filter(for: kind)
+                ) { store.setFilter($0, for: kind) }
+            }
+        }
         // Again when the Host connects: a list read while it was offline
-        // is read as soon as it can be.
-        .task(id: ReadTrigger(host: store.selectedHost?.id, isConnected: store.selectedHost.map(store.isConnected))) {
-            await store.appear()
+        // is read as soon as it can be. Again for the other segment, and
+        // for each change of a filter.
+        .task(
+            id: ReadTrigger(
+                host: store.selectedHost?.id, isConnected: store.selectedHost.map(store.isConnected), kind: kind,
+                filter: store.filter(for: kind))
+        ) {
+            await store.appear(showing: kind)
         }
     }
 
     private struct ReadTrigger: Equatable {
         let host: Host.ID?
         let isConnected: Bool?
+        let kind: GitHubItem.Kind
+        let filter: GitHubListFilter
     }
 
     @ViewBuilder
@@ -90,121 +106,192 @@ struct GitHubListScreen: View {
         case .notInstalled(let isMac):
             GitHubSetupView(
                 step: .install(isMac: isMac), host: host, terminals: terminals, isReading: state.isReading
-            ) { Task { await store.checkAgain() } }
+            ) { Task { await store.checkAgain(showing: kind) } }
         case .notSignedIn:
             GitHubSetupView(
                 step: .signIn, host: host, terminals: terminals, isReading: state.isReading
-            ) { Task { await store.checkAgain() } }
+            ) { Task { await store.checkAgain(showing: kind) } }
         default:
-            if let list = state.list {
-                listView(list, host: host, state: state, isConnected: isConnected)
-            } else if state.isReading || (state.failure == nil && isConnected) {
-                GitHubReadingView(host: host, kind: $kind)
+            // A changed filter keeps its row, whatever its read found.
+            if !store.filter(for: kind).isDefault || state.list != nil || state.isReading
+                || (state.failure == nil && isConnected)
+            {
+                listView(host: host, state: state, isConnected: isConnected)
             } else if !isConnected || state.failure == .offline {
                 ContentUnavailableView {
                     Label("\(host.name) Is Offline", systemImage: "wifi.slash")
                 } description: {
                     Text("Heeler reads GitHub through gh on \(host.name) once it connects.")
                 }
-            } else if case .rateLimited(let retryAt) = state.failure {
-                ContentUnavailableView {
-                    Label("GitHub's Rate Limit Was Reached", systemImage: "hourglass")
-                } description: {
-                    if let retryAt {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(GitHubBanner.retry(at: retryAt, now: context.date))
-                        }
-                    }
-                } actions: {
-                    Button("Check Again") { Task { await store.checkAgain() } }
-                }
             } else {
-                ContentUnavailableView {
-                    Label("Could Not Read GitHub", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(state.failure.map(GitHubBannerText.message(for:)) ?? "")
-                } actions: {
-                    Button("Check Again") { Task { await store.checkAgain() } }
-                }
+                GitHubReadFailureView(failure: state.failure) { Task { await store.checkAgain(showing: kind) } }
             }
         }
     }
 
-    private func listView(
-        _ list: GitHubList, host: GitHubHost, state: GitHubStore.HostState, isConnected: Bool
-    ) -> some View {
-        let sections = list.sections(of: kind).filter { !$0.items.isEmpty }
+    private func listView(host: GitHubHost, state: GitHubStore.HostState, isConnected: Bool) -> some View {
         let isOffline = !isConnected || state.failure == .offline
         return Group {
             if let selection {
                 List(selection: selection) {
-                    listRows(list, sections: sections, host: host, state: state, isOffline: isOffline)
+                    listRows(host: host, state: state, isOffline: isOffline)
                 }
             } else {
                 List {
-                    listRows(list, sections: sections, host: host, state: state, isOffline: isOffline)
+                    listRows(host: host, state: state, isOffline: isOffline)
                 }
             }
         }
         .modifier(GitHubListStyle())
-        .overlay {
-            if sections.isEmpty {
-                GitHubNothingView(kind: kind)
-            }
+        .refreshable { await store.refresh(showing: kind) }
+    }
+
+    /// What the list area shows under the picker and the filters.
+    private enum Content {
+        case rows(GitHubStore.Shown)
+        /// The placeholder rows, while a read finds something to show.
+        case reading
+        /// A changed filter while the Host is offline: only the list at the
+        /// defaults is kept.
+        case offline
+        case failed(GitHubReadFailure)
+    }
+
+    private func content(on host: GitHubHost, isOffline: Bool) -> Content {
+        let filter = store.filter(for: kind)
+        if filter.isDefault {
+            return store.shown(kind, on: host).map(Content.rows) ?? .reading
         }
-        .refreshable { await store.refresh() }
+        if isOffline { return .offline }
+        if let shown = store.shown(kind, on: host) { return .rows(shown) }
+        if let results = store.results(kind, on: host), !results.isReading, let failure = results.failure {
+            return .failed(failure)
+        }
+        return .reading
     }
 
     @ViewBuilder
-    private func listRows(
-        _ list: GitHubList, sections: [GitHubListSection], host: GitHubHost, state: GitHubStore.HostState,
-        isOffline: Bool
-    ) -> some View {
+    private func listRows(host: GitHubHost, state: GitHubStore.HostState, isOffline: Bool) -> some View {
+        let filter = store.filter(for: kind)
         Section {
-            if let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list) {
+            if filter.isDefault, let list = state.list,
+                let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list)
+            {
                 GitHubBanner(text: banner)
             }
         } header: {
-            GitHubKindPicker(kind: $kind)
+            VStack(alignment: .leading, spacing: 10) {
+                GitHubKindPicker(kind: $kind)
+                GitHubFilterBar(
+                    kind: kind, filter: filter, options: GitHubFilterOptions(store: store, host: host, kind: kind),
+                    apply: { store.setFilter($0, for: kind) }, openSheet: { filterSheet = $0 })
+            }
+            .textCase(nil)
+            .padding(.bottom, 6)
+            .listRowInsets(EdgeInsets())
         }
-        ForEach(sections) { section in
+        switch content(on: host, isOffline: isOffline) {
+        case .rows(let shown):
+            rows(shown, filter: filter, host: host, isOffline: isOffline)
+        case .reading:
             Section {
-                ForEach(section.items) { item in
-                    row(item, in: section.kind, host: host, isOffline: isOffline)
+                ForEach(0..<4, id: \.self) { _ in
+                    GitHubItemRow.placeholder
                 }
             } header: {
-                GitHubSectionHeader(title: section.kind.title, count: section.totalCount)
-            } footer: {
-                if section.totalCount > section.items.count {
-                    Text(
-                        "The \(section.items.count) most recently updated of \(section.totalCount).",
-                        comment: "Under a GitHub list section that shows only part of what GitHub found.")
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Reading from \(host.name)…")
+                }
+                // One heading: the spinner alone read as an unnamed one.
+                .accessibilityElement(children: .combine)
+                .textCase(nil)
+            }
+        case .offline:
+            unavailable {
+                ContentUnavailableView {
+                    Label("\(host.name) Is Offline", systemImage: "wifi.slash")
+                } description: {
+                    Text("Heeler searches GitHub through gh on \(host.name). Until it connects, only the list read earlier can be shown.")
+                } actions: {
+                    clearFilters
+                }
+            }
+        case .failed(let failure):
+            unavailable {
+                GitHubReadFailureView(failure: failure) { Task { await store.checkAgain(showing: kind) } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rows(
+        _ shown: GitHubStore.Shown, filter: GitHubListFilter, host: GitHubHost, isOffline: Bool
+    ) -> some View {
+        let context = GitHubRowContext(viewer: shown.login, filter: filter)
+        if shown.list.items.isEmpty {
+            unavailable {
+                if filter.isDefault {
+                    GitHubNothingView(kind: kind)
+                } else {
+                    ContentUnavailableView {
+                        Label(
+                            kind == .pullRequest ? "No Matching Pull Requests" : "No Matching Issues",
+                            systemImage: "magnifyingglass")
+                    } description: {
+                        Text("Nothing on GitHub matches these filters.")
+                    } actions: {
+                        clearFilters
+                    }
                 }
             }
         }
         Section {
+            ForEach(shown.list.items) { item in
+                row(item, context: context, host: host, isOffline: isOffline)
+            }
+            // Offline there is nothing to read the next page with.
+            if shown.list.hasMore, !isOffline {
+                GitHubShowMoreRow(
+                    shown: shown.list.items.count, total: shown.list.totalCount,
+                    isReading: store.state(of: host).readingMore.contains(kind)
+                ) { Task { await store.showMore(kind) } }
+            }
         } footer: {
             HStack(spacing: 6) {
                 // A read on its way over the list read earlier.
-                if state.isReading {
+                if shown.isReading {
                     ProgressView()
                         .controlSize(.mini)
                         .accessibilityLabel(Text("Refreshing"))
                 }
-                Text(GitHubReadTime(list.readAt).footer(host: host.name))
+                Text(GitHubReadTime(shown.readAt).footer(host: host.name))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
         }
     }
 
+    /// An empty state in the list's place under the filters, which stay.
+    private func unavailable(@ViewBuilder _ content: () -> some View) -> some View {
+        Section {
+            content()
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+        }
+    }
+
+    private var clearFilters: some View {
+        Button("Clear Filters") { store.setFilter(GitHubListFilter(), for: kind) }
+    }
+
     /// A row opens its detail, except from a list shown while the Host is
     /// offline, which has nothing to read it with.
     @ViewBuilder
     private func row(
-        _ item: GitHubItem, in section: GitHubListSection.Kind, host: GitHubHost, isOffline: Bool
+        _ item: GitHubItem, context: GitHubRowContext, host: GitHubHost, isOffline: Bool
     ) -> some View {
-        let row = GitHubItemRow(item: item, section: section)
+        let row = GitHubItemRow(item: item, context: context)
             .opacity(isOffline ? 0.55 : 1)
         if selection != nil {
             row
@@ -246,26 +333,6 @@ private struct GitHubKindPicker: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .textCase(nil)
-        .padding(.bottom, 6)
-        .listRowInsets(EdgeInsets())
-    }
-}
-
-private struct GitHubSectionHeader: View {
-    let title: String
-    let count: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(title)
-            // The header's grey, set apart by weight: secondary on top of
-            // the header's own dimmed it to 1.7:1.
-            Text(count, format: .number)
-                .monospacedDigit()
-                .fontWeight(.regular)
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -290,33 +357,61 @@ private struct GitHubNothingView: View {
     }
 }
 
-/// The first read on a Host: the rows' shape, while gh answers.
-private struct GitHubReadingView: View {
-    let host: GitHubHost
-    @Binding var kind: GitHubItem.Kind
+/// After a page of rows: "Show More", and how many of GitHub's count show.
+private struct GitHubShowMoreRow: View {
+    let shown: Int
+    let total: Int
+    let isReading: Bool
+    let showMore: () -> Void
 
     var body: some View {
-        List {
-            Section {
-            } header: {
-                GitHubKindPicker(kind: $kind)
-            }
-            Section {
-                ForEach(0..<4, id: \.self) { _ in
-                    GitHubItemRow.placeholder
-                }
-            } header: {
-                HStack(spacing: 8) {
+        Button(action: showMore) {
+            HStack(spacing: 8) {
+                Text("Show More")
+                    .foregroundStyle(.tint)
+                Spacer(minLength: 8)
+                if isReading {
                     ProgressView()
-                    Text("Reading from \(host.name)…")
+                } else {
+                    Text("\(shown) of \(total)", comment: "Under a GitHub list: rows shown of what GitHub found.")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
                 }
-                // One heading: the spinner alone read as an unnamed one.
-                .accessibilityElement(children: .combine)
-                .textCase(nil)
+            }
+            .contentShape(Rectangle())
+        }
+        .disabled(isReading)
+    }
+}
+
+/// A read that failed with nothing to show for it: GitHub's rate limit, with
+/// when it ends, or gh's own words.
+private struct GitHubReadFailureView: View {
+    let failure: GitHubReadFailure?
+    let checkAgain: () -> Void
+
+    var body: some View {
+        if case .rateLimited(let retryAt) = failure {
+            ContentUnavailableView {
+                Label("GitHub's Rate Limit Was Reached", systemImage: "hourglass")
+            } description: {
+                if let retryAt {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(GitHubBanner.retry(at: retryAt, now: context.date))
+                    }
+                }
+            } actions: {
+                Button("Check Again", action: checkAgain)
+            }
+        } else {
+            ContentUnavailableView {
+                Label("Could Not Read GitHub", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(failure.map(GitHubBannerText.message(for:)) ?? "")
+            } actions: {
+                Button("Check Again", action: checkAgain)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollDisabled(true)
     }
 }
 

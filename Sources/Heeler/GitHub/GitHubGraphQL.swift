@@ -23,6 +23,47 @@ enum GitHubGraphQL {
         }
         """
 
+    /// What the list's filters need of a pull request beyond its row's
+    /// fields: who it is assigned to, whether a person or an app opened it,
+    /// whether an organization owns its repository, and whether it asks the
+    /// account for a review. Aliased, so a query that also selects
+    /// `reviewRequests` with other arguments stays valid.
+    static let listPullRequestFragment = """
+        fragment listPullRequest on PullRequest {
+          author { __typename } repository { owner { __typename } } assignees(first: 10) { nodes { login } }
+          askedReviewers: reviewRequests(first: 20) { nodes { requestedReviewer { ...listReviewer } } }
+          viewerAsk: viewerLatestReviewRequest { requestedReviewer { ...listReviewer } }
+        }
+        fragment listReviewer on RequestedReviewer {
+          __typename ... on User { login } ... on Team { name } ... on Bot { login } ... on Mannequin { login }
+        }
+        """
+
+    /// What the list's filters need of an issue beyond its row's fields.
+    static let listIssueFragment = """
+        fragment listIssue on Issue {
+          author { __typename } repository { owner { __typename } } assignees(first: 10) { nodes { login } }
+        }
+        """
+
+    /// Whether a pull request asks the account for its review: the account
+    /// is among the pending reviewers, or a team it is in is, which GitHub
+    /// names as the request that asked the account.
+    static func asksViewer(pending: [String], viewerRequest: String?, viewer: String) -> Bool {
+        pending.contains(viewer) || viewerRequest.map(pending.contains) == true
+    }
+
+    /// GitHub's message for each error in its answer, field errors included.
+    static func errorMessages(in outcome: GitHubCLIOutcome) -> [String] {
+        guard let run = outcome.run else { return [] }
+        let body = GitHubHTTPResponse(including: run.output).body
+        return ((try? decoder.decode(ErrorsOnly.self, from: body))?.errors ?? []).compactMap(\.message)
+    }
+
+    private struct ErrorsOnly: Decodable {
+        let errors: [GraphQLError]?
+    }
+
     /// GitHub's `data`, or why there is none, from what the script reported.
     static func payload<Payload: Decodable>(
         _ type: Payload.Type, of outcome: GitHubCLIOutcome, at now: Date
@@ -154,6 +195,39 @@ enum GitHubGraphQL {
 
     struct Repository: Decodable {
         let nameWithOwner: String
+        /// Asked by the list's fragments only.
+        let owner: Typename?
+    }
+
+    struct Typename: Decodable {
+        let typename: String
+
+        private enum CodingKeys: String, CodingKey { case typename = "__typename" }
+    }
+
+    /// An item's author: the login, and whether it is a person or an app's
+    /// bot where the list's fragments asked.
+    struct Author: Decodable {
+        let login: String
+        let typename: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case login
+            case typename = "__typename"
+        }
+    }
+
+    /// A pending review request's reviewer: a person's or bot's login, or a
+    /// team's name.
+    struct RequestedReviewer: Decodable {
+        struct Reviewer: Decodable {
+            let login: String?
+            let name: String?
+        }
+
+        let requestedReviewer: Reviewer?
+
+        var who: String? { requestedReviewer.flatMap { $0.login ?? $0.name } }
     }
 
     struct Count: Decodable {
@@ -207,19 +281,31 @@ enum GitHubGraphQL {
         let additions: Int?
         let deletions: Int?
         let reviewDecision: String?
-        let author: Login?
+        let author: Author?
         let repository: Repository
         let comments: Count?
         let commits: Nodes<CommitNode>?
         let labels: Nodes<LabelNode>?
+        /// The list's fragments ask for these; a detail asks for an issue's
+        /// assignees on its own.
+        let assignees: Nodes<Login>?
+        let askedReviewers: Nodes<RequestedReviewer>?
+        let viewerAsk: RequestedReviewer?
 
-        func item(kind: GitHubItem.Kind) -> GitHubItem {
+        /// The row. `viewer`, the account's login, says whether a pull
+        /// request asks it for a review where the list's fragment asked.
+        func item(kind: GitHubItem.Kind, viewer: String? = nil) -> GitHubItem {
             let state: GitHubItem.State =
                 switch self.state {
                 case "MERGED": .merged
                 case "CLOSED": .closed
                 default: isDraft == true ? .draft : .open
                 }
+            var asks: Bool?
+            if kind == .pullRequest, let viewer, let askedReviewers {
+                asks = GitHubGraphQL.asksViewer(
+                    pending: askedReviewers.values.compactMap(\.who), viewerRequest: viewerAsk?.who, viewer: viewer)
+            }
             return GitHubItem(
                 id: id, kind: kind, repository: repository.nameWithOwner, number: number, title: title,
                 url: url, author: author?.login, state: state, updatedAt: updatedAt,
@@ -228,7 +314,11 @@ enum GitHubGraphQL {
                 review: reviewDecision.flatMap(GitHubGraphQL.review),
                 additions: additions, deletions: deletions,
                 labels: (labels?.values ?? []).map { GitHubLabel(name: $0.name, color: $0.color ?? "") },
-                closedReason: state == .closed && kind == .issue ? closedReason : nil)
+                closedReason: state == .closed && kind == .issue ? closedReason : nil,
+                assignees: assignees.map { $0.values.map(\.login) },
+                ownerIsOrganization: repository.owner.map { $0.typename == "Organization" },
+                authorIsApp: author?.typename.map { $0 == "Bot" },
+                asksViewerToReview: asks)
         }
 
         private var closedReason: GitHubItem.ClosedReason? {

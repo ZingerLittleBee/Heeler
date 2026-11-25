@@ -168,9 +168,12 @@ enum GitHubDetailRead {
         }
 
         func detail(viewer: String, kind: GitHubItem.Kind, readAt: Date) -> GitHubItemDetail {
-            let item = item.item(kind: kind)
+            var item = item.item(kind: kind)
             var pullRequest: GitHubPullRequestDetail?
             if kind == .pullRequest {
+                let review = review(viewer: viewer)
+                // The list row says so; this read is the newer word.
+                item.asksViewerToReview = review == .requestedOfViewer
                 pullRequest = GitHubPullRequestDetail(
                     headBranch: headRefName ?? "",
                     baseBranch: baseRefName ?? "",
@@ -178,7 +181,7 @@ enum GitHubDetailRead {
                     isViewers: viewerDidAuthor ?? (item.author == viewer),
                     isCrossRepository: isCrossRepository ?? false,
                     headOwner: headRepositoryOwner?.login,
-                    review: review(viewer: viewer),
+                    review: review,
                     mergeable: mergeable,
                     mergeState: mergeStateStatus,
                     headCommit: headRefOid,
@@ -200,7 +203,7 @@ enum GitHubDetailRead {
             let pending = (reviewRequests?.values ?? []).compactMap { $0.requestedReviewer?.who }
             // A request of a team the account is in names the team.
             let viewerRequest = viewerLatestReviewRequest?.requestedReviewer?.who
-            if pending.contains(viewer) || viewerRequest.map(pending.contains) == true {
+            if GitHubGraphQL.asksViewer(pending: pending, viewerRequest: viewerRequest, viewer: viewer) {
                 return .requestedOfViewer
             }
             let reviews = latestOpinionatedReviews?.values ?? []

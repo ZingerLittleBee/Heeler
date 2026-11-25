@@ -26,7 +26,7 @@ actor VolatileGitHubListCache: GitHubListCache {
     func removeAll() { lists = [:] }
 }
 
-/// One JSON document per Host under `Caches/HeelerGitHubCache/v1/`, written
+/// One JSON document per Host under `Caches/HeelerGitHubCache/v2/`, written
 /// with complete file protection and excluded from backup, like Chat's
 /// cache. A list older than `maxAge` is deleted rather than shown; one that
 /// cannot be decoded is deleted. Errors are logged by domain and code only.
@@ -35,7 +35,9 @@ actor FileGitHubListCache: GitHubListCache {
     static let defaultMaxAge: TimeInterval = 30 * 24 * 60 * 60
 
     private static let log = Logger(subsystem: "dev.bybee.heeler", category: "GitHubCache")
-    private static let versionDirectory = "v1"
+    /// v2 holds each segment's one list and its searches' cursors; v1's
+    /// four sections are deleted as leftovers.
+    private static let versionDirectory = "v2"
 
     private let root: URL
     private let maxAge: TimeInterval
