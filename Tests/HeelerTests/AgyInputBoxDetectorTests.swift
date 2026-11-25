@@ -625,10 +625,91 @@ struct AgyInputBoxDetectorTests {
     /// badge, so its box reads as idle and takes the send.
     @Test(arguments: [
         "activated code search mode", "-- INSERT -- ? for shortcuts", "-- VISUAL -- ? for shortcuts",
-        "press ctrl+b again to send command to background",
+        "-- V-LINE -- ? for shortcuts", "press ctrl+b again to send command to background",
     ])
     func anUnknownFooterHolds(footer: String) {
         #expect(!Self.detect(Self.box(footer: footer)).isSendable)
+    }
+
+    /// Antigravity CLI 1.5.15+ draws finished/compact Swarm tray rows without
+    /// parentheses (`● Swarm  Done · 119 posts · alt+s board · alt+x dismiss`),
+    /// and users may configure a custom `/statusline` (colored, single-line,
+    /// or stacked with the default footer). Neither is a menu over the box.
+    @Test func swarmDoneStripAndCustomStatusLineTakeAMessage() {
+        let columns = 58
+        let customStatusLine =
+            "\u{1B}[35mmusedam-publishing\u{1B}[0m (main) | \u{1B}[33mGemini 4 Neon (High)\u{1B}[0m [auto] | c"
+        let screen = ScreenFixture.synthetic([
+            Self.rule(columns),
+            Self.blue + ">" + SGR.reset,
+            Self.rule(columns),
+            "  \u{1B}[32m●\u{1B}[0m Swarm  Done · 119 posts · alt+s board · alt+x dismiss",
+            Self.rule(columns),
+            customStatusLine,
+        ])
+
+        let parsed = AgyScreen(screen)
+        #expect(parsed.below == nil)
+        #expect(!parsed.showsRunningTasks)
+        #expect(parsed.footerModel == nil)
+        #expect(Self.detect(screen) == .empty(placeholder: nil))
+    }
+
+    @Test func customAndStackedStatusLinesAndGenericTraysBehaveStructurally() {
+        let columns = 80
+        let customStatusLine = "\u{1B}[35mrepo\u{1B}[0m (main) | Gemini 4 Neon (High) [auto]"
+
+        // Custom /statusline alone without a tray.
+        let customOnly = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns), customStatusLine,
+        ])
+        #expect(Self.detect(customOnly) == .empty(placeholder: nil))
+
+        // stack_with_default: true (default footer + custom statusline).
+        let stackedIdle = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns),
+            Self.grey + "? for shortcuts" + SGR.reset + "          " + SGR.dim + "Gemini 4 Neon · high" + SGR.reset,
+            customStatusLine,
+        ])
+        #expect(Self.detect(stackedIdle) == .empty(placeholder: nil))
+        #expect(AgyScreen(stackedIdle).footerHint == "? for shortcuts")
+        #expect(AgyScreen(stackedIdle).footerModel == AgyScreen.FooterModel(model: "Gemini 4 Neon", effort: "high"))
+
+        let stackedWorking = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns),
+            Self.grey + "esc to cancel" + SGR.reset + "            " + SGR.dim + "Gemini 4 Neon · high" + SGR.reset,
+            customStatusLine,
+        ])
+        #expect(Self.detect(stackedWorking) == .empty(placeholder: nil))
+        #expect(AgyScreen(stackedWorking).showsRunningTurn)
+
+        // Any unfocused passive tray item between two full-width rules passes.
+        let futureTray = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns),
+            "  ● Workflow  step 2/4 · running",
+            Self.rule(columns),
+            customStatusLine,
+        ])
+        #expect(Self.detect(futureTray) == .empty(placeholder: nil))
+
+        // A Down-focused tray row (`> ● ...`) holds because Enter acts on it.
+        let focusedTray = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns),
+            "  > ● Swarm  Done · 119 posts · alt+s board · alt+x dismiss",
+            Self.rule(columns),
+            customStatusLine,
+        ])
+        #expect(!Self.detect(focusedTray).isSendable)
+
+        // An open menu over a custom statusline still holds.
+        let menuWithCustomStatusLine = ScreenFixture.synthetic([
+            Self.rule(columns), Self.blue + ">" + SGR.reset, Self.rule(columns),
+            "Switch Model",
+            "> Gemini 4 Neon (current)",
+            "Keyboard: ↑/↓ Navigate  enter Select  esc Go Back",
+            customStatusLine,
+        ])
+        #expect(Self.detect(menuWithCustomStatusLine) == .overlay("Switch Model"))
     }
 
     /// `/compact` leaves a full-width rule labelled `Conversation compacted`

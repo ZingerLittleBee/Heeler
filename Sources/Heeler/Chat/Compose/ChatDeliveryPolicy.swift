@@ -34,40 +34,56 @@ extension ComposerDeliveryPolicy {
         pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) -> ComposerDeliveryPolicy {
         let program = rules.program
+        let runPreflight: @MainActor (String, Bool) async -> ComposerRefusal? = { text, allowUnconfirmed in
+            let reported = activity()
+            if reported == .blocked { return .agentBlocked }
+            // The screen would hold too, but on herdr-core the session
+            // check's exec and the read's first paint come first, and
+            // the echo showed Sending until they ended. Returning before
+            // any await takes it back before it renders. A report that
+            // lags the turn's end costs a hold the next status ends.
+            if reported == .working, let working = program.inputBoxWhileWorking {
+                return .inputNotReady(working.holdReason(for: program))
+            }
+            // The same for a herdr-core Chat that can't tell, whose
+            // Can't Tell page gave way to Sending through the exec.
+            if let reason = heldSession?() { return .inputNotReady(reason) }
+            if let confirmSession, let reason = await confirmSession() { return .inputNotReady(reason) }
+            willReadScreen()
+            let screen: ANSIScreen
+            do {
+                screen = try await readScreen()
+            } catch {
+                return .inputNotReady(Self.unreadableScreenReason(error))
+            }
+            switch PreSendGate.check(screen, program: program, activity: activity()) {
+            case .send:
+                return sendConcern(rules.outgoingText(text), screen).map { .inputNotReady($0) }
+            case .holdBlocked:
+                return .agentBlocked
+            case .hold(let state):
+                if state.allowsSendAnyway {
+                    if let hardHold = InputBoxStateDetector.hardHold(in: screen, program: program) {
+                        return .inputNotReady(
+                            allowUnconfirmed
+                                ? hardHold.holdReason(for: program)
+                                : state.holdReason(for: program))
+                    }
+                    if allowUnconfirmed {
+                        return sendConcern(rules.outgoingText(text), screen).map { .inputNotReady($0) }
+                    }
+                    return .unconfirmedInputBox(state.holdReason(for: program))
+                }
+                return .inputNotReady(state.holdReason(for: program))
+            }
+        }
         var policy = ComposerDeliveryPolicy(
             route: .chat,
             insertsIntoAttachWhenBlocked: false,
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },
-            preflight: { text in
-                let reported = activity()
-                if reported == .blocked { return .agentBlocked }
-                // The screen would hold too, but on herdr-core the session
-                // check's exec and the read's first paint come first, and
-                // the echo showed Sending until they ended. Returning before
-                // any await takes it back before it renders. A report that
-                // lags the turn's end costs a hold the next status ends.
-                if reported == .working, let working = program.inputBoxWhileWorking {
-                    return .inputNotReady(working.holdReason(for: program))
-                }
-                // The same for a herdr-core Chat that can't tell, whose
-                // Can't Tell page gave way to Sending through the exec.
-                if let reason = heldSession?() { return .inputNotReady(reason) }
-                if let confirmSession, let reason = await confirmSession() { return .inputNotReady(reason) }
-                willReadScreen()
-                let screen: ANSIScreen
-                do {
-                    screen = try await readScreen()
-                } catch {
-                    return .inputNotReady(Self.unreadableScreenReason(error))
-                }
-                switch PreSendGate.check(screen, program: program, activity: activity()) {
-                case .send:
-                    return sendConcern(rules.outgoingText(text), screen).map { .inputNotReady($0) }
-                case .holdBlocked: return .agentBlocked
-                case .hold(let state): return .inputNotReady(state.holdReason(for: program))
-                }
-            },
+            preflight: { text in await runPreflight(text, false) },
+            unconfirmedInputBoxPreflight: { text in await runPreflight(text, true) },
             verify: { sent in
                 await pause(DeliveryCheck.delay)
                 // A screen that cannot be read says nothing; the message
