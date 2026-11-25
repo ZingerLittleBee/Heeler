@@ -611,15 +611,18 @@ Limits or a bill.
 _Avoid_: spend, cost (alone), usage (unqualified), credits
 
 **GitHub List**:
-The open pull requests and issues that involve the GitHub account gh is
-signed in to on one Host, across repositories: pull requests that ask for the
-user's review, pull requests the user opened, issues assigned to the user, and
-other issues the user opened. Heeler reads it by running gh over the Host's
-connection and never holds the account's token; on a Mac whose SSH session
-cannot read the login keychain, gh runs once in the desktop session instead.
-It is read for one Host at a time, a Host and not a Server, kept on the device
-for display, and read again when shown stale, when pulled, and on Check Again,
-never in the background (ADR 0065).
+The pull requests, or the issues, that GitHub finds for the account gh is
+signed in to on one Host, across repositories, as one list under a row of
+filters: State, Person, Repository and Label, kept for each of the two on the
+device. At their defaults it holds the open ones that involve the account:
+pull requests the user opened or whose review is asked of them, issues
+assigned to the user or opened by them. Heeler reads it by running gh over the
+Host's connection and never holds the account's token; on a Mac whose SSH
+session cannot read the login keychain, gh runs once in the desktop session
+instead. It is read for one Host at a time, a Host and not a Server, kept on
+the device for display only at the filters' defaults, and read again when
+shown stale, when a filter changes, when pulled, and on Check Again, never in
+the background (ADR 0065).
 _Avoid_: inbox, notifications, feed, dashboard
 
 **GitHub Detail**:

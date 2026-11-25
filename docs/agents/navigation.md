@@ -298,9 +298,15 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 - **GitHub List (the GitHub tab):** `ConsoleView.gitHubTab()` hosts
   [GitHubTabView and GitHubListScreen](../../Sources/Heeler/GitHub/GitHubTabView.swift),
   the latter also the iPad sidebar's list, with
-  [GitHubItemRow](../../Sources/Heeler/GitHub/GitHubItemRow.swift).
+  [GitHubItemRow](../../Sources/Heeler/GitHub/GitHubItemRow.swift) and the
+  filter row, its menus and sheets in
+  [GitHubFilterBar](../../Sources/Heeler/GitHub/GitHubFilterBar.swift). What a
+  filter holds, its words and its typed input are
+  [GitHubListFilter](../../Sources/Heeler/GitHub/GitHubListFilter.swift).
   [GitHubStore](../../Sources/Heeler/GitHub/GitHubStore.swift), owned by
-  `ConsoleStore.gitHub`, keeps each Host's list and read state and picks the
+  `ConsoleStore.gitHub`, keeps each Host's list at the filters' defaults, each
+  segment's filtered results (`setFilter(_:for:)`, `shown(_:on:)`,
+  `showMore(_:)`) and read state, and picks the
   Host's connected Servers through `GitHubHostAccess`, which `ConsoleStore`
   implements (`runGitHub(_:on:)`, the remembered desktop route in
   `gitHubDesktopRoutes`). The exec is
@@ -310,13 +316,16 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift))
   on herdr and tmux, `RexTransport.gitHub` on Rex.
   [GitHubListRead](../../Sources/Heeler/GitHub/GitHubListRead.swift) owns the
-  list's GraphQL query and turns gh's answer into
-  [GitHubList](../../Sources/Heeler/GitHub/GitHubModels.swift) or a
+  search queries for a filter and the GraphQL request, and turns gh's answer
+  into pages of
+  [GitHubItemList](../../Sources/Heeler/GitHub/GitHubModels.swift), which
+  merges a filter's searches newest first and pages them, or a
   `GitHubReadFailure`; the fragments, item decoding and failure mapping it
   shares with the detail are in
   [GitHubGraphQL](../../Sources/Heeler/GitHub/GitHubGraphQL.swift). Saved lists:
   [FileGitHubListCache](../../Sources/Heeler/GitHub/GitHubListCache.swift).
-  Settings' switch: [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift)
+  Settings' switch and each segment's filters:
+  [GitHubSettings](../../Sources/Heeler/GitHub/GitHubSettings.swift), the switch
   through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
   moves under the Hosts tab (`ConsoleView.settingsUnderHosts`,
   `HostListSettingsLink`). Read
