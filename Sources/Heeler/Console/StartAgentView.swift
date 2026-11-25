@@ -206,14 +206,14 @@ struct StartAgentView: View {
                                     .textInputAutocapitalization(.never)
                                     .accessibilityLabel(Text("Base (optional)"))
                             }
+                            if let message = store.worktreeBranchErrorMessage {
+                                errorRow(message, .branch)
+                            }
                         }
                     } header: {
                         Text("Worktree")
                     } footer: {
-                        if let message = store.worktreeBranchErrorMessage {
-                            Text(message)
-                                .foregroundStyle(.red)
-                        } else if let note = store.gitHubWorktreeNote {
+                        if let note = store.gitHubWorktreeNote {
                             Text(note)
                         } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                             Text(
@@ -279,7 +279,7 @@ struct StartAgentView: View {
                         }
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Self.errorInk)
                         if !store.availableTemplates.isEmpty {
                             agentPicker
                         }
@@ -313,13 +313,13 @@ struct StartAgentView: View {
                     TextField("Agent name (optional)", text: $store.name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                    if let message = store.nameErrorMessage {
+                        errorRow(message, .name)
+                    }
                 } header: {
                     Text("Agent Name")
                 } footer: {
-                    if let message = store.nameErrorMessage {
-                        Text(message)
-                            .foregroundStyle(.red)
-                    } else if let defaultName = store.defaultAgentName {
+                    if let defaultName = store.defaultAgentName {
                         Text("Empty names the agent \(Text(defaultName).monospaced()).")
                     } else {
                         Text("Empty names the agent after its kind.")
@@ -342,32 +342,33 @@ struct StartAgentView: View {
                         AgentArgumentsField(
                             text: $store.arguments,
                             placeholder: String(localized: "Arguments (optional)"))
+                        if let message = store.argumentErrorMessage {
+                            errorRow(message, .arguments)
+                        }
                     } header: {
                         Text("Arguments")
                     } footer: {
-                        if let message = store.argumentErrorMessage {
-                            Text(message)
-                                .foregroundStyle(.red)
-                        } else {
-                            Text(
-                                "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
-                            )
-                        }
+                        Text(
+                            "Quotes and backslash escapes are supported.\ne.g. \(Text(#"--model "gpt 5" --continue"#).monospaced())"
+                        )
                     }
                 }
 
                 if let message = startFailure {
                     Section {
-                        Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
-                            .id(Self.startFailureID)
+                        errorRow(message, .start)
                     }
                 }
             }
             // The last footer ends clear of the sheet's rounded corners
             // when the form fits it.
             .contentMargins(.bottom, 20, for: .scrollContent)
-            .modifier(RevealsStartFailure(message: startFailure, id: Self.startFailureID))
+            .modifier(RevealsFormErrors(errors: [
+                .branch: store.worktreeBranchErrorMessage,
+                .name: store.nameErrorMessage,
+                .arguments: store.offersArguments ? store.argumentErrorMessage : nil,
+                .start: startFailure,
+            ]))
             // The form grows as a Host adds its Agent and argument rows; a
             // fixed form cut them off under a scroll.
             .consoleSheetPage()
@@ -415,7 +416,18 @@ struct StartAgentView: View {
         }
     }
 
-    private static let startFailureID = "startAgent.failure"
+    /// The red the GitHub sheets give their errors: the system red reads
+    /// about 3.2:1 on the form's light ground, under 4.5:1.
+    private static let errorInk = GitHubInk.red
+
+    /// An error line, as a row of the field's own section: a section's
+    /// footer is no place a scroll can be sent to, and under a field the
+    /// keyboard covers it.
+    private func errorRow(_ message: String, _ error: FormError) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(Self.errorInk)
+            .id(error)
+    }
 
     /// Why Start failed, shown at the form's end.
     private var startFailure: String? {
@@ -458,18 +470,35 @@ struct StartAgentView: View {
     }
 }
 
-/// Scrolls a failed Start's message into view as it appears. It sits at the
-/// form's end, below the Worktree, Agent and Arguments rows or under the
-/// keyboard, where Start would otherwise seem to have done nothing.
-private struct RevealsStartFailure: ViewModifier {
-    let message: String?
-    let id: String
+/// The form's error lines, in the order the form shows them.
+private enum FormError: CaseIterable {
+    /// Under the Worktree's Branch and Base fields.
+    case branch
+    /// Under the Agent name field.
+    case name
+    /// Under the Arguments field.
+    case arguments
+    /// Why Start failed, at the form's end.
+    case start
+}
+
+/// Scrolls an error line into view as it appears or changes. A field's sits
+/// under it, where the keyboard covers it while the field is typed in, and a
+/// failed Start's at the form's end, below the fold, where Start would
+/// otherwise seem to have done nothing. It scrolls only as far as the line
+/// needs, so one already in view stays where it is.
+private struct RevealsFormErrors: ViewModifier {
+    let errors: [FormError: String?]
 
     func body(content: Content) -> some View {
         ScrollViewReader { proxy in
-            content.onChange(of: message) { _, message in
-                guard message != nil else { return }
-                withAnimation { proxy.scrollTo(id, anchor: .bottom) }
+            content.onChange(of: errors) { old, new in
+                let shown = FormError.allCases.first { error in
+                    guard let message = new[error] ?? nil else { return false }
+                    return message != old[error] ?? nil
+                }
+                guard let shown else { return }
+                withAnimation { proxy.scrollTo(shown) }
             }
         }
     }
