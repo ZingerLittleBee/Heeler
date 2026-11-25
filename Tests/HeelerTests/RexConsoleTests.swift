@@ -427,12 +427,12 @@ struct RexConsoleTests {
         #expect(store.detailAgent(for: id) == nil)
         #expect(missing().cause == .hostLoadingAgents)
 
-        // The reads held so far answer, and each later one as it arrives.
-        let held = await servers[0].requests.filter { $0.method == process }
+        // Each later read answers as it arrives, then every read held so far.
+        // Reads still arrive after the list shows, so the held ones are taken
+        // only once nothing more can be held.
         await world.install(on: servers[0])
         let blocks = world.sessions[0].windows.flatMap { $0.layers.flatMap(\.blocks) } + world.sessions[0].detached
-        for _ in held {
-            let request = await servers[0].nextRequest()
+        for request in await servers[0].takeUnanswered(process) {
             let block = try #require(blocks.first { $0.id == request.payload?["block_id"]?.stringValue })
             await servers[0].respond(to: request, with: FakeRexWorld.process(block))
         }
