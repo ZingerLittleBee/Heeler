@@ -158,7 +158,7 @@ struct OverlayNetworkFormView: View {
             } footer: {
                 if !draft.controlURLIsValid {
                     Text("The coordination server must be an https URL. Fix it in Advanced.")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 }
             }
             if let editing, let nodeID = store.details[editing.id]?.nodeID {
@@ -185,7 +185,7 @@ struct OverlayNetworkFormView: View {
             } footer: {
                 if !draft.invalidMoons.isEmpty {
                     Text("A moon is not valid. Fix it in Advanced.")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 } else if store.zeroTierNodeID == nil {
                     Text(
                         String(localized: "Heeler creates this device's node ID when it connects. The network's screen then shows it, ready to authorize."))
@@ -209,7 +209,7 @@ struct OverlayNetworkFormView: View {
         VStack(alignment: .leading, spacing: 6) {
             if draft.tailcatAddressIsInvalid {
                 Text("This is not a tailcat address. Copy the whole address that tailcat serve prints, starting with tc.")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             } else if let info = draft.tailcatAddressInfo {
                 if info.hasPresharedKey {
                     Text("A tailcat address with a pre-shared key.")
@@ -307,7 +307,7 @@ struct OverlayNetworkFormView: View {
                 } else if !draft.configServer.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(
                         String(localized: "Enter a udp://, tcp://, ws://, or wss:// URL ending in your user name, such as wss://host/user."))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 } else {
                     Text(EasyTierConfigServerCopy.serverNote)
                 }
@@ -356,7 +356,7 @@ struct OverlayNetworkFormView: View {
         } footer: {
             if let invalid = draft.invalidPeers.first {
                 Text("“\(invalid)” is not a peer such as tcp://host:11010 or udp://host:11010.")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             } else {
                 Text(
                     String(localized: "The same name and secret as on your Mac. Peers are how the two find each other, such as tcp://public.easytier.top:11010, one per line."))
@@ -371,7 +371,7 @@ struct OverlayNetworkFormView: View {
         } footer: {
             if !draft.ipv4IsValid {
                 Text("The fixed address is not valid. Fix it in Advanced.")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             }
         }
     }
@@ -639,7 +639,7 @@ private struct ZeroTierAdvancedForm: View {
                 if !draft.invalidMoons.isEmpty {
                     Text(
                         String(localized: "A moon's world ID is 10 to 16 hexadecimal digits and its seed is a 10-digit node ID; neither may be zero."))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 } else {
                     Text(
                         String(localized: "Extra roots, as in zerotier-cli orbit: the moon's world ID and the node ID of one of its roots."))
@@ -677,7 +677,7 @@ private struct ZeroTierAdvancedForm: View {
         } footer: {
             if let planetError {
                 Text(planetError)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             } else {
                 Text(
                     String(localized: "For a controller on self-hosted roots: the planet file its operator made with mkworld. Only this network uses it."))
@@ -713,7 +713,7 @@ private struct EasyTierAdvancedForm: View {
                 if !draft.ipv4IsValid {
                     Text(
                         String(localized: "A fixed address is a private IPv4 address with a prefix, such as 10.144.144.7/24 (not 0.x, 127.x, or 224 and up)."))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 } else if draft.ipv4IsHostPrefix {
                     Text(
                         String(localized: "EasyTier treats a /32 address as part of its /24. Use the network's own prefix."))
@@ -772,7 +772,7 @@ private struct TailscaleAdvancedForm: View {
                         String(localized: "Leave blank for a Tailscale account. Enter an https URL to use your own Headscale server."))
                 } else {
                     Text("Enter an https URL, such as https://headscale.example.com.")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.errorInk)
                 }
             }
             Section {

@@ -76,7 +76,7 @@ private struct ChatAgentKeysPage: View {
             VStack(spacing: 0) {
                 Text(store.failure ?? String(localized: "Keys go straight to the Agent"))
                     .font(.caption)
-                    .foregroundStyle(store.failure == nil ? Color.secondary : Color.red)
+                    .foregroundStyle(store.failure == nil ? Color.secondary : Color.errorInk)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .multilineTextAlignment(.center)

@@ -142,7 +142,7 @@ struct MovePaneSheet: View {
                 if case .failed(let message) = store.state {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     }
                 }
             }

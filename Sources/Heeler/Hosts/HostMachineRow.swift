@@ -166,7 +166,7 @@ struct HostMachineRowContent: View {
             }
         return Text(subtitle)
             .font(.footnote)
-            .foregroundStyle(presentation.isProblem ? Color.red : Color.secondary)
+            .foregroundStyle(presentation.isProblem ? Color.errorInk : Color.secondary)
             .lineLimit(maxLines)
             .truncationMode(presentation.isProblem ? .tail : .middle)
             .fixedSize(horizontal: false, vertical: presentation.isProblem)

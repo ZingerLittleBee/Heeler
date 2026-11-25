@@ -73,7 +73,7 @@ struct VoiceInputSettingsView: View {
                 if connection.service == .custom, connection.endpoint != nil {
                     VoiceInputCustomFieldsSection(fields: $connection.options.fields)
                     if let problem = optionsProblem {
-                        Section { Text(problem.message).foregroundStyle(.red) }
+                        Section { Text(problem.message).foregroundStyle(.errorInk) }
                     }
                 }
                 if #available(iOS 26.0, *) {

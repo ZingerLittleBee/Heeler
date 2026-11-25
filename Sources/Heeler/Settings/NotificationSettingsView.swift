@@ -155,7 +155,7 @@ struct NotificationSettingsView: View {
             if relaySettings.hasInvalidEntry {
                 Text("Enter a valid HTTP or HTTPS URL.")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             } else if relaySettings.hasInsecureHTTPEntry {
                 Text(
                     String(localized: "HTTP exposes the device token and notification metadata. Use HTTPS except for local development.")

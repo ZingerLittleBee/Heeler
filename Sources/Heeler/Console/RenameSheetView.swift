@@ -49,7 +49,7 @@ struct RenameSheetView: View {
                 } footer: {
                     if let message = store.validationMessage {
                         Text(message)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     } else if let hint = store.clearHint {
                         Text(hint)
                     }
@@ -58,7 +58,7 @@ struct RenameSheetView: View {
                 if case .failed(let message) = store.state {
                     Section {
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     }
                 }
             }

@@ -96,7 +96,7 @@ struct HostNotificationSettings {
             switch self {
             case .quiet: .secondary
             case .attention: .orange
-            case .failure: .red
+            case .failure: .errorInk
             }
         }
     }
@@ -271,7 +271,7 @@ struct HostNotificationSettingsView: View {
             // says so and stays on the Host's confirmed value.
             if case .failed(let message, _) = model.state {
                 Text(message)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.errorInk)
             }
         }
     }

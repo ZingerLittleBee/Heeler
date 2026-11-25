@@ -390,7 +390,7 @@ struct HostRouteRow: View {
         ) {
             Text(title.wrappingAtAddressSeparators)
                 .font(.body.monospaced())
-                .foregroundStyle(route.isValid ? Color.primary : Color.red)
+                .foregroundStyle(route.isValid ? Color.primary : Color.errorInk)
                 .accessibilityLabel(title)
         } subtitle: {
             Text(subtitle)

@@ -332,7 +332,7 @@ struct HostMachineDetailView: View {
             if let line {
                 Text(line)
                     .font(.subheadline)
-                    .foregroundStyle(state?.isProblem == true ? Color.red : Color.secondary)
+                    .foregroundStyle(state?.isProblem == true ? Color.errorInk : Color.secondary)
                     // A reason is longer than the switch leaves room for on
                     // one line.
                     .lineLimit(2)
@@ -539,7 +539,7 @@ private struct HostServerNameSheet: View {
                 } footer: {
                     if let refusal {
                         Text(refusal)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.errorInk)
                     } else {
                         Text(
                             "For a session or socket that Scan Again does not list. Heeler connects to it by this name once it runs on \(machine.name).")

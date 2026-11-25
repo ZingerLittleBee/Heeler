@@ -103,7 +103,7 @@ struct HostAuthenticationSection: View {
             Label(
                 deviceKeyIsCorrupt ? "Device key is corrupted" : "Device key unavailable",
                 systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
+                .foregroundStyle(.errorInk)
             if deviceKeyIsCorrupt {
                 Button("Replace Device Key", role: .destructive) {
                     isConfirmingDeviceKeyReplacement = true
@@ -138,7 +138,7 @@ struct HostAuthenticationSection: View {
             Label(
                 rsaKeyIsCorrupt ? "RSA Key is corrupted" : "RSA Key unavailable",
                 systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
+                .foregroundStyle(.errorInk)
             if !rsaKeyIsCorrupt {
                 Button("Try Again") { loadRSAKey() }
             } else {
