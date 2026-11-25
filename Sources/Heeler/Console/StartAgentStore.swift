@@ -1004,19 +1004,18 @@ final class StartAgentStore {
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
             await awaitAgentVisible(startedID)
-            switch launch {
-            case .template(let template, _):
-                if let exit = programExit(startedID) {
-                    state = .failed(Self.message(forTemplate: template.name, endedWith: exit))
-                } else {
-                    state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+            if let exit = programExit(startedID) {
+                // The words of an end before the launch returned, which only
+                // the Host's timing tells apart from this one.
+                var ended: any Error = ProgramEndedAtLaunch(exit: exit)
+                if case .newWorktree = destination {
+                    ended = WorktreeAgentStartFailure(checkoutPath: agent.cwd, underlying: ended)
                 }
-            case .kind(let kind, _, _):
-                if let exit = programExit(startedID) {
-                    state = .failed(Self.message(forKind: kind, endedWith: exit))
-                } else {
-                    state = .started(startedID)
-                }
+                state = .failed(Self.message(for: ended, launched: launch))
+            } else if case .template = launch {
+                state = isAgentListed(startedID) ? .started(startedID) : .startedAsTerminal
+            } else {
+                state = .started(startedID)
             }
         } catch {
             state = .failed(Self.message(for: error, launched: launch))

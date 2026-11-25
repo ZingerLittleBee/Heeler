@@ -1619,15 +1619,21 @@ final class ConsoleStore {
     /// has ended for good, or the timeout elapses. The new-agent flow (#12) opens the started Agent's
     /// terminal, and the row it navigates to exists only once the post-start
     /// resync lands — waiting keeps the detail column from flashing its
-    /// missing-Agent placeholder over a launch that just succeeded.
+    /// missing-Agent placeholder over a launch that just succeeded. A row
+    /// whose launch shell has not started the program yet is not reported.
     func waitForAgent(_ id: ConsoleAgent.ID, timeout: Duration = .seconds(5)) async {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
-        while !agents.contains(where: { $0.id == id }), programExit(of: id) == nil {
+        while !hasStarted(id), programExit(of: id) == nil {
             guard clock.now < deadline,
                 (try? await Task.sleep(for: .milliseconds(50))) != nil
             else { return }
         }
+    }
+
+    /// Listed, and past the shell its launch runs the program through.
+    private func hasStarted(_ id: ConsoleAgent.ID) -> Bool {
+        agents.contains { $0.id == id } && projections[id.hostID]?.isStartingProgram(ofPane: id.paneID) != true
     }
 
     /// Suspends until a shell created on `hostID` is in the terminal

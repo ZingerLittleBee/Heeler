@@ -469,9 +469,10 @@ struct ProgramExit: Sendable, Equatable {
     let code: Int?
 }
 
-/// A launch whose program ended before Heeler finished setting up what it
-/// started: on tmux, the window closed with its program, and the session with
-/// it, before the session was marked. tmux keeps no exit code, so `exit` has
+/// A launch whose program ended before the launch finished: before Heeler
+/// finished setting up what it started (on tmux, the window closed with its
+/// program, and the session with it, before the session was marked), or
+/// before the program showed running. tmux keeps no exit code, so `exit` has
 /// none there.
 struct ProgramEndedAtLaunch: Error, Equatable {
     let exit: ProgramExit

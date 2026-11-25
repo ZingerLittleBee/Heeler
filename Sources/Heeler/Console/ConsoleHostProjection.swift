@@ -85,8 +85,13 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func availableTemplates() async throws -> [AgentTemplate]
     @discardableResult func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent
     /// How the program at `paneID` ended, once it has for good and the Host still
-    /// knows it. Only a herdr-core Host keeps that.
+    /// knows it. A herdr-core Host keeps that; a tmux Host knows only that a
+    /// program New Agent just started ended before it showed running.
     func programExit(ofPane paneID: String) -> ProgramExit?
+    /// Whether the Agent listed at `paneID` is a launch whose shell has not yet
+    /// started its program, which New Agent waits through. Only a tmux Host
+    /// tells.
+    func isStartingProgram(ofPane paneID: String) -> Bool
     /// The names the Host's live Terminals hold, beyond those its Agents show.
     /// A herdr-core Host refuses to give any of them out again.
     var heldTerminalNames: Set<String> { get }
@@ -288,6 +293,8 @@ extension ConsoleHostProjection {
     }
 
     func programExit(ofPane paneID: String) -> ProgramExit? { nil }
+
+    func isStartingProgram(ofPane paneID: String) -> Bool { false }
 
     var heldTerminalNames: Set<String> { [] }
 
