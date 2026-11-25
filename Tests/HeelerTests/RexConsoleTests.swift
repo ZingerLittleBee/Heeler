@@ -946,7 +946,12 @@ struct RexConsoleTests {
         defer { console.setHosts([]) }
         console.setHosts(records)
         await console.resume()
-        try await waitUntil("both Servers' problems") { console.hostIssues(for: records).count == 2 }
+        // Each Server reads Connecting before its connection fails, and that
+        // is a row too: wait for both failures, not for two rows.
+        try await waitUntil("both Servers' problems") {
+            let issues = console.hostIssues(for: records)
+            return issues.count == 2 && !issues.contains { $0.condition == .connecting }
+        }
 
         let issues = console.hostIssues(for: records)
         #expect(issues.map(\.hostID) == [tmux.id, rexServer.id])
