@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Offer **Send Anyway** beside **Open in Terminal** when Chat's screen check cannot confirm an unobstructed input box (such as an unrecognized menu overlay or box shape), while still holding on Blocked prompts, dialogs, existing drafts, shell mode, setting switches, and session mismatches. (PR #844)
 - List Claude Code teammates, the agents an Agent starts with a name (which Claude Code shows under its input box beside `main`), in Chat's Background Work strip and sheet with their task and `@name`. Chat showed none of them, so an Agent running several in parallel looked idle. A teammate's row runs while it works, reads **Done** when it goes idle, and runs again with a fresh clock when the Agent or another teammate sends it the next task; one that failed, was interrupted, shut down or was stopped reads **Failed** or **Stopped**. Chat follows each teammate in its own transcript on the Host, so a row reads **Done** as soon as the teammate's turn ends rather than once the Agent's own turn does, and a teammate started too far back for Chat to read its start is still listed while it runs. A running teammate also keeps the Agent in **Working**, as a Subagent does. (PR #840)
 - Choose **Volcengine (China)** in Settings › Voice Input to transcribe Composer recordings with Doubao speech recognition 2.0 and your own Volcengine API Key. **As You Speak** shows the text while you talk and sends the whole recording instead if the connection drops; **After Recording** sends it once you stop. Your Keywords go along as hotwords at no extra charge. (PR #837)
 
@@ -19,6 +20,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Send messages from Chat to Antigravity CLI (`agy`) when a finished Swarm tray row (`● Swarm  Done · ...`) or a custom `/statusline` (including `stack_with_default`) shows under the input box, instead of holding with **A menu is open over the Agent's input box. Close it in the terminal first.** (PR #844)
 - Open **New Agent** from the Agents list on iOS 27.3 without Heeler freezing. Opening it remembered the Host the form picks for you, and on iOS 27.3 that made the list build the form again without end, so the sheet never appeared and Heeler stopped responding until it was closed. The Host you pick yourself is still remembered. Tried on an iPhone with iOS 27.3 beta. (PR #839)
 - Show the newest messages at once when you come back to a long Chat. After you had left Chat, Heeler had been in the background or the connection had dropped while the Agent kept working, Chat read what was written meanwhile from where it had stopped, 2 MB at a time with a pause between reads, so the latest messages could take minutes to appear. When more is waiting than one read takes, Chat now opens at the newest messages, as it does the first time, and loads what came before as you scroll up. Tried in the Simulator on an iPhone against a Herdr TUI Host, after leaving Chat and after Heeler had been in the background; not yet on a device. (PR #841)
 
