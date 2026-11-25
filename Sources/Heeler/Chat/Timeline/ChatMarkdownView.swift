@@ -280,8 +280,11 @@ private struct ChatMarkdownBlockView: View {
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
+                // Chat's font sets a design on the whole row, which outranks
+                // a design set nearer or carried by `Font.system(_:design:)`,
+                // but not a font made fixed-width, as inline code's is.
                 Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil && block.hasImageLinks))
-                    .font(.system(.footnote, design: .monospaced))
+                    .font(.footnote.monospaced())
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
