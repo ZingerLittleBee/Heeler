@@ -853,6 +853,9 @@ struct GitHubSubtitleLine: ViewModifier {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                            // One line, as a navigation subtitle keeps: a
+                            // longer status that wrapped would move the list.
+                            .lineLimit(1)
                             // In line with the title menu's name.
                             .padding(.leading, 22)
                             .padding(.trailing, 16)
