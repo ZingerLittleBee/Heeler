@@ -428,6 +428,11 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   and draws the window light or dark by the theme ([ADR 0042](../adr/0042-the-app-is-drawn-light-or-dark-by-its-theme.md)).
   Start with [ThemeColorsTests](../../Tests/HeelerTests/ThemeColorsTests.swift) and
   [TerminalThemeSettingsTests](../../Tests/HeelerTests/TerminalThemeSettingsTests.swift).
+- **Error text colour:** error and failure text the user reads, and an icon
+  beside it, takes `.errorInk` ([ErrorInk](../../Sources/Heeler/Support/ErrorInk.swift)),
+  not the system red, which reads under 4.5:1 on light grouped backgrounds.
+  Destructive buttons, swipe actions, recording, badges, status dots and diff
+  deletions keep the system red.
 - **Localization (English, Japanese, Simplified Chinese):** [Localizable.xcstrings](../../Sources/Heeler/Resources/Localizable.xcstrings)
   and [InfoPlist.xcstrings](../../Sources/Heeler/Resources/InfoPlist.xcstrings),
   also compiled into the widget and notification-service extensions. Display

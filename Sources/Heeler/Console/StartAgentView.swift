@@ -269,7 +269,7 @@ struct StartAgentView: View {
                         }
                     case .failed(let message):
                         Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(Self.errorInk)
+                            .foregroundStyle(.errorInk)
                         if !store.availableTemplates.isEmpty {
                             agentPicker
                         }
@@ -406,16 +406,12 @@ struct StartAgentView: View {
         }
     }
 
-    /// The red the GitHub sheets give their errors: the system red reads
-    /// about 3.2:1 on the form's light ground, under 4.5:1.
-    private static let errorInk = GitHubInk.red
-
     /// An error line, as a row of the field's own section: a section's
     /// footer is no place a scroll can be sent to, and under a field the
     /// keyboard covers it.
     private func errorRow(_ message: String, _ error: FormError) -> some View {
         Label(message, systemImage: "exclamationmark.triangle")
-            .foregroundStyle(Self.errorInk)
+            .foregroundStyle(.errorInk)
             .id(error)
     }
 

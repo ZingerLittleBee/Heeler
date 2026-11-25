@@ -251,10 +251,10 @@ struct GitHubItemRow: View {
 /// The GitHub screens' state colours. The system tints are too light for
 /// footnote text and small glyphs on white and grouped backgrounds, so
 /// light mode uses darker tones that keep 4.5:1; dark mode keeps tones
-/// close to the system's.
+/// close to the system's. Red is the app's error ink.
 enum GitHubInk {
     static let green = ink(light: 0x1A7030, dark: 0x30D158)
-    static let red = ink(light: 0xC4161C, dark: 0xFF6961)
+    static let red = Color.errorInk
     static let amber = ink(light: 0x9A4A00, dark: 0xFFD60A)
     static let purple = ink(light: 0x8944AB, dark: 0xD08BFF)
     static let grey = ink(light: 0x59636E, dark: 0x9198A1)
