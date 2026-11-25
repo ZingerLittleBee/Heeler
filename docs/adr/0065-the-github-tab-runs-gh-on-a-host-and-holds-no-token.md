@@ -284,10 +284,12 @@ Close.
   (`viewerDefaultMergeMethod`), whether the repository deletes merged
   branches, and the head commit. The sheet lists the allowed methods,
   starting on the default, and warns, worded for each case, when checks fail,
-  changes were requested, or both. Delete Branch is not offered for a fork's
-  pull request. When the repository deletes merged branches itself, the
-  switch shows on and cannot be changed, a line says why, and Heeler passes
-  no flag, so the page after reports what GitHub did.
+  changes were requested, or both. Delete Branch starts on, then as the user
+  left it in the last Merge they ran where they could set it, kept on the
+  device. It is not offered for a fork's pull request. When the repository
+  deletes merged branches itself, the switch shows on and cannot be
+  changed, a line says why, and Heeler passes no flag, so the page after
+  reports what GitHub did.
 - **The tab can be turned off.** Settings has a GitHub switch under Usage's,
   on by default. Off hides the tab, runs no gh and removes the saved lists.
   A write whose read before is still running when it goes off runs nothing.

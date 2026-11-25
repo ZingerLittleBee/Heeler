@@ -27,6 +27,8 @@ final class GitHubWriteSheetState {
     /// What the user has typed in a Comment or Approve sheet.
     var text = ""
     var chosenMethod: GitHubMergeMethod?
+    /// Merge's Delete Branch, which starts as the user last left it
+    /// (`GitHubSettings.mergeDeletesBranch`).
     var deletesBranch = true
     fileprivate var phase = GitHubWritePhase.editing(notRun: nil)
 }
@@ -407,7 +409,9 @@ private struct GitHubMergeSheet: View {
     /// merged unseen.
     private func merge(_ method: GitHubMergeMethod?, pull: GitHubPullRequestDetail?) {
         guard case .editing = state.phase, let method, let pull, let headCommit = pull.headCommit else { return }
-        let deleteBranch = !pull.isCrossRepository && !pull.mergeSettings.deletesBranch && state.deletesBranch
+        let offersDeleteBranch = !pull.isCrossRepository && !pull.mergeSettings.deletesBranch
+        let deleteBranch = offersDeleteBranch && state.deletesBranch
+        if offersDeleteBranch { store.settings.rememberMergeDeletesBranch(state.deletesBranch) }
         state.phase = .working
         Task {
             let result: GitHubWriteResult

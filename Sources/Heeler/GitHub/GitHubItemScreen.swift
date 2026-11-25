@@ -412,7 +412,9 @@ private struct GitHubItemMenu: View {
                             }
                             if actions.contains(.merge) {
                                 Button("Merge…", systemImage: "arrow.triangle.merge") {
-                                    write.present(GitHubWriteSheetRequest(host: host, item: item, kind: .merge))
+                                    let request = GitHubWriteSheetRequest(host: host, item: item, kind: .merge)
+                                    request.state.deletesBranch = store.settings.mergeDeletesBranch
+                                    write.present(request)
                                 }
                             }
                             if actions.contains(.close) {
