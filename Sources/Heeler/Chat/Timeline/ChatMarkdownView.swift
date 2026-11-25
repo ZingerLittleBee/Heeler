@@ -270,10 +270,7 @@ private struct ChatMarkdownBlockView: View {
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let marker):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(marker)
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: indent - 6, alignment: .trailing)
+                markerView(marker)
                 styledText(in: .body)
             }
         case .code(let language):
@@ -306,6 +303,31 @@ private struct ChatMarkdownBlockView: View {
         case .html:
             Text(verbatim: block.text)
                 .font(.body)
+        }
+    }
+
+    /// A bullet or number, or a task's box as a symbol, read-only, sized and
+    /// set on the baseline like a bullet. The box's label goes on the view:
+    /// on the `Text` it was lost where the marker is its own element, as in
+    /// a GitHub description.
+    @ViewBuilder
+    private func markerView(_ marker: String) -> some View {
+        let box: (symbol: String, label: Text)? = switch marker {
+        case ChatMarkdownBlock.openTask:
+            ("square", Text("Unchecked", comment: "VoiceOver: a task in a message's or description's checklist that is not done."))
+        case ChatMarkdownBlock.doneTask:
+            ("checkmark.square", Text("Checked", comment: "VoiceOver: a task in a message's or description's checklist that is done."))
+        default:
+            nil
+        }
+        let view = (box.map { Text(Image(systemName: $0.symbol)).font(.subheadline) } ?? Text(marker))
+            .font(.body.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: indent - 6, alignment: .trailing)
+        if let box {
+            view.accessibilityLabel(box.label)
+        } else {
+            view
         }
     }
 

@@ -15094,6 +15094,29 @@
         }
       }
     },
+    "Checked" : {
+      "comment" : "VoiceOver: a task in a message's or description's checklist that is done.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェック済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已勾选"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已勾選"
+          }
+        }
+      }
+    },
     "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off." : {
       "localizations" : {
         "ja" : {
@@ -75508,6 +75531,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未變更：%@"
+          }
+        }
+      }
+    },
+    "Unchecked" : {
+      "comment" : "VoiceOver: a task in a message's or description's checklist that is not done.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未チェック"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未勾选"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未勾選"
           }
         }
       }
