@@ -18,8 +18,8 @@ enum ServerKindDetectionScript {
         /// Nil on native Windows, where no probe runs, and when the probe's part
         /// did not read, which says nothing of the other two.
         var tmux: TmuxProbe.Report?
-        /// Nil on native Windows, where no probe runs, and when the Rex part
-        /// did not read.
+        /// Nil when the Rex part did not read. On native Windows it is the
+        /// pipe probe's report.
         var rex: RexProbe.Report?
     }
 
@@ -63,6 +63,7 @@ enum ServerKindDetectionScript {
         if let locator = try? HerdrCoreLocator.windowsLocatorBody(session: session, nonce: nonce) {
             script += "\n" + locator
         }
+        script += "\n" + RexProbe.windowsBody(nonce: nonce)
         return PowerShellCommand.encoded(script + "\nexit 0")
     }
 
@@ -88,6 +89,6 @@ enum ServerKindDetectionScript {
             herdrOutput: Data(lines[(begin + 1)..<statusLine].joined(separator: [UInt8(ascii: "\n")])),
             location: location,
             tmux: platform == .nativeWindows ? nil : try? TmuxProbe.parse(stdout: stdout, nonce: nonce),
-            rex: platform == .nativeWindows ? nil : try? RexProbe.parse(stdout: stdout, nonce: nonce))
+            rex: try? RexProbe.parse(stdout: stdout, nonce: nonce))
     }
 }

@@ -36,7 +36,9 @@ _Avoid_: backend, server type, flavor
 
 **Rex Host**:
 A Host's Rex Server that is on: one Rex server on macOS or Linux, found by the
-Unix socket it listens on and stored with that socket's path. A look lists it
+Unix socket it listens on and stored with that socket's path, or on native
+Windows, found by its named pipe and stored with the pipe's address, which
+each channel reaches through Rex's stdio bridge. A look lists it
 running where the socket is there, and not running where Rex is installed
 without one; turned on then, it connects once the user starts Rex, since
 Heeler never starts the server and never runs the `rex` command-line tool to

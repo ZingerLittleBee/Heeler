@@ -105,6 +105,8 @@ struct HostServerScan: Equatable, Sendable {
             servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: true, version: nil))
         case .notRunning:
             servers.append(FoundServer(key: HostServerKey(kind: .rex, name: ""), isRunning: false, version: nil))
+        case .notUsable(let path) where RexSocket.isWindowsPipeAddress(path):
+            missing.append(Missing(kind: .rex, note: String(localized: "Rex runs, but rex.exe is not on this account's PATH")))
         case .notUsable:
             missing.append(
                 Missing(kind: .rex, note: String(localized: "Socket found, but this account cannot use it")))

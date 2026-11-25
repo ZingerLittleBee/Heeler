@@ -3511,9 +3511,15 @@ final class ConsoleStore {
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
-        // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056).
-        let kind = catalog.first(where: { $0.id == agent.hostID })?.serverKind
-        let platform = hostPlatforms[agent.hostID] ?? (kind == .tmux || kind == .rex ? .posix : nil)
+        // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056),
+        // except a Rex Host reached by a Windows named pipe (ADR 0049), whose
+        // Chat reads are not written for Windows yet.
+        let host = catalog.first(where: { $0.id == agent.hostID })
+        let kind = host?.serverKind
+        let platform =
+            kind == .rex && host?.rexSocket?.isWindowsPipe == true
+            ? .nativeWindows
+            : hostPlatforms[agent.hostID] ?? (kind == .tmux || kind == .rex ? .posix : nil)
         if let platform {
             return AgentChatAvailability.program(
                 for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,

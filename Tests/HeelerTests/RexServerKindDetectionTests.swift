@@ -204,17 +204,77 @@ struct RexServerKindDetectionTests {
         }
     }
 
-    @Test func aNativeWindowsHostIsNeverAskedAboutRex() async throws {
+    static let windowsPipe = "npipe:////./pipe/rex-S-1-5-21-1111111111-2222222222-3333333333-1001"
+
+    /// A native Windows Host is asked for Rex's named pipe in the same one
+    /// exec, and stores the pipe's address as a Unix Host stores its socket.
+    @Test func aNativeWindowsHostIsAskedForRexsPipe() async throws {
         let host = ScriptedCoreHost(
             windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
-            rexProbe: ScriptedCoreHost.rexLines(sockets: [(Self.macSocket, true, true)]), channel: .refused)
+            rexProbe: ScriptedCoreHost.rexLines(kernel: "Windows", sockets: [(Self.windowsPipe, true, true)]),
+            channel: .refused)
 
         let detection = try await ServerKindDetection.run(over: host, session: "work")
 
         #expect(await host.log == ["windows-detection"])
-        #expect(detection.rex == .unsupported)
+        #expect(detection.rex == .socketFound(socketPath: Self.windowsPipe))
+        #expect(detection.rexSocket?.isWindowsPipe == true)
+        let body = try #require(await host.scripts.first)
+        // The pipe namespace is listed by name: no pipe is opened, so the
+        // server sees no client and a busy pipe still counts.
+        #expect(body.contains(#"[IO.Directory]::GetFiles('\\.\pipe\')"#))
+        #expect(!body.contains(#"Test-Path -LiteralPath ('\\.\pipe"#))
+        // Installed reads Rex's data folder, not a `rex.exe` on PATH.
+        #expect(body.contains(#"Join-Path $env:LOCALAPPDATA 'rex'"#))
+        // Testing the pipe and PATH starts nothing: `rex` itself never runs.
+        #expect(!body.contains("& rex"))
+        #expect(!body.contains("__internal"))
+    }
+
+    @Test func aWindowsHostWithoutRexsPipeSaysWhy() async throws {
+        for (lines, expected) in [
+            (ScriptedCoreHost.rexLines(kernel: "Windows", installed: true), ServerKindDetection.RexFinding.notRunning),
+            (ScriptedCoreHost.rexLines(kernel: "Windows", installed: false), .notInstalled),
+        ] {
+            let host = ScriptedCoreHost(
+                windowsLocator: ScriptedCoreHost.windowsLocatorLines(), rexProbe: lines, channel: .refused)
+            #expect(try await ServerKindDetection.run(over: host, session: "work").rex == expected)
+        }
+    }
+
+    /// A pipe with no `rex.exe` on the exec's PATH is a server the bridge
+    /// cannot reach: named missing, with why, and nothing to store.
+    @Test func aWindowsPipeWithoutRexOnPathIsNotUsable() async throws {
+        let host = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            rexProbe: ScriptedCoreHost.rexLines(kernel: "Windows", sockets: [(Self.windowsPipe, true, false)]),
+            channel: .refused)
+
+        let detection = try await ServerKindDetection.run(over: host, session: "work")
+
+        #expect(detection.rex == .notUsable(socketPath: Self.windowsPipe))
         #expect(detection.rexSocket == nil)
-        #expect(!ServerKindDetectionScript.windowsCommand(session: "work", nonce: "n0nce").contains("rex"))
+        #expect(
+            HostServerScan(detection).missing.filter { $0.kind == .rex }.map(\.note)
+                == ["Rex runs, but rex.exe is not on this account's PATH"])
+    }
+
+    /// Only Rex's own name for a personal server's pipe is an address to
+    /// store: it goes on a command line unquoted.
+    @Test func onlyRexsPipeNameIsAWindowsAddress() {
+        #expect(RexSocket(path: Self.windowsPipe)?.isWindowsPipe == true)
+        #expect(RexSocket(path: Self.macSocket)?.isWindowsPipe == false)
+        for refused in [
+            "npipe:////./pipe/", "npipe:////./pipe/rex-", "npipe:////./pipe/other-S-1-5",
+            "npipe:////./pipe/rex-S-1-5&calc", "npipe:////./pipe/rex-S 1", #"\\.\pipe\rex-S-1-5"#,
+            "npipe:////./pipe/rex-S-1-5\"", "npipe:////./pipe/rex-S-1-5/..",
+        ] {
+            #expect(RexSocket(path: refused) == nil, Comment(rawValue: refused))
+        }
+        let stored = try? JSONDecoder().decode(
+            RexSocket.self, from: Data(#"{"path":"\#(Self.windowsPipe)"}"#.utf8))
+        #expect(stored?.path == Self.windowsPipe)
+        #expect(RexWindowsDial.command(for: RexSocket(path: Self.macSocket)!) == nil)
     }
 
     // MARK: The probe on its own
@@ -229,9 +289,14 @@ struct RexServerKindDetectionTests {
         #expect(!body.contains("herdr"))
         #expect(!body.contains("tmux"))
 
-        let windows = ScriptedCoreHost(windowsLocator: ScriptedCoreHost.windowsLocatorLines(), channel: .refused)
-        #expect(try await RexProbe.run(over: windows) == .unsupported)
-        #expect(await windows.log.isEmpty)
+        let windows = ScriptedCoreHost(
+            windowsLocator: ScriptedCoreHost.windowsLocatorLines(),
+            rexProbe: ScriptedCoreHost.rexLines(kernel: "Windows", sockets: [(Self.windowsPipe, true, true)]),
+            channel: .refused)
+        #expect(try await RexProbe.run(over: windows) == .socketFound(socketPath: Self.windowsPipe))
+        #expect(await windows.log == ["windows-detection"])
+        let windowsBody = try #require(await windows.scripts.first)
+        #expect(!windowsBody.contains("herdr"))
     }
 
     /// Only what lies between the last pair of markers counts, and a path is
