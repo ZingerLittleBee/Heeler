@@ -283,7 +283,9 @@ private struct GitHubFilterChip: View {
                 .imageScale(.small)
         }
         .font(.subheadline.weight(.medium))
-        .foregroundStyle(isChanged ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        // `Color.primary`, not `.primary`: a menu's label takes the tint as
+        // its foreground, and `.primary` is that foreground's first level.
+        .foregroundStyle(isChanged ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary))
         .padding(.leading, 14)
         .padding(.trailing, 11)
         .frame(minHeight: 34)
@@ -359,7 +361,8 @@ struct GitHubFilterEntrySheet: View {
                             } label: {
                                 HStack {
                                     Text(role.someoneTitle)
-                                        .foregroundStyle(.primary)
+                                        // `.primary` in a button is the tint's.
+                                        .foregroundStyle(Color.primary)
                                     Spacer()
                                     if self.role == role {
                                         Image(systemName: "checkmark")

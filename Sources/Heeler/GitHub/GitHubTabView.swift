@@ -154,6 +154,8 @@ struct GitHubListScreen: View {
         /// A changed filter while the Host is offline: only the list at the
         /// defaults is kept.
         case offline
+        /// A changed filter's search failed. Its earlier rows are not shown:
+        /// a filter's results are never kept as a list read earlier.
         case failed(GitHubReadFailure)
     }
 
@@ -163,20 +165,20 @@ struct GitHubListScreen: View {
             return store.shown(kind, on: host).map(Content.rows) ?? .reading
         }
         if isOffline { return .offline }
-        if let shown = store.shown(kind, on: host) { return .rows(shown) }
         if let results = store.results(kind, on: host), !results.isReading, let failure = results.failure {
             return .failed(failure)
         }
-        return .reading
+        return store.shown(kind, on: host).map(Content.rows) ?? .reading
     }
 
     @ViewBuilder
     private func listRows(host: GitHubHost, state: GitHubStore.HostState, isOffline: Bool) -> some View {
         let filter = store.filter(for: kind)
+        let banner = filter.isDefault
+            ? state.list.flatMap { GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: $0) }
+            : nil
         Section {
-            if filter.isDefault, let list = state.list,
-                let banner = GitHubBannerText(failure: state.failure, isOffline: isOffline, host: host, list: list)
-            {
+            if let banner {
                 GitHubBanner(text: banner)
             }
         } header: {
@@ -187,9 +189,12 @@ struct GitHubListScreen: View {
                     apply: { store.setFilter($0, for: kind) }, openSheet: { filterSheet = $0 })
             }
             .textCase(nil)
-            .padding(.bottom, 6)
+            .padding(.bottom, 14)
             .listRowInsets(EdgeInsets())
         }
+        // With no banner this section is only the header, and the rows sit
+        // as close under the chips as a banner would.
+        .listSectionSpacing(banner == nil ? .custom(0) : .default)
         switch content(on: host, isOffline: isOffline) {
         case .rows(let shown):
             rows(shown, filter: filter, host: host, isOffline: isOffline)
@@ -219,7 +224,9 @@ struct GitHubListScreen: View {
             }
         case .failed(let failure):
             unavailable {
-                GitHubReadFailureView(failure: failure) { Task { await store.checkAgain(showing: kind) } }
+                GitHubReadFailureView(failure: failure, clearFilters: { store.setFilter(GitHubListFilter(), for: kind) }) {
+                    Task { await store.checkAgain(showing: kind) }
+                }
             }
         }
     }
@@ -368,16 +375,20 @@ private struct GitHubShowMoreRow: View {
         Button(action: showMore) {
             HStack(spacing: 8) {
                 Text("Show More")
-                    .foregroundStyle(.tint)
                 Spacer(minLength: 8)
                 if isReading {
                     ProgressView()
                 } else {
                     Text("\(shown) of \(total)", comment: "Under a GitHub list: rows shown of what GitHub found.")
+                        .font(.subheadline)
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        // Not `.secondary`, which in a button is the tint's.
+                        .foregroundStyle(Color.secondary)
                 }
             }
+            // In line with the rows' titles, past their 22-point icon and
+            // its 10-point gap.
+            .padding(.leading, 32)
             .contentShape(Rectangle())
         }
         .disabled(isReading)
@@ -388,6 +399,9 @@ private struct GitHubShowMoreRow: View {
 /// when it ends, or gh's own words.
 private struct GitHubReadFailureView: View {
     let failure: GitHubReadFailure?
+    /// For a changed filter's search, which GitHub may refuse however often
+    /// it is asked, such as one naming an account that does not exist.
+    var clearFilters: (() -> Void)?
     let checkAgain: () -> Void
 
     var body: some View {
@@ -401,7 +415,7 @@ private struct GitHubReadFailureView: View {
                     }
                 }
             } actions: {
-                Button("Check Again", action: checkAgain)
+                actions
             }
         } else {
             ContentUnavailableView {
@@ -409,8 +423,16 @@ private struct GitHubReadFailureView: View {
             } description: {
                 Text(failure.map(GitHubBannerText.message(for:)) ?? "")
             } actions: {
-                Button("Check Again", action: checkAgain)
+                actions
             }
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button("Check Again", action: checkAgain)
+        if let clearFilters {
+            Button("Clear Filters", action: clearFilters)
         }
     }
 }

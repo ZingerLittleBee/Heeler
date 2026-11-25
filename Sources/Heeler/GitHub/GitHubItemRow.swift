@@ -60,8 +60,9 @@ struct GitHubItemRow: View {
                             localized: "checks \(Self.title(for: checks))",
                             comment: "How a pull request's checks stand, read in the GitHub list: checks 3 failing."))
                 }
+                // A merged or closed pull request's line says only that.
+                if let rest = pullRequestRest { parts.append(rest) }
             }
-            if let rest = pullRequestRest { parts.append(rest) }
         case .issue:
             parts += item.labels.prefix(3).map(\.name)
             parts.append(
