@@ -421,12 +421,14 @@ Close.
   `gh auth login` with Open Terminal on the Host where it can start Terminals,
   each with Check Again. A Host that fails reads otherwise shows the last list
   it gave, dimmed when the Host is offline, and the title bar says why, never
-  a line among the rows: the Host button carries a glyph on amber (offline,
-  rate limited, or a failed read), and on iOS 26 a subtitle under the title
-  says it with when the list was read, or when to try again; an iPad sidebar,
-  whose bar shows its title menu instead of a title, has that line just under
-  the bar. After a failed read the Host menu holds gh's own words and Check
-  Again, so the button shows with one Host too while it has a status.
+  a line among the rows: the Host button, the toolbar's own, puts an amber
+  glyph before the Host's name (offline, rate limited, or a failed read),
+  with no fill of its own inside iOS 26's glass, and on iOS 26 a subtitle
+  under the title says it with when the list was read, or when to try again;
+  an iPad sidebar, whose bar shows its title menu instead of a title, has
+  that line just under the bar. After a failed read the Host menu holds gh's
+  own words and Check Again, so the button shows with one Host too while it
+  has a status.
   Without a list, the tab says why in its place: offline, rate limited
   (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and

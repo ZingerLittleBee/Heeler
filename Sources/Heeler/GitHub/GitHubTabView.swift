@@ -1012,7 +1012,7 @@ struct GitHubReadTime {
 // MARK: - Host menu
 
 /// The Host the tab reads, with what each Host's gh last said. While the
-/// selected Host has a status, the button carries its glyph on amber.
+/// selected Host has a status, its amber glyph comes before the name.
 private struct GitHubHostMenu: View {
     let store: GitHubStore
     /// The selected Host's.
@@ -1063,35 +1063,14 @@ private struct GitHubHostMenu: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            // Beside a glyph the amber's margin stands in for most of the
-            // padding, so the button grows by less than the glyph.
-            .padding(.horizontal, status == nil ? 6 : 2)
+            .padding(.horizontal, 6)
             // An iPad sidebar's bar moves a wider button into its overflow
             // menu, so a long name, or one beside a status glyph, gives way.
             .frame(maxWidth: isSidebarColumn ? Self.sidebarWidth : nil)
-            .background {
-                // Out to just inside the glass. iOS 26 cuts a toolbar
-                // label off about 6 points to either side of it, which
-                // would square off a wider capsule's ends.
-                if status != nil {
-                    Capsule()
-                        .fill(Self.amberFill)
-                        .padding(.horizontal, -5)
-                        .padding(.vertical, -6)
-                }
-            }
         }
         .accessibilityLabel("GitHub Host")
         .accessibilityValue([selected?.name, status?.title].compactMap(\.self).joined(separator: ", "))
     }
-
-    /// Behind the selected Host's name while it has a status: a pale amber
-    /// under dark text, a dim one under light text.
-    private static let amberFill = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 1, green: 214 / 255, blue: 10 / 255, alpha: 0.16)
-            : UIColor(red: 1, green: 241 / 255, blue: 194 / 255, alpha: 1)
-    })
 
     private func status(of host: GitHubHost) -> String? {
         let state = store.state(of: host)
