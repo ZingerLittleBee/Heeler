@@ -162,7 +162,7 @@ Pi 和 Oh My Pi 通过 Heeler 的扩展告诉 Chat 自己正处于哪个对话�
 
 - **支持 Rex API revision 12 到 19：** Heeler 提供 revision 19，并接受 12 及以上的 revision，由 Rex 选择双方都支持的最新 revision。两者没有共同 revision 的 Rex 会被拒绝。Heeler 基于 Rex 0.1.0-preview.14（revision 12）开发，并在 Rex 0.1.0-preview.23（revision 19）上核对过。
 - **尚未在 Linux 上试用：** Heeler 会在 Linux 上 Rex 存放 socket 的位置查找，但还没有用 Linux 上的 Rex 服务端实际试过。
-- **首次绘制不包含的内容：** Rex 的重绘不包含光标形状和终端自身的默认颜色，因此在程序重新设置之前光标保持 Heeler 的形状，终端使用你的 Heeler 主题配色。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
+- **颜色、光标形状和历史记录：** Rex 终端使用它自己的配色，与 Rex 中显示的一致；只有 Rex 保持内置颜色的部分才使用你的 Heeler 主题配色。Rex 不提供终端的光标形状，因此在程序重新设置之前光标保持 Heeler 的形状。全屏程序打开期间，其后方的历史记录要等程序关闭后才会显示。
 - **其他设备的尺寸不会适配屏幕：** 当终端保持着其他设备设定的、比你的屏幕更宽的尺寸时（见 [Sized for another device](#sized-for-another-device)），终端的行会按你的屏幕宽度折行，占满整行宽度的程序可能显示错乱。只要终端屏幕上有比你的屏幕更宽的行，光标、新的输出和你输入的内容也可能落在错误的行上，覆盖之前的文字，直到 **Fit to Screen** 重新绘制。Heeler 不会将其缩小显示，也不会截掉超出的部分。
 - **目前的测试范围：** Rex 已在 iOS 模拟器中、针对 macOS 上的 Rex 0.1.0-preview.14 试用过，并由测试客户端代替其他设备。除了在 iPhone 上从 Chat 发出的一条消息（见下文），尚未在实体 iPhone 或 iPad 上试用。也尚未在 Rex 应用显示同一终端时试用。
 - **Chat 搭配真实的 Agent 只在模拟器中试过：** 在 iOS 模拟器中，Chat 已搭配在 macOS 上的 Rex 中运行的真实 Claude Code、Codex、Pi 和 Oh My Pi 试用：四者都试过阅读对话、**Send** 和 **Stop**，Claude Code 和 Codex 还试过 **Blocked** 提示上的按钮。在 iPhone 上，从 Chat 发出的一条消息送达了在 Rex 中运行的真实 Codex 0.169.0，并得到了回答。那是较早的构建，Codex 的回答里出现链接之后，它拒绝了之后的每一次 Send。Chat 现在能读懂这类链接，但之后还没有在 iPhone 或 iPad 上再试过 Chat。Pi 和 Oh My Pi 尚未在 Linux 上试用，也未搭配 Oh My Pi 的配置文件夹试用。

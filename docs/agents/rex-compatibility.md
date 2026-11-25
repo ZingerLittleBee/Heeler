@@ -111,9 +111,13 @@ in users' words.
   cursor shape, OSC 10 or 11 default colors or saved cursor, and while a
   program uses the alternate screen none of the primary screen or scrollback
   behind it (`b_redraw`). Heeler reads the title on its own and follows its
-  events, keeps its own colors, and paints the primary screen again once the
+  events, applies the stream's `theme` (the terminal's own default colors)
+  after each paint's reset, and paints the primary screen again once the
   program leaves the alternate screen; the cursor shape stays Heeler's until
-  the program sets it again. With autowrap off, soft wraps are not joined. A
+  the program sets it again. Neither revision 12 nor 19 offers the cursor
+  shape or the history behind the alternate screen
+  ([Terminal colors and what stays out](#terminal-colors-and-what-stays-out)).
+  With autowrap off, soft wraps are not joined. A
   program that never pauses for 250 ms keeps a best-effort first paint, and
   a redraw past 32 MiB ends the attach as too long to show
   ([ADR 0051](../adr/0051-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
@@ -723,6 +727,27 @@ Lab captures `b_redraw`, `b2_edges` and `c2_handoff`, and the committed
   handoffs, some through a 40 ± 30 ms delay (`c2_handoff`). A program writing a
   line about every 12 ms got a best-effort first paint and one exact repaint
   once it stopped (`RexTerminalLiveTests`).
+
+### Terminal colors and what stays out
+
+Probes on Rex 0.1.0-preview.23 on macOS, 2026-11-25, from a client that said
+hello at revision 12, on a lab session made and destroyed for them.
+
+- `set_theme` on a block with no owner applied at once. The block's open
+  data stream then carried
+  `{"type":"theme","foreground":"#111111","background":"#fafafa"}`, with only
+  the colors given; an empty `set_theme` carried `{"type":"theme"}`. A stream
+  opened while the colors were the built-in ones began with its resize and
+  no theme.
+- The `vt` redraw with every extra carried all 256 palette entries as OSC 4
+  in `rgb:rr/gg/bb` form, entry 1 as the theme had set it, and no OSC 10, 11
+  or 12. Heeler writes the theme's colors after each paint's reset.
+- After the shell sent `CSI 5 SP q`, the redraw carried no cursor shape, and
+  no `format` extra, `modes` entry or stream message names one. `help.all`
+  at revision 19 names none either.
+- With 40 lines printed and then the alternate screen entered, `modes` said
+  `alternate`, and `format` as `vt`, `text` and `html` held none of the 40
+  lines: only the screen shown.
 
 ### Terminal size and ownership
 
