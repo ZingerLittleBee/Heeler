@@ -1,7 +1,7 @@
 import Foundation
 
 /// The list read: one `gh api graphql` request for the account's login and
-/// four searches of open items across repositories (ADR 0064). GitHub counts
+/// four searches of open items across repositories (ADR 0065). GitHub counts
 /// a GraphQL search against the GraphQL rate limit, two points for all four.
 enum GitHubListRead {
     /// Rows per section; the header gives GitHub's full count.

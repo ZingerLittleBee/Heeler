@@ -84,7 +84,7 @@ struct GitHubWriteSheet: View {
 
 /// Presents the GitHub tab's write sheets from above the tab, as Send to
 /// Agent is, and then, once each, the results that came after their screen
-/// had gone (ADR 0064).
+/// had gone (ADR 0065).
 struct GitHubWriteSheetPresenter: ViewModifier {
     @Binding var request: GitHubWriteSheetRequest?
     let store: GitHubStore

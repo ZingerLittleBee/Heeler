@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One pull request or issue in three lines: where it is and how old, its
-/// title, and how it stands (ADR 0064).
+/// title, and how it stands (ADR 0065).
 struct GitHubItemRow: View {
     let item: GitHubItem
     let section: GitHubListSection.Kind

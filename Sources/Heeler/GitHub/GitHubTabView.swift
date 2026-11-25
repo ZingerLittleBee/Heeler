@@ -36,7 +36,7 @@ struct GitHubTabView: View {
 }
 
 /// The pull requests and issues that involve the account gh is signed in to
-/// on one Host, and every state on the way there (ADR 0064).
+/// on one Host, and every state on the way there (ADR 0065).
 struct GitHubListScreen: View {
     let store: GitHubStore
     let terminals: GitHubTerminalLink?

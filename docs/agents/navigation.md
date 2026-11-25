@@ -320,7 +320,7 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   through `ConsoleStore.setGitHubEnabled(_:)`; with Usage also on, Settings
   moves under the Hosts tab (`ConsoleView.settingsUnderHosts`,
   `HostListSettingsLink`). Read
-  [ADR 0064](../adr/0064-the-github-tab-runs-gh-on-a-host-and-holds-no-token.md).
+  [ADR 0065](../adr/0065-the-github-tab-runs-gh-on-a-host-and-holds-no-token.md).
   No focused tests yet.
 - **GitHub Detail and Send to Agent:**
   [GitHubItemScreen](../../Sources/Heeler/GitHub/GitHubItemScreen.swift) is
@@ -366,7 +366,7 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   `HeelerSSHTransport.runGitHubScript` turns a failure after the exec was
   handed to SSH into `coreMutationOutcomeUnknown`. The body file, the private
   folder and the desktop wait are in `GitHubCLIScript`. Read the writes
-  section of ADR 0064. No focused tests yet.
+  section of ADR 0065. No focused tests yet.
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter. The
   Claude Code Accounts browser comes from `AgentUsageStore.accountDirectoryBrowser()`

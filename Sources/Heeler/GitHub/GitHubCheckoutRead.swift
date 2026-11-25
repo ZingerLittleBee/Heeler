@@ -38,7 +38,7 @@ struct GitHubCheckout: Sendable, Equatable {
 }
 
 /// Which repository and branch the Agents' directories are checkouts of,
-/// for Send to Agent (ADR 0064): one script through the gh seam, so a Rex
+/// for Send to Agent (ADR 0065): one script through the gh seam, so a Rex
 /// Host answers too. git only, read-only, and nothing about the account.
 enum GitHubCheckoutRead {
     /// The most directories one read asks about.

@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 /// The GitHub lists a device keeps between launches, one per Host, so the
-/// tab can show the last read at once (ADR 0064). Display only: nothing reads
+/// tab can show the last read at once (ADR 0065). Display only: nothing reads
 /// it to decide what to do on GitHub.
 protocol GitHubListCache: Sendable {
     func load(_ hostID: UUID) async -> GitHubList?

@@ -84,7 +84,7 @@ final class StartAgentStore {
         let cwd: String
     }
 
-    /// New Agent from Send to Agent on a pull request or an issue (ADR 0064):
+    /// New Agent from Send to Agent on a pull request or an issue (ADR 0065):
     /// where the form opens, and how its Worktree follows the item while the
     /// chosen Workspace is a checkout of the item's repository. The message
     /// goes to the new Agent's Composer from the sheet, not from here.

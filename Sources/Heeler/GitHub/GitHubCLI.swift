@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runs one gh script on a Host over its SSH connection (ADR 0064): one
+/// Runs one gh script on a Host over its SSH connection (ADR 0065): one
 /// bounded exec of POSIX sh, the same on every Server Kind. Heeler never
 /// sees the account's token; gh reads it on the Host as it always does.
 protocol GitHubHostCLI: Sendable {

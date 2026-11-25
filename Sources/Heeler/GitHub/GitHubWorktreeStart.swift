@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where a New Agent's Worktree for a pull request or an issue starts
-/// (ADR 0064), in a checkout of the item's repository, in two execs. The
+/// (ADR 0065), in a checkout of the item's repository, in two execs. The
 /// first fetches the commit from that checkout's own remote as a gh request
 /// would run (`GitHubCLIScript`), so on a Mac a fetch that fails over SSH,
 /// whose credential helper cannot read the login keychain, runs once more

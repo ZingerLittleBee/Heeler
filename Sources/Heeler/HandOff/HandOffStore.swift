@@ -314,7 +314,7 @@ extension ConsoleStore {
     }
 
     /// Puts a message in an Agent's Composer by Hand Off's rules, with no
-    /// file: GitHub's Send to Agent (ADR 0064). Nothing is sent.
+    /// file: GitHub's Send to Agent (ADR 0065). Nothing is sent.
     func deliverDraft(_ message: String, to id: ConsoleAgent.ID) async throws {
         Self.addBelowDraft(message, in: try await receivingComposer(id))
     }

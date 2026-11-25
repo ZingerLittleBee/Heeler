@@ -806,12 +806,12 @@ enum HostDetailDestination: Hashable {
     /// One Server's page, by its record, over its Host's detail.
     /// `opensHostHelper` opens the Host Helper sheet over it on arrival.
     case server(Host.ID, opensHostHelper: Bool = false)
-    /// Settings, where it has no tab of its own (ADR 0064).
+    /// Settings, where it has no tab of its own (ADR 0065).
     case settings
 }
 
 /// Settings as the Hosts list pushes it, when both GitHub and Usage take a
-/// tab and Settings leaves the tab bar (ADR 0064).
+/// tab and Settings leaves the tab bar (ADR 0065).
 struct HostListSettingsLink {
     /// The Settings page, without a navigation stack of its own.
     let page: @MainActor () -> AnyView

@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// A Host as the GitHub tab lists it: one machine, whichever of its Servers
-/// is connected. gh is the machine's, not a Server's (ADR 0064).
+/// is connected. gh is the machine's, not a Server's (ADR 0065).
 struct GitHubHost: Identifiable, Hashable, Sendable {
     /// The machine's first catalog record, which keys its saved list and
     /// the tab's choice of Host.
@@ -34,7 +34,7 @@ protocol GitHubHostAccess: AnyObject {
     func forgetGitHubRoutes(_ recordIDs: [Host.ID])
 }
 
-/// The GitHub tab's lists, one per Host (ADR 0064). A list read from disk
+/// The GitHub tab's lists, one per Host (ADR 0065). A list read from disk
 /// shows at once; a read runs when the tab opens on a stale list, on
 /// pull-to-refresh and on Check Again, never in the background.
 @MainActor
@@ -409,7 +409,7 @@ final class GitHubStore {
         writing.contains(DetailKey(host: host.id, item: item.id))
     }
 
-    /// Comment, Approve, Merge or Close (ADR 0064). Reads the item again and
+    /// Comment, Approve, Merge or Close (ADR 0065). Reads the item again and
     /// runs nothing if it no longer takes the write; otherwise runs gh once,
     /// on the Server whose read just answered and on no other, then reads
     /// the item again so the detail, its list row and the saved list follow.

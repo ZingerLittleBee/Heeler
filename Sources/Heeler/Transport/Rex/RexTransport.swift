@@ -54,7 +54,7 @@ protocol RexTransport: Sendable {
     nonisolated var extensionPlacing: any RexHostExtensionPlacing { get }
 
     /// The gh runs of the GitHub tab, on this same SSH connection, and
-    /// nothing else of it (ADR 0064).
+    /// nothing else of it (ADR 0065).
     nonisolated var gitHub: any GitHubHostCLI { get }
 
     /// Closes the control link with a close frame, so the server forgets this

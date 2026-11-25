@@ -49,7 +49,7 @@ enum HerdrCoreWorktrees {
 
     /// A branch that exists is checked out as it is; a new one starts at
     /// `startPoint`, the source checkout's HEAD unless a launch names a
-    /// commit (a GitHub item's, ADR 0064).
+    /// commit (a GitHub item's, ADR 0065).
     static func addArguments(path: String, branch: String, branchExists: Bool, startPoint: String = "HEAD") -> [String] {
         branchExists
             ? ["worktree", "add", path, branch]

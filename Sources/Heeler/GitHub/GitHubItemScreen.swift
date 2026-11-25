@@ -7,7 +7,7 @@ struct GitHubSendLink {
 }
 
 /// A pull request or an issue: how it stands, what it says, Send to Agent,
-/// and Comment, Approve, Merge and Close from its "⋯" (ADR 0064). Its list
+/// and Comment, Approve, Merge and Close from its "⋯" (ADR 0065). Its list
 /// row shows at once; the rest comes from a read of the one item, again on
 /// a pull and around every write.
 struct GitHubItemScreen: View {

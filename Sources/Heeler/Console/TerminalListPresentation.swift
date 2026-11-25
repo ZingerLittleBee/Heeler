@@ -4,7 +4,7 @@ import Observation
 /// The Console's bottom tabs (#316). Hosts is Host management, the screen
 /// the toolbar's Hosts button used to present, and Settings the sheet its
 /// gear used to. Agents and Terminals each search their own list. With both
-/// GitHub and Usage on, Settings opens from the Hosts tab instead (ADR 0064).
+/// GitHub and Usage on, Settings opens from the Hosts tab instead (ADR 0065).
 enum ConsoleTab: String, CaseIterable, Identifiable, Sendable {
     case agents
     case terminals

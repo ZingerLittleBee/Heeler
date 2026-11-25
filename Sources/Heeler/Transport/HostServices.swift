@@ -3,7 +3,7 @@ import Foundation
 /// The exec and SFTP services a Host offers whichever Server Kind it runs.
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032). Its gh runs are
-/// `GitHubHostCLI`'s (ADR 0064).
+/// `GitHubHostCLI`'s (ADR 0065).
 protocol HostServices: GitHubHostCLI {
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive

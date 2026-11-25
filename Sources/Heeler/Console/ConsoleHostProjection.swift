@@ -153,7 +153,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     ) async throws -> Value
 
     /// Runs one gh script on the Host for the GitHub tab, whichever Server
-    /// Kind runs (ADR 0064). A mutation is sent once: no layer runs it again
+    /// Kind runs (ADR 0065). A mutation is sent once: no layer runs it again
     /// on a replacement connection.
     func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult
 

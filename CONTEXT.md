@@ -359,7 +359,7 @@ when asked, never watched (ADR 0062).
 _Avoid_: port scan, forwarded ports, services
 
 **Console**:
-The native dashboard surface, split into Agents, Terminals, GitHub, Usage, Hosts, and Settings tabs. GitHub and Usage each have a switch in Settings; with both on, Settings leaves the tab bar and opens from the Hosts tab (ADR 0064). The two lists share one Host filter, which an open Agent's switcher follows while keeping that Agent's own chip, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch at its top between the two lists and the GitHub List and Usage when they are on, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
+The native dashboard surface, split into Agents, Terminals, GitHub, Usage, Hosts, and Settings tabs. GitHub and Usage each have a switch in Settings; with both on, Settings leaves the tab bar and opens from the Hosts tab (ADR 0065). The two lists share one Host filter, which an open Agent's switcher follows while keeping that Agent's own chip, and each hides its own search field until pulled down. Agents lists Agents across Hosts as a flat list or collapsible sections By Host or By Workspace, opening Agent detail. Both lists name a row's, a card's and a section's Host alone, never its Server; By Host has one section per Host, in the Hosts tab's order, holding all its Servers' items, and leaves out a Host with nothing to list, say or offer, as a connected Rex Host can be (ADR 0047). Workspace sections are scoped to their Server, under its Host's name, and ordered by their first Agent in the existing priority order; Agents keep their relative order within each section. A linked-worktree Workspace nests under the first main-checkout Workspace of the same repository on its Host (a collapsed parent counts its worktrees' Agents), and stays top-level when that Host has no such Workspace with Agents. Until a snapshot proves a Host's Agents, its saved Chat entries are placed by the Workspace structure its last snapshot reported, so its cards keep the shape they had. By Workspace draws each top-level Workspace as a card: a repository's card titles its main checkout by the branch its Agents' Changes reads found (until a read of the launch lands, the branch the last one found, saved with the Workspace structure) and each worktree by its Workspace, and rows leave the Workspace, Host, and checkout directory to the card. Presentation and collapse choices persist, and search opens matching sections without changing those choices. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch at its top between the two lists and the GitHub List and Usage when they are on, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
 
 **Agent Row Layout**:
@@ -619,7 +619,7 @@ connection and never holds the account's token; on a Mac whose SSH session
 cannot read the login keychain, gh runs once in the desktop session instead.
 It is read for one Host at a time, a Host and not a Server, kept on the device
 for display, and read again when shown stale, when pulled, and on Check Again,
-never in the background (ADR 0064).
+never in the background (ADR 0065).
 _Avoid_: inbox, notifications, feed, dashboard
 
 **GitHub Detail**:
@@ -629,7 +629,7 @@ review, changes and comments, or an issue's labels, assignees and comments.
 Kept in memory only; its row replaces the list's copy. Its "⋯" offers
 Comment, Approve, Merge and Close, each one run of gh's own command on the
 Host, sent once, between a read of the item before, which can stop it, and
-one after, which says what came of it (ADR 0064).
+one after, which says what came of it (ADR 0065).
 _Avoid_: item page, PR view
 
 **Send to Agent**:
@@ -638,7 +638,7 @@ Agent's Composer: one sentence asking it to review, fix failing checks,
 address review comments, work on, investigate or just read the item, and the
 item's address. Agents of the item's Host in a checkout of its repository come
 first, marked On this branch or This repository from what git says there.
-Nothing is sent: the user sends the draft, as with Hand Off (ADR 0064).
+Nothing is sent: the user sends the draft, as with Hand Off (ADR 0065).
 _Avoid_: assign, dispatch, delegate
 
 **Blocked Card**:

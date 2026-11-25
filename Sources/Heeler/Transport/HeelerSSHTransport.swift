@@ -4520,7 +4520,7 @@ extension HeelerSSHTransport: RexHostConnection {
     }
 }
 
-// MARK: - gh on the Host (ADR 0064)
+// MARK: - gh on the Host (ADR 0065)
 extension HeelerSSHTransport {
     /// One bounded exec, whatever Server Kind the connection serves. The
     /// remote bound leaves room for a run in the exec and one in the

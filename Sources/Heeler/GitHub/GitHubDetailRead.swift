@@ -2,7 +2,7 @@ import Foundation
 
 /// The detail read: one `gh api graphql` request for one pull request or
 /// issue by its node id, with the fields its list row has and what the
-/// detail and its actions add (ADR 0064). A node costs one point of the
+/// detail and its actions add (ADR 0065). A node costs one point of the
 /// GraphQL limit.
 enum GitHubDetailRead {
     static func request(for item: GitHubItem) -> GitHubCLIRequest {

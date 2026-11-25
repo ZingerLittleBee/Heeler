@@ -1,6 +1,6 @@
 import Foundation
 
-/// A change the GitHub tab makes on GitHub (ADR 0064): one gh porcelain
+/// A change the GitHub tab makes on GitHub (ADR 0065): one gh porcelain
 /// command in one exec, naming the item by its URL, never sent twice.
 enum GitHubWrite: Sendable, Equatable {
     /// `gh pr comment` or `gh issue comment`.
@@ -198,7 +198,7 @@ struct GitHubWriteResult: Sendable, Equatable {
 }
 
 /// A write's result that came after the screen it began on had gone, for
-/// the tab to show once (ADR 0064).
+/// the tab to show once (ADR 0065).
 struct GitHubWriteReport: Identifiable, Equatable {
     let id = UUID()
     let host: GitHubHost

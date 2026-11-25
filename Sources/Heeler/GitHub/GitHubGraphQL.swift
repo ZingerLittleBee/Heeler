@@ -1,6 +1,6 @@
 import Foundation
 
-/// What every `gh api graphql -i` read shares (ADR 0064): the fields a list
+/// What every `gh api graphql -i` read shares (ADR 0065): the fields a list
 /// row needs, the decoding of GitHub's answer, and how a failed run reads.
 enum GitHubGraphQL {
     /// A pull request's fields as a list row shows them.

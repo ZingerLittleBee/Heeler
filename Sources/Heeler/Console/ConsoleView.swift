@@ -611,7 +611,7 @@ struct ConsoleView: View {
     }
 
     /// With both GitHub and Usage on, Settings leaves the tab bar and opens
-    /// from a gear on the Hosts tab (ADR 0064).
+    /// from a gear on the Hosts tab (ADR 0065).
     private var settingsUnderHosts: Bool { console.isUsageEnabled && console.isGitHubEnabled }
 
     /// Settings moved between its tab and the Hosts tab. Whoever stands on

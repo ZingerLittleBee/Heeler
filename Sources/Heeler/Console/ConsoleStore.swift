@@ -233,7 +233,7 @@ final class ConsoleStore {
     /// one: demo mode and tests must not replace the real widgets' figures.
     @ObservationIgnored let usageWidgets: AgentUsageWidgetPublisher?
     @ObservationIgnored private let usageSettings: AgentUsageSettings
-    /// The GitHub tab's lists (ADR 0064).
+    /// The GitHub tab's lists (ADR 0065).
     let gitHub: GitHubStore
     /// The connection on which each record's gh last needed the macOS
     /// desktop session, by its transport generation.
@@ -4085,7 +4085,7 @@ extension ConsoleStore {
     }
 }
 
-// MARK: - gh on the Hosts (ADR 0064)
+// MARK: - gh on the Hosts (ADR 0065)
 extension ConsoleStore: GitHubHostAccess {
     func isConnected(_ recordID: Host.ID) -> Bool {
         hostStatuses[recordID] == .connected && projections[recordID] != nil
