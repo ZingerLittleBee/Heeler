@@ -156,13 +156,7 @@ struct StartAgentView: View {
                             let branchTitle: LocalizedStringKey =
                                 store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
                             HStack(spacing: 10) {
-                                // A placeholder is no label: once filled,
-                                // VoiceOver read only the value.
-                                TextField(branchTitle, text: $store.worktreeBranch)
-                                    .font(.callout.monospaced())
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .accessibilityLabel(Text(branchTitle))
+                                WorktreeRefField(title: branchTitle, text: $store.worktreeBranch)
                                     .accessibilityIdentifier("startAgent.worktreeBranch")
                                 if !store.worktreeBranch.isEmpty {
                                     Button {
@@ -200,11 +194,7 @@ struct StartAgentView: View {
                             }
                             // Following an item, the item decides the base.
                             if !store.worktreeNeedsBranch && !store.followsGitHubItem {
-                                TextField("Base (optional)", text: $store.worktreeBase)
-                                    .font(.callout.monospaced())
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                                    .accessibilityLabel(Text("Base (optional)"))
+                                WorktreeRefField(title: "Base (optional)", text: $store.worktreeBase)
                             }
                             if let message = store.worktreeBranchErrorMessage {
                                 errorRow(message, .branch)
@@ -501,6 +491,40 @@ private struct RevealsFormErrors: ViewModifier {
                 withAnimation { proxy.scrollTo(shown) }
             }
         }
+    }
+}
+
+/// A Worktree's branch or base: a git ref, typed as it is. At accessibility
+/// sizes it wraps, as the form's other rows put their values on lines of
+/// their own there; one line showed a few characters of a long branch name.
+/// Return still ends the field there instead of starting a line.
+private struct WorktreeRefField: View {
+    let title: LocalizedStringKey
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        TextField(
+            title,
+            text: Binding(
+                get: { text },
+                set: { value in
+                    guard value.contains(where: \.isNewline) else {
+                        text = value
+                        return
+                    }
+                    text = value.filter { !$0.isNewline }
+                    isFocused = false
+                }),
+            axis: dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal)
+            .focused($isFocused)
+            .font(.callout.monospaced())
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            // A placeholder is no label: once filled, VoiceOver read only
+            // the value.
+            .accessibilityLabel(Text(title))
     }
 }
 
