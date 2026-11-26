@@ -535,14 +535,21 @@ final class RexConsoleProjection: ConsoleHostProjection {
             hostSystem: HerdrCoreHostSystem(kernel: kernel),
             processScope: .rex(
                 sessionID: address.sessionID, blockID: address.blockID,
-                foregroundNames: Self.foregroundNames(details)))
+                foregroundNames: Self.foregroundNames(
+                    details, onWindows: HerdrCoreHostSystem(kernel: kernel) == .windows)))
     }
 
     /// What Rex named of a terminal's foreground: its name, and its first
-    /// argument's last path part.
-    private static func foregroundNames(_ details: RexTerminalDetails) -> Set<String> {
-        let firstArgument = details.argv0.flatMap { $0.split(separator: "/").last.map(String.init) }
-        return Set([details.program, firstArgument].compactMap { $0 }.filter { !$0.isEmpty })
+    /// argument's last path part. On Windows Rex names the image, such as
+    /// `claude.exe`, and a path there may part at `\`, so each name takes
+    /// the form a Windows process read gives (rex-compatibility.md).
+    nonisolated static func foregroundNames(_ details: RexTerminalDetails, onWindows: Bool = false) -> Set<String> {
+        let separators: Set<Character> = onWindows ? ["/", "\\"] : ["/"]
+        let firstArgument = details.argv0.flatMap {
+            $0.split(whereSeparator: separators.contains).last.map(String.init)
+        }
+        let names = [details.program, firstArgument].compactMap { $0 }.filter { !$0.isEmpty }
+        return Set(onWindows ? names.map(HostProcessReader.windowsProgramName) : names)
     }
 
     private func chatRecord(at address: RexPaneAddress, details: RexTerminalDetails) -> HerdrCoreTerminalRecord {
@@ -657,7 +664,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: Actions
 
-    /// Nothing is started, closed or renamed on a Rex Host (ADR 0049).
+    /// Nothing but a shell is started, and nothing is closed or renamed, on a
+    /// Rex Host (ADR 0049 and its update of 2026-11-25).
     private nonisolated static var unavailable: TransportError {
         .hostFeatureUnavailable(feature: String(localized: "This action on a Rex Host"))
     }
@@ -670,11 +678,29 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func startAgentInNewWorkspace(_: AgentLaunchRequest, workspace _: NewWorkspaceSpec) async throws -> Agent {
         throw Self.unavailable
     }
-    func createShellTerminal(_: ShellTerminalCreationRequest) async throws -> ShellTerminalIdentity {
-        throw Self.unavailable
+    /// New Terminal: a shell in a new window of the Workspace's session, in
+    /// the background, which lists once the server's events say so.
+    func createShellTerminal(_ request: ShellTerminalCreationRequest) async throws -> ShellTerminalIdentity {
+        Self.identity(of: try await session.createTerminal(.window(sessionID: request.workspaceID), cwd: request.cwd))
     }
-    func createShellWorkspace(_: NewWorkspaceSpec, tabLabel _: String?) async throws -> ShellTerminalIdentity {
-        throw Self.unavailable
+
+    /// New Workspace: a new session whose one window holds the shell,
+    /// labeled with the name given, else with its directory's name, as other
+    /// Hosts name theirs. A tab name has nowhere to go.
+    func createShellWorkspace(
+        _ workspace: NewWorkspaceSpec, tabLabel _: String?
+    ) async throws -> ShellTerminalIdentity {
+        let label =
+            workspace.label.flatMap { $0.isEmpty ? nil : $0 }
+            ?? RexNewTerminal.sessionLabel(for: workspace.directory)
+        return Self.identity(of: try await session.createTerminal(.session(label: label), cwd: workspace.directory))
+    }
+
+    /// A Rex terminal's Pane and Terminal ids are both its address, and its
+    /// Tab is its window.
+    private nonisolated static func identity(of created: RexNewTerminal.Created) -> ShellTerminalIdentity {
+        ShellTerminalIdentity(
+            paneID: created.address.paneID, tabID: created.windowID, terminalID: created.address.paneID)
     }
     func closePane(_: String) async throws { throw Self.unavailable }
     func closeTab(_: String) async throws { throw Self.unavailable }
@@ -929,10 +955,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
             home: { try await Self.reads(session).hostHomeDirectory() })
     }
 
-    /// New Agent and New Terminal browse with these, and a Rex Host offers
-    /// neither.
-    func remoteHomeDirectory() async throws -> String { throw Self.unavailable }
-    func listRemoteDirectories(at _: String) async throws -> RemoteDirectoryListing { throw Self.unavailable }
+    /// New Terminal starts in the account's home directory and browses with
+    /// these, on the connection the server's links use.
+    func remoteHomeDirectory() async throws -> String {
+        try await session.withConnection { $0.transport.browsing }.remoteHomeDirectory()
+    }
+
+    func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        try await session.withConnection { $0.transport.browsing }.listDirectories(at: path)
+    }
 
     /// Chat reads the Host's files and processes through `RexHostReads`, an
     /// attachment is staged through `RexHostStaging`, and Heeler's extension

@@ -62,11 +62,17 @@ enum ChatImageLink {
     }
 
     /// Whether `path` is a temporary Host path created when Heeler stages an
-    /// image (POSIX `.../heeler.../stage-.../...` or native Windows `herdr-core`
+    /// image (POSIX `.../heeler.../stage-.../...`, a Rex Agent's on native
+    /// Windows `...\heeler...\stage-...\image...`, or native Windows `herdr-core`
     /// `...\herdr-core\...\files\<terminal>\image...`).
     static func isStagedImagePath(_ path: String) -> Bool {
         if RemoteHostPath.isWindowsAbsolute(path) {
             let parts = path.split { $0 == "\\" || $0 == "/" }.map { $0.lowercased() }
+            if let filename = parts.last, filename.hasPrefix("image"), ChatImagePath.hasImageExtension(filename),
+                hasStageHierarchy(parts.map { Substring($0) })
+            {
+                return true
+            }
             guard parts.count >= 5,
                 let filename = parts.last,
                 filename.hasPrefix("image"),
@@ -82,11 +88,17 @@ enum ChatImageLink {
     }
 
     /// Whether `path` is a temporary Host path created when Heeler stages a
-    /// video (POSIX `.../heeler.../stage-.../*.{mp4,m4v,mov}` or native
+    /// video (POSIX `.../heeler.../stage-.../*.{mp4,m4v,mov}`, a Rex Agent's on
+    /// native Windows `...\heeler...\stage-...\*.{mp4,m4v,mov}`, or native
     /// Windows `herdr-core` `...\herdr-core\...\files\<terminal>\*.{mp4,m4v,mov}`).
     static func isStagedVideoPath(_ path: String) -> Bool {
         if RemoteHostPath.isWindowsAbsolute(path) {
             let parts = path.split { $0 == "\\" || $0 == "/" }.map { $0.lowercased() }
+            if let filename = parts.last, namesVideoFile(filename),
+                hasStageHierarchy(parts.map { Substring($0) })
+            {
+                return true
+            }
             guard parts.count >= 5,
                 let filename = parts.last,
                 namesVideoFile(filename),
@@ -105,7 +117,12 @@ enum ChatImageLink {
     }
 
     private static func hasPOSIXStageHierarchy(_ path: String) -> Bool {
-        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        hasStageHierarchy(path.split(separator: "/", omittingEmptySubsequences: true))
+    }
+
+    /// `.../heeler.../stage-.../<file>`, which Heeler stages on POSIX and, for
+    /// a Rex Agent, on native Windows too.
+    private static func hasStageHierarchy(_ components: [Substring]) -> Bool {
         guard components.count >= 3 else { return false }
         let stage = components[components.count - 2]
         let parent = components[components.count - 3]

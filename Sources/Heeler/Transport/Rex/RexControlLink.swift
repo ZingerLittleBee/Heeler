@@ -124,7 +124,8 @@ enum RexControlUpdate: Sendable, Equatable {
 ///
 /// Opening sends the hello at once, since Rex drops a client that stays
 /// silent for a few seconds, and accepts only a welcome for this build's
-/// protocol and API revision 12. `call` sends one request and returns its
+/// protocol at an API revision from 12 to 19 (the server picks the newest
+/// both speak; nothing Heeler sends or reads differs between them). `call` sends one request and returns its
 /// response; calls run concurrently, matched to responses by id in whatever
 /// order those arrive. `events` yields what the server pushes, in order.
 ///
@@ -174,7 +175,7 @@ actor RexControlLink {
     nonisolated let maxMessageBytes: Int
     /// This link took back the client an earlier link's token named.
     nonisolated let resumed: Bool
-    /// The API revision both sides agreed on.
+    /// The API revision both sides agreed on, from 12 to 19.
     nonisolated let apiRevision: Int
     /// What the server pushes, in order. It finishes when the link ends,
     /// throwing `RexControlError.linkEnded` unless this side ended it. One
@@ -198,7 +199,7 @@ actor RexControlLink {
         clientID = welcome.clientID
         maxMessageBytes = max(welcome.maxMessageBytes ?? 0, RexControlProtocol.minimumMessageLimit)
         resumed = welcome.resumed
-        apiRevision = welcome.apiRevision ?? RexControlProtocol.apiRevision
+        apiRevision = welcome.apiRevision ?? RexControlProtocol.minimumAPIRevision
         reconnectToken = welcome.reconnectToken
         self.options = options
         self.sleep = sleep
@@ -250,7 +251,7 @@ actor RexControlLink {
             throw error
         }
         guard welcome.protocolName == RexControlProtocol.subprotocol,
-            welcome.apiRevision == RexControlProtocol.apiRevision
+            let revision = welcome.apiRevision, RexControlProtocol.apiRevisions.contains(revision)
         else {
             await webSocket.close(.normalClosure)
             throw RexControlError.unsupportedVersion(welcome.offer)

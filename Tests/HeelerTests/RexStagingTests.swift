@@ -9,7 +9,7 @@ import UIKit
 /// Agent's do (ADRs 0005 and 0006): through a seam on the Host's SSH
 /// connection that can do nothing else, for the server the Agent opened on
 /// only, offered wherever Chat or the Composer is on a Host whose server named
-/// Linux or macOS, and typed with the message, once. Paths, names and
+/// Linux, macOS or Windows, and typed with the message, once. Paths, names and
 /// contents are invented.
 @MainActor
 @Suite("Rex staging", .timeLimit(.minutes(1)))
@@ -156,17 +156,17 @@ struct RexStagingTests {
 
     // MARK: What a Rex Host offers
 
-    /// Uploads open with Chat, once the server has named Linux or macOS, and
-    /// so do the detail's attachments on Chat and the terminal; the rest of a
-    /// Rex Host's menus stay as they were.
+    /// Uploads open with Chat, once the server has named Linux, macOS or
+    /// Windows, and so do the detail's attachments on Chat and the terminal.
+    /// The rest of a Rex Host's menus stay as they were.
     @Test(arguments: [
         (nil, false), (HerdrCoreLocator.linuxKernel, true), (HerdrCoreLocator.macOSKernel, true),
-        (HerdrCoreLocator.windowsKernel, false),
+        (HerdrCoreLocator.windowsKernel, true),
     ] as [(String?, Bool)])
     func uploadsOpenWhereChatDoes(kernel: String?, opens: Bool) {
         let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel)
         #expect(capabilities.uploads == opens)
-        #expect(capabilities.uploads == capabilities.chat)
+        #expect(capabilities.chat == opens)
         #expect(capabilities.composerSend)
         let offers = AgentDetailMenuOffers(
             capabilities: capabilities, workspaceID: "session:studio", removesSavedChat: false)
@@ -174,6 +174,37 @@ struct RexStagingTests {
         #expect(!offers.newAgent && !offers.renameAgent && !offers.renameWorkspace && !offers.close)
         // The catalog's Host knows no kernel, so nothing offers them ahead.
         #expect(!Self.rex.capabilities.uploads)
+    }
+
+    // MARK: Native Windows (ADR 0056's update of 2026-11-25)
+
+    /// On native Windows the stage folder sits in the account's temp folder,
+    /// opened over SFTP as `/C:/...`, and the Agent reads the same file as
+    /// `C:\...`. Anything that is no SFTP drive path gives no Windows path.
+    @Test func aWindowsStageLivesInTheAccountsTempFolder() throws {
+        let parent = WindowsStagePath.parentDirectory(home: "/C:/Users/dev", suffix: "a1b2c3d4")
+        #expect(parent == "/C:/Users/dev/AppData/Local/Temp/heeler.a1b2c3d4")
+        #expect(RemoteFilePath.isAcceptable(parent))
+        #expect(
+            WindowsStagePath.windowsPath(fromSFTP: "\(parent)/stage-0f1e/image.png")
+                == #"C:\Users\dev\AppData\Local\Temp\heeler.a1b2c3d4\stage-0f1e\image.png"#)
+        #expect(WindowsStagePath.windowsPath(fromSFTP: "/home/dev/image.png") == nil)
+        #expect(WindowsStagePath.windowsPath(fromSFTP: #"C:\Users\dev"#) == nil)
+        let suffix = WindowsStagePath.randomSuffix()
+        #expect(suffix.count == 8)
+        #expect(suffix.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber) })
+        let staged = try StagedImage(path: #"C:\Users\dev\AppData\Local\Temp\heeler.a1b2c3d4\stage-0f1e\image.png"#)
+        #expect(staged.path.hasPrefix("C:\\"))
+    }
+
+    /// A sent message shows a Windows stage's image or video as a label, as
+    /// it shows a POSIX one, and leaves any other Windows path as it is.
+    @Test func aWindowsStagedPathReadsAsStagedMedia() {
+        let stage = #"C:\Users\dev\AppData\Local\Temp\heeler.a1b2c3d4\stage-0f1e"#
+        #expect(ChatImageLink.isStagedImagePath(stage + #"\image.png"#))
+        #expect(ChatImageLink.isStagedVideoPath(stage + #"\clip.mp4"#))
+        #expect(!ChatImageLink.isStagedImagePath(#"C:\Users\dev\Pictures\image.png"#))
+        #expect(!ChatImageLink.isStagedImagePath(stage + #"\notes.txt"#))
     }
 
     // MARK: The seam

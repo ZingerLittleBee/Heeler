@@ -57,6 +57,10 @@ protocol RexTransport: Sendable {
     /// nothing else of it (ADR 0065).
     nonisolated var gitHub: any GitHubHostCLI { get }
 
+    /// New Terminal's home directory and Browse Directory, on this same SSH
+    /// connection, and nothing else of it.
+    nonisolated var browsing: any RexHostBrowsing { get }
+
     /// Closes the control link with a close frame, so the server forgets this
     /// client at once, then the SSH connection and every channel on it.
     func close() async
@@ -145,7 +149,8 @@ protocol RexHostExtensionPlacing: Sendable {
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
 protocol RexHostConnection:
-    ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI
+    ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI,
+    RexHostBrowsing
 {
     nonisolated var routeID: UUID? { get }
 
@@ -299,6 +304,9 @@ actor RexSSHTransport: RexTransport {
 
     /// And its gh runs, for the same reason.
     nonisolated var gitHub: any GitHubHostCLI { RexGitHubOnly(connection: connection) }
+
+    /// And its home directory and directory listings, for the same reason.
+    nonisolated var browsing: any RexHostBrowsing { RexBrowsingOnly(connection: connection) }
 
     func close() async {
         await control.close()
@@ -479,6 +487,28 @@ private struct RexGitHubOnly: GitHubHostCLI {
 
     func runGitHubScript(_ script: Data, isMutation: Bool) async throws -> GitExecResult {
         try await connection.runGitHubScript(script, isMutation: isMutation)
+    }
+}
+
+/// What New Terminal reads of a Rex Host besides the server (ADR 0049's
+/// update of 2026-11-25): the account's home directory, from the probe every
+/// Host's New Terminal makes, which names a native Windows account's
+/// `USERPROFILE` too, and the directories Browse Directory lists over SFTP.
+protocol RexHostBrowsing: Sendable {
+    func remoteHomeDirectory() async throws -> String
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing
+}
+
+/// A Rex Host connection's browsing, and nothing else of it.
+private struct RexBrowsingOnly: RexHostBrowsing {
+    let connection: any RexHostBrowsing
+
+    func remoteHomeDirectory() async throws -> String {
+        try await connection.remoteHomeDirectory()
+    }
+
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        try await connection.listDirectories(at: path)
     }
 }
 

@@ -399,22 +399,23 @@ extension TransportError {
             ? String(localized: "The herdr-core link closed.") : detail
     }
 
-    /// Names the revision this build works with, and which side to update when
-    /// the server named its own.
+    /// Names the revisions this build works with, and which side to update
+    /// when the server named its own.
     private static func rexRevisionPresentation(offered: Int?) -> TransportErrorPresentation {
-        let supported = RexControlProtocol.apiRevision
+        let oldest = RexControlProtocol.minimumAPIRevision
+        let newest = RexControlProtocol.apiRevision
         guard let offered else {
             return TransportErrorPresentation(
                 summary: String(localized: "This version of Rex is not supported"),
                 detail: String(localized:
-                    "Rex did not offer API revision \(supported), the only one this build of Heeler works with"),
+                    "Rex offered no API revision from \(oldest) to \(newest), the ones this build of Heeler works with"),
                 recoverySuggestion: nil)
         }
         return TransportErrorPresentation(
             summary: String(localized: "This version of Rex is not supported"),
             detail: String(localized:
-                "Rex offers API revision \(offered), and this build of Heeler works with revision \(supported) only"),
-            recoverySuggestion: offered < supported
+                "Rex offers API revision \(offered), and this build of Heeler works with revisions \(oldest) to \(newest)"),
+            recoverySuggestion: offered < oldest
                 ? String(localized: "Update Rex on the Host.")
                 : String(localized: "Update Heeler once a version for this Rex is available."))
     }

@@ -91,7 +91,7 @@ struct RexSSHLiveTests {
         let transport = try await SSHTransportConnector().connectRex(
             settings: try settings(configuration, socketPath: configuration.socketPath))
         let control = await transport.control
-        #expect(control.apiRevision == 12)
+        #expect(RexControlProtocol.apiRevisions.contains(control.apiRevision))
         #expect(transport.foundSocket == nil)
 
         let status = try await control.call("server.status").result(Status.self)
@@ -124,7 +124,7 @@ struct RexSSHLiveTests {
         let transport = try await SSHTransportConnector().connectRex(
             settings: try settings(configuration, socketPath: nil))
         #expect(transport.foundSocket?.path == configuration.socketPath)
-        #expect(await transport.control.apiRevision == 12)
+        #expect(RexControlProtocol.apiRevisions.contains(await transport.control.apiRevision))
         await transport.close()
     }
 

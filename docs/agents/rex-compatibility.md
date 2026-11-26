@@ -18,7 +18,7 @@ server has been observed yet.
   `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
   which starts none either.
 - One WebSocket control connection per Host carries everything but terminal
-  data: hello at API revision 12 only, `server.status`, `session.attach_all`
+  data: hello at API revisions 12 to 19, `server.status`, `session.attach_all`
   and the inventory reads
   ([ADR 0050](../adr/0050-rex-hosts-follow-inventory-on-one-control-connection.md)).
   `RexHostSession` owns it; `RexInventoryFollower` and `RexInventoryBook` read
@@ -83,28 +83,42 @@ server has been observed yet.
   (`RexConsoleProjection.checkedTerminalStop`) press keys through it, and
   `RexComposerSend` pastes and submits. See
   [Chat's reads and input](#chats-reads-and-input).
+- New Terminal and New Workspace are the one thing Heeler starts on a Rex
+  server ([ADR 0049's update of 2026-11-25](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-new-terminal)):
+  `RexHostSession.createTerminal` attaches to the session and sends
+  `session.new_window` (`focus: false`), or sends `session.create`, with one
+  `com.superlogical.terminal.shell` block in `cwd`, once, and gives the new
+  block back with `session.disown_block`. See
+  [Starting a terminal](#starting-a-terminal).
 
 ## Known limits
 
-What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.14 (API
-revision 12). The user guide, [Connect Rex](../guides/rex.md), says the same
+What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.23 (API
+revision 19), most of it first seen on 0.1.0-preview.14 (API revision 12).
+The user guide, [Connect Rex](../guides/rex.md), says the same
 in users' words.
 
-- **One API revision.** Only revision 12 is accepted; a server that welcomes
-  no hello at revision 12 is refused as `rexUnsupportedRevision`, naming the
-  revision it offers when it says ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md)).
+- **Revisions 12 to 19.** The hello offers 19 with a floor of 12; a welcome
+  at any other revision, or a close before the welcome, is refused as
+  `rexUnsupportedRevision`, naming the revision the server offers when it says
+  ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-api-revisions-12-to-19)).
+  Only preview.14 at 12 and preview.23 at 19 have been seen.
 - **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
   detection script against fake Linux homes only. Every observation below is
-  from macOS.
+  from macOS, except those that name Windows.
 - **What the first paint leaves out.** The `vt` redraw carries no title,
   cursor shape, OSC 10 or 11 default colors or saved cursor, and while a
   program uses the alternate screen none of the primary screen or scrollback
   behind it (`b_redraw`). Heeler reads the title on its own and follows its
-  events, keeps its own colors, and paints the primary screen again once the
+  events, applies the stream's `theme` (the terminal's own default colors)
+  after each paint's reset, and paints the primary screen again once the
   program leaves the alternate screen; the cursor shape stays Heeler's until
-  the program sets it again. With autowrap off, soft wraps are not joined. A
+  the program sets it again. Neither revision 12 nor 19 offers the cursor
+  shape or the history behind the alternate screen
+  ([Terminal colors and what stays out](#terminal-colors-and-what-stays-out)).
+  With autowrap off, soft wraps are not joined. A
   program that never pauses for 250 ms keeps a best-effort first paint, and
   a redraw past 32 MiB ends the attach as too long to show
   ([ADR 0051](../adr/0051-rex-terminals-open-for-viewing-from-the-servers-redraw.md)).
@@ -119,9 +133,10 @@ in users' words.
   ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
-- **Existing terminals only.** Nothing is created, closed or renamed, and no
-  layout changes; no notifications, Live Activities, Usage, Changes or New
-  Agent.
+- **Shells only.** New Terminal and New Workspace start a shell
+  ([Starting a terminal](#starting-a-terminal)); nothing else is created,
+  nothing is closed or renamed, and no layout changes; no notifications, Live
+  Activities, Usage, Changes or New Agent.
 - **Attachments where Chat is.** Once the server has named a Linux or macOS
   kernel, an Agent's Composer can attach images and files. Heeler stages them
   over the Host's own SSH connection (one `mktemp -d` exec, then an SFTP
@@ -134,9 +149,13 @@ in users' words.
   yet tried from an iPhone or iPad; the transport is the one every POSIX Host
   uses
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md),
-  update of 2026-11-17).
+  update of 2026-11-17). On native Windows they are staged over SFTP alone,
+  into `AppData\Local\Temp`, with no exec; that has been tried over SFTP but
+  not yet from the app
+  ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md#update-2026-11-25-native-windows)).
 - **Chat for four programs.** Chat is offered for Claude Code, Codex, Pi and
-  Oh My Pi only. A Pi or Oh My Pi names its conversation through Heeler's
+  Oh My Pi only, and on native Windows for Claude Code alone. A Pi or Oh My
+  Pi names its conversation through Heeler's
   extension, which no Host Helper brings to a Rex Host: Chat offers to add it
   to that Agent's own extension folder, and the Agent loads it when it is
   next started. An Agent whose program reports nothing to Rex reads Unknown,
@@ -205,6 +224,35 @@ committed live test.
 - A text frame that was not valid UTF-8 closed the control connection with
   1007 (input run).
 
+### API revision 19
+
+Rex 0.1.0-preview.23 on macOS 27.2, API revision 19 (supports 0 to 19), local
+socket, 2026-11-25, from a review probe that said hello at 12 and then at 19
+and made the same requests in a session of its own:
+
+- The server picks the newest revision both sides speak: a hello of 19 or 25
+  with `api_min_revision` 12 was welcomed with `api_revision` 19, one of 12 at
+  12, one of 11 with floor 0 at 11, and one of 25 with floor 20 was closed
+  with 1008 and the reason `no common API revision: server speaks 0 to 19,
+  client needs 20 to 25; update the server`. Every welcome named
+  `api_server_revision` 19 and no `api_min_revision`.
+- `server.status`, `server.version`, `session.list`, `session.attach_all`,
+  `session.create`, `session.attach`, `session.view`, `session.list_blocks`,
+  `session.new_window`, `session.own_block`, `session.disown_block`, the
+  terminal's `title`, `process`, `program_status`, `size`, `modes`, `format`,
+  `resize` and `write`, and `block.event` with a paste and a focus answered
+  with the same fields at both revisions; an unknown terminal method answered
+  `method_not_found` and a request without `session_id` `bad_request` at both.
+- The events in between (`session_created`, `client_connected`,
+  `block_created`, `block_owner_changed`, `window_created`,
+  `session_view_changed`, `block_event` `process_changed` and `size_changed`,
+  `block_closed`, `session_destroyed`) carried the same fields at both.
+- A `data.connect` ticket from either revision opened `rex.data.terminal.v1`
+  with the same 32-byte welcome and a `GHOSTSNP` snapshot of the same length.
+- `help.all` names no method or field as new since revision 12.
+- Over the stdio bridge to Rex 0.1.0-preview.23 on Windows 11, a hello of 19
+  with floor 12 was welcomed at 19 and `session.list` answered.
+
 ### Attach scopes
 
 - `session.attach_all` attaches the connection to every session, including
@@ -268,6 +316,31 @@ All from `f_control`. Session events arrive wrapped with their session id;
   with a generation and the foreground process (or none) whenever the
   foreground changes, its directory included. (Seen again 2026-11-16: only
   once the terminal prints; see [Program Status](#program-status).)
+
+### Starting a terminal
+
+Rex 0.1.0-preview.23 on macOS, API revision 19 (supports 0 to 19), with a
+client that said hello at revision 12 (2026-11-25):
+
+- `session.new_window` from a client attached to no session was refused with
+  409 `conflict`, `stream is not attached to session <id>`; `session.view`,
+  `session.disown_block` and `session.destroy` likewise. After
+  `session.attach` it answered `window_id`, `block_ids` and `revision`.
+- With `focus: false` the session's `active_window_id` stayed the window it
+  was. The events were `block_created`, `block_owner_changed` naming the
+  creating client with reason `create`, a `process_changed` with no
+  foreground, `window_created` (labeled `Window <last eight digits>`) and
+  `session_view_changed`, all before the response; the shell's foreground
+  followed with the `cwd` asked (`/private/tmp` for `/tmp`).
+- `session.create` with `label` and one `initial_windows` entry answered
+  `session_id` and each window's `window_id`, `block_ids` and `revision`
+  without an attach. `session.list_blocks` then listed the block labeled
+  `shell`, flavor `com.superlogical.terminal.shell`. Destroying that session
+  disconnected the other clients attached to it, the Rex app's among them.
+- `block_creator.list` names the shell flavor's options, `cwd` among them:
+  a `cwd` that is empty, missing, not a directory or not enterable starts in
+  the account's home directory.
+- Not observed: the same requests on Linux or on a native Windows server.
 
 ### Program Status
 
@@ -449,6 +522,40 @@ is still ADR 0034's macOS evidence, not something seen inside Rex.
   unnamed is still the one Rex named and binds; one the walk answered
   without is gone.
 
+### Processes on Rex 0.1.0-preview.23, macOS and Windows
+
+From reads on 2026-11-25 against Rex 0.1.0-preview.23 (API revision 19,
+supporting 0 to 19), on macOS 27.2 with `ps -E`, and on Windows 11 with
+Win32-OpenSSH, through `HostProcessReader`'s PowerShell read, three real
+Claude Code 2.1.332 Agents running in Rex terminals there.
+
+- **No `REX_SESSION`.** Every program in a terminal inherits `REX_BLOCK`,
+  `REX_SERVER`, `REX_BIN_DIR` and `REX_AUTOSTART`, and none carries
+  `REX_SESSION`, on macOS and Windows alike. A block id names one block on
+  the server, so the binder places a process by `REX_BLOCK` and takes a
+  `REX_SESSION` only when one is set. Heeler's extension for Pi and Oh My
+  Pi still waits for both variables, so on this release it keeps no file in
+  a Rex terminal.
+- **The Windows foreground.** `process` names the image, such as
+  `claude.exe`, with `argv0` either the bare word typed (`claude`) or the
+  whole path (`C:\Users\<name>\.local\bin\claude.exe`), the working
+  directory as a drive path, and `home` as `C:\Users\<name>`. A Claude Code
+  started from a PowerShell has the PowerShell as `child` and itself as
+  `foreground`; one started as the block's program is both. The Windows
+  process read names the same process `claude`, in lower case without
+  `.exe`, so Heeler takes each name Rex gave in that form there.
+- **The registry on Windows.** Claude Code 2.1.332 wrote the process's
+  creation FILETIME as decimal digits in `procStart`, as earlier releases
+  did under herdr-core (herdr-compatibility.md), and it matched the Windows
+  read's start. The Transcript was under
+  `/C:/Users/<name>/.claude/projects/D--work-lms-phoenix/` over SFTP.
+- **Size of the Windows read.** With Rex's two variables, `TMUX`,
+  `TMUX_PANE`, `HC_SCOPE`, `HOME`, `CLAUDE_CONFIG_DIR` and Claude Code's two
+  names, the encoded PowerShell command was 8,131 bytes against `cmd.exe`'s
+  8,191. Native Windows runs no tmux, so the read there does not ask for
+  `TMUX` or `TMUX_PANE`: 8,083 bytes for a four-digit pid, 8,115 for a
+  ten-digit one.
+
 ### Pi and Oh My Pi in a Rex terminal
 
 Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18, from the iOS
@@ -626,6 +733,27 @@ Lab captures `b_redraw`, `b2_edges` and `c2_handoff`, and the committed
   handoffs, some through a 40 ± 30 ms delay (`c2_handoff`). A program writing a
   line about every 12 ms got a best-effort first paint and one exact repaint
   once it stopped (`RexTerminalLiveTests`).
+
+### Terminal colors and what stays out
+
+Probes on Rex 0.1.0-preview.23 on macOS, 2026-11-25, from a client that said
+hello at revision 12, on a lab session made and destroyed for them.
+
+- `set_theme` on a block with no owner applied at once. The block's open
+  data stream then carried
+  `{"type":"theme","foreground":"#111111","background":"#fafafa"}`, with only
+  the colors given; an empty `set_theme` carried `{"type":"theme"}`. A stream
+  opened while the colors were the built-in ones began with its resize and
+  no theme.
+- The `vt` redraw with every extra carried all 256 palette entries as OSC 4
+  in `rgb:rr/gg/bb` form, entry 1 as the theme had set it, and no OSC 10, 11
+  or 12. Heeler writes the theme's colors after each paint's reset.
+- After the shell sent `CSI 5 SP q`, the redraw carried no cursor shape, and
+  no `format` extra, `modes` entry or stream message names one. `help.all`
+  at revision 19 names none either.
+- With 40 lines printed and then the alternate screen entered, `modes` said
+  `alternate`, and `format` as `vt`, `text` and `html` held none of the 40
+  lines: only the screen shown.
 
 ### Terminal size and ownership
 

@@ -347,6 +347,26 @@ struct RexTerminalAttachTests {
         await store.stop()
     }
 
+    /// The terminal's own default colors reach the view as color sequences,
+    /// read only as colors (ADR 0051's update of 2026-11-25).
+    @Test func theServersColorsReachTheView() async throws {
+        let rig = Rig()
+        let session = hostSession([await rig.host([.server(await rig.server())])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        let nonce = await rig.endpoint.nonce(of: 0)
+        await rig.endpoint.send(FakeRexStream.theme(nonce: nonce))
+        let expected = Data(
+            ("\u{1B}]10;rgb:d0/d0/d0\u{1B}\\" + "\u{1B}]11;rgb:10/10/10\u{1B}\\" + "\u{1B}]112\u{1B}\\"
+                + "\u{1B}]4;1;rgb:aa/20/20\u{1B}\\").utf8)
+        try await waitUntil("the colors") { chunks.all.last == expected }
+        #expect(store.status == .live)
+        await store.stop()
+    }
+
     @Test func theProgramsExitFinishesTheTerminal() async throws {
         let rig = Rig()
         let session = hostSession([await rig.host([.server(await rig.server())])])
