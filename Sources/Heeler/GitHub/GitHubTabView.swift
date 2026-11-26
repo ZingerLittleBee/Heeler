@@ -383,8 +383,12 @@ struct GitHubListScreen: View {
                 }
         }
         if shown.list.hasMore {
-            if !isOffline, let failure = store.moreFailure(kind, on: host) {
-                GitHubShowMoreFailureRow(failure: failure) { Task { await store.showMore(kind) } }
+            if let failure = store.moreFailure(kind, on: host) {
+                // Offline it stays, with Try Again greyed, so its height
+                // and the rows above it hold.
+                GitHubShowMoreFailureRow(failure: failure, isAvailable: !isOffline) {
+                    Task { await store.showMore(kind) }
+                }
             } else {
                 // Offline there is nothing to read the next page with, but
                 // the row stays, greyed, so the rows do not look like all
@@ -765,8 +769,10 @@ private struct GitHubShowMoreRow: View {
 
 /// In Show More's place after the next page's read failed, under the rows
 /// already shown: what stopped it, and Try Again, which reads the page again.
+/// Offline Try Again is greyed.
 private struct GitHubShowMoreFailureRow: View {
     let failure: GitHubReadFailure
+    let isAvailable: Bool
     let tryAgain: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -818,7 +824,9 @@ private struct GitHubShowMoreFailureRow: View {
         .tint(GitHubFilterBar.accent)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([title.asSentence, message].joinedAsSentences())
-        .accessibilityAction(named: Text("Try Again"), tryAgain)
+        .accessibilityActions {
+            if isAvailable { Button("Try Again", action: tryAgain) }
+        }
     }
 
     private var tryAgainButton: some View {
@@ -826,10 +834,11 @@ private struct GitHubShowMoreFailureRow: View {
             // The iPad's sidebar draws a button's words in the primary
             // colour.
             Text("Try Again")
-                .foregroundStyle(.tint)
+                .foregroundStyle(isAvailable ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.secondary))
         }
         // Only its words take a tap, not the whole row.
         .buttonStyle(.borderless)
+        .disabled(!isAvailable)
         .fixedSize()
     }
 }

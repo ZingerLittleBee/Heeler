@@ -498,7 +498,8 @@ Close.
   does, about a screen ahead on an iPhone; the row stays a button for
   VoiceOver and Switch Control. A read that failed waits for Try Again.
   Offline the row stays, greyed and not tappable, so the rows read do not
-  look like all there is. When reading
+  look like all there is; a failure row stays too, with Try Again greyed, so
+  nothing above it moves. When reading
   the next page fails, its row says why in Show More's place, with Try Again:
   the rows stay, and the title bar keeps the status of the list's own read.
   gh missing or signed out, or the Host offline, is shown as for any read.
