@@ -19,7 +19,8 @@ struct UsageWidgetEntry: TimelineEntry {
 struct UsageLimitsWidgetEntry: TimelineEntry {
     let date: Date
     let snapshot: UsageWidgetSnapshot?
-    /// nil picks the first Host that reported Usage Limits.
+    /// nil picks the first Host with a program to show, then the first Host
+    /// with any Usage Limits entries, then the first Host in the catalog.
     let hostID: UUID?
     /// The program small and Lock Screen sizes show, nil for the one
     /// closest to its limit. Medium and large show every program not left out.
@@ -285,11 +286,11 @@ struct UsageLimitsWidgetView: View {
             .widgetURL(host.flatMap { UsageWidgetLink.limitsURL(hostID: $0.id) } ?? UsageWidgetLink.usageURL(hostID: nil))
     }
 
-    /// The chosen Host, or the first one with Usage Limits.
+    /// The chosen Host, or the snapshot's default one.
     private var host: UsageWidgetSnapshot.Host? {
         guard let snapshot = entry.snapshot else { return nil }
         if let hostID = entry.hostID { return snapshot.host(hostID) }
-        return snapshot.hosts.first { !$0.limits.isEmpty } ?? snapshot.hosts.first
+        return snapshot.defaultLimitsHost
     }
 
     @ViewBuilder

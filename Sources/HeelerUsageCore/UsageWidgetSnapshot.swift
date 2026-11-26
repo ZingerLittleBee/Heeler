@@ -89,6 +89,12 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         enum LeftOut: String, Codable, Sendable {
             case limitsOff
             case programMissing
+
+            /// A reason from a newer build still leaves the entry out.
+            init(from decoder: any Decoder) throws {
+                let reason = try decoder.singleValueContainer().decode(String.self)
+                self = Self(rawValue: reason) ?? .limitsOff
+            }
         }
 
         let program: String
@@ -136,6 +142,14 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         func isExpired(at now: Date) -> Bool {
             expired || resetsAt.map { $0 <= now } == true
         }
+    }
+
+    /// The Host a Usage Limits widget shows when none is chosen: the first
+    /// with a program to show, then the first with any Usage Limits.
+    var defaultLimitsHost: Host? {
+        hosts.first { $0.limits.contains { $0.leftOut == nil } }
+            ?? hosts.first { !$0.limits.isEmpty }
+            ?? hosts.first
     }
 
     func host(_ id: UUID) -> Host? { hosts.first { $0.id == id } }

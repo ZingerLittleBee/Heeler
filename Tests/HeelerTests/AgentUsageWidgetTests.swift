@@ -354,6 +354,36 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.entries(limits, preferring: nil, now: Self.now).map(\.program) == ["codex"])
     }
 
+    @Test func defaultLimitsHostPrefersAHostWithProgramsToShow() throws {
+        let allLeftOut = try widgetLimits(
+            claude: ["state": "disabled"], codex: ["state": "disabled"], agy: Self.programMissing)
+        let codexReports = try widgetLimits(claude: ["state": "disabled"], agy: Self.programMissing)
+        let studioHost = UsageWidgetSnapshot.Host(
+            id: studio, name: "Studio Mac", readAt: Self.now, programs: [], limits: allLeftOut)
+        var buildHost = UsageWidgetSnapshot.Host(
+            id: build, name: "Build", readAt: Self.now, programs: [], limits: codexReports)
+
+        #expect(UsageWidgetSnapshot(hosts: [studioHost, buildHost]).defaultLimitsHost?.id == build)
+
+        buildHost.limits = allLeftOut
+        let unreadHost = UsageWidgetSnapshot.Host(id: pi, name: "Pi", programs: [], limits: [])
+        #expect(UsageWidgetSnapshot(hosts: [unreadHost, studioHost, buildHost]).defaultLimitsHost?.id == studio)
+    }
+
+    @Test func anUnknownExclusionReasonStillLeavesTheProgramOut() throws {
+        let newer = """
+            {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
+              "limits": [{"program": "claude", "name": "Claude Code", "leftOut": "someNewReason",
+                "isLastReading": false, "windows": []},
+                {"program": "codex", "name": "Codex", "isLastReading": false, "windows": []}]}]}
+            """
+        let snapshot = try JSONDecoder().decode(UsageWidgetSnapshot.self, from: Data(newer.utf8))
+        let limits = try #require(snapshot.host(studio)?.limits)
+
+        #expect(limits.map(\.program) == ["claude", "codex"])
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["codex"])
+    }
+
     @Test func aSnapshotFromBeforeWidgetExclusionsStillShowsItsEntries() throws {
         let older = """
             {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
