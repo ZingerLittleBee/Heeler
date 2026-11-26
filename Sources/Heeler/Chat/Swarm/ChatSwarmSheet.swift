@@ -1607,9 +1607,7 @@ struct ChatSwarmWorkerDetailView: View {
     }
 
     private var assignmentPost: AgySwarmSnapshot.BoardMessage? {
-        chat.agySwarm?.boardPosts.first { post in
-            post.isBrief && post.mentions.contains { $0.caseInsensitiveCompare(memberName) == .orderedSame }
-        }
+        chat.agySwarm?.assignmentPost(for: memberName)
     }
 
     var body: some View {

@@ -1170,6 +1170,20 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
                 maxOffset: collectionView.maxOffsetY))
     }
 
+    func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        pendingScrollTarget = nil
+        disclosureAnchor = nil
+        latch.userScrollBegan()
+        return true
+    }
+
+    func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
+        latch.userScrollEnded(
+            isAtEnd: ChatFollowLatch.isAtEnd(
+                offset: collectionView.contentOffset.y,
+                maxOffset: collectionView.maxOffsetY))
+    }
+
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
         if let target = pendingScrollTarget, let index = layout.index(of: target) {
             pendingScrollTarget = nil
@@ -1181,12 +1195,18 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
         }
     }
 
+    /// Only tear down cells for items that left the data source. A cell that
+    /// merely scrolled outside the viewport stays in UIKit's prepared cache
+    /// and may be brought back onscreen without calling `cellForItemAt`.
     func collectionView(
         _ collectionView: UICollectionView,
         didEndDisplaying cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
     ) {
-        guard let hosting = cell as? ChatSwarmHostingCell<ItemID>, hosting.itemID != nil else { return }
+        guard let hosting = cell as? ChatSwarmHostingCell<ItemID>,
+            let id = hosting.itemID,
+            dataSource?.indexPath(for: id) == nil
+        else { return }
         hosting.itemID = nil
         hosting.contentConfiguration = nil
     }
