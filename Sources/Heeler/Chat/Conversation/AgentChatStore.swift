@@ -264,9 +264,27 @@ final class AgentChatStore {
     /// terminal, read from how the program was launched. It describes the
     /// process, so it outlives a change of conversation.
     private(set) var launchNotice: ChatLaunchNotice?
+    /// A launch notice the user dismissed from the banner over the
+    /// conversation. Cleared once the notice itself goes away or the pane's
+    /// Agent changes, so a later launch on the shared server warns again.
+    private(set) var dismissedLaunchNotice: ChatLaunchNotice?
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+
+    /// The launch notice to show in Chat's banner over the conversation, or
+    /// nil when none applies or the user dismissed it.
+    var visibleLaunchNotice: ChatLaunchNotice? {
+        launchNotice == dismissedLaunchNotice ? nil : launchNotice
+    }
+
+    /// Hides the current launch notice's banner until the notice clears and
+    /// returns or the pane's Agent changes.
+    func dismissLaunchNotice() {
+        guard let launchNotice else { return }
+        dismissedLaunchNotice = launchNotice
+        dismissedLaunchNotices.dismiss(launchNotice, hostID: source.hostID, terminalID: agent.terminalID)
+    }
     /// The candidate list the user asked for.
     private(set) var candidates = ChatCandidatesState.notAsked
     /// Where the user's confirmation of a candidate stands.
@@ -301,6 +319,7 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     @ObservationIgnored private let source: AgentChatSource
+    @ObservationIgnored private let dismissedLaunchNotices: ChatLaunchNoticeDismissalStore
     /// The pane as a Blocked card types into it: on a herdr-core Host, each
     /// step only while the process read last still holds the terminal.
     var screenIO: BlockedScreenIO { source.screen }
@@ -541,6 +560,7 @@ final class AgentChatStore {
         agent: Agent,
         program: ChatProgram,
         source: AgentChatSource,
+        dismissedLaunchNotices: ChatLaunchNoticeDismissalStore = ChatLaunchNoticeDismissalStore(defaults: nil),
         timing: Timing = Timing(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -548,6 +568,9 @@ final class AgentChatStore {
         self.agent = agent
         self.program = program
         self.source = source
+        self.dismissedLaunchNotices = dismissedLaunchNotices
+        self.dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
+            hostID: source.hostID, terminalID: agent.terminalID)
         thumbnails = ChatImageThumbnails(source: .init(files: source.files))
         self.timing = timing
         self.now = now
@@ -1041,8 +1064,14 @@ final class AgentChatStore {
         let sessionChanged = next.agentSession != agent.agentSession
         let identityChanged = !sameIdentity(agent, next)
         if identityChanged {
+            let previousTerminalID = agent.terminalID
+            if previousTerminalID != next.terminalID {
+                dismissedLaunchNotices.clear(hostID: source.hostID, terminalID: previousTerminalID)
+            }
             forgetStaleSession()
             evidenceReason = nil
+            dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
+                hostID: source.hostID, terminalID: next.terminalID)
             agyScreenCheckUnavailable = false
             needsAgyScreenCheck = true
             sessionEvidenceMayHaveChanged()
@@ -1618,15 +1647,15 @@ final class AgentChatStore {
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
-    /// the program was started again, and every session recheck while a
-    /// notice shows, so it clears once the user restarts the program, or
-    /// after a failed read.
+    /// the program was started again, and every session recheck while an
+    /// undismissed notice shows, so it clears once the user restarts the
+    /// program, or after a failed read.
     private var launchCheckIsDue: Bool {
         guard program.mayShareSessionServer, isVisible, source.processInfo != nil, !launchCheckUnavailable else {
             return false
         }
         if needsLaunchCheck { return true }
-        guard launchNotice != nil || launchCheckFailed, let lastLaunchCheck else { return false }
+        guard visibleLaunchNotice != nil || launchCheckFailed, let lastLaunchCheck else { return false }
         return now().timeIntervalSince(lastLaunchCheck) >= timing.sessionRecheck
     }
 
@@ -1645,6 +1674,7 @@ final class AgentChatStore {
             if case .hostFeatureUnavailable? = error as? TransportError {
                 launchCheckUnavailable = true
                 launchNotice = nil
+                clearDismissedLaunchNotice()
             } else {
                 launchCheckFailed = true
             }
@@ -1666,7 +1696,14 @@ final class AgentChatStore {
         guard !Task.isCancelled else { return }
         launchCheckFailed = false
         if launchNotice != notice { launchNotice = notice }
+        if dismissedLaunchNotice != notice { clearDismissedLaunchNotice() }
         hasCheckedLaunch = true
+    }
+
+    private func clearDismissedLaunchNotice() {
+        guard dismissedLaunchNotice != nil else { return }
+        dismissedLaunchNotice = nil
+        dismissedLaunchNotices.clear(hostID: source.hostID, terminalID: agent.terminalID)
     }
 
     private func sameIdentity(_ lhs: Agent, _ rhs: Agent) -> Bool {

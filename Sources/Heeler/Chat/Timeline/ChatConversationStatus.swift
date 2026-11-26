@@ -849,8 +849,11 @@ struct ChatBanner: View {
     /// A second way out. The two go on a row of their own, each its own element.
     var secondaryActionTitle: String?
     var secondaryAction: (() -> Void)?
+    /// Hides the banner when the user acknowledges an informational warning.
+    var dismiss: (() -> Void)?
 
     private var hasSecondaryAction: Bool { secondaryActionTitle != nil && secondaryAction != nil }
+    private var hasDismiss: Bool { dismiss != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -870,6 +873,20 @@ struct ChatBanner: View {
                 if !hasSecondaryAction {
                     primaryAction
                 }
+                if let dismiss {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, -4)
+                    .padding(.vertical, -4)
+                    .accessibilityLabel("Dismiss")
+                    .accessibilityIdentifier("chat.banner.dismiss")
+                }
             }
             if hasSecondaryAction {
                 ViewThatFits(in: .horizontal) {
@@ -881,7 +898,7 @@ struct ChatBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: hasSecondaryAction ? .contain : .combine)
+        .accessibilityElement(children: hasSecondaryAction || hasDismiss ? .contain : .combine)
     }
 
     @ViewBuilder
