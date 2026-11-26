@@ -66,6 +66,13 @@ one page per folder, previews full screen.
   thumbnails' included, and its video preview keep their copies in the same
   cache. A download that never finished goes when a later run of the app
   first prunes the cache.
+- **A copy belongs to the Agents that opened it.** Each Host's
+  `openers.json` names, by path, the terminal ids of the Agents whose Files
+  or Chat opened the copy. Closing an Agent in Heeler (its pane or its tab)
+  or removing its saved Chat takes its id away, and a copy no other Agent
+  opened goes with it. Clear Chat Cache also clears every copy. An Agent
+  that ends on the Host leaves its copies to the age and size limits, since
+  its Chat may still be saved. Amended 2026-11-26.
 - **A request that was asked is finished.** Cancelling stops Files between
   requests, never inside one. The Host's SFTP channel is shared, and a request
   dropped before the Host answers leaves its answer for the next request of
@@ -110,7 +117,9 @@ one page per folder, previews full screen.
 - **Removing each copy when its preview closes.** Nothing a user looked at
   stayed on the device, but every open downloaded the file again, however
   recently it had been shown. The cache bounds what stays by age and size,
-  and Settings clears it.
+  by the Agents that opened it, and Settings clears it.
+- **Removing a copy with any Agent that opened it.** A file two Agents
+  opened would download again for the one still open.
 - **Fixing the dropped request in the transport.** A cancelled read could
   retire the SFTP channel, or the driver could drain the answer. That changes
   Chat's reads too and belongs to a change of its own. Files finishes its own
@@ -137,7 +146,8 @@ one page per folder, previews full screen.
   that a file's length holds across its pieces catches a wrong size, not a
   wrong file.
 - Files a user opened stay on the device after Files closes, for up to 7
-  days since last opened and within 500 MB. They are excluded from backup
+  days since last opened and within 500 MB, and until the Agents that opened
+  them are closed or removed in Heeler. They are excluded from backup
   and protected complete unless open: a download goes on as the device
   locks, and a finished copy cannot be opened again until it unlocks. A file
   shared or saved leaves a copy wherever the user sent it, which Heeler does

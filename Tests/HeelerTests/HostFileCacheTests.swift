@@ -45,18 +45,18 @@ struct HostFileCacheTests {
 
         let download = try await cache.newDownload(named: "demo.mp4")
         try Data("abcd".utf8).write(to: download)
-        let kept = try #require(await cache.keep(download, for: first))
+        let kept = try #require(await cache.keep(download, for: first, openedBy: "agent"))
         #expect(kept.lastPathComponent == "demo.mp4")
         #expect(!FileManager.default.fileExists(atPath: download.deletingLastPathComponent().path))
-        let opened = try #require(await cache.file(for: first))
+        let opened = try #require(await cache.file(for: first, openedBy: "agent"))
         #expect(try Data(contentsOf: opened) == Data("abcd".utf8))
 
         // Written again on the Host: the kept copy is not that file.
         let rewritten = Self.key(host, size: 5, time: 101)
-        #expect(await cache.file(for: rewritten) == nil)
-        let newer = try #require(await cache.keep(Data("abcde".utf8), named: "demo.mp4", for: rewritten))
+        #expect(await cache.file(for: rewritten, openedBy: "agent") == nil)
+        let newer = try #require(await cache.keep(Data("abcde".utf8), named: "demo.mp4", for: rewritten, openedBy: "agent"))
         #expect(try Data(contentsOf: newer) == Data("abcde".utf8))
-        #expect(await cache.file(for: first) == nil)
+        #expect(await cache.file(for: first, openedBy: "agent") == nil)
         #expect(await cache.diskUsage() == 5)
     }
 
@@ -65,14 +65,43 @@ struct HostFileCacheTests {
         defer { cleanup() }
         let kept = UUID()
         let removed = UUID()
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(kept)))
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(removed)))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(kept), openedBy: "agent"))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(removed), openedBy: "agent"))
 
         await cache.retainHosts([kept])
 
-        #expect(await cache.file(for: Self.key(kept)) != nil)
-        #expect(await cache.file(for: Self.key(removed)) == nil)
-        #expect(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(removed)) == nil)
+        #expect(await cache.file(for: Self.key(kept), openedBy: "agent") != nil)
+        #expect(await cache.file(for: Self.key(removed), openedBy: "agent") == nil)
+        #expect(await cache.keep(Data("abcd".utf8), named: "a.png", for: Self.key(removed), openedBy: "agent") == nil)
+    }
+
+    @Test func closingAnAgentRemovesTheCopiesOnlyItOpened() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "HostFileCacheTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let host = UUID()
+        let own = Self.key(host, "/home/dev/own.png")
+        let shared = Self.key(host, "/home/dev/shared.png")
+        let other = Self.key(host, "/home/dev/other.png")
+        let earlier = HostFileCache(root: root)
+        _ = try #require(await earlier.keep(Data("abcd".utf8), named: "own.png", for: own, openedBy: "closed"))
+        _ = try #require(await earlier.keep(Data("abcd".utf8), named: "shared.png", for: shared, openedBy: "closed"))
+        _ = try #require(await earlier.file(for: shared, openedBy: "open"))
+        _ = try #require(await earlier.keep(Data("abcd".utf8), named: "other.png", for: other, openedBy: "open"))
+
+        // A later launch still knows which Agent opened what.
+        let cache = HostFileCache(root: root)
+        await cache.forget(openers: ["closed"], on: host)
+
+        #expect(await cache.diskUsage() == 8)
+        #expect(await cache.file(for: own, openedBy: "open") == nil)
+        #expect(await cache.file(for: shared, openedBy: "open") != nil)
+        #expect(await cache.file(for: other, openedBy: "open") != nil)
+
+        await cache.forget(openers: ["open"], on: host)
+
+        #expect(await cache.diskUsage() == 0)
+        #expect(await cache.file(for: shared, openedBy: "open") == nil)
     }
 
     @Test func removesCopiesUnopenedPastTheAgeLimitThenTheLeastRecentlyOpened() async throws {
@@ -84,20 +113,20 @@ struct HostFileCacheTests {
         let stale = Self.key(host, "/stale.pdf")
         let older = Self.key(host, "/older.pdf")
         let opened = Self.key(host, "/opened.pdf")
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "stale.pdf", for: stale))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "stale.pdf", for: stale, openedBy: "agent"))
         clock.advance(60)
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "older.pdf", for: older))
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "opened.pdf", for: opened))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "older.pdf", for: older, openedBy: "agent"))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "opened.pdf", for: opened, openedBy: "agent"))
         clock.advance(50)
         // Opening a copy counts as using it.
-        #expect(await cache.file(for: opened) != nil)
+        #expect(await cache.file(for: opened, openedBy: "agent") != nil)
 
         // Past 100 seconds unopened, then over 10 bytes until at most 8.
-        _ = try #require(await cache.keep(Data("abcd".utf8), named: "new.pdf", for: Self.key(host, "/new.pdf")))
+        _ = try #require(await cache.keep(Data("abcd".utf8), named: "new.pdf", for: Self.key(host, "/new.pdf"), openedBy: "agent"))
 
-        #expect(await cache.file(for: stale) == nil)
-        #expect(await cache.file(for: older) == nil)
-        #expect(await cache.file(for: opened) != nil)
+        #expect(await cache.file(for: stale, openedBy: "agent") == nil)
+        #expect(await cache.file(for: older, openedBy: "agent") == nil)
+        #expect(await cache.file(for: opened, openedBy: "agent") != nil)
         #expect(await cache.diskUsage() == 8)
     }
 }

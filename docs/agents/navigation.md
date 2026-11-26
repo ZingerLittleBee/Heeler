@@ -486,7 +486,9 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   Save to Files) and hands its copy to
   [HostFileCache](../../Sources/Heeler/HostFiles/HostFileCache.swift)
   (`ConsoleStore.hostFileCache`, by Host, path, size and modification time;
-  pruned by age and size, cleared from
+  pruned by age and size, forgotten with the Agents that opened it by
+  `ConsoleStore.closeAgent`, `closePane` and `removeSavedChat`, cleared with
+  Clear Chat Cache and from
   [HostFileCacheSettingsSection](../../Sources/Heeler/Settings/HostFileCacheSettingsSection.swift)),
   which Chat's video preview and `ChatImagePreviewReader` share;
   [HostFileKind](../../Sources/Heeler/HostFiles/HostFileKind.swift) holds the

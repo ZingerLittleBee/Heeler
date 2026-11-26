@@ -227,7 +227,7 @@ struct AgentDetailView: View {
         guard files == nil, let directory = agent.directory else { return }
         files = HostFilesBrowser(
             files: console.chatHostFiles(for: agent.hostID), hostID: agent.hostID,
-            cache: console.hostFileCache, agentDirectory: directory,
+            openedBy: agent.agent.terminalID, cache: console.hostFileCache, agentDirectory: directory,
             isHostConnected: console.hostStatuses[agent.hostID] == .connected)
     }
 

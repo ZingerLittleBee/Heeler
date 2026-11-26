@@ -96,6 +96,9 @@ final class HostFilePreview: Identifiable {
 
     @ObservationIgnored private let files: ChatHostFiles
     @ObservationIgnored private let hostID: Host.ID
+    /// The terminal id of the Agent this preview opened from, which keeps
+    /// the copy until that Agent is closed or removed.
+    @ObservationIgnored private let opener: String
     @ObservationIgnored private let cache: HostFileCache
     @ObservationIgnored private let pace: HostFilePace
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -111,8 +114,8 @@ final class HostFilePreview: Identifiable {
 
     init(
         path: String, name: String, displayTitle: String? = nil, size: UInt64?, modified: Date?,
-        files: ChatHostFiles, hostID: Host.ID, cache: HostFileCache, pace: HostFilePace,
-        resolvePath: (() async throws -> String)? = nil
+        files: ChatHostFiles, hostID: Host.ID, openedBy opener: String, cache: HostFileCache,
+        pace: HostFilePace, resolvePath: (() async throws -> String)? = nil
     ) {
         self.path = path
         self.resolvePath = resolvePath
@@ -122,6 +125,7 @@ final class HostFilePreview: Identifiable {
         self.modified = modified
         self.files = files
         self.hostID = hostID
+        self.opener = opener
         self.cache = cache
         self.pace = pace
         kind = HostFileKind(name: name)
@@ -256,7 +260,7 @@ final class HostFilePreview: Identifiable {
                 dropCopy()
                 self.key = key
             }
-            if copy == nil, let key, let kept = await cache.file(for: key) {
+            if copy == nil, let key, let kept = await cache.file(for: key, openedBy: opener) {
                 copy = .kept(kept)
             }
             guard !Task.isCancelled else { return }
@@ -405,7 +409,7 @@ final class HostFilePreview: Identifiable {
     /// A finished copy goes to the cache when the Host said what finds it
     /// again, and is otherwise this preview's own.
     private func adopt(_ download: URL) async throws -> URL {
-        if let key, let kept = await cache.keep(download, for: key) {
+        if let key, let kept = await cache.keep(download, for: key, openedBy: opener) {
             copy = .kept(kept)
             return kept
         }

@@ -12,9 +12,12 @@ final class CacheSettingsModel {
 
     private(set) var state: State = .measuring
     @ObservationIgnored private let cache: any DeviceCache
+    /// Emptied with `cache` but not measured here.
+    @ObservationIgnored private let others: [any DeviceCache]
 
-    init(cache: any DeviceCache) {
+    init(cache: any DeviceCache, alsoClearing others: [any DeviceCache] = []) {
         self.cache = cache
+        self.others = others
     }
 
     func refresh() async {
@@ -26,6 +29,7 @@ final class CacheSettingsModel {
     func clear() async {
         state = .clearing
         await cache.removeAll()
+        for other in others { await other.removeAll() }
         state = .measured(await cache.diskUsage())
     }
 
@@ -35,14 +39,20 @@ final class CacheSettingsModel {
     }
 }
 
-/// Settings' Chat section: the cache size and Clear. Chat's font, text
-/// size and Fold Finished Turns are under Appearance.
+/// Settings' Chat section: the cache size and Clear, which also empties
+/// the caches in `alsoClearing`. Chat's font, text size and Fold Finished
+/// Turns are under Appearance.
 struct ChatCacheSettingsSection: View {
     @State private var model: CacheSettingsModel
     @State private var confirmsClear = false
+    private let didClear: @MainActor () -> Void
 
-    init(cache: any ChatTranscriptCache) {
-        _model = State(initialValue: CacheSettingsModel(cache: cache))
+    init(
+        cache: any ChatTranscriptCache, alsoClearing others: [any DeviceCache] = [],
+        didClear: @escaping @MainActor () -> Void = {}
+    ) {
+        _model = State(initialValue: CacheSettingsModel(cache: cache, alsoClearing: others))
+        self.didClear = didClear
     }
 
     var body: some View {
@@ -65,10 +75,14 @@ struct ChatCacheSettingsSection: View {
                 "Clear Chat cache?", isPresented: $confirmsClear, titleVisibility: .visible
             ) {
                 Button("Clear Cache", role: .destructive) {
-                    Task { await model.clear() }
+                    Task {
+                        await model.clear()
+                        didClear()
+                    }
                 }
             } message: {
-                Text("Chat reloads messages from each Host the next time you open it.")
+                Text(
+                    "Chat reloads messages from each Host the next time you open it. Downloaded Files are cleared too.")
             }
         } header: {
             Text("Chat")

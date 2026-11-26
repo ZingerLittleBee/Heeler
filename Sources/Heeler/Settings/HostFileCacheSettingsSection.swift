@@ -1,13 +1,16 @@
 import SwiftUI
 
 /// Settings' Files section: how much the Host files Files and Chat's
-/// previews kept take, and Clear.
+/// previews kept take, and Clear. A change to `remeasuring` measures again,
+/// as after Clear Chat Cache, which empties it too.
 struct HostFileCacheSettingsSection: View {
     @State private var model: CacheSettingsModel
     @State private var confirmsClear = false
+    private let remeasuring: Int
 
-    init(cache: HostFileCache) {
+    init(cache: HostFileCache, remeasuring: Int = 0) {
         _model = State(initialValue: CacheSettingsModel(cache: cache))
+        self.remeasuring = remeasuring
     }
 
     var body: some View {
@@ -39,8 +42,8 @@ struct HostFileCacheSettingsSection: View {
             Text("Files")
         } footer: {
             Text(
-                "Files you open from a Host, in Files or from Chat, stay on this device for up to 7 days, within 500 MB, so they open again without downloading. A file changed on the Host downloads again. Removing a Host deletes the copies kept from it.")
+                "Files you open from a Host, in Files or from Chat, stay on this device for up to 7 days, within 500 MB, so they open again without downloading. A file changed on the Host downloads again. Closing an Agent or removing its saved Chat deletes the copies only it opened, removing a Host deletes the copies kept from it, and Clear Chat Cache deletes them all.")
         }
-        .task { await model.refresh() }
+        .task(id: remeasuring) { await model.refresh() }
     }
 }

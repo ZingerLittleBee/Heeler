@@ -1034,7 +1034,8 @@ struct AgentChatSurfaceView: View {
                 previewedFile?.discard()
                 previewedFile = HostFilePreview(
                     path: path, name: name, displayTitle: title, size: nil, modified: nil,
-                    files: files, hostID: agent.hostID, cache: console.hostFileCache, pace: previewPace,
+                    files: files, hostID: agent.hostID, openedBy: agent.agent.terminalID,
+                    cache: console.hostFileCache, pace: previewPace,
                     resolvePath: { try await chat.resolveHostPath(written, files: files) })
             },
             offersFiles: showFiles != nil,

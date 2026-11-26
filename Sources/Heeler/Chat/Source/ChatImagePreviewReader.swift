@@ -83,10 +83,12 @@ struct ChatImageStamp: Hashable, Sendable {
 enum ChatImagePreviewReader {
     static let maximumBytes = 20 * 1_024 * 1_024
 
-    /// One Host's part of the file cache.
+    /// One Host's part of the file cache, for the Agent (by terminal id)
+    /// whose Chat reads.
     struct Kept: Sendable {
         let cache: HostFileCache
         let hostID: Host.ID
+        let opener: String
     }
 
     static func read(path: String, files: ChatHostFiles, kept: Kept? = nil) async throws -> Data {
@@ -116,7 +118,7 @@ enum ChatImagePreviewReader {
             HostFileCache.Key(
                 hostID: $0.hostID, path: path, size: length, modificationTime: stamp.modificationTime)
         }
-        if let kept, let key, let url = await kept.cache.file(for: key),
+        if let kept, let key, let url = await kept.cache.file(for: key, openedBy: kept.opener),
             let data = try? Data(contentsOf: url), UInt64(data.count) == length
         {
             return data
@@ -124,7 +126,7 @@ enum ChatImagePreviewReader {
         let data = try await readFromHost(path: path, length: length, files: files)
         if let kept, let key {
             let name = RemoteHostPath.lastComponent(of: path)
-            _ = await kept.cache.keep(data, named: name.isEmpty ? "image" : name, for: key)
+            _ = await kept.cache.keep(data, named: name.isEmpty ? "image" : name, for: key, openedBy: kept.opener)
         }
         return data
     }

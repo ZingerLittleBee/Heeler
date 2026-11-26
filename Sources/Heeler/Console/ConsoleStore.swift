@@ -1677,7 +1677,9 @@ final class ConsoleStore {
         _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
+        let closing = terminalIDs(of: agents.filter { $0.hostID == hostID && $0.agent.paneID == paneID })
         try await projection(for: hostID).closePane(paneID)
+        forgetFiles(openedBy: closing, on: hostID)
         flushScheduledRebuild()
     }
 
@@ -1718,19 +1720,33 @@ final class ConsoleStore {
             let paneID = agent.agent.paneID
             try await projection(for: hostID).closePane(paneID)
             pins.removePin(hostID: hostID, paneID: paneID)
+            forgetFiles(openedBy: [agent.agent.terminalID], on: hostID)
             rebuild()
             return
         }
         let tabID = agent.agent.tabID
-        let pinnedPaneIDs = agents
-            .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+        let closing = agents.filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+        let pinnedPaneIDs = closing
             .map(\.agent.paneID)
             .filter { pins.isPinned(hostID: hostID, paneID: $0) }
         try await projection(for: hostID).closeTab(tabID)
         for paneID in pinnedPaneIDs {
             pins.removePin(hostID: hostID, paneID: paneID)
         }
+        forgetFiles(openedBy: terminalIDs(of: closing + [agent]), on: hostID)
         rebuild()
+    }
+
+    private func terminalIDs(of agents: [ConsoleAgent]) -> Set<String> {
+        Set(agents.map(\.agent.terminalID))
+    }
+
+    /// Deletes the Host files these Agents (by terminal id) opened that no
+    /// other Agent opened too. Only closing an Agent or removing its saved
+    /// Chat forgets: one that ends on the Host leaves its copies to age out.
+    private func forgetFiles(openedBy terminalIDs: Set<String>, on hostID: Host.ID) {
+        guard !terminalIDs.isEmpty else { return }
+        Task { [hostFileCache] in await hostFileCache.forget(openers: terminalIDs, on: hostID) }
     }
 
     /// What a Close Agent dialog opened now asks for.
@@ -1748,6 +1764,7 @@ final class ConsoleStore {
         chatStores.removeValue(forKey: agent.id)?.end()
         cachedChats.remove(paneID: agent.agent.paneID, on: host)
         pins.removePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        forgetFiles(openedBy: [agent.agent.terminalID], on: agent.hostID)
         rebuild()
         return true
     }

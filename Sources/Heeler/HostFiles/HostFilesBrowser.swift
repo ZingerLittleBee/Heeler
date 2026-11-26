@@ -280,16 +280,19 @@ final class HostFilesBrowser: Identifiable {
     @ObservationIgnored private var folders: [String: HostFolder] = [:]
     @ObservationIgnored private var followTask: Task<Void, Never>?
     @ObservationIgnored private let hostID: Host.ID
+    /// The terminal id of the Agent Files opened from.
+    @ObservationIgnored private let opener: String
     @ObservationIgnored private let cache: HostFileCache
     /// How much of a file one request asks for, as this Host's link taught.
     @ObservationIgnored private let pace = HostFilePace()
 
     init(
-        files: ChatHostFiles, hostID: Host.ID, cache: HostFileCache, agentDirectory: String,
-        isHostConnected: Bool
+        files: ChatHostFiles, hostID: Host.ID, openedBy opener: String, cache: HostFileCache,
+        agentDirectory: String, isHostConnected: Bool
     ) {
         self.files = files.finishingEachRequest
         self.hostID = hostID
+        self.opener = opener
         self.cache = cache
         self.isHostConnected = isHostConnected
         self.agentDirectory = Self.normalized(agentDirectory)
@@ -440,7 +443,7 @@ final class HostFilesBrowser: Identifiable {
         preview?.discard()
         preview = HostFilePreview(
             path: path, name: name, size: size, modified: modified, files: files, hostID: hostID,
-            cache: cache, pace: pace)
+            openedBy: opener, cache: cache, pace: pace)
     }
 
     private func follow(_ entry: HostFileEntry) {

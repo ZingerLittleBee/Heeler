@@ -44,7 +44,7 @@ struct ChatImagePreviewReaderTests {
         let root = FileManager.default.temporaryDirectory
             .appending(path: "ChatImageKeptTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
-        let kept = ChatImagePreviewReader.Kept(cache: HostFileCache(root: root), hostID: UUID())
+        let kept = ChatImagePreviewReader.Kept(cache: HostFileCache(root: root), hostID: UUID(), opener: "t1")
         let bytes = Data(repeating: 7, count: 300_000)
         let fixture = ImageFileFixture(data: bytes, modificationTime: 100)
 
