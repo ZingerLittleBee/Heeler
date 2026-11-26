@@ -1406,22 +1406,36 @@ actor HeelerSSHTransport: Transport {
                 base: worktree.base,
                 branch: worktree.branch,
                 focus: false,
-                label: launch.name,
+                label: worktree.branch,
                 workspaceID: launch.workspaceID),
             decoding: WorktreeCreatedResponse.self)
         do {
+            let agent: Agent
             if launch.environmentParameter != nil {
-                return try await startAgentInEnvironmentTab(launch, worktree: created)
+                agent = try await startAgentInEnvironmentTab(launch, worktree: created)
+            } else {
+                let response = try await startAgentAwaitingShell(
+                    launch,
+                    paneID: created.rootPane.paneID)
+                if let tabLabel = launch.tabLabel {
+                    // A cosmetic rename must not fail an Agent that already started.
+                    try? await renameTab(
+                        TabRenameParams(label: tabLabel, tabID: created.tab.tabID))
+                }
+                agent = Agent(response.agent)
             }
-            let response = try await startAgentAwaitingShell(
-                launch,
-                paneID: created.rootPane.paneID)
-            if let tabLabel = launch.tabLabel {
-                // A cosmetic rename must not fail an Agent that already started.
-                try? await renameTab(
-                    TabRenameParams(label: tabLabel, tabID: created.tab.tabID))
+            if worktree.branch == nil,
+                let branch = created.worktree.branch,
+                created.workspace.label != branch
+            {
+                // A server-generated `worktree/<name>` branch arrives in the
+                // reply while herdr slugs the default workspace label; match it.
+                try? await renameWorkspace(
+                    WorkspaceRenameParams(
+                        label: branch,
+                        workspaceID: created.workspace.workspaceID))
             }
-            return Agent(response.agent)
+            return agent
         } catch let error as HerdrAPIError {
             try? await removeCreatedWorktree(workspaceID: created.workspace.workspaceID)
             throw error

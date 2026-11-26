@@ -303,7 +303,7 @@ class Server:
         if token is None:
             return None
         behavior = token.split(":")[1]
-        if method == "tab.rename" and behavior == "renamefail":
+        if method in ("tab.rename", "workspace.rename") and behavior == "renamefail":
             return dict(TAB_RENAME_REFUSED)
         if method != "agent.start":
             return None
