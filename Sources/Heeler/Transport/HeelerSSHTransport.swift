@@ -2556,56 +2556,28 @@ actor HeelerSSHTransport: Transport {
         let sftp = admitted.client
         let operationID = UUID()
         imageStageClients[operationID] = admitted
-        var partPath: String?
+        let timeout = requestTimeout
+        let files = WindowsStageUpload.Files(
+            makeDirectory: { try await sftp.createDirectory(at: $0, permissions: 0o700, timeout: timeout) },
+            write: { [self] path in
+                try await streamFile(
+                    at: source.fileURL, byteCount: source.byteCount, to: path, over: sftp,
+                    enforcesPermissions: false, progress: progress)
+            },
+            size: { try await sftp.attributes(at: $0, timeout: timeout).size },
+            rename: { try await sftp.renameFileAtomically(from: $0, to: $1, timeout: timeout) },
+            remove: { [self] path in await bestEffortRemoveRemoteFile(at: path, over: sftp) })
+        var upload = WindowsStageUpload(parent: cachedWindowsStageParentDirectory)
         do {
-            var parent = cachedWindowsStageParentDirectory
-            var stageDirectory = ""
-            for attempt in 0..<2 {
-                if parent == nil {
-                    let made = WindowsStagePath.parentDirectory(home: home, suffix: WindowsStagePath.randomSuffix())
-                    do {
-                        try await sftp.createDirectory(at: made, permissions: 0o700, timeout: requestTimeout)
-                    } catch {
-                        throw AttachmentStagingError.remoteTemporaryDirectoryFailed
-                    }
-                    parent = made
-                }
-                guard let current = parent else { throw AttachmentStagingError.remoteTemporaryDirectoryFailed }
-                stageDirectory = "\(current)/stage-\(UUID().uuidString.lowercased())"
-                do {
-                    try await sftp.createDirectory(at: stageDirectory, permissions: 0o700, timeout: requestTimeout)
-                    cachedWindowsStageParentDirectory = current
-                    break
-                } catch where attempt == 0 && cachedWindowsStageParentDirectory != nil {
-                    // The cached folder may have been cleaned away; make another once.
-                    cachedWindowsStageParentDirectory = nil
-                    parent = nil
-                }
-            }
-            let finalPath = "\(stageDirectory)/\(source.remoteFilename)"
-            guard let windowsPath = WindowsStagePath.windowsPath(fromSFTP: finalPath) else {
-                throw AttachmentStagingError.invalidRemotePath
-            }
-            let currentPartPath = "\(finalPath).part"
-            partPath = currentPartPath
-            try await streamFile(
-                at: source.fileURL, byteCount: source.byteCount, to: currentPartPath, over: sftp,
-                enforcesPermissions: false, progress: progress)
-            try Task.checkCancellation()
-            let uploaded = try await sftp.attributes(at: currentPartPath, timeout: requestTimeout)
-            guard uploaded.size == UInt64(source.byteCount) else {
-                throw AttachmentStagingError.byteCountMismatch
-            }
-            try await sftp.renameFileAtomically(from: currentPartPath, to: finalPath, timeout: requestTimeout)
-            partPath = nil
+            let windowsPath = try await upload.stage(
+                source.remoteFilename, byteCount: source.byteCount, home: home, files: files)
+            cachedWindowsStageParentDirectory = upload.parent
             imageStageClients[operationID] = nil
             returnIdleStagingSFTPClient(admitted)
             return windowsPath
         } catch {
+            cachedWindowsStageParentDirectory = upload.parent
             imageStageClients[operationID] = nil
-            if let partPath {
-                await bestEffortRemoveRemoteFile(at: partPath, over: sftp)
-            }
             try? await sftp.close(timeout: .seconds(2))
             await admitted.lease.release()
             if Task.isCancelled || error is CancellationError { throw AttachmentStagingError.cancelled }
@@ -4560,14 +4532,9 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         // A Rex Host's Chat reads a native Windows Host's processes as a core's
         // does: one PowerShell exec, with no argv or open files (ADR 0034).
         if servesRexHost, platform == .nativeWindows {
-            let nonce = HostProcessReader.makeNonce()
-            let command = try HostProcessReader.windowsCommand(request, nonce: nonce)
-            let bound = WindowsHostExec.processRead.bound
-            let result = try await withRequestDeadline(timeout: bound) {
-                try await self.runExec(command, timeout: bound, priority: .interactive)
+            return try await HostProcessReader.readWindows(request) { [self] command in
+                try await runWindowsProcessRead(command)
             }
-            guard result.exitStatus == 0 else { return [:] }
-            return (try? HostProcessReader.parseWindows(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
         }
         // Windows' existing reader does not expose argv. Unknown stays hidden.
         guard platform == .posix else { return [:] }
@@ -4579,6 +4546,15 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             priority: .interactive)
         guard result.exitStatus == 0 else { return [:] }
         return try HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)
+    }
+
+    /// One bounded exec of a native Windows process read's command.
+    private func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+        let bound = WindowsHostExec.processRead.bound
+        let result = try await withRequestDeadline(timeout: bound) {
+            try await self.runExec(command, timeout: bound, priority: .interactive)
+        }
+        return GitExecResult(stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
     }
 
     /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.

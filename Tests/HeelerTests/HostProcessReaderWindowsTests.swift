@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Heeler
@@ -212,6 +213,55 @@ struct HostProcessReaderWindowsTests {
         #expect(RemoteFilePath.windowsForSFTP("/already") == "/already")
         #expect(!RemoteFilePath.isAcceptable(RemoteFilePath.windowsForSFTP("\\\\server\\share\\x")))
         #expect(!RemoteFilePath.isAcceptable(RemoteFilePath.windowsForSFTP("C:\\Users\\..\\x")))
+    }
+
+    // MARK: A Rex Host's read (ADR 0056)
+
+    @Test("A Rex Host's read runs the one Windows command and parses what it prints")
+    func rexReadRunsTheCommandOnce() async throws {
+        let commands = Mutex<[String]>([])
+        let facts = try await HostProcessReader.readWindows(Self.printedRequest, nonce: Self.nonce) { command in
+            commands.withLock { $0.append(command) }
+            return GitExecResult(stdout: Data(Self.printed.utf8), stderr: Data(), exitStatus: 0)
+        }
+
+        let expected = try HostProcessReader.windowsCommand(Self.printedRequest, nonce: Self.nonce)
+        #expect(commands.withLock { $0 } == [expected])
+        #expect(facts["3792"]?.name == "claude")
+        #expect(facts["3792"]?.parent == "7868")
+        #expect(facts["7868"]?.variables["HOME"] == .value("/C:/Users/me"))
+    }
+
+    @Test("A Rex Host's read that fails or is cut short answers nothing", arguments: [true, false])
+    func rexReadThatFailsAnswersNothing(exitsNonZero: Bool) async throws {
+        let cut = String(Self.printed.prefix(while: { $0 != "W" }))
+        let facts = try await HostProcessReader.readWindows(Self.printedRequest, nonce: Self.nonce) { _ in
+            exitsNonZero
+                ? GitExecResult(stdout: Data(Self.printed.utf8), stderr: Data(), exitStatus: 1)
+                : GitExecResult(stdout: Data(cut.utf8), stderr: Data(), exitStatus: 0)
+        }
+        #expect(facts.isEmpty)
+    }
+
+    @Test("A Rex Host's read the reader refuses runs nothing, and an exec's failure is its own")
+    func rexReadRefusedRunsNothing() async throws {
+        let ran = Mutex(false)
+        let bad = HostProcessReader.Request(
+            pids: ["7868; rm"], readsStart: true, valuesOf: [], namesOf: [], readsOpenFiles: false,
+            argumentsAmong: [], descendantsOf: nil)
+        await #expect(throws: HostProcessReader.Refusal.self) {
+            _ = try await HostProcessReader.readWindows(bad, nonce: Self.nonce) { _ in
+                ran.withLock { $0 = true }
+                return GitExecResult(stdout: Data(), stderr: Data(), exitStatus: 0)
+            }
+        }
+        #expect(!ran.withLock { $0 })
+
+        await #expect(throws: TransportError.timedOut) {
+            _ = try await HostProcessReader.readWindows(Self.printedRequest, nonce: Self.nonce) { _ in
+                throw TransportError.timedOut
+            }
+        }
     }
 
     @Test("The transport reads through one Windows exec, and never the POSIX script")

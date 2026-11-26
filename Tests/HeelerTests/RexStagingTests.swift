@@ -1,4 +1,5 @@
 import Foundation
+import HeelerSSH
 import Synchronization
 import Testing
 import UIKit
@@ -205,6 +206,144 @@ struct RexStagingTests {
         #expect(ChatImageLink.isStagedVideoPath(stage + #"\clip.mp4"#))
         #expect(!ChatImageLink.isStagedImagePath(#"C:\Users\dev\Pictures\image.png"#))
         #expect(!ChatImageLink.isStagedImagePath(stage + #"\notes.txt"#))
+    }
+
+    // MARK: A Windows stage's steps
+
+    /// A Windows Host's SFTP, in memory: folders, files by size, every step in
+    /// order, and the steps told to fail.
+    private final class WindowsFiles: Sendable {
+        struct State {
+            var folders: Set<String> = []
+            var sizes: [String: UInt64] = [:]
+            var steps: [String] = []
+            var failingFolders: Set<String> = []
+            var writtenSize: UInt64 = 4
+            var renameFails = false
+        }
+
+        let state = Mutex(State())
+
+        var files: WindowsStageUpload.Files {
+            WindowsStageUpload.Files(
+                makeDirectory: { [self] path in
+                    try self.state.withLock { state in
+                        state.steps.append("mkdir \(path)")
+                        guard !state.failingFolders.contains(path) else { throw SSHError.sftpFailure(status: 2) }
+                        state.folders.insert(path)
+                    }
+                },
+                write: { [self] path in
+                    self.state.withLock { state in
+                        state.steps.append("write \(path)")
+                        state.sizes[path] = state.writtenSize
+                    }
+                },
+                size: { [self] path in self.state.withLock { $0.sizes[path] } },
+                rename: { [self] from, to in
+                    try self.state.withLock { state in
+                        state.steps.append("rename \(from)")
+                        guard !state.renameFails else { throw SSHError.sftpFailure(status: 2) }
+                        state.sizes[to] = state.sizes.removeValue(forKey: from)
+                    }
+                },
+                remove: { [self] path in
+                    self.state.withLock { state in
+                        state.steps.append("remove \(path)")
+                        state.sizes[path] = nil
+                    }
+                })
+        }
+    }
+
+    private static let windowsHome = "/C:/Users/dev"
+    private static let windowsParent = "/C:/Users/dev/AppData/Local/Temp/heeler.a1b2c3d4"
+
+    private static func stage(
+        _ upload: inout WindowsStageUpload, on host: WindowsFiles, id: String = "0f1e", byteCount: Int64 = 4
+    ) async throws -> String {
+        try await upload.stage(
+            "image.png", byteCount: byteCount, home: windowsHome, files: host.files, suffix: { "a1b2c3d4" },
+            stageID: { id })
+    }
+
+    /// The first stage makes the connection's folder, then its own, writes
+    /// the `.part`, checks its size and renames it; the next stage keeps the
+    /// folder, and the Agent reads the Windows form of the path.
+    @Test func aWindowsStageMakesItsFolderOnceAndRenamesThePart() async throws {
+        let host = WindowsFiles()
+        var upload = WindowsStageUpload()
+
+        let path = try await Self.stage(&upload, on: host)
+
+        #expect(path == #"C:\Users\dev\AppData\Local\Temp\heeler.a1b2c3d4\stage-0f1e\image.png"#)
+        #expect(upload.parent == Self.windowsParent)
+        let stage = "\(Self.windowsParent)/stage-0f1e"
+        #expect(
+            host.state.withLock { $0.steps } == [
+                "mkdir \(Self.windowsParent)", "mkdir \(stage)", "write \(stage)/image.png.part",
+                "rename \(stage)/image.png.part",
+            ])
+        #expect(host.state.withLock { $0.sizes } == ["\(stage)/image.png": 4])
+
+        _ = try await Self.stage(&upload, on: host, id: "2a3b")
+        #expect(host.state.withLock { $0.steps.filter { $0.hasPrefix("mkdir") } }.count == 3)
+        #expect(host.state.withLock { $0.steps }.contains("mkdir \(Self.windowsParent)/stage-2a3b"))
+    }
+
+    /// A kept folder that was cleaned away is made again once, under a new
+    /// name, and kept in its place.
+    @Test func aKeptFolderThatIsGoneIsMadeAgainOnce() async throws {
+        let host = WindowsFiles()
+        let gone = "/C:/Users/dev/AppData/Local/Temp/heeler.gone0000"
+        host.state.withLock { $0.failingFolders = ["\(gone)/stage-0f1e"] }
+        var upload = WindowsStageUpload(parent: gone)
+
+        _ = try await Self.stage(&upload, on: host)
+
+        #expect(upload.parent == Self.windowsParent)
+        #expect(
+            host.state.withLock { $0.steps.filter { $0.hasPrefix("mkdir") } } == [
+                "mkdir \(gone)/stage-0f1e", "mkdir \(Self.windowsParent)", "mkdir \(Self.windowsParent)/stage-0f1e",
+            ])
+    }
+
+    /// A temp folder that cannot be made says so, and nothing is written.
+    @Test func aFolderThatCannotBeMadeSaysSoAndWritesNothing() async throws {
+        let host = WindowsFiles()
+        host.state.withLock { $0.failingFolders = [Self.windowsParent] }
+        var upload = WindowsStageUpload()
+
+        await #expect(throws: AttachmentStagingError.remoteTemporaryDirectoryFailed) {
+            _ = try await Self.stage(&upload, on: host)
+        }
+        #expect(upload.parent == nil)
+        #expect(!host.state.withLock { $0.steps }.contains { $0.hasPrefix("write") })
+    }
+
+    /// A `.part` of another size, or one that cannot be renamed, is removed;
+    /// the connection's folder is still kept.
+    @Test(arguments: [false, true])
+    func aPartThatFailsIsRemoved(failsRename: Bool) async throws {
+        let host = WindowsFiles()
+        host.state.withLock {
+            $0.writtenSize = failsRename ? 4 : 3
+            $0.renameFails = failsRename
+        }
+        var upload = WindowsStageUpload()
+
+        if failsRename {
+            await #expect(throws: SSHError.sftpFailure(status: 2)) { _ = try await Self.stage(&upload, on: host) }
+        } else {
+            await #expect(throws: AttachmentStagingError.byteCountMismatch) {
+                _ = try await Self.stage(&upload, on: host)
+            }
+            #expect(!host.state.withLock { $0.steps }.contains { $0.hasPrefix("rename") })
+        }
+        let part = "\(Self.windowsParent)/stage-0f1e/image.png.part"
+        #expect(host.state.withLock { $0.steps.last } == "remove \(part)")
+        #expect(host.state.withLock { $0.sizes }.isEmpty)
+        #expect(upload.parent == Self.windowsParent)
     }
 
     // MARK: The seam
