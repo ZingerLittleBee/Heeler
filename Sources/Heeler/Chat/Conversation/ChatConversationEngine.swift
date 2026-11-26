@@ -249,8 +249,7 @@ struct ChatReducerSeed: Sendable {
 
 /// How Chat reads one program's transcript.
 struct ChatTranscriptAdapter: Sendable {
-    /// Bumped when the program's normalization changes, so entries cached
-    /// by an older build are dropped instead of mixed with new ones.
+    /// Bumped when the program's normalization changes.
     var revision: Int
     /// The framing limits for this program's lines.
     var limits = TranscriptFollower.Limits()
@@ -295,6 +294,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// The program's log of the prompts it submits, which names the
     /// session that took each one.
     var sendWitness: ChatSendWitness? = nil
+    /// Converts older entries when the saved document contains all the source
+    /// information required by the current revision.
+    var migrateCache: (@Sendable (ChatCacheDocument) -> ChatCacheDocument?)? = nil
 }
 
 /// One conversation's transcript on its Host: finds the file and follows
@@ -532,7 +534,7 @@ actor ChatConversationEngine {
     }
 
     /// Shows what the device kept from an earlier visit, before the Host
-    /// answers. A document from another adapter revision is discarded. One
+    /// answers. A document the current adapter cannot read is discarded. One
     /// worded in another language still shows, since a Saved Chat's
     /// messages live only here, but never joins live rows (`joinedCache`),
     /// so the next save words it anew.
@@ -550,7 +552,12 @@ actor ChatConversationEngine {
 
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
-        case .hit(let document) where document.adapterRevision == adapter.revision:
+        case .hit(let saved):
+            guard let document = saved.adapterRevision == adapter.revision ? saved : adapter.migrateCache?(saved),
+                  document.adapterRevision == adapter.revision else {
+                await cache.remove(cacheKey)
+                break
+            }
             cached = document
             update {
                 $0.transcript = Self.restoredTranscript(from: document)
@@ -559,8 +566,6 @@ actor ChatConversationEngine {
                 $0.olderAwaitsUser = document.olderAwaitsUser ?? false
                 $0.older = document.reachedStart ? .reachedStart : .available
             }
-        case .hit:
-            await cache.remove(cacheKey)
         case .miss, .unavailable:
             break
         }

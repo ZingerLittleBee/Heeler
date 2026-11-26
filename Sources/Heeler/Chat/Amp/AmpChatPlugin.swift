@@ -62,12 +62,12 @@ struct AmpChatPage: Decodable, Sendable {
         let role: String
         let createdAt: String?
         let end: String?
-        let blocks: [Block]
+        var blocks: [Block]
     }
 
     struct Block: Codable, Equatable, Sendable {
         let type: String
-        let text: String?
+        var text: String?
         let call: String?
         let name: String?
         let status: String?

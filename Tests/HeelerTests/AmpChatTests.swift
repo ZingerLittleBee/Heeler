@@ -60,6 +60,75 @@ struct AmpChatTests {
         }
     }
 
+    @Test func aTranscriptTableAllowsSendButAFloatingPaletteStillHoldsIt() async throws {
+        let composer = try ScreenFixture.text("amp-01-idle")
+        let rules = ChatSendRules(program: .amp, commands: [])
+        func preflight(_ history: [String]) async -> ComposerRefusal? {
+            let screen = ANSIScreenDecoder.decode(history.joined(separator: "\r\n") + "\r\n" + composer)
+            let policy = ComposerDeliveryPolicy.chat(rules: rules, activity: { .idle }, readScreen: { screen })
+            return await policy.preflight?("Continue")
+        }
+        for table in [
+            [" ╭────────┬────────╮", " │ Case   │ Result │", " ├────────┼────────┤",
+             " │ Taipei │ Free   │", " ╰────────┴────────╯"],
+            [" ╭────────╮ █", " │ Result │ █", " ├────────┤ █", " │ Free   │ █", " ╰────────╯ █"],
+            [" ╭───────┬──────╮", " │ Case  │ Free │", " ├───────┼──────┤", " │ Day 1 │ Yes  │"],
+            ["Use ╭─ to begin a rounded border."],
+        ] {
+            #expect(await preflight(table) == nil)
+        }
+        let overlay = [" earlier ╭─ Command Palette ─╮ still visible", " result  │ >                 │",
+                       " text    ╰───────────────────╯ behind it"]
+        guard case .inputNotReady = await preflight(overlay) else {
+            Issue.record("A palette floating entirely above the composer must hold Send"); return
+        }
+    }
+
+    @Test func onlyAmpAssistantReplyTrailersAreRemovedFromMessages() throws {
+        let tag = "<suggested-replies>\nRun the tests\n</suggested-replies>"
+        let quoted = "Example:\n\n```xml\n" + tag + "\n```"
+        let literal = "An inline `<suggested-replies>` tag."
+        func entry(_ role: String, _ parts: [String]) throws -> [ChatEntry.Content] {
+            let row = AmpChatPage.Row(id: "s:msg", role: role, createdAt: nil, end: nil,
+                blocks: parts.map { .init(type: "text", text: $0, call: nil, name: nil, status: nil) })
+            var reducer = AmpTranscriptReducer()
+            reducer.append([.init(offset: 1, data: try JSONEncoder().encode(row))])
+            return reducer.transcript(.init()).entries.map(\.content)
+        }
+        #expect(try entry("assistant", [quoted + "\n\n" + tag]) == [.assistant(.init(text: quoted))])
+        #expect(try entry("assistant", ["Seven passed.", tag]) == [.assistant(.init(text: "Seven passed."))])
+        #expect(try entry("assistant", ["First.", "Second.", "<suggested-replies>", "Run", "</suggested-replies>"])
+                == [.assistant(.init(text: "First.")), .assistant(.init(text: "Second."))])
+        #expect(try entry("assistant", ["Seven passed.\n\n<suggested-replies>\nRun"]) == [.assistant(.init(text: "Seven passed."))])
+        for text in [quoted, literal, "~~~~xml\n" + tag, "<pre>\n" + tag,
+                     "    <suggested-replies>\n    x\n    </suggested-replies>",
+                     "Example:\n\n" + tag + "\n\nHere is what that means."] {
+            #expect(try entry("assistant", [text]) == [.assistant(.init(text: text))])
+        }
+        #expect(try entry("user", [tag]) == [.user(.init(text: tag))])
+    }
+
+    @Test func aSavedAmpReplyCanBeReadOfflineWithoutItsOldSuggestionMarkup() async throws {
+        let reference = ConversationReference(program: .amp, sessionID: "T-offline")
+        let key = ChatCacheKey(hostID: UUID(), herdrSession: "", program: .amp, conversationID: reference.sessionID)
+        let prompt = ChatEntry(id: .init("amp:prompt:0"), sourceOffset: 1, content: .user(.init(text: "<suggested-replies>")))
+        let answer = ChatEntry(id: .init("amp:reply:0"), sourceOffset: 2, content: .assistant(.init(text: "Seven passed.")))
+        let suggestions = ChatEntry(id: .init("amp:reply:1"), sourceOffset: 2, content: .assistant(
+            .init(text: "<suggested-replies>\nRerun\n</suggested-replies>")))
+        let cache = VolatileChatTranscriptCache()
+        await cache.save(ChatCacheDocument(key: key, adapterRevision: 1, transcriptPath: "amp/T-offline",
+            head: Data(reference.sessionID.utf8), coverageStart: 0, coverageEnd: 3, reachedStart: true,
+            title: "Booking", entries: [prompt, answer, suggestions], savedAt: Date()))
+        let adapter = try #require(ChatTranscriptAdapter.standard(for: .amp))
+        let engine = ChatConversationEngine(reference: reference, cacheKey: key, files: VirtualHostFiles().hostFiles(),
+                                           cache: cache, adapter: adapter)
+        let snapshot = await engine.restore()
+        #expect(snapshot.isFromCache)
+        #expect(snapshot.transcript.entries == [prompt, answer])
+        #expect(snapshot.transcript.title == "Booking")
+        #expect(snapshot.readOffset == 3)
+    }
+
     @Test func installationDistinguishesAnAbsentDirectoryFromAnOccupiedPath() async throws {
         var facts = HostProcessReader.Facts()
         facts.start = .value("123")

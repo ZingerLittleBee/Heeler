@@ -51,8 +51,10 @@ extension ChatTranscriptAdapter {
             openCode
         case .amp:
             ChatTranscriptAdapter(
-                revision: 1, joinsCachedHistory: false, makeReducer: { _ in AmpTranscriptReducer() },
-                echoesByEntry: true, makeRecordSource: { AmpRecordSource(thread: $0) })
+                revision: AmpTranscriptReducer.revision, joinsCachedHistory: false,
+                makeReducer: { _ in AmpTranscriptReducer() },
+                echoesByEntry: true, makeRecordSource: { AmpRecordSource(thread: $0) },
+                migrateCache: AmpTranscriptReducer.migrateCache)
         }
     }
 
