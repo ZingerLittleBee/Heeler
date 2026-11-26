@@ -15,8 +15,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
-- Show every status in the Dynamic Island with its count, and the computer's letter when you have two or more computers. Touch and hold shows up to three Agent cards and the rest counted by status. With several computers, the one with an Agent that needs you shows first; otherwise the one that changed most recently. (PR #TBD)
-- See up to two Agent tasks on a Host's Lock Screen Live Activity, with the remaining Agents counted by status in the footer. Tap a task to open its Agent. (PR #TBD)
+- Show every status in the Dynamic Island with its count, and the computer's letter when you have two or more computers. Touch and hold shows up to three Agent cards and the rest counted by status. With several computers, the one with an Agent that needs you shows first; otherwise the one that changed most recently. (PR #848)
+- See up to two Agent tasks on a Host's Lock Screen Live Activity, with the remaining Agents counted by status in the footer. Tap a task to open its Agent. (PR #848)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
 
 ### Fixed
