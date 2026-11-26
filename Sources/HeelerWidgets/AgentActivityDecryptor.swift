@@ -29,6 +29,28 @@ enum AgentActivityPresentation: Equatable, Sendable {
             return []
         }
     }
+
+    /// Blocked, Done, then Working. The Host puts pinned Agents first, so this
+    /// keeps a pin ahead only within its status.
+    var agentsInAttentionOrder: [AgentActivityDetails.AgentDetail] {
+        // Swift's sort is not documented as stable; the offset keeps the
+        // sender's order within a status.
+        agents.enumerated()
+            .sorted {
+                (Self.attentionRank(of: $0.element.status), $0.offset)
+                    < (Self.attentionRank(of: $1.element.status), $1.offset)
+            }
+            .map(\.element)
+    }
+
+    private static func attentionRank(of status: String) -> Int {
+        switch status {
+        case "blocked": 0
+        case "done": 1
+        case "working": 2
+        default: 3
+        }
+    }
 }
 
 struct AgentActivityLockScreenPresentation: Equatable, Sendable {
@@ -69,15 +91,7 @@ struct AgentActivityLockScreenPresentation: Equatable, Sendable {
     let footer: Footer
 
     init(presentation: AgentActivityPresentation, isStale: Bool) {
-        // Swift's sort is not documented as stable; the offset keeps the
-        // sender's order within a status.
-        let tiles = presentation.agents.enumerated()
-            .sorted {
-                (Self.priority(of: $0.element.status), $0.offset)
-                    < (Self.priority(of: $1.element.status), $1.offset)
-            }
-            .prefix(2)
-            .map(\.element)
+        let tiles = Array(presentation.agentsInAttentionOrder.prefix(2))
         self.tiles = tiles
 
         let counts = presentation.counts
@@ -100,15 +114,6 @@ struct AgentActivityLockScreenPresentation: Equatable, Sendable {
         footer = phrases.isEmpty
             ? .total(String(localized: "\(total) agents", comment: "Total number of Agents on a Host in a Live Activity."))
             : .phrases(phrases)
-    }
-
-    private static func priority(of status: String) -> Int {
-        switch status {
-        case "blocked": 0
-        case "done": 1
-        case "working": 2
-        default: 3
-        }
     }
 }
 
@@ -300,8 +305,8 @@ extension AgentActivityIslandCompact.Item {
     }
 }
 
-/// The expanded island (B2): a card per Agent, at most three, in the order
-/// the Host sent them, then the Agents left out, counted by status.
+/// The expanded island (B2): a card per Agent, at most three, in attention
+/// order, then the Agents left out, counted by status.
 struct AgentActivityIslandExpanded: Equatable, Sendable {
     static let cardLimit = 3
 
@@ -312,7 +317,7 @@ struct AgentActivityIslandExpanded: Equatable, Sendable {
 
     init(presentation: AgentActivityPresentation) {
         let counts = presentation.counts
-        let cards = Array(presentation.agents.prefix(Self.cardLimit))
+        let cards = Array(presentation.agentsInAttentionOrder.prefix(Self.cardLimit))
         self.cards = cards
         total = counts.total
         summary = counts.attentionItems.compactMap { item in

@@ -264,6 +264,17 @@ struct AgentActivityPresentationTests {
         #expect(countsOnly.isOverflow == false)
     }
 
+    @Test func expandedKeepsAPinnedAgentFirstOnlyWithinItsStatus() {
+        // The Host sends pinned Agents first: here a pinned Working Agent.
+        let agents = [("w1:p9", "working"), ("w1:p1", "done"), ("w1:p2", "blocked"), ("w1:p3", "working")]
+            .map { agentDetail(paneID: $0.0, status: $0.1) }
+        let expanded = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: agents),
+            counts: .init(working: 2, blocked: 1, done: 1)))
+        #expect(expanded.cards.map(\.paneID) == ["w1:p2", "w1:p1", "w1:p9"])
+        #expect(expanded.summary == [.init(status: "working", count: 1)])
+    }
+
     @Test func islandLetterRequiresTwoHostsAndAComputedLabel() {
         let oneHost = LiveActivityHostSnapshot(v: 1, hosts: [
             .init(id: "host", name: "Laptop", label: "L"),
