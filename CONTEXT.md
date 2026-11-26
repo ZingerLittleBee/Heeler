@@ -618,7 +618,8 @@ signed in to on one Host, across repositories, as one list under a row of
 filters: State, Person, Repository and Label, kept for each of the two on the
 device. At their defaults it holds the open ones that involve the account:
 pull requests the user opened or whose review is asked of them, issues
-assigned to the user or opened by them. Heeler reads it by running gh over the
+assigned to the user or opened by them. With a Repository chosen, Person
+defaults to Anyone: everyone's open items there. Heeler reads it by running gh over the
 Host's connection and never holds the account's token; on a Mac whose SSH
 session cannot read the login keychain, gh runs once in the desktop session
 instead. It is read for one Host at a time, a Host and not a Server, kept on

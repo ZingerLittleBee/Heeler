@@ -140,9 +140,18 @@ struct GitHubFilterBar: View {
     private var personMenu: some View {
         let roles = GitHubListFilter.roles(for: kind)
         return Menu {
+            // Anyone needs a Repository, or it would search all of GitHub.
+            if filter.repository != nil {
+                Section {
+                    choice(filter.whose == .anyone) { $0.people = .anyone } label: {
+                        Text(String(localized: "GitHub person Anyone", defaultValue: "Anyone"))
+                        Text("By anyone, not only you")
+                    }
+                }
+            }
             Section(options.viewer.map { String(localized: "You, @\($0)") } ?? String(localized: "You")) {
-                choice(filter.person == nil) { $0.person = nil } label: {
-                    Text("All")
+                choice(filter.whose == .yours) { $0.people = .yours } label: {
+                    Text(String(localized: "GitHub person Yours", defaultValue: "Yours"))
                     Text(
                         kind == .pullRequest
                             ? String(localized: "Created by you or needing your review")
@@ -150,7 +159,7 @@ struct GitHubFilterBar: View {
                 }
                 ForEach(roles, id: \.self) { role in
                     let person = GitHubListFilter.Person(role: role, login: nil)
-                    choice(filter.person == person) { $0.person = person } label: { Text(role.viewerTitle) }
+                    choice(filter.person == person) { $0.people = .person(person) } label: { Text(role.viewerTitle) }
                 }
             }
             Section(String(localized: "Others", comment: "GitHub Person filter menu: people other than you.")) {
@@ -158,7 +167,7 @@ struct GitHubFilterBar: View {
                     Menu {
                         ForEach(roles, id: \.self) { role in
                             let person = GitHubListFilter.Person(role: role, login: login)
-                            choice(filter.person == person) { $0.person = person } label: { Text(role.title(for: login)) }
+                            choice(filter.person == person) { $0.people = .person(person) } label: { Text(role.title(for: login)) }
                         }
                     } label: {
                         if let person = filter.person, person.login == login {
@@ -172,7 +181,7 @@ struct GitHubFilterBar: View {
                 Button(String(localized: "Someone Else…")) { openSheet(.person) }
             }
         } label: {
-            GitHubFilterChip(title: filter.personTitle, isChanged: filter.person != nil)
+            GitHubFilterChip(title: filter.personTitle, isChanged: filter.people != nil)
         }
         .accessibilityLabel(Text("Person"))
         .accessibilityValue(filter.personTitle)
@@ -319,8 +328,10 @@ private struct GitHubFilterChip: View {
         // `Color.primary`, not `.primary`: a menu's label takes the tint as
         // its foreground, and `.primary` is that foreground's first level.
         .foregroundStyle(isChanged ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary))
-        .padding(.leading, 14)
-        .padding(.trailing, 11)
+        // Narrow enough that the four chips at their defaults fit one line
+        // on a 402-point iPhone.
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
         // Room above and below the words at the larger text sizes.
         .padding(.vertical, 6)
         .frame(minHeight: 34)
@@ -446,7 +457,7 @@ struct GitHubFilterEntrySheet: View {
         case .person:
             guard let login = GitHubFilterInput.login(text) else { return nil }
             let isViewer = options.viewer.map { $0.caseInsensitiveCompare(login) == .orderedSame } ?? false
-            changed.person = GitHubListFilter.Person(role: role, login: isViewer ? nil : login)
+            changed.people = .person(GitHubListFilter.Person(role: role, login: isViewer ? nil : login))
         case .repository:
             guard let repository = GitHubFilterInput.repository(text) else { return nil }
             changed.repository = repository
