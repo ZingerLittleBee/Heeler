@@ -75,6 +75,9 @@ targets:
       - path: plugin/claude-code
         type: folder
         buildPhase: resources
+      - path: integrations/amp
+        type: folder
+        buildPhase: resources
     info:
       path: Sources/Heeler/Info.plist
       properties:

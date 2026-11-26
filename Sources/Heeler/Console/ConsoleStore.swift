@@ -1178,9 +1178,17 @@ final class ConsoleStore {
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
+        var files = chatHostFiles(for: hostID, agentID: agent.id)
+        if program == .amp {
+            guard host.serverKind == .herdrTUI else { return nil }
+            files.amp = AmpChatConnection(pane: paneID) { [weak self] in
+                guard let live = self?.projections[hostID] as? HostConsoleProjection else { throw TransportError.cancelled }
+                return live
+            }
+        }
         var source = AgentChatSource(
             hostID: hostID, socketLocation: host.socketLocation,
-            files: chatHostFiles(for: hostID, agentID: agent.id),
+            files: files,
             agentInfo: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
@@ -1209,6 +1217,9 @@ final class ConsoleStore {
                 }))
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
+        }
+        if let amp = files.amp {
+            source.sessionEvidence = { try await amp.evidence() }
         }
         if let processBound {
             // No record names a session here.

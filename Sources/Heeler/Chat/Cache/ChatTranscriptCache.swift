@@ -72,8 +72,7 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
 
     var formatVersion: Int
     var key: ChatCacheKey
-    /// Bumped by an adapter whose normalization changed; an older document
-    /// is discarded rather than mixed with new entries.
+    /// The adapter uses this to restore entries in its current representation.
     var adapterRevision: Int
     var transcriptPath: String
     /// The transcript's first bytes when the entries were read. A file whose

@@ -47,6 +47,7 @@ COMMANDS: list[tuple[str, list[str]]] = [
     ("adhoc-host", ["sh", "-c", "node --test adhoc-host/test/*.test.mjs"]),
     ("test-herdr-core-lab-check", [PY, "scripts/test-herdr-core-lab-check.py"]),
     ("test-herdr-core-capture", [PY, "scripts/test-herdr-core-capture.py"]),
+    ("test-amp-chat", ["node", "--test", "scripts/test-amp-chat.mjs"]),
     ("test-simulator-ui", [PY, "scripts/test-simulator-ui.py"]),
     ("test-native-test-lifecycle", [PY, "scripts/test-native-test-lifecycle.py"]),
     ("test-format-release-notes", [PY, "scripts/test-format-release-notes.py"]),

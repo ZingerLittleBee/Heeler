@@ -141,6 +141,7 @@ extension HerdrCoreSessionBinder {
         switch program {
         case .claude, .codex, .pi, .omp, .agy: ConversationReference.canonicalUUID(key)
         case .grok: ConversationReference.lowercaseUUID(key)
+        case .amp: nil
         case .opencode: OpenCodeSessionID(key)?.rawValue
         }
     }
@@ -209,7 +210,7 @@ extension HerdrCoreSessionBinder {
             return Found(session: session, file: path)
         case .agy:
             return Self.antigravityConversation(held: path).map { Found(session: $0) }
-        case .codex:
+        case .codex, .amp:
             return nil
         }
     }
@@ -249,7 +250,7 @@ extension HerdrCoreSessionBinder {
         // (agy 1.5.3, `docs/research/antigravity-cli-transcript-format.md`). The
         // list holds what the process has open and what its command line names,
         // each dated by one stat of its transcript.
-        case .agy: return []
+        case .agy, .amp: return []
         }
     }
 
