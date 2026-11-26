@@ -155,6 +155,36 @@ Close.
   follows after. An item GitHub no longer shows to the account says so as
   a failed read's words: in the detail's "⋯" on iOS 26, in its banner
   before.
+- **A description's pictures and videos load on the phone, from GitHub.**
+  The detail read asks for the body as GitHub renders it (`bodyHTML`) beside
+  its Markdown, and keeps of it only each `<img>` and `<video>`: the address
+  GitHub gives a browser, the size its tag gives, and the upload id and
+  addresses it stands for (`GitHubMedia`). An upload, written as
+  `github.com/user-attachments/assets/<id>`, which needs a signed-in browser,
+  is there at `private-user-images.githubusercontent.com` with a `jwt`
+  signed for five minutes, in public repositories too. Another site's image
+  goes through GitHub's image proxy (`camo.githubusercontent.com`), and an
+  image in a repository keeps its address on GitHub. The phone fetches these
+  over HTTPS itself, with no cookie and no token, and never an address only
+  the Markdown names, so no other site learns the phone's address. Each
+  picture or video the Markdown writes is put back where it is written
+  (`GitHubBody`), matched by upload id or address, else in order when as
+  many are left on each side; one GitHub does not show, such as one in code,
+  stays as written. An address whose signature ends within 20 seconds, or
+  that GitHub refuses, reads the item again for a new one
+  (`GitHubStore.mediaURL`). What loaded is kept in memory by upload id, so
+  a new read's addresses load nothing again. A picture opens in Chat's
+  zoomable viewer and a video in the system's player. An animated GIF or
+  PNG plays a frame at a time as ImageIO decodes it (`AnimatedImageView`):
+  a walk-through recorded as a GIF can hold over a thousand frames, which
+  decoded up front would take gigabytes or play blurred and cut short. A
+  description longer than Chat's parser takes (48 KB, where GitHub allows
+  65,536 characters) parses in sections that end at a blank line outside a
+  code fence, rather than showing as one plain paragraph.
+- **A description's HTML shows as its text.** GitHub renders the HTML a
+  description holds, so the detail shows an HTML block as a browser would
+  show its text, a line for each block element, and drops inline tags but
+  `<br>`. Pictures and videos inside it show as above.
 - **Send to Agent puts a message in a running Agent's Composer.** From a
   detail, a sheet asks what the Agent should do, worded as one English
   sentence and the item's address (not localized, ADR 0041, and shown before
@@ -422,7 +452,28 @@ Close.
   finished, and a comment would post twice. The read after it lets the user
   decide.
 
+- **Loading a description's pictures through the Host.** gh or curl there
+  reaches GitHub wherever gh does, but an exec returns text: each picture
+  would cross the SSH link encoded, a video in full before it plays, each at
+  the cost of an exec. A phone reaches GitHub wherever GitHub's own app
+  does; one that cannot shows each picture's name, which retries on a tap.
+- **Showing `bodyHTML` instead of the Markdown.** It would lay out as GitHub
+  does, but needs an HTML renderer beside Chat's Markdown, and Send to Agent
+  needs the Markdown anyway.
+
 ## Consequences
+
+- Read on 2026-11-27 through `gh api graphql`: an upload's `<img>` and
+  `<video>` in `bodyHTML` pointed at
+  `private-user-images.githubusercontent.com/<user>/<n>-<id>.<ext>?jwt=…`,
+  whose token's `nbf` and `exp` were 300 seconds apart, in a private
+  repository and in a public one; the address loaded with no cookie. A video
+  sat in a `<details>` with its file name, its Markdown a bare
+  `user-attachments` address on a line of its own. A new upload's `<img>`
+  carried `width` and `height`; a proxied image carried the written address
+  as `data-canonical-src`; `github.com/<owner>/<repo>/raw/…` stayed as
+  written. The walk-through GIF of PR #632 was 400 by 869 pixels with about
+  1,400 frames in 7.9 MB, and a Renovate description 58 KB.
 
 - A search in GraphQL counts against the GraphQL limit, not REST's search
   limit: the response's `x-ratelimit-resource` is `graphql`, and the list

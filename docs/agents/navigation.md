@@ -354,7 +354,16 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   on iPad (`ConsoleView.gitHubSelection`); its "⋯" is `GitHubItemMenu`.
   [GitHubDetailRead](../../Sources/Heeler/GitHub/GitHubDetailRead.swift) is the
   one-item query, run by `GitHubStore.openDetail(_:on:)` and
-  `reread(_:on:)` into `GitHubStore.details`. Send to Agent:
+  `reread(_:on:)` into `GitHubStore.details`. The description is
+  [GitHubBodyView](../../Sources/Heeler/GitHub/GitHubBodyView.swift): Chat's
+  Markdown blocks, laid out by
+  [GitHubBodyLayout](../../Sources/Heeler/GitHub/GitHubBodyLayout.swift) with
+  the pictures and videos `bodyHTML` gives
+  ([GitHubMedia](../../Sources/Heeler/GitHub/GitHubMedia.swift)), loaded by
+  [GitHubMediaLoader](../../Sources/Heeler/GitHub/GitHubMediaLoader.swift)
+  from addresses `GitHubStore.mediaURL` keeps signed; animations play through
+  [AnimatedImageView](../../Sources/Heeler/Chat/Timeline/AnimatedImageView.swift),
+  also in the viewer. Send to Agent:
   `GitHubSendLink` from the detail sets `ConsoleView.gitHubSendRequest`, which
   `GitHubSendSheetPresenter` in
   [GitHubSendSheet](../../Sources/Heeler/GitHub/GitHubSendSheet.swift) shows;
