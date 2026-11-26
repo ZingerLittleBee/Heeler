@@ -61,8 +61,10 @@ Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
 connection. Another server instance on the socket is another server, as
-with tmux (ADR 0050). A Rex Host's terminals open from the server's own
-redraw, and their size is asked for (ADR 0051). They take input from their
+with tmux, unless it restored the last one's sessions: one that sees the same
+files and lists one of them continues the server (ADR 0050). A Rex Host's
+terminals open from the server's own redraw, and their size is asked for
+(ADR 0051). They take input from their
 first paint, one request at a time on the control connection, never sent
 twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
 its own, once per showing, and gives it back once the view stops showing it;
