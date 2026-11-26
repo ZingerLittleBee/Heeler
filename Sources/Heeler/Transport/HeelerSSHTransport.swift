@@ -3372,6 +3372,33 @@ actor HeelerSSHTransport: Transport {
         return try GitProbe.parseCommand(stdout: result.stdout, stderr: result.stderr, nonce: nonce)
     }
 
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        try requireConnected()
+        var input = try JSONEncoder().encode(request)
+        input.append(0x0A)
+        let line = input
+        let timeout = requestTimeout
+        let data: Data
+        do {
+            data = try await channelAdmission.withChannel(.ordinaryForwarding, priority: .interactive) {
+                try await self.connection.exchangeStreamLocal(
+                    socketPath: record.socket, request: line, maximumResponseBytes: 2 << 20, timeout: timeout)
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw AmpChatProblem.unreachable }
+        return try JSONDecoder().decode(AmpChatReply.self, from: data)
+    }
+
+    func installAmpChatPlugin(in directory: String) async throws {
+        let contents = String(decoding: try AmpPluginLocation.bundledContents(), as: UTF8.self)
+        let result = try await runBoundedScript(
+            AmpPluginLocation.installScript(directory: directory, contents: contents),
+            feature: String(localized: "Amp Chat"), deadline: .seconds(15), remoteSeconds: 10,
+            timeoutMarkerPrefix: "__HEELER_AMP_INSTALL_", timedOut: .hostFileTimedOut, priority: .interactive)
+        if result.exitStatus == 73 { throw AmpChatProblem.conflict }
+        guard result.exitStatus == 0 else { throw AmpChatProblem.unreachable }
+    }
+
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
         try await queryOpenCode(query, reader: .automatic)
     }

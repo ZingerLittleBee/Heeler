@@ -72,6 +72,7 @@ struct AgentChatSurfaceView: View {
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var extensionFlow: HeelersExtensionFlow?
+    @State private var ampInstall: AmpPluginLocation?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -789,9 +790,16 @@ struct AgentChatSurfaceView: View {
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
-                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) })
+                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
+                installAmp: { ampInstall = chat?.ampConnection?.location })
             .sheet(item: $extensionFlow) { flow in
                 HeelersExtensionSheet(flow: flow)
+            }
+            .sheet(item: $ampInstall) { place in
+                if let connection = chat?.ampConnection {
+                    AmpPluginInstallSheet(host: agent.hostName, account: hosts.first { $0.id == agent.hostID }?.username,
+                                          place: place, connection: connection, installed: { chat?.retry() })
+                }
             }
         case .disconnected:
             ContentUnavailableView(
@@ -1089,6 +1097,19 @@ struct AgentChatSurfaceView: View {
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        if program == .amp {
+            let connection = chat?.ampConnection
+            let displayed = chat?.displayedAmpBinding
+            policy.submitChat = { id, text in
+                guard let connection else { return .refused(.inputNotReady(AmpChatProblem.changed.explanation)) }
+                return await connection.send(id: id, text: text, target: displayed)
+            }
+            policy.verify = nil
+            let hasFiles = !composer.imageAttachments.isEmpty
+            policy.prependingPreflight { _ in
+                hasFiles ? .inputNotReady(String(localized: "Send attachments from the Amp terminal.")) : nil
+            }
+        }
         // A status-line switch types into the same input line.
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
@@ -1791,8 +1812,9 @@ struct AgentChatSurfaceView: View {
 
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
-    private var stopInterrupt: AgentComposerInterrupt {
-        console.chatInterrupt(
+    private var stopInterrupt: AgentComposerInterrupt? {
+        guard program != .amp else { return nil }
+        return console.chatInterrupt(
             for: agent, program: program, keepingTo: session.corePin,
             context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
     }
@@ -1918,10 +1940,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
-            pasteImage: offers.attachments
+            addImage: offers.attachments && program != .amp ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments && program != .amp
                 ? { session.pasteClipboard() } : nil,
-            addFile: offers.attachments ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments && program != .amp ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

@@ -3,6 +3,7 @@ import Foundation
 /// Why Chat cannot show a conversation from the Host. Each case has its own
 /// explanation; none of them is an error the user caused.
 enum ChatUnavailableReason: Equatable, Sendable {
+    case amp(AmpChatProblem)
     /// herdr has reported no session ID for the Agent. This does not establish
     /// whether the program's integration is installed.
     case noSession(ChatProgram)
@@ -68,7 +69,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// over saved messages, which stay in memory until the program shows
     /// the conversation again.
     var hidesConversation: Bool {
-        if case .startScreen = self { true } else { false }
+        switch self {
+        case .startScreen, .amp: true
+        default: false
+        }
     }
 
     /// Nothing exact names the conversation on a POSIX core Host, which is where a
@@ -100,7 +104,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy: false
+        case .claude, .codex, .grok, .opencode, .agy, .amp: false
         }
     }
 
@@ -109,7 +113,7 @@ extension ChatProgram {
     var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy: false
+        case .claude, .codex, .grok, .opencode, .agy, .amp: false
         }
     }
 }
@@ -1602,7 +1606,7 @@ actor ChatConversationEngine {
             case .failure(.notFound):
                 return .unavailable(.notFound(searchedAll: true))
             }
-        case .opencode:
+        case .opencode, .amp:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)
         }

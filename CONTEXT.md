@@ -509,9 +509,12 @@ _Avoid_: recent link, visible link, link history
 
 **Chat**:
 The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build,
-OpenCode or Antigravity CLI Agent's detail can show in its terminal's place,
-read from the Agent's Transcript. Chat holds no Attach; its Composer and draft are the
-terminal's. Send is one `agent.prompt` request, made only after a screen read
+OpenCode, Antigravity CLI or Amp Agent's detail can show in its terminal's place.
+Most programs read from the Agent's Transcript. On POSIX Herdr TUI Hosts,
+Amp Chat reads the thread selected in the foreground Amp terminal through
+Heeler's Amp plugin. Confirm its installation in Chat, then reload plugins in
+Amp. Plain text goes to that same thread through the plugin (ADR 0066). Chat holds no Attach; its Composer and draft are the
+terminal's. For transcript-backed Chat on Herdr TUI, Send is one `agent.prompt` request, made only after a screen read
 shows the program's input box empty, and refused for text the program would
 run rather than read. Its `/` menu offers the Agent's skills and `/compact`;
 for OpenCode, only `/compact`. Chat never resends: text left in the box after

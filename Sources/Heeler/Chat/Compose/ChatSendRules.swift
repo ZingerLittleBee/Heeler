@@ -52,11 +52,12 @@ enum ChatCommandMenu {
         // (its changelog, 1.1.12), so Chat leaves that one out too.
         case .agy:
             !skill.isSlashCommandDisabled && !AgySlashCommands.builtIns.contains(skill.name.lowercased())
-        case .opencode: false
+        case .opencode, .amp: false
         }
     }
 
     static func commands(skills: [AgentSkill], agentIsIdle: Bool, program: ChatProgram) -> [ChatCommand] {
+        if program == .amp { return [] }
         var commands = [
             ChatCommand(
                 name: "compact", summary: String(localized: "Summarize the conversation to free up context"),
@@ -147,6 +148,10 @@ struct ChatSendProfile: Sendable {
 
     static func standard(for program: ChatProgram) -> ChatSendProfile {
         switch program {
+        case .amp:
+            ChatSendProfile(exitWords: [], refusal: { _, trimmed in
+                trimmed.hasPrefix("/") ? .unsafeText(String(localized: "Run Amp commands in the terminal.")) : nil
+            })
         case .claude:
             // Claude Code runs `/exit` for these whole inputs.
             ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
@@ -260,6 +265,7 @@ struct ChatSendRules: Sendable {
     /// the profile submits bare goes alone, without the space.
     func outgoingText(_ draft: String) -> String {
         let clean = TerminalTextSafety.normalizingNewlines(Self.removingInvisibles(draft))
+        if program == .amp { return clean }
         let body: String
         switch read(draft) {
         case .command(let command, let arguments):

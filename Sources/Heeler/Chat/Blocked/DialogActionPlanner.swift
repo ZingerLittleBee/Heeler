@@ -23,7 +23,7 @@ enum DialogActionPlanner {
         case .omp: try OMPDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .agy: try AgyDialogPlanner(dialog: dialog).plan(action)
-        case .pi: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
+        case .pi, .amp: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
     }

@@ -95,6 +95,7 @@ extension HerdrCoreSessionBinder {
         switch program {
         case .claude, .codex, .agy: ConversationReference.canonicalUUID(hint.session)
         case .grok: ConversationReference.lowercaseUUID(hint.session)
+        case .amp: nil
         case .opencode: OpenCodeSessionID(hint.session)?.rawValue
         case .pi, .omp: hint.piSession(onWindows: isOnWindows)
         }

@@ -49,6 +49,10 @@ extension ChatTranscriptAdapter {
         case .opencode:
             // Read by query from OpenCode's session store (ADR 0025).
             openCode
+        case .amp:
+            ChatTranscriptAdapter(
+                revision: 1, joinsCachedHistory: false, makeReducer: { _ in AmpTranscriptReducer() },
+                echoesByEntry: true, makeRecordSource: { AmpRecordSource(thread: $0) })
         }
     }
 

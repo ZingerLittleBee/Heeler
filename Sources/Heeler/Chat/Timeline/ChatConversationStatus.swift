@@ -6,6 +6,10 @@ import SwiftUI
 extension ChatUnavailableReason {
     var title: String {
         switch self {
+        case .amp(.missing): String(localized: "Connect Amp Chat")
+        case .amp(.reload): String(localized: "Reload the Amp Plugin")
+        case .amp(.noThread): String(localized: "Open an Amp Thread")
+        case .amp: String(localized: "Amp Chat Is Unavailable")
         case .noSession(.agy), .noConversationYet, .awaitingFirstMessage: String(localized: "No Messages Yet")
         case .noSession: String(localized: "Waiting for Conversation")
         case .unidentifiedSession: String(localized: "Conversation Not Identified")
@@ -32,6 +36,8 @@ extension ChatUnavailableReason {
 
     var explanation: String {
         switch self {
+        case .amp(let problem): problem.explanation
+        case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
             String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
         case .noSession(.codex):
@@ -247,6 +253,7 @@ extension ChatUnavailableReason {
         // language joins a sentence it can't order.
         let saved = showingSavedMessages
         return switch self {
+        case .amp(let problem): problem.explanation
         case .noSession:
             String(localized: "Waiting for the Agent to report its conversation.")
         case .noConversationYet(let program):
@@ -321,6 +328,7 @@ extension ChatUnavailableReason {
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
+        case .amp: true
         case .noSession(.agy), .noConversationYet:
             false
         case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .multipleSessions,
@@ -605,6 +613,7 @@ extension ChatProgram {
     /// product name, the same in every language.
     var chatName: String {
         switch self {
+        case .amp: "Amp"
         case .claude: "Claude Code"
         case .codex: "Codex"
         case .pi: "Pi"
@@ -619,6 +628,7 @@ extension ChatProgram {
     /// where the evidence is what the Host shows of its process (ADR 0034).
     fileprivate var sessionEvidenceHelp: String {
         switch self {
+        case .amp: return AmpChatProblem.unidentified.explanation
         case .codex, .grok:
             return String(localized: "Send a first message in the terminal.")
         case .opencode:
@@ -674,6 +684,7 @@ struct ChatUnavailableView: View {
     var reviewEdit: (() -> Void)?
     /// Opens what writes Heeler's extension, on a native Windows core Host.
     var addExtension: (() -> Void)?
+    var installAmp: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -711,11 +722,17 @@ struct ChatUnavailableView: View {
     /// Whether a settling action leads the capsule stack as the primary action.
     private var hasSettlingAction: Bool {
         chooseConversation != nil
+            || (reason == .amp(.missing) && installAmp != nil)
             || (reviewEdit != nil && reason.offersOpenCodePluginEdit)
             || (addExtension != nil && reason.offersHeelersExtension)
     }
 
     @ViewBuilder private var capsuleActions: some View {
+        if reason == .amp(.missing), let installAmp {
+            Button("Install Amp Plugin", action: installAmp)
+                .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
+                .accessibilityIdentifier("chat.amp.install")
+        }
         if let chooseConversation {
             Button(action: chooseConversation) { Text(ChatCandidatePickerView.title) }
                 .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))

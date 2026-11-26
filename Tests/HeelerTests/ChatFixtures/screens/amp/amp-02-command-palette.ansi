@@ -1,0 +1,21 @@
+
+
+      ╭─ Command Palette ────────────────────────────────────────────────────────────╮
+      │                                                                              │
+      │ >                                                                            │
+      │                                                                              │
+      │    thread  new in orb                                              Ctrl+X o  │
+ ┃ Re │    thread  new on runner                                                     │
+      │    thread  new                                                               │
+ HEEL │    thread  switch                                                            │
+      │       amp  relaunch (quit & reopen)                                          │
+ ┃ Se │            sidebar                                                           │
+ ┃    │            restart orb processes & refresh env                               │
+ ┃ Re │       amp  help                                                              │
+      │       amp  show welcome                                                      │
+ HEEL │       amp  end credits                                                       │
+╭──── │       amp  show version                                                      │ l ─╮
+│     │       amp  enable remote creation of threads                                 │    │
+│     ╰──────────────────────────────────────────────────────────────────────────────╯    │
+│                                                                                         │
+╰─────────────────────────────────────────────── /tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaa/work ─╯

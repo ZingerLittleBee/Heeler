@@ -6564,6 +6564,16 @@
         }
       }
     },
+    "A different file already occupies the plugin path. Check it on the Host before installing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件路径上已有其他文件。请先在主机上检查该文件。"
+          }
+        }
+      }
+    },
     "A fixed address is a private IPv4 address with a prefix, such as 10.144.144.7/24 (not 0.x, 127.x, or 224 and up)." : {
       "localizations" : {
         "ja" : {
@@ -10324,6 +10334,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一律使用 %@ 麥克風"
+          }
+        }
+      }
+    },
+    "Amp Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amp 聊天"
+          }
+        }
+      }
+    },
+    "Amp Chat Is Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amp 聊天暂不可用"
+          }
+        }
+      }
+    },
+    "Amp already has a draft. Send or clear it in the terminal first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amp 终端里已有草稿。请先在终端发送或清空草稿。"
+          }
+        }
+      }
+    },
+    "Amp could not accept this message. Check its size or reload the plugin." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amp 未能接收这条消息。请检查消息长度或重新加载插件。"
+          }
+        }
+      }
+    },
+    "Amp sessions using this account and configuration share one installation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此账号和配置的 Amp 会话共用这份插件。"
           }
         }
       }
@@ -18071,6 +18131,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "連線"
+          }
+        }
+      }
+    },
+    "Connect Amp Chat" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接 Amp 聊天"
           }
         }
       }
@@ -30413,7 +30483,27 @@
         }
       }
     },
+    "Heeler could not identify the foreground Amp process and its configuration on this Host." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法识别这台主机前台运行的 Amp 进程及其配置。"
+          }
+        }
+      }
+    },
     "Heeler could not look for Rex on this Host" : {},
+    "Heeler could not reach the Amp plugin over SSH. Check that Amp is running and the SSH server allows Unix socket forwarding." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法通过 SSH 连接 Amp 插件。请确认 Amp 正在运行，且 SSH 服务器允许转发 Unix 套接字。"
+          }
+        }
+      }
+    },
     "Heeler could not reach this Host's systemd user manager to ask about the service. %@" : {
       "localizations" : {
         "ja" : {
@@ -34013,6 +34103,16 @@
         }
       }
     },
+    "In the Amp terminal, press Ctrl+O, search for reload, and choose Plugins › Reload. Then check again here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Amp 终端按 Ctrl+O，搜索 reload，选择 Plugins › Reload，然后回到这里点「再次检查」。"
+          }
+        }
+      }
+    },
     "In this directory" : {
       "localizations" : {
         "ja" : {
@@ -34376,6 +34476,26 @@
         }
       }
     },
+    "Install Amp Plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装 Amp 插件"
+          }
+        }
+      }
+    },
+    "Install Heeler’s plugin on the Host to read and reply to the thread open in this Amp terminal." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主机上安装 Heeler 插件，即可在这里查看并回复当前 Amp 终端中的对话。"
+          }
+        }
+      }
+    },
     "Install Plugin" : {
       "localizations" : {
         "ja" : {
@@ -34483,6 +34603,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請在主機上安裝 herdr-core，然後重新檢查。"
+          }
+        }
+      }
+    },
+    "Install on This Host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装到这台主机"
           }
         }
       }
@@ -44591,6 +44721,16 @@
         }
       }
     },
+    "Open an Amp Thread" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个 Amp 对话"
+          }
+        }
+      }
+    },
     "Open folder" : {
       "localizations" : {
         "ja" : {
@@ -44830,6 +44970,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請點選輸入框上方的 Swarm 狀態列在聊天中查看訊息板，或切換到終端機執行 /swarm board。"
+          }
+        }
+      }
+    },
+    "Open the ordinary Amp input box in the terminal." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在终端回到 Amp 的普通输入框。"
           }
         }
       }
@@ -48425,6 +48575,26 @@
         }
       }
     },
+    "Plugin Directory" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件目录"
+          }
+        }
+      }
+    },
+    "Plugin Installed on Host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件已安装到主机"
+          }
+        }
+      }
+    },
     "Plugin and Helper on %lld Hosts" : {
       "comment" : "Under the updates card's title: plugins and Helpers have updates. Argument: on how many Hosts.",
       "localizations" : {
@@ -51751,6 +51921,16 @@
         }
       }
     },
+    "Reload the Amp Plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新加载 Amp 插件"
+          }
+        }
+      }
+    },
     "Reloading systemd" : {
       "localizations" : {
         "ja" : {
@@ -54523,6 +54703,16 @@
         }
       }
     },
+    "Run Amp commands in the terminal." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在终端中运行 Amp 命令。"
+          }
+        }
+      }
+    },
     "Run Checks Again" : {
       "localizations" : {
         "ja" : {
@@ -54887,6 +55077,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SFTP 狀態碼 %llu"
+          }
+        }
+      }
+    },
+    "SSH Host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SSH 主机"
           }
         }
       }
@@ -56154,6 +56354,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請先在終端機傳送第一則訊息。"
+          }
+        }
+      }
+    },
+    "Send attachments from the Amp terminal." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Amp 终端中发送附件。"
           }
         }
       }
@@ -59737,6 +59947,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在新的工作樹中開始"
+          }
+        }
+      }
+    },
+    "Start or open a thread in this Amp terminal. Chat will follow it here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在当前 Amp 终端新建或打开对话，聊天内容会在这里显示。"
           }
         }
       }
@@ -63895,6 +64115,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 的處理程序已變更。請重新開啟權限選單。"
+          }
+        }
+      }
+    },
+    "The Amp terminal changed threads or reloaded its plugin. Check the current conversation before sending." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amp 终端已切换对话或重新加载插件。请确认当前对话后再发送。"
           }
         }
       }
@@ -72572,6 +72802,16 @@
         }
       }
     },
+    "This Amp plugin uses a different protocol version." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Amp 插件使用的协议版本与 Heeler 不兼容。"
+          }
+        }
+      }
+    },
     "This Claude Code was started with %@, so it has kept no session record and saves no transcript for Chat to read. %@" : {
       "comment" : "Chat explanation: an environment variable's name, then a sentence saying how to fix it",
       "localizations" : {
@@ -74701,6 +74941,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此訊息太大，無法在對話中顯示。"
+          }
+        }
+      }
+    },
+    "This message is too long for Amp Chat." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息超出了 Amp 聊天的长度限制。"
           }
         }
       }

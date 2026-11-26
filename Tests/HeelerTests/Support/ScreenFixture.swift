@@ -220,6 +220,7 @@ enum ScreenFixture {
 
     /// The program that drew a capture.
     static func program(_ stem: String) -> ChatProgram {
+        if stem.hasPrefix("amp-") { return .amp }
         if stem.hasPrefix("codex-") { return .codex }
         if stem.hasPrefix("pi-") { return .pi }
         if stem.hasPrefix("omp-") { return .omp }
