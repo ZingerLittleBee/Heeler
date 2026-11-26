@@ -72,9 +72,9 @@ Decrypted plaintext (canonical form):
   order). Cap at **5** after that sort. `counts` still covers everything.
   Pins never change eligibility: idle/unknown stay hidden. A pinned
   working Agent may displace an unpinned Blocked Agent from the capped
-  envelope. The expanded Dynamic Island uses envelope order. The Lock
-  Screen orders the entries it receives by status, keeping envelope
-  order within each status.
+  envelope. The expanded Dynamic Island and the Lock Screen order the
+  entries they receive by status, keeping envelope order within each
+  status.
 - `title` is `terminal_title_stripped ?? terminal_title`, trimmed to ≤80
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
@@ -160,35 +160,44 @@ follow system appearance on refresh.
 
 ### Dynamic Island
 
-Compact presentations show one status mark per Agent in attention order,
-Blocked, Done, Working, using the full plaintext counts even without decrypted
-details. Marks use an open ring, a filled exclamation circle, and a check
-mark. At most four slots appear. When the inventory exceeds
-four, the first three marks remain and the last slot becomes a plus mark.
-The first two slots lead the camera and the rest trail it. One Agent leaves
-the trailing region empty. There are no visible count numbers or status words.
+Compact presentations show every status that has Agents, in attention order
+Blocked, Done, Working, from the full plaintext counts even without decrypted
+details. Blocked and Done are filled circles with a cut-out mark; Working is an
+open ring. One status puts its symbol before the camera and its count after
+it. Two statuses put a symbol and count on each side. Three put Blocked and
+Done before the camera and Working after it. Both sides take the width of the
+wider side and sit against the camera. The size is the first of full (15 pt
+counts), smaller symbols (12.3 pt) and numbers only (15 pt) whose wider side
+fits 58 pt on screens at least 420 pt wide, or 47 pt on narrower ones.
 
-A rounded-square Host tile precedes the compact leading marks only when the
-local snapshot contains at least two Hosts and the current Host has a nonempty
-`label`. This uses the entire configured catalog, including quiet Hosts, rather
-than the set of running activities. One Host has no tile in any Island region.
-An absent snapshot, unknown Host, or missing label omits the tile.
+The Host's `label` shows only when the local snapshot contains at least two
+Hosts and the current Host has a nonempty `label`. This uses the entire
+configured catalog, including quiet Hosts, rather than the set of running
+activities. The label is plain gray text at the count size, last on the
+trailing side. With one or two statuses, every status then moves before the
+camera. One Host, an absent snapshot, an unknown Host, or a missing label
+shows no label in any Island region.
 
-Minimal presentation without a tile shows up to four status marks in a two by
-two cluster, with the same overflow rule. A single mark stays larger. With an
-eligible tile, minimal shows the Host label wearing its most urgent status,
-filled for Blocked, outlined for Working, or outlined with a small check for
-Done. Compact and minimal expose one accessibility summary of all counts,
-using localized phrases such as "1 needs you, 1 working, 1 done". Only a
-snapshot listing at least two Hosts adds the Host name to that summary.
+Minimal presentation shows the first status in attention order as a 20 pt
+circle with its count inside. Each other status with Agents adds a small dot
+in its color under a smaller circle. Minimal shows no Host label. When iOS
+limits the Island's width (`isDynamicIslandLimitedInWidth`, iOS 27 and later,
+as in landscape), the compact leading region shows the minimal content and the
+trailing region shows the Host label or nothing. Compact and minimal expose
+one accessibility summary of all counts, using localized phrases such as
+"1 needs you, 1 working, 1 done". Only a snapshot listing at least two Hosts
+adds the Host name to that summary.
 
-The expanded header shows the full Host name with the eligible tile before
-it. Its trailing region may summarize the status marks. The bottom preserves
-configured Agent List Fields and status marks. Up to three linked entries
-appear in envelope order, followed by the overflow summary.
-Surrounding chrome keeps the Console fallback link.
-Without Agent details, expanded content shows the localized count phrases
-instead of Agent rows.
+The expanded header shows the Host name, the eligible label in a tile before
+it, and the total, such as "3 agents", at the trailing end. Up to three linked
+cards follow in attention order, keeping envelope order within each status.
+A card shows the first configured Agent List Fields row as its title and the
+second as its task, on up to two lines. A Blocked card has a pink-tinted
+fill. A line after the cards counts the Agents without a card by status, as a
+count and status mark per status, then "more". Without Agent
+details, expanded content shows the counts by status without the plus signs
+or "more". When any Agent is Blocked, the Island asks iOS for a Blocked-colored
+keyline. Surrounding chrome keeps the Console fallback link.
 Island type sizes cap at `.large` through `islandTypeSize()`. Island inks
 remain Mocha regardless of ambient appearance.
 
