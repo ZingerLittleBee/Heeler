@@ -254,10 +254,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 }
             } else if inventoryInstance != server.instanceID {
                 // The same server restarted: its terminals and Pins stay, but
-                // each program in them runs anew, so no screen Chat read and
-                // no pick a send guard dropped is the new one's.
+                // each program in them runs anew, so no pick a send guard
+                // dropped is the new one's. Chat's typing stays, as a Chat
+                // holds its screen reads: it reads the program started again
+                // as another holder, and types nothing over an earlier screen.
                 droppedPicks = [:]
-                chatTypings = [:]
             }
             self.server = server
             inventoryCore = server.coreID

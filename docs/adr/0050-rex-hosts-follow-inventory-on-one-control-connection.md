@@ -183,9 +183,11 @@ across its instances.
   instance, it now keeps to the server: the instances that continue one core.
 - What ran in the terminals does not carry over. A restored terminal starts on
   a fresh screen, so the new instance's terminals still start with none of the
-  last instance's titles, programs or directories, Chat reads and types into
-  each terminal afresh and forgets the picks a send guard dropped, and a
-  pick's foreground no longer matches a program started again. An open
+  last instance's titles, programs or directories, Chat forgets the picks a
+  send guard dropped, and a pick's foreground no longer matches a program
+  started again. Chat's typing into a terminal stays, since an open Chat holds
+  it: it reads the program started again as another process holding the
+  terminal, so nothing is typed over a screen read before the restart. An open
   terminal reconnects and paints afresh, as after a dropped connection, and a
   request or input pinned to the last instance fails as the connection having
   gone, not as the server.
