@@ -397,6 +397,10 @@ final class HostFilesBrowser: Identifiable {
     /// The path a message names this file by: from the Agent's directory
     /// when the file is under it, as the Agent would write it.
     func reference(to filePath: String) -> String {
+        Self.reference(to: filePath, from: agentDirectory)
+    }
+
+    static func reference(to filePath: String, from agentDirectory: String) -> String {
         let prefix = agentDirectory == "/" ? "/" : agentDirectory + "/"
         return filePath.hasPrefix(prefix) ? String(filePath.dropFirst(prefix.count)) : filePath
     }
