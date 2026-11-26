@@ -12,8 +12,9 @@ switched off. The maintainer decided on 2026-11-17 that Chat is to ship in
 full with Rex support. This ADR records how a Rex Agent now opens the Agent
 detail, what its Chat reads and types, and what still stays out. Its
 [update of the same day](#update-2026-11-17-attachments) adds images and files
-in messages, and [the next day's](#update-2026-11-18-pi-and-oh-my-pi) adds Chat
-for Pi and Oh My Pi.
+in messages, [the next day's](#update-2026-11-18-pi-and-oh-my-pi) adds Chat
+for Pi and Oh My Pi, and [the update of 2026-11-25](#update-2026-11-25-native-windows)
+opens Chat for Claude Code, with attachments, on a native Windows Host.
 
 ## Settings
 
@@ -68,8 +69,9 @@ the code follows them:
   2026-11-17: uploads turn on with Chat, wherever the server has named a Linux
   or macOS kernel. Updated 2026-11-18: `rexChatPrograms` gains Pi and Oh My
   Pi. Updated 2026-11-25: Chat for `rexWindowsChatPrograms`, Claude Code
-  alone, once the server has named Windows, with no uploads; see
-  [Update 2026-11-25: native Windows](#update-2026-11-25-native-windows).)
+  alone, and uploads, once the server has named Windows; see
+  [Update 2026-11-25: native Windows](#update-2026-11-25-native-windows).
+  The same day, ADR 0049's update lets New Terminal start a shell.)
   The kernel comes
   from the socket lookup or `server.version` and is kept in the Host's memory
   on this device; the Host as the catalog stores it knows none, so nothing

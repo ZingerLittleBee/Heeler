@@ -93,8 +93,9 @@ server has been observed yet.
 
 ## Known limits
 
-What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.14 (API
-revision 12). The user guide, [Connect Rex](../guides/rex.md), says the same
+What Heeler's Rex support has not covered, as of Rex 0.1.0-preview.23 (API
+revision 19), most of it first seen on 0.1.0-preview.14 (API revision 12).
+The user guide, [Connect Rex](../guides/rex.md), says the same
 in users' words.
 
 - **Revisions 12 to 19.** The hello offers 19 with a floor of 12; a welcome
@@ -106,7 +107,7 @@ in users' words.
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
   detection script against fake Linux homes only. Every observation below is
-  from macOS.
+  from macOS, except those that name Windows.
 - **What the first paint leaves out.** The `vt` redraw carries no title,
   cursor shape, OSC 10 or 11 default colors or saved cursor, and while a
   program uses the alternate screen none of the primary screen or scrollback
@@ -132,9 +133,10 @@ in users' words.
   ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
-- **Existing terminals only.** Nothing is created, closed or renamed, and no
-  layout changes; no notifications, Live Activities, Usage, Changes or New
-  Agent.
+- **Shells only.** New Terminal and New Workspace start a shell
+  ([Starting a terminal](#starting-a-terminal)); nothing else is created,
+  nothing is closed or renamed, and no layout changes; no notifications, Live
+  Activities, Usage, Changes or New Agent.
 - **Attachments where Chat is.** Once the server has named a Linux or macOS
   kernel, an Agent's Composer can attach images and files. Heeler stages them
   over the Host's own SSH connection (one `mktemp -d` exec, then an SFTP
@@ -147,9 +149,13 @@ in users' words.
   yet tried from an iPhone or iPad; the transport is the one every POSIX Host
   uses
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md),
-  update of 2026-11-17).
+  update of 2026-11-17). On native Windows they are staged over SFTP alone,
+  into `AppData\Local\Temp`, with no exec; that has been tried over SFTP but
+  not yet from the app
+  ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md#update-2026-11-25-native-windows)).
 - **Chat for four programs.** Chat is offered for Claude Code, Codex, Pi and
-  Oh My Pi only. A Pi or Oh My Pi names its conversation through Heeler's
+  Oh My Pi only, and on native Windows for Claude Code alone. A Pi or Oh My
+  Pi names its conversation through Heeler's
   extension, which no Host Helper brings to a Rex Host: Chat offers to add it
   to that Agent's own extension folder, and the Agent loads it when it is
   next started. An Agent whose program reports nothing to Rex reads Unknown,

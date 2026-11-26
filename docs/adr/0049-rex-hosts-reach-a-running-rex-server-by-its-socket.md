@@ -35,6 +35,10 @@ Amended 2026-11-25 (see [Update 2026-11-25: New Terminal](#update-2026-11-25-new
 New Terminal starts a shell in a new window of a Workspace's session, or in
 a new session, on the control connection.
 
+Amended 2026-11-25 (see [Update 2026-11-25: API revisions 12 to 19](#update-2026-11-25-api-revisions-12-to-19)):
+the hello offers revision 19 with a floor of 12, and a welcome at any
+revision in that range is accepted.
+
 Amended by [ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md), as
 [Update 2026-11-16: a Server of its Host](#update-2026-11-16-a-server-of-its-host)
 says: a Rex server is a Server of its Host, listed by the look that adds or

@@ -188,8 +188,6 @@ captures, live tests and fakes, recorded with their sources in
 
 ## Update 2026-11-25: the terminal's own colors
 
-Status: accepted.
-
 A Rex terminal now wears its own default colors, as the server has them,
 instead of the Heeler theme. The data stream already says them: a `theme`
 message right after the first resize when they are not Rex's built-in ones,
