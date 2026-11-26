@@ -754,9 +754,9 @@ final class AgentChatStore {
         try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
     }
 
-    func resolveHostPath(_ path: String) async throws -> String {
+    func resolveHostPath(_ path: String, files: ChatHostFiles? = nil) async throws -> String {
         if path.hasPrefix("/") { return path }
-        let home = path.hasPrefix("~/") ? try await source.files.home() : nil
+        let home = path.hasPrefix("~/") ? try await (files ?? source.files).home() : nil
         let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
         guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
             throw ChatImagePreviewError.invalidPath

@@ -82,9 +82,9 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
-    @State private var previewedVideo: HostFilePreview?
-    @State private var videoPreviewCopies = HostFileCopies()
-    @State private var videoPreviewPace = HostFilePace()
+    @State private var previewedFile: HostFilePreview?
+    @State private var previewCopies = HostFileCopies()
+    @State private var previewPace = HostFilePace()
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -318,9 +318,8 @@ struct AgentChatSurfaceView: View {
                 ChatCandidatePickerView(chat: chat, corePin: session.corePin)
             }
         }
-        .fullScreenCover(item: $previewedVideo) { preview in
-            HostFilePreviewView(preview: preview)
-                .onDisappear { preview.discard() }
+        .fullScreenCover(item: $previewedFile) { preview in
+            filePreview(preview)
         }
         .sheet(item: $viewingSkill) { skill in
             SkillContentSheet(skill: skill) { [console, agent] in
@@ -380,6 +379,16 @@ struct AgentChatSurfaceView: View {
         } message: {
             Text(permissionErrorMessage ?? "")
         }
+    }
+
+    private func filePreview(_ preview: HostFilePreview) -> some View {
+        let insert: () -> Void = {
+            let path = agent.directory.map { HostFilesBrowser.reference(to: preview.path, from: $0) } ?? preview.path
+            composer.insertIntoDraft(path)
+            previewedFile = nil
+        }
+        return HostFilePreviewView(preview: preview, insertPath: showFiles == nil ? nil : insert)
+            .onDisappear { preview.discard() }
     }
 
     private var lifecycleSurface: some View {
@@ -468,6 +477,7 @@ struct AgentChatSurfaceView: View {
             chat?.skillsDidLoad(names)
         }
         .onChange(of: isHostConnected, initial: true) { _, isConnected in
+            if isConnected { previewPace.reset() }
             chat?.hostConnectionChanged(isConnected)
         }
         // The transcript records the mode as snapshots, and not every change
@@ -1016,23 +1026,19 @@ struct AgentChatSurfaceView: View {
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
             },
-            previewVideo: { [weak chat] path, title in
+            previewFile: { [weak chat] path, title in
                 guard let chat else { return }
-                Task { @MainActor in
-                    let resolved = (try? await chat.resolveHostPath(path)) ?? path
-                    let name = RemoteHostPath.lastComponent(of: resolved)
-                    previewedVideo?.discard()
-                    previewedVideo = HostFilePreview(
-                        path: resolved,
-                        name: name.isEmpty ? "video.mp4" : name,
-                        displayTitle: title,
-                        size: nil,
-                        modified: nil,
-                        files: chat.hostFiles,
-                        copies: videoPreviewCopies,
-                        pace: videoPreviewPace)
-                }
+                let files = chat.hostFiles.finishingEachRequest
+                let written = path.hasPrefix("./") ? String(path.dropFirst(2)) : path
+                let name = RemoteHostPath.lastComponent(of: ChatImagePath.resolve(written, cwd: nil) ?? written)
+                composerKeyboardDismissRequest += 1
+                previewedFile?.discard()
+                previewedFile = HostFilePreview(
+                    path: path, name: name, displayTitle: title, size: nil, modified: nil,
+                    files: files, copies: previewCopies, pace: previewPace,
+                    resolvePath: { try await chat.resolveHostPath(written, files: files) })
             },
+            offersFiles: showFiles != nil,
             thumbnails: chat?.thumbnails,
             openHostLink: { [portPreview] link in
                 guard let portPreview, portPreview.accepts(link) else { return false }

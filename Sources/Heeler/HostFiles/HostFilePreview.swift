@@ -57,7 +57,10 @@ final class HostFilePreview: Identifiable {
         let export: Export
     }
 
-    let path: String
+    private(set) var path: String
+    /// Chat resolves the written path on open, so home lookup failures use
+    /// the same failure view and retry action as the file read itself.
+    @ObservationIgnored private var resolvePath: (() async throws -> String)?
     let name: String
     /// Optional short display title (such as `Video #1` when opened from a Chat
     /// staged video link) shown in the navigation bar while keeping `name` for
@@ -88,9 +91,11 @@ final class HostFilePreview: Identifiable {
 
     init(
         path: String, name: String, displayTitle: String? = nil, size: UInt64?, modified: Date?,
-        files: ChatHostFiles, copies: HostFileCopies, pace: HostFilePace
+        files: ChatHostFiles, copies: HostFileCopies, pace: HostFilePace,
+        resolvePath: (() async throws -> String)? = nil
     ) {
         self.path = path
+        self.resolvePath = resolvePath
         self.name = name
         self.displayTitle = displayTitle
         self.size = size
@@ -194,6 +199,12 @@ final class HostFilePreview: Identifiable {
 
     private func load() async {
         do {
+            if let resolvePath {
+                let resolved = try await resolvePath()
+                try Task.checkCancellation()
+                path = resolved
+                self.resolvePath = nil
+            }
             guard RemoteFilePath.isAcceptable(path) else {
                 phase = .failed(String(localized: "Files can't open this path."))
                 return

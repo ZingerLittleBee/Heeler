@@ -665,9 +665,11 @@ struct ChatMarkdownTests {
         #expect(ChatImageLink.paths(in: block.content) == ["/tmp/a.png", "shots/relative.png"])
     }
 
-    @Test("Code that mentions images in statements, and other files' paths, stays plain")
+    @Test("File paths open from prose and code, without turning commands or web links into files")
     func codeBlockWithoutImagePaths() throws {
         let source = """
+            Saved out/report.csv, /tmp/log and ~/out/report. See [the report](out/my%20report) or `Makefile`. Not report or https://host/out/file.
+
             ```swift
             let image = UIImage(named: "a.png")
             ```
@@ -679,10 +681,13 @@ struct ChatMarkdownTests {
             ```
             """
         let blocks = ChatMarkdown.blocks(from: source)
-        #expect(blocks.count == 2)
-        for block in blocks {
-            #expect(block.content == AttributedString(block.text))
+        let paths = blocks.map { block in
+            ChatFileLink.enabling(in: block.content, enabled: true).runs.compactMap { run in
+                run.link.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first?.value }
+            }
         }
+        #expect(paths == [["out/report.csv", "/tmp/log", "~/out/report", "out/my report", "Makefile"], [], ["/tmp/report.pdf", "docs/README.md"]])
+        #expect(blocks.allSatisfy { $0.content.runs.allSatisfy { $0.link?.scheme != "heeler-chat-file" } })
     }
 
     @Test("A code block's image path lines are links only where Chat can open images")

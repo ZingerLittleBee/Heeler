@@ -615,15 +615,19 @@ private struct BlockBuilder {
                 text = RemoteHostPath.lastComponent(of: imageSource)
             }
             var imagePath = imageSource
+            var filePath: String?
+            let unlinkedText = attributes.link == nil && attributes.imageURL == nil
             attributes.presentationIntent = nil
             attributes.markdownSourcePosition = nil
             attributes.imageURL = nil
             if let link = attributes.link, !ChatLinkPolicy.allows(link) {
                 imagePath = imagePath ?? ChatImageLink.path(linkedBy: link)
+                filePath = ChatFileLink.destination(link)
                 attributes.link = nil
             }
             if attributes.inlinePresentationIntent?.contains(.code) == true, attributes.link == nil {
                 imagePath = imagePath ?? ChatImageLink.path(written: text)
+                if unlinkedText { filePath = ChatFileLink.path(text) }
             }
             if var intent = attributes.inlinePresentationIntent {
                 // `Text` ignores both break intents and draws the characters,
@@ -641,7 +645,11 @@ private struct BlockBuilder {
                 var piece = AttributedString(text, attributes: attributes)
                 piece[ChatImageLink.PathAttribute.self] = imagePath
                 content.append(piece)
-            } else if attributes.link == nil, attributes.inlinePresentationIntent?.contains(.code) != true {
+            } else if let filePath, attributes.link == nil {
+                var piece = AttributedString(text, attributes: attributes)
+                piece[ChatFileLink.self] = filePath
+                content.append(piece)
+            } else if unlinkedText, attributes.inlinePresentationIntent?.contains(.code) != true {
                 ChatImageLink.append(text, attributes: attributes, to: &content)
             } else {
                 content.append(AttributedString(text, attributes: attributes))
