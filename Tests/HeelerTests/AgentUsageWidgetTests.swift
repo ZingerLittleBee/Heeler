@@ -340,6 +340,18 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude"])
     }
 
+    @Test func missingCodexStaysWhileAnAddedAccountReportsWindows() throws {
+        let limits = try widgetLimits(codex: Self.programMissing, accounts: ["codex": [
+            ["id": "default", "isDefault": true, "directory": "/Users/u/.codex", "state": "ok",
+             "tokenUsage": ["state": "noData"], "usageLimits": Self.programMissing],
+            ["id": "codex-work", "name": "work", "directory": "/Users/u/.codex-work", "state": "ok",
+             "tokenUsage": ["state": "noData"], "usageLimits": ["state": "ok", "source": "lastSession",
+                "windows": [["id": "fiveHour", "usedPercent": 30, "expired": false]]]],
+        ]])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.id) == ["claude", "codex.default", "codex.codex-work", "agy"])
+    }
+
     @Test(arguments: [
         ["state": "unavailable", "reason": "notSignedIn"],
         ["state": "unavailable", "reason": "notReadYet"],
