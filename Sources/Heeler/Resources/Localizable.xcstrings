@@ -13503,6 +13503,28 @@
         }
       }
     },
+    "By anyone, not only you" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなた以外のものも含む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人的，不只是你的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人的，不只是你的"
+          }
+        }
+      }
+    },
     "By program" : {
       "localizations" : {
         "ja" : {
@@ -28198,6 +28220,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GitHub 現在顯示此 Pull Request 已合併，因此 Heeler 沒有執行任何動作。"
+          }
+        }
+      }
+    },
+    "GitHub person Anyone" : {
+      "comment" : "A GitHub Person filter: everyone's, in the repositories chosen.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Anyone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全員"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有人"
+          }
+        }
+      }
+    },
+    "GitHub person Yours" : {
+      "comment" : "A GitHub Person filter: what involves you.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Yours"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに関連"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你相关"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你相關"
           }
         }
       }

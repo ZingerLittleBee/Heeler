@@ -83,9 +83,13 @@ Close.
   device (`GitHubSettings`, written only when the user picks one), and a
   change reads once. State is Open (drafts included), Draft, Merged, Closed
   (unmerged) or All States for pull requests, and Open, Closed or All States
-  for issues. Person is All, a role of the account's (Created by, Needs
-  Review or Reviewed by for pull requests, Assigned to, Mentioning) or a role
-  of another login, picked from the people the lists read or typed in a sheet.
+  for issues. Person is Yours, Anyone, a role of the account's (Created by,
+  Needs Review or Reviewed by for pull requests, Assigned to, Mentioning) or
+  a role of another login, picked from the people the lists read or typed in
+  a sheet. Its default follows Repository: Yours across repositories, Anyone
+  in a repository or an owner's, so choosing Heeler shows everyone's pull
+  requests there, as a repository's page on GitHub does. Anyone is offered
+  only with a Repository, since without one it would search all of GitHub.
   Repository is a repository or an owner, `org:` or `user:` as GitHub says
   the owner is, asked first when no list has shown it. Label is one name.
 - **The list's title is the segment, and switches it.** A large title cannot
@@ -120,13 +124,13 @@ Close.
   shorten. The title follows on up to two lines (four at accessibility sizes,
   where the status is always under the first line), and an issue's labels
   take a third line when it has any.
-- **All is two searches that never share an item.** Person All is what
+- **Yours is two searches that never share an item.** Person Yours is what
   involves the account: for pull requests `author:@me` and
   `review-requested:@me -author:@me`, for issues `assignee:@me` and
   `author:@me -assignee:@me`. Their counts add up, and the list shows the
   newest of what both read; Show More reads only the search whose read items
   run out before the next 30, and stops where a search with more on GitHub has
-  none left to place.
+  none left to place. Anyone is one search with no role in it.
 - **The list is kept for display, never watched.** Each Host's list at the
   filters' defaults is saved on the device (`FileGitHubListCache`, `v2`) by
   the rules
