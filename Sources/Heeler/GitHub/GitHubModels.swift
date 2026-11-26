@@ -263,6 +263,9 @@ struct GitHubItemDetail: Sendable, Equatable {
     let viewer: String
     /// Markdown, as its author wrote it.
     let body: String
+    /// The pictures and videos GitHub shows in the body, in reading order,
+    /// at the addresses this read gave (`GitHubMedia`).
+    let media: [GitHubMedia]
     /// Nil for an issue.
     let pullRequest: GitHubPullRequestDetail?
     /// Who an issue is assigned to; empty for a pull request.

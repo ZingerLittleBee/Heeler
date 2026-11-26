@@ -17,6 +17,8 @@ struct GitHubItemScreen: View {
     let item: GitHubItem
     let send: GitHubSendLink?
     let write: GitHubWriteLink
+    /// The picture or video the description opened.
+    @State private var shownMedia: GitHubBody.Item?
 
     var body: some View {
         let state = store.detailState(of: item, on: host)
@@ -47,11 +49,11 @@ struct GitHubItemScreen: View {
             }
             if let detail {
                 Section {
-                    GitHubItemBody(text: detail.body)
+                    GitHubBodyView(text: detail.body, media: detail.media, actions: mediaActions)
                 }
             } else if state.isReading {
                 Section {
-                    GitHubItemBody.placeholder
+                    GitHubBodyView.placeholder
                 }
             }
         }
@@ -87,6 +89,17 @@ struct GitHubItemScreen: View {
             await store.openDetail(item, on: host)
         }
         .refreshable { await store.reread(item, on: host) }
+        .sheet(item: $shownMedia) { shown in
+            GitHubMediaViewer(item: shown, resolve: mediaActions.resolve) { shownMedia = nil }
+        }
+    }
+
+    private var mediaActions: GitHubMediaActions {
+        GitHubMediaActions(
+            resolve: { [store, host, item] media, refresh in
+                await store.mediaURL(media, refresh: refresh, of: item, on: host)
+            },
+            open: { [$shownMedia] shown in $shownMedia.wrappedValue = shown })
     }
 
     private struct DetailTrigger: Equatable {
@@ -332,66 +345,6 @@ private struct GitHubItemFacts: View {
             Text(verbatim: "\u{2014}")
                 .accessibilityLabel(Text("Unknown"))
         }
-    }
-}
-
-// MARK: - Body
-
-/// What the author wrote, laid out as Chat lays out Markdown.
-private struct GitHubItemBody: View {
-    let text: String
-
-    var body: some View {
-        let markdown = Self.markdown(text)
-        Group {
-            if markdown.isEmpty {
-                Text("No description provided.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ChatMarkdownView(blocks: ChatMarkdown.blocks(from: markdown))
-                    .textSelection(.enabled)
-                    // The list row offers exactly the height it measured as
-                    // a limit, which the blocks' stack shares out by
-                    // flexibility: a long code block lost its last lines and
-                    // a quote's bar took them as a blank band. Chat's rows
-                    // take their ideal height for the same reason.
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 6)
-    }
-
-    /// GitHub keeps the line ends a browser sent, and hides HTML comments
-    /// (a template's instructions) when it renders.
-    static func markdown(_ text: String) -> String {
-        text.replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression)
-            .replacing(/<img\b[^>]*>/.ignoresCase()) { imageMarkdown(String($0.output)) }
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// An HTML image, as GitHub writes an uploaded one, as the Markdown
-    /// image it stands for, which the body shows as its alt text. Left as
-    /// HTML it showed as the raw tag.
-    static func imageMarkdown(_ tag: String) -> String {
-        func attribute(_ name: String) -> String? {
-            let pattern = "\\b\(name)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')"
-            guard let match = tag.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else {
-                return nil
-            }
-            let value = tag[match].drop { $0 != "\"" && $0 != "'" }.dropFirst().dropLast()
-            return String(value)
-        }
-        let alt = attribute("alt").flatMap { $0.isEmpty ? nil : $0 }
-            ?? String(localized: "Image")
-        let escaped = alt.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
-        return "![\(escaped)](\(attribute("src") ?? ""))"
-    }
-
-    static var placeholder: some View {
-        Text(verbatim: "A description that is still being read from GitHub, a few lines long.")
-            .redacted(reason: .placeholder)
-            .padding(.vertical, 6)
     }
 }
 

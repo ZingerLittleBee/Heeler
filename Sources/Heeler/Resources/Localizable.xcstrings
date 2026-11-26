@@ -20866,6 +20866,28 @@
         }
       }
     },
+    "Couldn't load this video" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この動画を読み込めませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载此视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入此影片"
+          }
+        }
+      }
+    },
     "Couldn't reach %@" : {
       "localizations" : {
         "ja" : {
@@ -48615,6 +48637,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "播放影片預覽"
+          }
+        }
+      }
+    },
+    "Plays the video" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画を再生します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放影片"
           }
         }
       }
@@ -79618,6 +79662,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "版本 0.7.5 或更新，並搭配 Node 20 或更新版本。"
+          }
+        }
+      }
+    },
+    "Video" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "動画"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片"
           }
         }
       }
