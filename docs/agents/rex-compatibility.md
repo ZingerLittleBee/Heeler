@@ -102,7 +102,14 @@ in users' words.
   at any other revision, or a close before the welcome, is refused as
   `rexUnsupportedRevision`, naming the revision the server offers when it says
   ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-api-revisions-12-to-19)).
-  Only preview.14 at 12 and preview.23 at 19 have been seen.
+  Only preview.14 at 12 and preview.23 at 19 have been seen. Preview.25
+  says revision 24 and supports 0 to 24, seen through the `rex` CLI only;
+  Heeler's hello has not met it.
+- **A restarted server reads as another one.** Rex restores its sessions with
+  the same ids under a new `instance_id`, and resumes programs that report
+  (OSC 7577), but Heeler leaves every open detail behind and drops the Host's
+  pins, seen marks and Chat cache, as for another server (ADR 0050). See
+  [Server restart and Program Resume](#server-restart-and-program-resume).
 - **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
@@ -649,6 +656,40 @@ and captures are kept outside the repository.
   error (`g_reconnect`).
 - After a control connection closed with a close frame, that client's data
   link closed at once with 1001 (`g_reconnect`).
+
+### Server restart and Program Resume
+
+Rex 0.1.0-preview.25 (build 2147), API revision 24 (supports 0 to 24), macOS
+27.0, 2026-11-26, on a server of its own (`rex server run` with its own
+`--listen` socket, `--state-dir` and `--config`), through the `rex` CLI and
+the server's log. Heeler did not connect to it.
+
+- Stopped with `rex server stop` and started on the same state directory, and
+  again after `kill -9` (logged `clean_shutdown=false`), the server restored
+  both sessions with the same session, window and block ids, under a new
+  `instance_id` each time. `server.status` kept its `host_id`, which the API
+  document says only tells whether two servers see the same files.
+- A restored terminal started on a fresh screen: what it showed before was
+  gone, and `title` answered empty until a program set one.
+- Every terminal's first process had `OSC7577_TOKEN`, 22 characters. A
+  stand-in that reported its own absolute path with OSC 7577, trusted by a
+  rule in the server's `init.lua`, came back after both restarts with a new
+  pid under `login`, then `/bin/sh -c '… (exec "$@") || :; exec "$rex_s" -l'`,
+  and `process` named it as the foreground. `block.method` with
+  `program_resume_records` lists a terminal's records with `chosen`,
+  `trusted` and the command.
+- The shell starts through `/usr/bin/login -flp <user>`, with the account's
+  login shell and home whatever the server's environment holds, so a resumed
+  program runs with the account's own configuration. For that reason no Claude
+  Code was resumed here; Rex's `SessionStart` hook from `rex skill setup`
+  (`rex __internal session-start --agent claude`) is what reports one.
+- Heeler takes a new `instance_id` for another server (ADR 0050): an open
+  detail on its terminals is left behind with "This Terminal belongs to a Rex
+  server that is gone", the Host's pins are removed, and turns, seen marks and
+  Chat's cache go with the last instance (`RexConsoleProjection`;
+  `RexConsoleTests` asserts it with a fake world that keeps its ids across
+  `restart(as:)`). Updating the Rex app restarted the owner's server once that
+  day, so updates reach this too.
 
 ### Terminal data connection
 
