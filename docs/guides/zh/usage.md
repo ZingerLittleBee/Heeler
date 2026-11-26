@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/usage.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/usage.md at 09cddbfd -->
 # 查看 Usage 与 Usage Limits
 
 在 iPhone 或 iPad 上查看 Claude Code 和 Codex 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
@@ -68,6 +68,8 @@ Account 保存在 Host 上，所以无论从哪台设备连接，看到的都是
    - **Usage**：今天、7 天或 30 天的估算费用或 token 数，可选 All Hosts 或某台 Host。
    - **Usage Limits**：某台 Host 的各个窗口及其重置时间。
 3. 轻点 **添加小组件**，然后按住小组件并轻点 **编辑小组件**，选择 Host、显示内容或程序。**Automatic** 会显示最接近上限的程序。
+
+Usage Limits 小组件会略过未安装、无法运行或已关闭 Usage Limits 的程序，除非你选中了该程序，或所有程序都会被略过。
 
 两种小组件都有锁屏尺寸。按住锁屏，轻点 **自定** > **锁定屏幕**，再轻点小组件区域添加。
 

@@ -68,6 +68,8 @@ The Accounts are saved on the Host, so every device you connect from shows the s
    - **Usage Limits**: one Host's windows and when they reset.
 3. Tap **Add Widget**, then touch and hold the widget and tap **Edit Widget** to choose the Host, what it shows, or the program. **Automatic** shows the program closest to its limit.
 
+The Usage Limits widget leaves out a program if its Usage Limits are off or if it isn't installed or can't run, unless you choose that program or every program would be left out.
+
 Both widgets also come in Lock Screen sizes. Touch and hold the Lock Screen, tap **Customize** > **Lock Screen**, then tap the widget area to add them.
 
 | Home Screen | Lock Screen |

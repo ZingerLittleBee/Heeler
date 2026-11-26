@@ -156,6 +156,20 @@ extension UsageWidgetSnapshot.Host {
 
     init(id: UUID, name: String, report: AgentUsageReport, readAt: Date) {
         let programs = report.programs ?? []
+        let entries = AgentUsageLimitsCard.readings(for: report).compactMap(UsageWidgetSnapshot.Limits.init)
+        // A program's own reading is its Default Account's, while Codex falls
+        // back to each Account's own sessions: an added Account can still
+        // show windows when the program reads as missing, and keeps it shown.
+        let reporting = Set(entries.filter { !$0.windows.isEmpty }.map(\.program))
+        let leftOut = Dictionary(programs.compactMap { program -> (String, UsageWidgetSnapshot.Limits.LeftOut)? in
+            guard !reporting.contains(program.program) else { return nil }
+            let limits = program.usageLimits
+            if limits.state == "disabled" { return (program.program, .limitsOff) }
+            if limits.state == "unavailable" && limits.reason == "programMissing" {
+                return (program.program, .programMissing)
+            }
+            return nil
+        }, uniquingKeysWith: { first, _ in first })
         self.init(
             id: id, name: name, readAt: readAt, excludedReason: nil, timeZone: report.timeZone,
             programs: programs.compactMap { program in
@@ -166,7 +180,11 @@ extension UsageWidgetSnapshot.Host {
                     last30Days: .init(totals.last30Days),
                     days: (program.tokenUsage.daily ?? []).map { .init(date: $0.date, summary: .init($0.summary)) })
             },
-            limits: AgentUsageLimitsCard.readings(for: report).compactMap(UsageWidgetSnapshot.Limits.init))
+            limits: entries.map {
+                var limits = $0
+                limits.leftOut = leftOut[limits.program]
+                return limits
+            })
     }
 }
 
