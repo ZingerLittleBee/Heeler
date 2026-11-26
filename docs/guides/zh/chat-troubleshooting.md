@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/chat-troubleshooting.md at d56d0c0f -->
+<!-- Translated from docs/guides/chat-troubleshooting.md at 5bbc3f4a -->
 # Chat 疑难排解
 
 这里是 [Chat](chat.md) 中最常见问题的处理方法。Chat 里的其他提示大多会直接说明该怎么做。如果 Chat 做不到某件事，轻点 **Show Agent Terminal**，在终端中继续。

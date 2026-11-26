@@ -15,6 +15,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Streamline Chat's **Can't Tell the Conversation** screen into concise actionable guidance with a **Learn More** link to the troubleshooting guide, separate multi-session (`/new`) notices for Codex and Grok Build from first-message states, and show **No Messages Yet** (allowing the first message to be sent directly from Chat) for a fresh `--no-daemon` Codex at its prompt, matching Claude Code and Antigravity CLI. (PR #850)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
 
 ### Fixed
