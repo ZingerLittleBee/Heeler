@@ -726,10 +726,11 @@ actor RexHostSession {
                 let response = try await control.call(
                     RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd))
                 created = try RexNewTerminal.newSession(from: response.result(JSONValue.self))
-                // The session is made: without an attach its block stays
-                // this client's until the view that opens it takes it.
-                guard (try? await attachForCreating(created.address.sessionID, on: control)) != nil else {
-                    return created
+                // The session is made, so a failed attach is tried once more
+                // and never fails the request; the block is given back
+                // whatever it answered, rather than left this client's.
+                if (try? await attachForCreating(created.address.sessionID, on: control)) == nil {
+                    _ = try? await attachForCreating(created.address.sessionID, on: control)
                 }
             }
         } catch let error as RexControlError {

@@ -1186,6 +1186,36 @@ struct RexConsoleTests {
         #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
     }
 
+    /// The session is made but Rex refuses the attach that follows: New
+    /// Workspace asks once more, still gives the new block back rather than
+    /// leave it this client's, and gives the terminal it made.
+    @Test func aNewWorkspaceWhoseAttachIsRefusedStillGivesItsBlockBack() async throws {
+        let (console, server, world) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        await server.stopAnswering("session.attach")
+        await server.answer("session.attach", with: .error(code: "conflict", message: "busy", status: 409))
+        let identity = try await console.createShellWorkspace(
+            NewWorkspaceSpec(directory: "/home/dev/site", label: nil), tabLabel: nil, on: rex.id)
+
+        let made = RexPaneAddress(sessionID: "session:made-2", blockID: "block:made-1")
+        #expect(identity.paneID == made.paneID)
+        let requests = await server.requests
+        #expect(
+            requests.filter { $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2" }.count
+                == 2)
+        #expect(
+            requests.contains {
+                $0.method == RexTerminalAttach.giveBackMethod
+                    && $0.payload == RexTerminalAttach.ownershipPayload(made, take: false)
+            })
+        #expect(world.owner(of: "block:made-1") == nil)
+    }
+
     /// A new session's label when none is given is its directory's last
     /// name, in either form of path, and nothing for a root.
     @Test func aNewSessionIsNamedForItsDirectory() {
