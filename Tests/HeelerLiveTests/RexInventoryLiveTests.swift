@@ -13,7 +13,7 @@ import Testing
 /// The session connects, attaches to every session, reads the inventory and
 /// each terminal's title and process, then leaves with a close frame. The
 /// inventory test only reads. The New Terminal test makes one session of its
-/// own, `heeler-live-new-terminal`, and destroys it before it ends, touching
+/// own, `heeler-lab-new-terminal`, and destroys it before it ends, touching
 /// no other. Both print counts only, never labels, titles, programs or
 /// directories.
 ///
@@ -78,7 +78,7 @@ struct RexInventoryLiveTests {
     }
 
     /// New Terminal against the same server: a new session labeled
-    /// `heeler-live-new-terminal` holding one shell in `/tmp`, then a second
+    /// `heeler-lab-new-terminal` holding one shell in `/tmp`, then a second
     /// shell in a new window of it, each listed by the inventory with no
     /// owner left. The session is destroyed before the test ends, whatever
     /// it found, so it leaves nothing behind; it touches no other session.
@@ -102,7 +102,7 @@ struct RexInventoryLiveTests {
             try await Task.sleep(for: .milliseconds(100))
         }
 
-        let first = try await session.createTerminal(.session(label: "heeler-live-new-terminal"), cwd: "/tmp")
+        let first = try await session.createTerminal(.session(label: "heeler-lab-new-terminal"), cwd: "/tmp")
         let sessionID = first.address.sessionID
         var made = [first]
         var owners: [String?] = []
