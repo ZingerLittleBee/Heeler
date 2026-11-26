@@ -175,8 +175,8 @@ final class HostFilePreview: Identifiable {
 
     func export(_ export: Export) {
         guard canExport, exportTask == nil, let size else { return }
-        if let copy {
-            presentedExport = PresentedExport(url: copy.url, export: export)
+        if let url = copyOnDevice() {
+            presentedExport = PresentedExport(url: url, export: export)
             return
         }
         exportTask = Task { [weak self] in
@@ -223,6 +223,16 @@ final class HostFilePreview: Identifiable {
         }
         copy = nil
         wholeText = nil
+    }
+
+    /// The copy while it is still on this device. The cache can let a kept
+    /// one go while the preview is open (for a newer version of the file,
+    /// its size limit, or Clear), and then the file is copied again.
+    private func copyOnDevice() -> URL? {
+        guard let copy else { return nil }
+        if FileManager.default.fileExists(atPath: copy.url.path) { return copy.url }
+        self.copy = nil
+        return nil
     }
 
     // MARK: Reading
@@ -370,7 +380,7 @@ final class HostFilePreview: Identifiable {
     // MARK: Copying
 
     private func copyForViewing(size: UInt64) async throws -> URL {
-        if let copy { return copy.url }
+        if let url = copyOnDevice() { return url }
         phase = .copying(received: 0, total: size)
         return try await copyFile(size: size) { [weak self] received in
             guard let self, self.isCopying else { return }
@@ -381,7 +391,7 @@ final class HostFilePreview: Identifiable {
     private func copyFile(
         size: UInt64, progress: @escaping @MainActor @Sendable (UInt64) -> Void
     ) async throws -> URL {
-        if let copy { return copy.url }
+        if let url = copyOnDevice() { return url }
         // The copy keeps the file's name, which is what a share shows.
         let download = try await cache.newDownload(named: name)
         do {
@@ -395,7 +405,7 @@ final class HostFilePreview: Identifiable {
     }
 
     private func write(_ data: Data) async throws -> URL {
-        if let copy { return copy.url }
+        if let url = copyOnDevice() { return url }
         let download = try await cache.newDownload(named: name)
         do {
             try data.write(to: download, options: .completeFileProtectionUnlessOpen)

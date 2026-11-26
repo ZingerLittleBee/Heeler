@@ -104,6 +104,43 @@ struct HostFileCacheTests {
         #expect(await cache.file(for: shared, openedBy: "open") == nil)
     }
 
+    /// The cache can let an open preview's copy go, for a newer version of
+    /// the file or Clear: Share then copies the file again rather than
+    /// handing over one that is gone.
+    @MainActor
+    @Test func shareCopiesTheFileAgainOnceAnOpenPreviewsCopyWent() async throws {
+        let (cache, cleanup) = Self.makeCache()
+        defer { cleanup() }
+        let bytes = Data("%PDF-1.4 report".utf8)
+        let host = HostFileFixture(bytes)
+        let preview = HostFilePreview(
+            path: "/home/dev/report.pdf", name: "report.pdf", size: UInt64(bytes.count), modified: nil,
+            files: host.files, hostID: UUID(), openedBy: "agent", cache: cache, pace: HostFilePace())
+        preview.open()
+        try await Self.waitUntil {
+            if case .document = preview.phase { return true }
+            return false
+        }
+        #expect(await host.reads == 1)
+
+        await cache.removeAll()
+        preview.export(.share)
+
+        try await Self.waitUntil { preview.presentedExport != nil }
+        let shared = try #require(preview.presentedExport?.url)
+        #expect(try Data(contentsOf: shared) == bytes)
+        #expect(await host.reads == 2)
+    }
+
+    @MainActor
+    private static func waitUntil(_ condition: @MainActor () -> Bool) async throws {
+        for _ in 0..<400 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("Timed out waiting for the preview")
+    }
+
     @Test func removesCopiesUnopenedPastTheAgeLimitThenTheLeastRecentlyOpened() async throws {
         let clock = Clock()
         let (cache, cleanup) = Self.makeCache(
@@ -128,5 +165,27 @@ struct HostFileCacheTests {
         #expect(await cache.file(for: older, openedBy: "agent") == nil)
         #expect(await cache.file(for: opened, openedBy: "agent") != nil)
         #expect(await cache.diskUsage() == 8)
+    }
+}
+
+/// One file on a Host, counting the reads that carry its bytes.
+private actor HostFileFixture {
+    let bytes: Data
+    private(set) var reads = 0
+
+    init(_ bytes: Data) { self.bytes = bytes }
+
+    nonisolated var files: ChatHostFiles {
+        ChatHostFiles(
+            status: { [bytes] _ in
+                RemoteFileStatus(kind: .regular, size: UInt64(bytes.count), modificationTime: 100)
+            },
+            list: { _ in nil }, read: { await self.read($0) }, home: { "/home/dev" })
+    }
+
+    func read(_ range: RemoteFileRange) -> RemoteFileSlice {
+        reads += 1
+        let end = min(bytes.count, Int(range.offset) + range.maxBytes)
+        return RemoteFileSlice(data: bytes[Int(range.offset)..<end], length: UInt64(bytes.count))
     }
 }
