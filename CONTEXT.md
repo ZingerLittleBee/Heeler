@@ -343,7 +343,9 @@ Changes belongs to the Checkout: it shows whatever the Host's account can
 read, never "the files this Agent made", and marks an item changed in the last
 ten minutes without saying who changed it. Viewing Files never changes the
 Host. A file opened in a viewer, shared or saved is first copied to this
-device, and the copy goes when its preview or Files closes (ADR 0059).
+device, and the copy is kept so the same version of the file opens again
+without a download, for up to 7 days since last opened, until every Agent
+that opened it is closed or its saved Chat removed (ADR 0059).
 _Avoid_: file manager, SFTP browser, downloads, Agent's files
 
 **Port Preview**:

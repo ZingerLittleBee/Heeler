@@ -226,12 +226,12 @@ struct AgentDetailView: View {
     private func showFiles() {
         guard files == nil, let directory = agent.directory else { return }
         files = HostFilesBrowser(
-            files: console.chatHostFiles(for: agent.hostID), agentDirectory: directory,
+            files: console.chatHostFiles(for: agent.hostID), hostID: agent.hostID,
+            openedBy: agent.agent.terminalID, cache: console.hostFileCache, agentDirectory: directory,
             isHostConnected: console.hostStatuses[agent.hostID] == .connected)
     }
 
-    /// Files closed, by its button, a swipe or a path sent to the message:
-    /// what its previews copied to this device goes now.
+    /// Files closed, by its button, a swipe or a path sent to the message.
     private func closeFiles() {
         files?.close()
         files = nil

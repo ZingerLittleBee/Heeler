@@ -83,7 +83,6 @@ struct AgentChatSurfaceView: View {
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
     @State private var previewedFile: HostFilePreview?
-    @State private var previewCopies = HostFileCopies()
     @State private var previewPace = HostFilePace()
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
@@ -1035,7 +1034,8 @@ struct AgentChatSurfaceView: View {
                 previewedFile?.discard()
                 previewedFile = HostFilePreview(
                     path: path, name: name, displayTitle: title, size: nil, modified: nil,
-                    files: files, copies: previewCopies, pace: previewPace,
+                    files: files, hostID: agent.hostID, openedBy: agent.agent.terminalID,
+                    cache: console.hostFileCache, pace: previewPace,
                     resolvePath: { try await chat.resolveHostPath(written, files: files) })
             },
             offersFiles: showFiles != nil,

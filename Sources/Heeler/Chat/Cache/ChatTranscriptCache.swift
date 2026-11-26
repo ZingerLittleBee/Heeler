@@ -192,7 +192,14 @@ struct ChatCachePolicy: Equatable, Sendable {
 
 /// Where Chat keeps conversations between visits, so a Chat opens instantly
 /// and stays readable offline.
-protocol ChatTranscriptCache: Sendable {
+/// A cache on this device as Settings shows it: its size, and a way to
+/// clear it.
+protocol DeviceCache: Sendable {
+    func removeAll() async
+    func diskUsage() async -> Int64
+}
+
+protocol ChatTranscriptCache: DeviceCache {
     func load(_ key: ChatCacheKey) async -> ChatCacheLoadResult
     func save(_ document: ChatCacheDocument) async
     func remove(_ key: ChatCacheKey) async
@@ -206,8 +213,6 @@ protocol ChatTranscriptCache: Sendable {
     /// saves for any other Host, so a save racing a Host's removal cannot
     /// bring its messages back.
     func retainHosts(_ hostIDs: Set<UUID>) async
-    func removeAll() async
-    func diskUsage() async -> Int64
     func prune() async
 }
 

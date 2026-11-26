@@ -68,7 +68,8 @@ final class HeelerAppModel {
         sceneDirectory: AgentSceneDirectory,
         hostStore: HostStore = HostStore(),
         console: ConsoleStore = ConsoleStore(
-            chatCache: FileChatTranscriptCache(), usageWidgets: AgentUsageWidgetPublisher(),
+            chatCache: FileChatTranscriptCache(), hostFileCache: HostFileCache(),
+            usageWidgets: AgentUsageWidgetPublisher(),
             gitHubCache: FileGitHubListCache(),
             coreHostMemory: HerdrCoreHostMemory(defaults: .standard),
             harnessEdits: HarnessConfigEditStore(defaults: .standard),

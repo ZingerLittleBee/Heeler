@@ -36,7 +36,7 @@ struct ChatCacheSettingsModelTests {
         let document = Self.document()
         await cache.save(document)
         #expect(await cache.load(document.key) == .hit(document))
-        let model = ChatCacheSettingsModel(cache: cache)
+        let model = CacheSettingsModel(cache: cache)
 
         #expect(model.state == .measuring)
         #expect(!model.canClear)
@@ -57,8 +57,25 @@ struct ChatCacheSettingsModelTests {
         #expect(await cache.load(document.key) == .miss)
     }
 
+    @Test func clearingAlsoEmptiesTheCachesItClearsWith() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "ChatCacheSettingsFiles-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = HostFileCache(root: root)
+        let key = try #require(HostFileCache.Key(hostID: UUID(), path: "/a.mp4", size: 4, modificationTime: 1))
+        _ = try #require(await files.keep(Data("abcd".utf8), named: "a.mp4", for: key, openedBy: "t1"))
+        let chat = VolatileChatTranscriptCache()
+        await chat.save(Self.document())
+        let model = CacheSettingsModel(cache: chat, alsoClearing: [files])
+
+        await model.clear()
+
+        #expect(model.state == .measured(0))
+        #expect(await files.diskUsage() == 0)
+    }
+
     @Test func anEmptyCacheCannotBeCleared() async {
-        let model = ChatCacheSettingsModel(cache: VolatileChatTranscriptCache())
+        let model = CacheSettingsModel(cache: VolatileChatTranscriptCache())
 
         await model.refresh()
 

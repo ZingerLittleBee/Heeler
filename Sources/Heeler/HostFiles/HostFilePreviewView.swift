@@ -245,8 +245,8 @@ private struct HostFileCopyingState: View {
                 .accessibilityIdentifier("host-files-copy-cancel")
             Text(
                 kind == .video || kind == .audio
-                    ? "Plays when the download finishes. The copy is removed when you close the preview."
-                    : "Opens when the download finishes. The copy is removed when you close the preview.")
+                    ? "Plays when the download finishes. The copy stays on this device for up to 7 days, so it opens again without downloading."
+                    : "Opens when the download finishes. The copy stays on this device for up to 7 days, so it opens again without downloading.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
