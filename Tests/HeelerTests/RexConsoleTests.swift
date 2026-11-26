@@ -1186,10 +1186,11 @@ struct RexConsoleTests {
         #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
     }
 
-    /// The session is made but Rex refuses the attach that follows: New
-    /// Workspace asks once more, still gives the new block back rather than
-    /// leave it this client's, and gives the terminal it made.
-    @Test func aNewWorkspaceWhoseAttachIsRefusedStillGivesItsBlockBack() async throws {
+    /// The session is made but Rex refuses the attach that follows, twice:
+    /// New Workspace still gives the terminal it made, and sends no give back
+    /// Rex would refuse from a client not attached to the session. The block
+    /// stays this client's until the session's next attach gives it back.
+    @Test func aNewWorkspaceWhoseAttachIsRefusedGivesItsBlockBackOnTheNextAttach() async throws {
         let (console, server, world) = await newTerminalRig()
         defer { console.setHosts([]) }
         let rex = rex
@@ -1204,16 +1205,24 @@ struct RexConsoleTests {
 
         let made = RexPaneAddress(sessionID: "session:made-2", blockID: "block:made-1")
         #expect(identity.paneID == made.paneID)
-        let requests = await server.requests
-        #expect(
-            requests.filter { $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2" }.count
-                == 2)
-        #expect(
-            requests.contains {
+        let attaches = await server.requests.filter {
+            $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2"
+        }
+        #expect(attaches.count == 2)
+        #expect(await !server.requests.contains { $0.method == RexTerminalAttach.giveBackMethod })
+        #expect(world.owner(of: "block:made-1", in: "session:made-2") == FakeRexServer.Welcome().clientID)
+
+        await server.stopAnswering("session.attach")
+        await world.install(on: server)
+        _ = try await console.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: "session:made-2", cwd: "/home/dev/site"), on: rex.id)
+        try await waitUntil("the give back") {
+            await server.requests.contains {
                 $0.method == RexTerminalAttach.giveBackMethod
                     && $0.payload == RexTerminalAttach.ownershipPayload(made, take: false)
-            })
-        #expect(world.owner(of: "block:made-1") == nil)
+            }
+        }
+        #expect(world.owner(of: "block:made-1", in: "session:made-2") == nil)
     }
 
     /// A new session's label when none is given is its directory's last
