@@ -34,6 +34,9 @@ struct AgentCardView: View {
     var showsHost = true
     /// Where the Agent's mark goes.
     var lead = AgentCardLead.row
+    /// Precomputed presentation from the list row's memoization key so the row
+    /// avoids running `AgentRowRenderer` twice per pass.
+    var precomputedPresentation: AgentCardPresentation? = nil
 
     var cardColumn = CardIconWidth()
 
@@ -48,7 +51,8 @@ struct AgentCardView: View {
     }
 
     private var presentation: AgentCardPresentation {
-        AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens, leadsWithMark: true)
+        precomputedPresentation
+            ?? AgentCardPresentation(agent: agent, layout: layout, hiding: hiddenTokens, leadsWithMark: true)
     }
 
     private var mark: AgentKindMark { AgentKindMark(kind: agent.agent.kind) }
@@ -60,10 +64,7 @@ struct AgentCardView: View {
     var body: some View {
         let _ = PerfTrace.count("AgentCardView.body")
         let presentation = presentation
-        let lines = AgentCardLines(
-            presentation: presentation, headingTakesTitle: heading != nil,
-            showsHost: showsHostText, showsTotals: showsTotals, showsStatusBadge: showsStatusBadge,
-            requiresHost: saved != nil)
+        let lines = resolvedLines(for: presentation)
         // The ring says the status unless the row's capsule does.
         let speaksStatus = !lines.places(.statusBadge)
         Group {
@@ -156,6 +157,51 @@ struct AgentCardView: View {
     /// only them appears only then.
     private var showsTotals: Bool {
         totalsSource.map { ChangesRowTotals(source: $0).hasTotals } ?? false
+    }
+
+    private func resolvedLines(for presentation: AgentCardPresentation) -> AgentCardLines {
+        let headingTakesTitle = heading != nil
+        let showsHost = showsHostText
+        let showsBadge = showsStatusBadge
+        let requiresHost = saved != nil
+        guard totalsSource != nil else {
+            return AgentCardLines(
+                presentation: presentation, headingTakesTitle: headingTakesTitle,
+                showsHost: showsHost, showsTotals: false, showsStatusBadge: showsBadge,
+                requiresHost: requiresHost)
+        }
+        let withoutTotals = AgentCardLines(
+            presentation: presentation, headingTakesTitle: headingTakesTitle,
+            showsHost: showsHost, showsTotals: false, showsStatusBadge: showsBadge,
+            requiresHost: requiresHost)
+        let withTotals = AgentCardLines(
+            presentation: presentation, headingTakesTitle: headingTakesTitle,
+            showsHost: showsHost, showsTotals: true, showsStatusBadge: showsBadge,
+            requiresHost: requiresHost)
+        if Self.canDeferTotalsObservation(withoutTotals: withoutTotals, withTotals: withTotals) {
+            return withTotals
+        }
+        return showsTotals ? withTotals : withoutTotals
+    }
+
+    /// True when `.changes` sits at the end of a non-empty detail line with no
+    /// preceding trailing sibling, so `ChangesRowTotals` alone can observe
+    /// `ChangesStore.phase` without invalidating `AgentCardView.body` or
+    /// changing the card's line count.
+    private static func canDeferTotalsObservation(
+        withoutTotals: AgentCardLines, withTotals: AgentCardLines
+    ) -> Bool {
+        let titleDefers =
+            withoutTotals.title == withTotals.title
+            || (withoutTotals.title.isEmpty && withTotals.title == [.changes])
+        guard titleDefers,
+            withoutTotals.details.count == withTotals.details.count
+        else { return false }
+        for (without, with) in zip(withoutTotals.details, withTotals.details) where without != with {
+            guard !with.leading.isEmpty, without.trailing.isEmpty, with.trailing == [.changes]
+            else { return false }
+        }
+        return true
     }
 
     /// The lines under the title. `titleLine` is the one holding Row 1 under

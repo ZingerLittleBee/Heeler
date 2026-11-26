@@ -660,16 +660,17 @@ private struct FadesUnderBar: ViewModifier {
     let barBottom: CGFloat
     /// Kept clear whatever the scroll, while the bar fades its own out.
     let isHeld: Bool
-    @State private var shown: CGFloat = 1
 
     func body(content: Content) -> some View {
-        content
-            .opacity(isHeld ? 0 : shown)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                let frame = proxy.frame(in: .global)
-                guard frame.height > 0 else { return 1 }
-                return min(max((frame.maxY - barBottom) / frame.height, 0), 1)
-            } action: { shown = $0 }
+        let barBottom = barBottom
+        let isHeld = isHeld
+        content.visualEffect { effect, proxy in
+            guard !isHeld else { return effect.opacity(0) }
+            let frame = proxy.frame(in: .global)
+            guard frame.height > 0 else { return effect.opacity(1) }
+            let shown = min(max((frame.maxY - barBottom) / frame.height, 0), 1)
+            return effect.opacity(shown)
+        }
     }
 }
 

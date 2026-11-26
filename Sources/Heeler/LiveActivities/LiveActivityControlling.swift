@@ -74,8 +74,38 @@ protocol LiveActivityControlling: AnyObject {
 /// when handing them to ActivityKit's nonisolated update/end/async APIs.
 @MainActor
 final class ActivityKitLiveActivityController: LiveActivityControlling {
+    private var cachedAreEnabled: Bool?
+    private var enablementTask: Task<Void, Never>?
+
+    deinit {
+        enablementTask?.cancel()
+    }
+
     var areEnabled: Bool {
+        if let cachedAreEnabled { return cachedAreEnabled }
+        let initial = Self.readAreEnabled()
+        cachedAreEnabled = initial
+        enablementTask = Task { [weak self] in
+            await Self.observeEnablement { enabled in
+                self?.cachedAreEnabled = enabled
+            }
+        }
+        return initial
+    }
+
+    nonisolated private static func readAreEnabled() -> Bool {
         ActivityAuthorizationInfo().areActivitiesEnabled
+    }
+
+    nonisolated private static func observeEnablement(
+        onChange: @escaping @MainActor @Sendable (Bool) -> Void
+    ) async {
+        let info = ActivityAuthorizationInfo()
+        await onChange(info.areActivitiesEnabled)
+        for await enabled in info.activityEnablementUpdates {
+            guard !Task.isCancelled else { break }
+            await onChange(enabled)
+        }
     }
 
     func request(

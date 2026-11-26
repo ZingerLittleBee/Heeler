@@ -38,7 +38,9 @@ final class HostLiveActivityCoordinator {
 
     @ObservationIgnored private var didStart = false
     @ObservationIgnored private var latestAgents: [Host.ID: [ConsoleAgent]] = [:]
+    @ObservationIgnored private var lastAgentDigests: [Host.ID: HostAgentsDigest] = [:]
     @ObservationIgnored private var applied: [Host.ID: AgentActivityDesire] = [:]
+    @ObservationIgnored private var pendingDesired: [Host.ID: AgentActivityDesire?] = [:]
     @ObservationIgnored private var settleTasks: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var sessions: [Host.ID: ActivitySession] = [:]
     @ObservationIgnored private var pipes: [Host.ID: TokenPipe] = [:]
@@ -61,12 +63,69 @@ final class HostLiveActivityCoordinator {
         for task in writerTasks.values { task.cancel() }
     }
 
+    private struct EligibleAgentDigest: Equatable {
+        let paneID: String
+        let kind: String
+        let status: AgentStatus
+        let name: String?
+        let title: String
+        let workspaceLabel: String?
+        let tabLabel: String?
+        let paneLabel: String?
+        let tabPosition: Int?
+        let workspaceTabCount: Int
+        let cwd: String
+        let hostUsername: String?
+        let backend: AgentBackend?
+        let repoName: String?
+        let paneTitle: String?
+        let terminalTitle: String?
+        let terminalTitleStripped: String?
+        let tokens: [String: String]?
+
+        init(_ agent: ConsoleAgent) {
+            paneID = agent.agent.paneID
+            kind = agent.agent.kind
+            status = agent.agent.status
+            name = agent.agent.name
+            title = agent.agent.title
+            workspaceLabel = agent.workspaceLabel
+            tabLabel = agent.tabLabel
+            paneLabel = agent.paneLabel
+            tabPosition = agent.tabPosition
+            workspaceTabCount = agent.workspaceTabCount
+            cwd = agent.agent.cwd
+            hostUsername = agent.hostUsername
+            backend = agent.backend
+            repoName = agent.repoName
+            paneTitle = agent.agent.paneTitle
+            terminalTitle = agent.agent.terminalTitle
+            terminalTitleStripped = agent.agent.terminalTitleStripped
+            tokens = agent.agent.tokens
+        }
+    }
+
+    private struct HostAgentsDigest: Equatable {
+        let fallbackHostName: String?
+        let isPrefEnabled: Bool
+        let areActivitiesEnabled: Bool
+        let awaitingSnapshot: Bool
+        let connectionStatus: EventsSessionStatus?
+        let hasSession: Bool
+        let gate: LiveActivityGate
+        let hasDeviceToken: Bool
+        let hasNotificationKey: Bool
+        let eligible: [EligibleAgentDigest]
+    }
+
     func stop() async {
         didStart = false
         let tasks = Array(settleTasks.values) + Array(writerTasks.values)
             + sessions.values.flatMap { [$0.tokenTask, $0.stateTask] }
         for task in tasks { task.cancel() }
         settleTasks.removeAll()
+        pendingDesired.removeAll()
+        lastAgentDigests.removeAll()
         sessions.removeAll()
         writerTasks.removeAll()
         pipes.removeAll()
@@ -131,6 +190,8 @@ final class HostLiveActivityCoordinator {
         preferences.setEnabled(enabled, for: hostID)
         settleTasks[hostID]?.cancel()
         settleTasks[hostID] = nil
+        pendingDesired[hostID] = nil
+        lastAgentDigests[hostID] = nil
         guard didStart else { return }
         if enabled {
             apply(hostID)
@@ -175,7 +236,35 @@ final class HostLiveActivityCoordinator {
         hosts.formUnion(sessions.keys)
         latestAgents = grouped
         guard didStart else { return }
+        let areEnabled = controller.areEnabled
+        let hasToken = deviceToken() != nil
         for hostID in hosts {
+            guard known.contains(hostID) else {
+                lastAgentDigests[hostID] = nil
+                scheduleSettle(for: hostID)
+                continue
+            }
+            let hostAgents = grouped[hostID] ?? []
+            let digest = HostAgentsDigest(
+                fallbackHostName: hostAgents.first?.hostName,
+                isPrefEnabled: preferences.isEnabled(for: hostID),
+                areActivitiesEnabled: areEnabled,
+                awaitingSnapshot: isAwaitingSnapshot(hostID),
+                connectionStatus: connectionStatus(hostID),
+                hasSession: sessions[hostID] != nil,
+                gate: registrationGate(hostID),
+                hasDeviceToken: hasToken,
+                hasNotificationKey: notificationKey(for: hostID) != nil,
+                eligible: hostAgents.compactMap { agent in
+                    let status = agent.agent.status
+                    guard status == .working || status == .blocked || status == .error || status == .done
+                    else { return nil }
+                    return EligibleAgentDigest(agent)
+                })
+            if lastAgentDigests[hostID] == digest {
+                continue
+            }
+            lastAgentDigests[hostID] = digest
             scheduleSettle(for: hostID)
         }
     }
@@ -312,31 +401,40 @@ final class HostLiveActivityCoordinator {
     private func scheduleSettle(for hostID: Host.ID) {
         guard supportedHostIDs().contains(hostID) else {
             settleTasks.removeValue(forKey: hostID)?.cancel()
+            pendingDesired[hostID] = nil
             return
         }
         holdIfUnknown(hostID)
         if shouldDeferApply(for: hostID) {
             settleTasks[hostID]?.cancel()
             settleTasks[hostID] = nil
+            pendingDesired[hostID] = nil
             return
         }
         let desired = computeDesired(for: hostID)
         if isUnchanged(hostID: hostID, desired: desired) {
             settleTasks[hostID]?.cancel()
             settleTasks[hostID] = nil
+            pendingDesired[hostID] = nil
+            return
+        }
+        if settleTasks[hostID] != nil, let queued = pendingDesired[hostID], queued == desired {
             return
         }
         settleTasks[hostID]?.cancel()
+        pendingDesired[hostID] = .some(desired)
         let duration = settleDuration
         settleTasks[hostID] = Task { [weak self] in
             try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
             self?.settleTasks[hostID] = nil
+            self?.pendingDesired[hostID] = nil
             self?.apply(hostID)
         }
     }
 
     private func apply(_ hostID: Host.ID) {
+        pendingDesired[hostID] = nil
         guard didStart, supportedHostIDs().contains(hostID) else { return }
         holdIfUnknown(hostID)
         if shouldDeferApply(for: hostID) { return }
@@ -375,6 +473,7 @@ final class HostLiveActivityCoordinator {
         } catch {
             // Stay idle otherwise: a later change, reconnect, or foreground
             // reconcile is the retry. The note carries ActivityKit's reason.
+            lastAgentDigests[hostID] = nil
             reconcileNotes[hostID] = String(localized: "start failed — \(requestFailureReason(error))")
         }
     }
@@ -401,11 +500,12 @@ final class HostLiveActivityCoordinator {
     }
 
     private func computeDesired(for hostID: Host.ID) -> AgentActivityDesire? {
-        PerfTrace.span("live-activity.compute-desired") {
-            guard controller.areEnabled else { return nil }
+        PerfTrace.count("live-activity.compute-desired")
+        return PerfTrace.span("live-activity.compute-desired") {
             guard preferences.isEnabled(for: hostID) else { return nil }
             guard registrationGate(hostID) == .open else { return nil }
             guard deviceToken() != nil else { return nil }
+            guard controller.areEnabled else { return nil }
             guard notificationKey(for: hostID) != nil else { return nil }
             let agents = latestAgents[hostID] ?? []
             return AgentActivityContentBuilder.desire(
@@ -555,6 +655,8 @@ final class HostLiveActivityCoordinator {
     /// `forgetHost`'s alone.
     private func dropTransientState(for hostID: Host.ID) {
         settleTasks.removeValue(forKey: hostID)?.cancel()
+        pendingDesired[hostID] = nil
+        lastAgentDigests[hostID] = nil
         writerTasks.removeValue(forKey: hostID)?.cancel()
         pipes[hostID] = nil
         writtenLiveActivityTokens[hostID] = nil

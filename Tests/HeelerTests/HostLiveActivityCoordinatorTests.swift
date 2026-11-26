@@ -350,6 +350,59 @@ struct HostLiveActivityCoordinatorTests {
         }
     }
 
+    @Test func unchangedOrIneligibleAgentTicksSkipRedundantDesireComputations() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+
+            var computeCount = 0
+            PerfTrace.testCountObserver = { name, amount in
+                if name.description == "live-activity.compute-desired" {
+                    computeCount += amount
+                }
+            }
+            defer { PerfTrace.testCountObserver = nil }
+
+            let working = agent(observedPaneID, .working)
+            coordinator.agentsDidChange([working])
+            #expect(computeCount == 1)
+
+            // Duplicate feed, wire revision bump, or ineligible idle sibling changes
+            // neither recompute desire nor reset the pending settle timer.
+            var wireBump = working
+            wireBump.agent = Agent(
+                .fixture(paneID: observedPaneID, status: .working, title: "Task", revision: 42))
+            let idleSibling = agent("wV:p2", .idle)
+            coordinator.agentsDidChange([working])
+            coordinator.agentsDidChange([wireBump, idleSibling])
+            #expect(computeCount == 1)
+
+            try await waitUntil("the single in-flight settle should start the activity") {
+                controller.requested.count == 1
+            }
+        }
+    }
+
+    @Test func enrollingNotificationKeyWakesSubsequentAgentsFeed() async throws {
+        try await withFixture { defaults in
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            let working = agent(observedPaneID, .working)
+            coordinator.agentsDidChange([working])
+            try await waitPastSettle()
+            #expect(controller.requested.isEmpty)
+
+            try await registerDevice()
+            coordinator.agentsDidChange([working])
+            try await waitUntil("enrolling the Notification Key should start the activity") {
+                controller.requested.count == 1
+            }
+        }
+    }
+
     // MARK: Fail closed
 
     @Test func staysIdleWhenThePreferenceIsOff() async throws {
