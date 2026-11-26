@@ -19,7 +19,7 @@ struct HerdrCoreLinuxSessionBinderTests {
     /// Each scene, and what its evidence binds. The Oh My Pi without the extension never
     /// held its file in this recording, so its breadcrumb binds nothing.
     private nonisolated static let recorded: [(scene: String, program: ChatProgram, evidence: ChatSessionEvidence)] = [
-        ("codex-before-prompt", .codex, cannotTell(.codex)),
+        ("codex-before-prompt", .codex, .unavailable(.noConversationYet(.codex))),
         (
             "codex-after-reply", .codex,
             .bound(sessionID: "01900000-0000-7000-8000-000000000001", transcriptRoot: "\(home)/.codex", directory: nil)

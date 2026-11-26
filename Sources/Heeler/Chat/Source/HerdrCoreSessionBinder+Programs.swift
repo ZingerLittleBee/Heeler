@@ -30,15 +30,19 @@ extension HerdrCoreSessionBinder {
             return .unavailable(.codexSharedDaemon)
         }
         let rollouts = Self.rollouts(heldBy: process)
-        guard !rollouts.isEmpty, rollouts.count <= Self.heldRolloutLimit,
-            !Self.holdsALockWithoutItsRollout(process, rollouts: rollouts)
-        else { return cannotTell }
+        guard !rollouts.isEmpty else {
+            return Self.holdsSingleFreshThreadLock(process) ? .unavailable(.noConversationYet(program)) : cannotTell
+        }
+        if rollouts.count > Self.heldRolloutLimit || Self.holdsALockWithoutItsRollout(process, rollouts: rollouts) {
+            return multipleSessions
+        }
         var roots: [RolloutHead] = []
         for rollout in rollouts {
             guard let head = try await readRolloutHead(rollout) else { return cannotTell }
             if head.isRoot { roots.append(head) }
         }
-        guard roots.count == 1, let root = roots.first else { return cannotTell }
+        if roots.count > 1 { return multipleSessions }
+        guard let root = roots.first else { return cannotTell }
         return .bound(sessionID: root.threadID, transcriptRoot: codexHome, directory: root.directory)
     }
 
@@ -102,6 +106,26 @@ extension HerdrCoreSessionBinder {
     private static func holdsAThreadLock(_ process: HostProcessReader.Facts) -> Bool {
         guard case .value(let files) = process.openFiles else { return false }
         return files.contains { $0.contains("/thread-writer-locks/") }
+    }
+
+    /// A fresh `--no-daemon` Codex at its prompt holds one canonical-UUID
+    /// thread-writer lock and no rollout or session file yet (`host-evidence/codex/no-daemon.json`,
+    /// `at-prompt`). Chat can treat it as an empty new conversation so the user can
+    /// send the first message directly from Chat, just like Claude Code and Antigravity CLI.
+    private static func holdsSingleFreshThreadLock(_ process: HostProcessReader.Facts) -> Bool {
+        guard case .value(let files) = process.openFiles else { return false }
+        var locks: Set<String> = []
+        for path in files {
+            if path.contains("/sessions/") || path.contains("/archived_sessions/") {
+                return false
+            }
+            guard path.contains("/thread-writer-locks/") else { continue }
+            guard let leaf = path.split(separator: "/").last, leaf.hasSuffix(".lock"),
+                let thread = ConversationReference.canonicalUUID(String(leaf.dropLast(".lock".count)))
+            else { return false }
+            locks.insert(thread)
+        }
+        return locks.count == 1
     }
 
     struct HeldRollout {
@@ -221,7 +245,8 @@ extension HerdrCoreSessionBinder {
             rows.allSatisfy(hasGrokStart)
         else { return cannotTell }
         let matching = rows.filter { String($0.pid) == pid && matchesGrokStart($0, start: start) }
-        guard matching.count == 1, let row = matching.first,
+        if matching.count > 1 { return multipleSessions }
+        guard let row = matching.first,
             let session = ConversationReference.lowercaseUUID(row.sessionID)
         else { return cannotTell }
         return .bound(sessionID: session, transcriptRoot: grokHome, directory: startDirectory(row.cwd))

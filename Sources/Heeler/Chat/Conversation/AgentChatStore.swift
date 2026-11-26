@@ -1700,9 +1700,10 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
-            .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon), .unavailable(.cannotTellSessionOnRex):
+            .unavailable(.multipleSessions), .unavailable(.noConversationYet),
+            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
+            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon),
+            .unavailable(.cannotTellSessionOnRex):
             true
         default: false
         }
@@ -2165,8 +2166,8 @@ final class AgentChatStore {
         guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
         else { return nil }
         switch reason {
-        case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
-            .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
+        case .cannotTellSession, .multipleSessions, .extensionNotLoaded, .cannotTellSessionOnWindows,
+            .cannotReadProcessesOnWindows, .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
             sessionEvidenceMayHaveChanged()
             return Self.cannotTellSessionReason(program)
         default:

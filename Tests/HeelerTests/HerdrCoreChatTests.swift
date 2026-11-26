@@ -873,7 +873,9 @@ struct HerdrCoreChatTests {
             chat.conversation.phase == .unavailable(.cannotTellSession(.claude))
         }
         let reason = ChatUnavailableReason.cannotTellSession(.claude)
-        #expect(reason.explanation.contains("can't tell"))
+        #expect(reason.title == "Can't Tell the Conversation")
+        #expect(reason.explanation.contains("terminal"))
+        #expect(reason.guideURL(launchNotice: nil)?.fragment == "cant-tell-the-conversation")
         #expect(reason.offersRetry)
         chat.end()
         rig.store.setHosts([])

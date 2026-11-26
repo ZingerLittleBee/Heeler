@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/chat-troubleshooting.md at d56d0c0f -->
+<!-- Translated from docs/guides/chat-troubleshooting.md at 5bbc3f4a -->
 # Chat 疑难排解
 
 这里是 [Chat](chat.md) 中最常见问题的处理方法。Chat 里的其他提示大多会直接说明该怎么做。如果 Chat 做不到某件事，轻点 **Show Agent Terminal**，在终端中继续。
@@ -22,6 +22,20 @@ herdr 还没有告诉 Heeler 这个 Agent 正在哪个对话中。
 Codex 启动时没有加 `--no-daemon`，而它的后台服务正在运行，所以 herdr 无法判断它的对话在哪个终端里（参见[配置 Host](chat.md#配置-host)）。herdr 重启后恢复的 Agent 也不带这个参数，除非你用了[配置 Host](chat.md#配置-host) 中的别名。请退出 Codex，然后运行 `codex --no-daemon resume` 继续原来的对话。如果 Codex 提示这个对话已在另一个应用中打开，说明后台服务仍占着它：运行 `codex app-server daemon stop`（这也会结束该服务上的其他 Codex），再恢复一次。如果已经显示了对话，顶部的横幅会提醒它可能属于另一个终端。
 
 Codex 在 [openai/codex#48500](https://github.com/openai/codex/issues/48500) 中跟踪这个问题的原因：它的后台服务运行 herdr 集成时，使用的是启动该服务的那个终端的设置。[openai/codex#44902](https://github.com/openai/codex/issues/44902) 提出了修复方案，herdr 在 [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649) 中跟进。
+
+## Can't Tell the Conversation
+
+在 [herdr-core](herdr-core.md#chat)、[tmux](tmux.md#chat) 和 [Rex](rex.md#chat) Host 上，Chat 通过检查 Host 上正在运行的 Agent 进程来确定当前对话，绝不猜测。当 Agent 的状态变化时，Chat 会自动重新检查，你也可以随时轻点 **Check Again**。在 macOS 和 Linux 上，还可以轻点 **Choose a Conversation** 手动选择对话。
+
+| 程序或情况 | 原因与处理方式 |
+| --- | --- |
+| **Codex** | 新启动的 `--no-daemon` Codex 会在收到第一条消息（在 Chat 或终端发送均可）后开始对话。如果 Chat 仍无法确定——例如执行 `/new` 后 Codex 同时保持多个会话打开——请退出 Codex，运行 `codex resume --no-daemon` 并选择对应对话。如果 Codex 启动时未带 `--no-daemon`，参见 [Codex Started Without --no-daemon](#codex-started-without---no-daemon)。 |
+| **Claude Code** | Claude Code 在到达输入提示符后才会登记会话。请在终端完成登录，或回答信任目录等启动提示。 |
+| **Grok Build** | Grok Build 运行时会列出当前活跃对话。执行 `/new` 后，同一个进程会同时列出新旧两个对话，请重启 Grok Build 或使用 **Choose a Conversation**。 |
+| **Pi 与 Oh My Pi** | Pi 和 Oh My Pi 通过 Heeler 的扩展（`heeler-session.js`）上报当前对话。在 macOS 和 Linux 的 herdr-core 与 tmux Host 上，请在该 Host 的详情页安装 [Host Helper](herdr-core.md#host-helper) 并重启 Agent。在 [Rex](rex.md#pi-与-oh-my-pi) 和[原生 Windows](herdr-core.md#chat) Host 上，请在 Chat 中轻点 **Add Heeler's Extension…** 并重启 Agent。如果扩展已经安装，说明该 Agent 是在安装前启动的，或启动时带了 `--no-extensions`——请启用扩展后重启。未装扩展时，Oh My Pi 仍会在首条消息之后跟上对话。 |
+| **Antigravity CLI** | Antigravity CLI 在发送首条消息时才创建对话；Chat 只会向无参数启动的 `agy` 发送首条消息，其他启动方式请先在终端发送。如果该对话已在另一个终端打开，第二个终端不会持有它的锁，请先关闭另一个终端。 |
+| **OpenCode** | 从 **New Agent** 启动的 OpenCode 2.1 及以上版本，或配置了 Heeler 插件（**Let Chat Follow OpenCode…**）的 OpenCode 会上报当前对话。 |
+| **Windows 无法读取进程** | Heeler 无法在 Host 上读取该 Agent 的进程信息。请让 `herdr-core` 与 SSH 会话以相同权限运行（均使用非管理员权限），并避免 PowerShell 处于受限语言模式（Constrained Language Mode）。 |
 
 ## Conversation Not Found
 

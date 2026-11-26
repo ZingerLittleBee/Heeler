@@ -15,6 +15,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Streamline Chat's **Can't Tell the Conversation** screen into concise actionable guidance with a **Learn More** link to the troubleshooting guide, separate multi-session (`/new`) notices for Codex and Grok Build from first-message states, and show **No Messages Yet** (allowing the first message to be sent directly from Chat) for a fresh `--no-daemon` Codex at its prompt, matching Claude Code and Antigravity CLI. (PR #850)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
 - Switch between **Pull Requests** and **Issues** in the **GitHub** tab from the list's title, which names the list it shows, rather than from a picker over the filters. A row puts the repository, number, author, age and status on one line over the full-width title, so more of a list fits on screen. (PR #849)
 - See everyone's open pull requests or issues in a repository you choose with the **GitHub** tab's Repository filter, as its page on GitHub shows them; across repositories a list still holds yours. The Person filter says which it shows, **Yours** or **Anyone**, where it read All. The next page reads by itself as you near the end of a list, and offline a list still says how many it shows of how many there are. (PR #849)
