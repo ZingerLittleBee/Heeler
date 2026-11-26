@@ -628,6 +628,17 @@ final class GitHubStore {
         await reread(item, on: host)
     }
 
+    /// An address that loads one of the item's pictures or videos now
+    /// (ADR 0065): the last read's while its signature lasts, else the one
+    /// a new read gives. `refresh` reads again after a signed address
+    /// failed. Nil when a new read cannot give one.
+    func mediaURL(_ media: GitHubMedia, refresh: Bool, of item: GitHubItem, on host: GitHubHost) async -> URL? {
+        let current = detailState(of: item, on: host).detail?.media.first { $0.id == media.id } ?? media
+        if !refresh, current.isFresh(at: now()) { return current.url }
+        guard current.expiresAt != nil, case .success(let detail) = await reread(item, on: host) else { return nil }
+        return detail.media.first { $0.id == media.id }?.url
+    }
+
     /// Reads one item again, as a pull of its detail does and as an action
     /// does before and after it acts. Its detail and its list row both take
     /// what came back. One read per item at a time; a second caller waits

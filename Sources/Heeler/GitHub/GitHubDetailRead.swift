@@ -18,7 +18,7 @@ enum GitHubDetailRead {
                     defaultBranchRef { name }
                     squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed viewerDefaultMergeMethod deleteBranchOnMerge
                   }
-                  body headRefName baseRefName changedFiles viewerDidAuthor isCrossRepository
+                  body bodyHTML headRefName baseRefName changedFiles viewerDidAuthor isCrossRepository
                   headRepositoryOwner { login } mergeable mergeStateStatus
                   headRefOid headRef { id } mergedBy { login } mergeCommit { parents(first: 2) { totalCount } }
                   reviewRequests(first: 20) { nodes { requestedReviewer { ...reviewer } } }
@@ -28,7 +28,7 @@ enum GitHubDetailRead {
                 ... on Issue {
                   ...issue
                   repository { defaultBranchRef { name } }
-                  body assignees(first: 10) { nodes { login } }
+                  body bodyHTML assignees(first: 10) { nodes { login } }
                 }
               }
             }
@@ -113,6 +113,9 @@ enum GitHubDetailRead {
         let item: GitHubGraphQL.ItemNode
         let repository: Repository?
         let body: String?
+        /// The body as GitHub renders it, read only for its pictures and
+        /// videos' addresses.
+        let bodyHTML: String?
         let headRefName: String?
         let baseRefName: String?
         let changedFiles: Int?
@@ -136,7 +139,7 @@ enum GitHubDetailRead {
         }
 
         enum CodingKeys: String, CodingKey {
-            case repository, body, headRefName, baseRefName, changedFiles, viewerDidAuthor, isCrossRepository
+            case repository, body, bodyHTML, headRefName, baseRefName, changedFiles, viewerDidAuthor, isCrossRepository
             case headRepositoryOwner, mergeable, mergeStateStatus, headRefOid, headRef, mergedBy, mergeCommit
             case reviewRequests, viewerLatestReviewRequest, latestOpinionatedReviews, assignees
         }
@@ -146,6 +149,7 @@ enum GitHubDetailRead {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             repository = try? container.decodeIfPresent(Repository.self, forKey: .repository)
             body = try container.decodeIfPresent(String.self, forKey: .body)
+            bodyHTML = try container.decodeIfPresent(String.self, forKey: .bodyHTML)
             headRefName = try container.decodeIfPresent(String.self, forKey: .headRefName)
             baseRefName = try container.decodeIfPresent(String.self, forKey: .baseRefName)
             changedFiles = try container.decodeIfPresent(Int.self, forKey: .changedFiles)
@@ -192,7 +196,8 @@ enum GitHubDetailRead {
                         ?? GitHubMergeSettings(allowed: [], preferred: nil, deletesBranch: false))
             }
             return GitHubItemDetail(
-                item: item, viewer: viewer, body: body ?? "", pullRequest: pullRequest,
+                item: item, viewer: viewer, body: body ?? "", media: GitHubMedia.media(inHTML: bodyHTML ?? ""),
+                pullRequest: pullRequest,
                 assignees: (assignees?.values ?? []).map(\.login),
                 defaultBranch: repository?.defaultBranchRef?.name, readAt: readAt)
         }

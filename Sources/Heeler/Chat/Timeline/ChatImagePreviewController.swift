@@ -5,13 +5,20 @@ import UIKit
 @MainActor
 final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     typealias Loader = @MainActor (String) async throws -> Data
+    /// Turns what was read into the picture to show; a still picture at
+    /// most 4,096 pixels on its long edge unless the caller says otherwise.
+    typealias Decoder = @Sendable (Data) async throws -> UIImage
     let path: String
     /// The row's thumbnail, shown until the file is read.
     private let placeholder: UIImage?
     private let onDone: (() -> Void)?
     private let loadImage: Loader
+    private let decodeImage: Decoder
+    /// Whether an animated GIF or PNG plays rather than shows its first
+    /// frame.
+    private let animatesImages: Bool
     private let scroll = UIScrollView()
-    private let imageView = UIImageView()
+    private let imageView = AnimatedImageView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let message = UILabel()
     private let retry = UIButton(type: .system)
@@ -24,11 +31,15 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         displayTitle: String? = nil,
         placeholder: UIImage? = nil,
         onDone: (() -> Void)? = nil,
+        decodeImage: @escaping Decoder = ChatImagePreviewController.stillImage,
+        animatesImages: Bool = false,
         loadImage: @escaping Loader
     ) {
         self.path = path
         self.placeholder = placeholder
         self.onDone = onDone
+        self.decodeImage = decodeImage
+        self.animatesImages = animatesImages
         self.loadImage = loadImage
         super.init(nibName: nil, bundle: nil)
         title = displayTitle ?? (path as NSString).lastPathComponent
@@ -36,6 +47,11 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// A still picture at most 4,096 pixels on its long edge.
+    nonisolated static func stillImage(_ data: Data) async throws -> UIImage {
+        UIImage(cgImage: try await ChatImagePreviewDecoder.shared.decode(data))
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -127,13 +143,14 @@ final class ChatImagePreviewController: UIViewController, UIScrollViewDelegate {
         retry.isHidden = true
         if !isLoaded { imageView.image = placeholder }
         spinner.startAnimating()
-        loadTask = Task { [weak self, path, loadImage] in
+        loadTask = Task { [weak self, path, loadImage, decodeImage] in
             do {
                 let data = try await loadImage(path)
-                let decoded = try await ChatImagePreviewDecoder.shared.decode(data)
+                let decoded = try await decodeImage(data)
                 try Task.checkCancellation()
                 guard let self else { return }
-                imageView.image = UIImage(cgImage: decoded)
+                imageView.image = decoded
+                if animatesImages, AnimatedImageView.isAnimated(data) { imageView.animationData = data }
                 isLoaded = true
                 spinner.stopAnimating()
                 loadTask = nil
