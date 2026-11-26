@@ -86,6 +86,11 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
             case lastSession
         }
 
+        enum Exclusion: String, Codable, Sendable {
+            case limitsOff
+            case programMissing
+        }
+
         let program: String
         let name: String
         /// The Claude Code Account these limits are for, while the Host has
@@ -104,6 +109,7 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         let source: Source?
         let observedAt: Date?
         let windows: [Window]
+        var excludedReason: Exclusion? = nil
 
         /// The program, or with an Account its report id; an older
         /// snapshot's Account by its name.

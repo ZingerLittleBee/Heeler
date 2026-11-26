@@ -259,7 +259,8 @@ struct AgentUsageWidgetTests {
                 windows: percent.map {
                     [.init(id: "weekly", name: "Weekly", usedPercent: $0,
                         resetsAt: Self.now.addingTimeInterval(3_600), expired: false)]
-                } ?? [])
+                } ?? [],
+                excludedReason: percent == nil ? .limitsOff : nil)
         }
         let off = [limits("claude", nil), limits("codex", 7)]
         let both = [limits("claude", 12), limits("codex", 40)]
@@ -272,6 +273,61 @@ struct AgentUsageWidgetTests {
         let withAgy = [limits("claude", 12), limits("codex", 40), limits("agy", 65)]
         #expect(UsageLimitsPick.program(withAgy, preferring: nil, now: Self.now)?.program == "agy")
         #expect(UsageLimitsPick.program(withAgy, preferring: "agy", now: Self.now)?.program == "agy")
+    }
+
+    @Test func missingAntigravityLeavesTheTwoProgramLayout() throws {
+        let limits = try widgetLimits(agy: ["state": "unavailable", "reason": "programMissing"])
+        let shown = UsageLimitsPick.visibleEntries(limits)
+
+        #expect(shown.map(\.program) == ["claude", "codex"])
+        #expect(UsageLimitsLayout.medium(shown) == .columns)
+        #expect(UsageLimitsLayout.large(shown) == .windows)
+    }
+
+    @Test func limitsOffLeavesOutClaudeCodeUnlessSelected() throws {
+        let limits = try widgetLimits(claude: ["state": "disabled"])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["codex", "agy"])
+        let selected = UsageLimitsPick.entries(limits, preferring: "claude", now: Self.now)
+        #expect(selected.map(\.program) == ["claude"])
+        #expect(selected.first?.message == "Usage Limits are off.")
+    }
+
+    @Test func allProgramsLeftOutStillShowWhy() throws {
+        let limits = try widgetLimits(
+            claude: ["state": "disabled"], codex: ["state": "disabled"],
+            agy: ["state": "unavailable", "reason": "programMissing"])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude", "codex", "agy"])
+        #expect(UsageLimitsPick.entries(limits, preferring: nil, now: Self.now).map(\.program) == ["claude"])
+    }
+
+    @Test(arguments: [
+        ["state": "unavailable", "reason": "notSignedIn"],
+        ["state": "unavailable", "reason": "notReadYet"],
+        ["state": "error", "reason": "requestFailed"],
+    ])
+    func automaticSkipsUnusedProgramsEvenWithoutAReading(codex: [String: String]) throws {
+        let limits = try widgetLimits(
+            claude: ["state": "disabled"], codex: codex,
+            agy: ["state": "unavailable", "reason": "programMissing"])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["codex"])
+        #expect(UsageLimitsPick.entries(limits, preferring: nil, now: Self.now).map(\.program) == ["codex"])
+    }
+
+    @Test func aSnapshotFromBeforeWidgetExclusionsStillShowsItsEntries() throws {
+        let older = """
+            {"version": 1, "hosts": [{"id": "\(studio.uuidString)", "name": "Studio Mac", "programs": [],
+              "limits": [{"program": "claude", "name": "Claude Code", "message": "Usage Limits are off.",
+                "isLastReading": false, "windows": []},
+                {"program": "codex", "name": "Codex", "isLastReading": false, "windows": []}]}]}
+            """
+        let snapshot = try JSONDecoder().decode(UsageWidgetSnapshot.self, from: Data(older.utf8))
+        let limits = try #require(snapshot.host(studio)?.limits)
+
+        #expect(limits.allSatisfy { $0.excludedReason == nil })
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude", "codex"])
     }
 
     // MARK: Claude Code Accounts
@@ -431,6 +487,28 @@ struct AgentUsageWidgetTests {
         _ id: UUID, _ name: String, _ state: AgentUsageStore.State, readAt: Date? = nil, isConnected: Bool = true
     ) -> AgentUsageWidgetReading {
         AgentUsageWidgetReading(id: id, name: name, state: state, readAt: readAt, isConnected: isConnected)
+    }
+
+    private func widgetLimits(
+        claude: [String: String] = ["state": "ok"],
+        codex: [String: String] = ["state": "ok"],
+        agy: [String: String] = ["state": "ok"]
+    ) throws -> [UsageWidgetSnapshot.Limits] {
+        let window: [String: Any] = ["id": "fiveHour", "usedPercent": 20, "expired": false]
+        let programs = [("claude", claude), ("codex", codex), ("agy", agy)].map { program, reading -> [String: Any] in
+            var limits: [String: Any] = reading
+            if reading["state"] == "ok" {
+                limits["windows"] = [window]
+            }
+            return ["program": program, "usageLimits": limits, "tokenUsage": ["state": "noData"]]
+        }
+        let object: [String: Any] = [
+            "version": 1, "runtime": "recorded", "generatedAt": "2026-10-26T09:00:00Z",
+            "timeZone": "Asia/Shanghai", "refreshing": false, "pricingVersion": "2026-10-20",
+            "scan": ["state": "complete", "skippedArchives": 0], "programs": programs,
+        ]
+        let report = try AgentUsageReport.decode(JSONSerialization.data(withJSONObject: object))
+        return UsageWidgetSnapshot.Host(id: studio, name: "Studio Mac", report: report, readAt: Self.now).limits
     }
 
     /// Claude Code with two days of Token Usage and two windows; Codex with

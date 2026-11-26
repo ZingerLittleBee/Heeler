@@ -261,7 +261,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   its Usage Limits follow `readings(for:)`, one entry per Claude Code Account.
   [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
   draws every size, with `UsageLimitsLayout` and `UsageLimitsPick` choosing
-  each size's layout and reading, and is compiled into the app for tests;
+  each size's layout and reading, including which programs to leave out,
+  and is compiled into the app for tests;
   [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
   the timelines and configuration. Stale Hosts are re-read for the widgets
   by `ConsoleStore.refreshStaleWidgetUsage()` in the foreground and by
