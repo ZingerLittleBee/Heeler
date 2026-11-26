@@ -100,8 +100,12 @@ a showing under these rules, and never while its Chat surface is on screen.
   one that was not sent or had no answer waits for the next of these to try.
   That includes the next attach of the block on the same control client, and
   the control link that takes the client back after a drop, which gives back
-  what no attach holds. A give back while another device has the block takes
-  this client out of line, so the block is not passed to it later.
+  what no attach holds. A New Workspace block whose session the client could
+  not attach (ADR 0049's update of 2026-11-25) also goes back on that
+  session's next attach on the same client. Rex answers a give back only from
+  a client attached to the block's session, so a give back left for later
+  attaches the session first. A give back while another device has the block
+  takes this client out of line, so the block is not passed to it later.
 - **What the server handed over after a drop stays.** When the server passes
   the block to this client because its owner's link dropped, as when the
   device that took it back drops while this client is in line, the block
