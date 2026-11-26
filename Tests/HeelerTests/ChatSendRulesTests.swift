@@ -275,7 +275,7 @@ struct ChatSendRulesTests {
         let rules = Self.rules(.claude)
 
         #expect(rules.read(draft) == .text)
-        #expect(rules.outgoingText(draft) == (program == .amp ? draft : draft + " "))
+        #expect(rules.outgoingText(draft) == draft + " ")
     }
 
     @Test(arguments: ["/model", "/", "/ review", "/Review"])
@@ -316,7 +316,7 @@ struct ChatSendRulesTests {
         let rules = Self.rules(program)
 
         #expect(rules.validate(draft) == nil)
-        #expect(rules.outgoingText(draft) == draft + " ")
+        #expect(rules.outgoingText(draft) == (program == .amp ? draft : draft + " "))
     }
 
     @Test func carriageReturnsBecomeLineFeeds() {
