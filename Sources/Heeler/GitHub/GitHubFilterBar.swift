@@ -328,8 +328,10 @@ private struct GitHubFilterChip: View {
         // `Color.primary`, not `.primary`: a menu's label takes the tint as
         // its foreground, and `.primary` is that foreground's first level.
         .foregroundStyle(isChanged ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.primary))
-        .padding(.leading, 14)
-        .padding(.trailing, 11)
+        // Narrow enough that the four chips at their defaults fit one line
+        // on a 402-point iPhone.
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
         // Room above and below the words at the larger text sizes.
         .padding(.vertical, 6)
         .frame(minHeight: 34)
