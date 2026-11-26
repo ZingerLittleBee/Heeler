@@ -397,6 +397,27 @@ struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
     }
 }
 
+/// Coarse scroll-zone classification for the Console Agent list so
+/// `.onScrollGeometryChange` fires only across zone boundaries rather than on
+/// every scroll frame.
+struct ConsoleListScrollPosition: Equatable, Sendable {
+    let isPastTopThreshold: Bool
+    let isPinnedAtOverflowBottom: Bool
+    let isAtTopEdge: Bool
+
+    init(offsetFromTop: CGFloat, maxOffsetFromTop: CGFloat = .infinity) {
+        isPastTopThreshold = offsetFromTop > ConsoleListPresentationStore.topScrollThreshold
+        let minOverflow = ConsoleListPresentationStore.bottomFreezeThreshold
+        let tolerance = ConsoleListPresentationStore.bottomPinTolerance
+        isPinnedAtOverflowBottom =
+            maxOffsetFromTop.isFinite
+            && maxOffsetFromTop > minOverflow
+            && offsetFromTop > minOverflow
+            && offsetFromTop >= maxOffsetFromTop - tolerance
+        isAtTopEdge = offsetFromTop <= minOverflow
+    }
+}
+
 /// Persists the Console presentation choice and Host/Workspace collapse state,
 /// and projects grouped sections without taking ownership of Agent sorting.
 /// Collapsed Host ids are deliberately retained when a Host disconnects or
@@ -408,11 +429,20 @@ final class ConsoleListPresentationStore {
     /// automatic priority reordering until the user scrolls back to Row 1.
     /// Clears the 52-point collapsing search drawer so both launch tucking and
     /// returning to Row 1 without pulling the search field open stay un-frozen.
-    static let topScrollThreshold: CGFloat = 64
+    nonisolated static let topScrollThreshold: CGFloat = 64
+    /// Minimum scrollable overflow and top-edge clearance required for a
+    /// barely-overflowing list (`maxOffset <= topScrollThreshold`) to freeze
+    /// when the user scrolls to its bottom.
+    nonisolated static let bottomFreezeThreshold: CGFloat = 4
+    /// Distance from `maxOffsetFromTop` within which a scrolled list counts as
+    /// resting at its bottom edge.
+    nonisolated static let bottomPinTolerance: CGFloat = 4
 
     private var orderFreezeGeneration: UInt64 = 0
     @ObservationIgnored private(set) var isScrollActive = false
     @ObservationIgnored private(set) var isScrolledFromTop = false
+    @ObservationIgnored private var hasUserScrolledSinceTop = false
+    @ObservationIgnored private var lastScrollPosition = ConsoleListScrollPosition(offsetFromTop: 0)
     @ObservationIgnored private var frozenAgentRanks: [ConsoleAgent.ID: Int] = [:]
     @ObservationIgnored private var nextFrozenAgentRank = 0
     @ObservationIgnored private var lastDisplayedAgentIDs: [ConsoleAgent.ID] = []
@@ -426,6 +456,62 @@ final class ConsoleListPresentationStore {
     @ObservationIgnored private var cachedQualifierShownByAgent: [ConsoleAgent.ID: AgentTitleQualifier.Shown] = [:]
     @ObservationIgnored private var cachedQualifierResolved: [QualifierResolvedEntry] = []
     @ObservationIgnored private var cachedQualifiers: [ConsoleAgent.ID: String] = [:]
+    @ObservationIgnored private var cachedFilteredSlice: (key: FilteredAgentSliceKey, value: FilteredAgentSlice)?
+    @ObservationIgnored private var cachedConsoleSections:
+        (key: ConsoleSectionsCacheKey, sections: [ConsoleHostSection], visibleAgentIDs: [ConsoleAgent.ID])?
+    @ObservationIgnored private var cachedConsoleWorkspaceCards:
+        (key: ConsoleWorkspaceCardsCacheKey, cards: [ConsoleWorkspaceCard], visibleAgentIDs: [ConsoleAgent.ID])?
+
+    struct FilteredAgentSlice: Equatable {
+        let hostFiltered: [ConsoleAgent]
+        let searched: [ConsoleAgent]
+        let filtered: [ConsoleAgent]
+        let filteredIDs: [ConsoleAgent.ID]
+    }
+
+    private struct FilteredAgentSliceKey: Equatable {
+        let consoleID: ObjectIdentifier
+        let pinsID: ObjectIdentifier
+        let pinsRevision: UInt64
+        let orderFreezeGeneration: UInt64
+        let isOrderFrozen: Bool
+        let rawAgents: [ConsoleAgent]
+        let filteredHostIDs: Set<Host.ID>
+        let trimmedSearch: String
+        let statusFilter: Set<ConsoleAgentStatusFilter>
+    }
+
+    private struct ConsoleSectionsCacheKey: Equatable {
+        let consoleID: ObjectIdentifier
+        let pinsID: ObjectIdentifier
+        let pinsRevision: UInt64
+        let orderFreezeGeneration: UInt64
+        let isOrderFrozen: Bool
+        let hosts: [Host]
+        let rawAgents: [ConsoleAgent]
+        let hostStatuses: [Host.ID: EventsSessionStatus]
+        let awaitingSnapshot: Set<Host.ID>
+        let issues: [ConsoleHostStatusPresentation]
+        let filteredHostIDs: Set<Host.ID>
+        let trimmedSearch: String
+        let statusFilter: Set<ConsoleAgentStatusFilter>
+        let collapsedHostIDs: Set<Host.ID>
+    }
+
+    private struct ConsoleWorkspaceCardsCacheKey: Equatable {
+        let consoleID: ObjectIdentifier
+        let pinsID: ObjectIdentifier
+        let pinsRevision: UInt64
+        let orderFreezeGeneration: UInt64
+        let isOrderFrozen: Bool
+        let hosts: [Host]
+        let rawAgents: [ConsoleAgent]
+        let savedStructures: [Host.ID: [ChatCachedWorkspace]]
+        let filteredHostIDs: Set<Host.ID>
+        let trimmedSearch: String
+        let statusFilter: Set<ConsoleAgentStatusFilter>
+        let collapsedWorkspaceIDs: Set<ConsoleWorkspaceSection.ID>
+    }
 
     private struct QualifierAgentKey: Equatable {
         let isByWorkspace: Bool
@@ -464,28 +550,71 @@ final class ConsoleListPresentationStore {
     var isOrderFrozen: Bool { isScrollActive || isScrolledFromTop }
 
     func setScrollActive(_ active: Bool, userInitiated: Bool = false) {
-        _ = userInitiated
-        guard isScrollActive != active else { return }
+        let becameUserScrolled = active && userInitiated && !hasUserScrolledSinceTop
+        if becameUserScrolled {
+            hasUserScrolledSinceTop = true
+        }
+        guard isScrollActive != active || becameUserScrolled else { return }
         let wasFrozen = isOrderFrozen
         isScrollActive = active
+        if becameUserScrolled {
+            isScrolledFromTop = resolvedScrolledFromTop(for: lastScrollPosition)
+        }
+        if !isOrderFrozen {
+            hasUserScrolledSinceTop = false
+        }
         transitionOrderFreeze(from: wasFrozen, to: isOrderFrozen)
     }
 
-    func updateScrollOffsetFromTop(_ offset: CGFloat) {
-        setScrolledFromTop(offset > Self.topScrollThreshold)
+    func updateScrollPosition(_ position: ConsoleListScrollPosition) {
+        lastScrollPosition = position
+        if position.isAtTopEdge, !isScrollActive {
+            hasUserScrolledSinceTop = false
+        }
+        let next: Bool
+        if isScrolledFromTop, !isScrollActive, !position.isAtTopEdge {
+            next = true
+        } else {
+            next = resolvedScrolledFromTop(for: position)
+        }
+        setScrolledFromTop(next)
+    }
+
+    func updateScrollOffsetFromTop(_ offset: CGFloat, maxOffset: CGFloat = .infinity) {
+        let position = ConsoleListScrollPosition(offsetFromTop: offset, maxOffsetFromTop: maxOffset)
+        lastScrollPosition = position
+        if position.isAtTopEdge, !isScrollActive {
+            hasUserScrolledSinceTop = false
+        }
+        setScrolledFromTop(resolvedScrolledFromTop(for: position))
     }
 
     func setScrolledFromTop(_ scrolled: Bool) {
         guard isScrolledFromTop != scrolled else { return }
         let wasFrozen = isOrderFrozen
         isScrolledFromTop = scrolled
+        if !isOrderFrozen {
+            hasUserScrolledSinceTop = false
+        }
         transitionOrderFreeze(from: wasFrozen, to: isOrderFrozen)
     }
 
     func resetScrollTracking() {
         isScrollActive = false
         isScrolledFromTop = false
+        hasUserScrolledSinceTop = false
+        lastScrollPosition = ConsoleListScrollPosition(offsetFromTop: 0)
         clearFrozenRanks()
+    }
+
+    private func resolvedScrolledFromTop(for position: ConsoleListScrollPosition) -> Bool {
+        if position.isPastTopThreshold {
+            return true
+        }
+        if position.isAtTopEdge {
+            return false
+        }
+        return position.isPinnedAtOverflowBottom && hasUserScrolledSinceTop
     }
 
     private func transitionOrderFreeze(from wasFrozen: Bool, to nowFrozen: Bool) {
@@ -504,21 +633,26 @@ final class ConsoleListPresentationStore {
             }
         } else if wasFrozen, !nowFrozen {
             let shouldFlush = hadDeferredReorder
-            clearFrozenRanks()
+            clearFrozenRanks(preservingLastDisplayed: !shouldFlush)
             if shouldFlush {
                 orderFreezeGeneration &+= 1
             }
         }
     }
 
-    private func clearFrozenRanks() {
+    private func clearFrozenRanks(preservingLastDisplayed: Bool = false) {
         frozenAgentRanks.removeAll(keepingCapacity: true)
         nextFrozenAgentRank = 0
-        lastDisplayedAgentIDs.removeAll(keepingCapacity: true)
         frozenWorkspaceRanks.removeAll(keepingCapacity: true)
         nextFrozenWorkspaceRank = 0
-        lastDisplayedWorkspaceIDs.removeAll(keepingCapacity: true)
+        if !preservingLastDisplayed {
+            lastDisplayedAgentIDs.removeAll(keepingCapacity: true)
+            lastDisplayedWorkspaceIDs.removeAll(keepingCapacity: true)
+        }
         hadDeferredReorder = false
+        cachedFilteredSlice = nil
+        cachedConsoleSections = nil
+        cachedConsoleWorkspaceCards = nil
     }
 
     /// Returns `agents` in canonical priority order when at the top of the list,
@@ -576,6 +710,55 @@ final class ConsoleListPresentationStore {
             pinnedByHost[agent.hostID] = console.pins.pinnedPaneIDs(for: agent.hostID)
         }
         return orderedAgents(agents, pinnedByHost: pinnedByHost, searchQuery: searchQuery)
+    }
+
+    /// Memoizes Host-filtered, searched, and status-filtered Agent lists across
+    /// repeated intra-frame reads (such as iPadOS key-command menu validation).
+    func filteredAgentSlice(
+        in console: ConsoleStore,
+        filteredHostIDs: Set<Host.ID> = [],
+        searchQuery: String = ""
+    ) -> FilteredAgentSlice {
+        let freezeGen = orderFreezeGeneration
+        let statusFilter = self.statusFilter
+        let rawAgents = console.chatDisplayAgents
+        let pinsRevision = console.pins.revision
+        let trimmedSearch = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = FilteredAgentSliceKey(
+            consoleID: ObjectIdentifier(console),
+            pinsID: ObjectIdentifier(console.pins),
+            pinsRevision: pinsRevision,
+            orderFreezeGeneration: freezeGen,
+            isOrderFrozen: isOrderFrozen,
+            rawAgents: rawAgents,
+            filteredHostIDs: filteredHostIDs,
+            trimmedSearch: trimmedSearch,
+            statusFilter: statusFilter)
+        if let cached = cachedFilteredSlice, cached.key == key {
+            return cached.value
+        }
+        return PerfTrace.span("console.list.filtered-agents") {
+            let ordered = orderedAgents(in: console, searchQuery: trimmedSearch)
+            let hostFiltered =
+                filteredHostIDs.isEmpty
+                ? ordered
+                : ordered.filter { filteredHostIDs.contains($0.hostID) }
+            let searched =
+                trimmedSearch.isEmpty
+                ? hostFiltered
+                : hostFiltered.filter { $0.matchesAgentSearch(trimmedSearch) }
+            let filtered =
+                statusFilter.isEmpty
+                ? searched
+                : searched.filter { statusFilter.admits($0) }
+            let slice = FilteredAgentSlice(
+                hostFiltered: hostFiltered,
+                searched: searched,
+                filtered: filtered,
+                filteredIDs: filtered.map(\.id))
+            cachedFilteredSlice = (key, slice)
+            return slice
+        }
     }
 
     /// Memoized program qualifiers for rows sharing a headline. Status flips
@@ -1021,17 +1204,63 @@ final class ConsoleListPresentationStore {
         filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
-        let issuesByHost = Dictionary(
-            console.hostIssues(for: hosts).map { ($0.hostID, $0) },
-            uniquingKeysWith: { first, _ in first })
-        return sections(
+        sectionsWithVisibleIDs(
             hosts: hosts,
-            agents: orderedAgents(in: console, searchQuery: searchQuery),
-            hostStatuses: console.hostStatuses,
-            hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
-            statusPresentations: issuesByHost,
+            console: console,
             filteredHostIDs: filteredHostIDs,
-            searchQuery: searchQuery)
+            searchQuery: searchQuery
+        ).sections
+    }
+
+    func sectionsWithVisibleIDs(
+        hosts: [Host],
+        console: ConsoleStore,
+        filteredHostIDs: Set<Host.ID> = [],
+        searchQuery: String = ""
+    ) -> (sections: [ConsoleHostSection], visibleAgentIDs: [ConsoleAgent.ID]) {
+        let freezeGen = orderFreezeGeneration
+        let statusFilter = self.statusFilter
+        let collapsedHosts = self.collapsedHostIDs
+        let rawAgents = console.chatDisplayAgents
+        let pinsRevision = console.pins.revision
+        let hostStatuses = console.hostStatuses
+        let awaitingSnapshot = console.hostsAwaitingSnapshot
+        let issues = console.hostIssues(for: hosts)
+        let trimmedSearch = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = ConsoleSectionsCacheKey(
+            consoleID: ObjectIdentifier(console),
+            pinsID: ObjectIdentifier(console.pins),
+            pinsRevision: pinsRevision,
+            orderFreezeGeneration: freezeGen,
+            isOrderFrozen: isOrderFrozen,
+            hosts: hosts,
+            rawAgents: rawAgents,
+            hostStatuses: hostStatuses,
+            awaitingSnapshot: awaitingSnapshot,
+            issues: issues,
+            filteredHostIDs: filteredHostIDs,
+            trimmedSearch: trimmedSearch,
+            statusFilter: statusFilter,
+            collapsedHostIDs: collapsedHosts)
+        if let cached = cachedConsoleSections, cached.key == key {
+            return (cached.sections, cached.visibleAgentIDs)
+        }
+        return PerfTrace.span("console.list.host-sections") {
+            let issuesByHost = Dictionary(
+                issues.map { ($0.hostID, $0) },
+                uniquingKeysWith: { first, _ in first })
+            let built = sections(
+                hosts: hosts,
+                agents: orderedAgents(in: console, searchQuery: trimmedSearch),
+                hostStatuses: hostStatuses,
+                hostsAwaitingSnapshot: awaitingSnapshot,
+                statusPresentations: issuesByHost,
+                filteredHostIDs: filteredHostIDs,
+                searchQuery: trimmedSearch)
+            let visibleIDs = built.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
+            cachedConsoleSections = (key, built, visibleIDs)
+            return (built, visibleIDs)
+        }
     }
 
     /// Reads the same inventory as `sections(hosts:console:)`, so saved Chat
@@ -1047,6 +1276,49 @@ final class ConsoleListPresentationStore {
             agents: orderedAgents(in: console, searchQuery: searchQuery),
             savedStructures: console.savedWorkspaceStructures,
             filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
+    }
+
+    func workspaceCardsWithVisibleIDs(
+        hosts: [Host],
+        console: ConsoleStore,
+        filteredHostIDs: Set<Host.ID> = [],
+        searchQuery: String = ""
+    ) -> (cards: [ConsoleWorkspaceCard], visibleAgentIDs: [ConsoleAgent.ID]) {
+        let freezeGen = orderFreezeGeneration
+        let statusFilter = self.statusFilter
+        let collapsedWorkspaces = self.collapsedWorkspaceIDs
+        let rawAgents = console.chatDisplayAgents
+        let pinsRevision = console.pins.revision
+        let savedStructures = console.savedWorkspaceStructures
+        let trimmedSearch = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = ConsoleWorkspaceCardsCacheKey(
+            consoleID: ObjectIdentifier(console),
+            pinsID: ObjectIdentifier(console.pins),
+            pinsRevision: pinsRevision,
+            orderFreezeGeneration: freezeGen,
+            isOrderFrozen: isOrderFrozen,
+            hosts: hosts,
+            rawAgents: rawAgents,
+            savedStructures: savedStructures,
+            filteredHostIDs: filteredHostIDs,
+            trimmedSearch: trimmedSearch,
+            statusFilter: statusFilter,
+            collapsedWorkspaceIDs: collapsedWorkspaces)
+        if let cached = cachedConsoleWorkspaceCards, cached.key == key {
+            return (cached.cards, cached.visibleAgentIDs)
+        }
+        return PerfTrace.span("console.list.workspace-cards") {
+            let cards = ConsoleWorkspaceCard.cards(
+                workspaceSections(
+                    hosts: hosts,
+                    agents: orderedAgents(in: console, searchQuery: trimmedSearch),
+                    savedStructures: savedStructures,
+                    filteredHostIDs: filteredHostIDs,
+                    searchQuery: trimmedSearch))
+            let visibleIDs = cards.flatMap(\.visibleAgentIDs)
+            cachedConsoleWorkspaceCards = (key, cards, visibleIDs)
+            return (cards, visibleIDs)
+        }
     }
 
     /// Projects one section per Host, by its name, in the Hosts tab's order,

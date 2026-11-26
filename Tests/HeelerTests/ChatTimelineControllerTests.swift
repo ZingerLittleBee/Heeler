@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -187,6 +188,207 @@ struct ChatRowViewTests {
         let sameRevA = ChatTimelineInput(entries: [user], entriesRevision: 7)
         let sameRevB = ChatTimelineInput(entries: [user], entriesRevision: 7)
         #expect(sameRevA == sameRevB)
+    }
+}
+
+@Suite("Chat timeline initial preposition and banner plans")
+struct ChatTimelineControllerPlanTests {
+    @Test func initialEndPrepositionDefersZeroBoundsAndTargetsBottomBandWithoutTopRows() async throws {
+        let entries = ChatTimelineFixture.entries(0..<80)
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: entries))
+        let viewport = CGSize(width: 393, height: 852)
+        let topInset: CGFloat = 8
+        let baseBottomInset: CGFloat = 12
+        let bottomObstruction: CGFloat = 96
+        let jumpClearance: CGFloat = 44
+        let textWidth = viewport.width - 2 * ChatTimelineMetrics.horizontalPadding
+        let heights = rows.map { row in
+            ChatHeightEstimate(
+                cached: nil,
+                seed: row.seed,
+                extent: row.extent,
+                textWidth: textWidth,
+                metrics: .standard,
+                width: viewport.width,
+                contentSizeCategory: "L|system",
+                revision: row.revision
+            ).height
+        }
+        let geometry = ChatTimelineGeometry(
+            heights: heights,
+            visibleHeight: viewport.height - topInset - (baseBottomInset + bottomObstruction + jumpClearance))
+
+        // 1. Zero-bounds-first mount (`makeUIViewController` on `Terminal -> Show Chat`)
+        // defers until real bounds arrive rather than laying out at 0x0 or cancelling.
+        #expect(
+            ChatInitialEndPrepositionPlan.decide(
+                needsPreposition: true,
+                isFollowing: true,
+                isJumpAnimating: false,
+                bounds: .zero,
+                itemCount: rows.count,
+                estimatedContentHeight: geometry.totalHeight,
+                minOffsetY: -topInset,
+                baseBottomInset: baseBottomInset,
+                bottomObstruction: bottomObstruction,
+                collapseControlReserve: 0,
+                jumpControlClearance: jumpClearance,
+                currentJumpControlReserve: 0) == .deferUntilSized)
+
+        // 2. Empty `.locating` snapshot keeps preposition armed until rows arrive.
+        #expect(
+            ChatInitialEndPrepositionPlan.decide(
+                needsPreposition: true,
+                isFollowing: true,
+                isJumpAnimating: false,
+                bounds: viewport,
+                itemCount: 0,
+                estimatedContentHeight: 0,
+                minOffsetY: -topInset,
+                baseBottomInset: baseBottomInset,
+                bottomObstruction: bottomObstruction,
+                collapseControlReserve: 0,
+                jumpControlClearance: jumpClearance,
+                currentJumpControlReserve: 0) == .deferUntilSized)
+
+        // 3. Once sized and populated, pre-reserves `jumpControlClearance` and lands
+        // directly on the bottom viewport band so row 0 is never materialized.
+        let decision = ChatInitialEndPrepositionPlan.decide(
+            needsPreposition: true,
+            isFollowing: true,
+            isJumpAnimating: false,
+            bounds: viewport,
+            itemCount: rows.count,
+            estimatedContentHeight: geometry.totalHeight,
+            minOffsetY: -topInset,
+            baseBottomInset: baseBottomInset,
+            bottomObstruction: bottomObstruction,
+            collapseControlReserve: 0,
+            jumpControlClearance: jumpClearance,
+            currentJumpControlReserve: 0)
+        guard case .apply(let reservedJump, let bottomInset, let targetOffsetY) = decision else {
+            Issue.record("expected initial end preposition plan to apply")
+            return
+        }
+        #expect(reservedJump == jumpClearance)
+        #expect(bottomInset == baseBottomInset + bottomObstruction + jumpClearance)
+        let visibleIndices = geometry.indices(from: targetOffsetY, to: targetOffsetY + viewport.height)
+        #expect(visibleIndices.contains(rows.count - 1))
+        #expect(!visibleIndices.contains(0))
+        #expect(visibleIndices.count < 25)
+
+        // 4. Short non-overflowing conversations do not reserve jump clearance and stay at `minOffsetY`.
+        let shortHeight = viewport.height - topInset - baseBottomInset - bottomObstruction
+        #expect(
+            ChatInitialEndPrepositionPlan.decide(
+                needsPreposition: true,
+                isFollowing: true,
+                isJumpAnimating: false,
+                bounds: viewport,
+                itemCount: 2,
+                estimatedContentHeight: shortHeight,
+                minOffsetY: -topInset,
+                baseBottomInset: baseBottomInset,
+                bottomObstruction: bottomObstruction,
+                collapseControlReserve: 0,
+                jumpControlClearance: jumpClearance,
+                currentJumpControlReserve: 0)
+                == .apply(
+                    jumpControlReserve: nil,
+                    bottomInset: baseBottomInset + bottomObstruction,
+                    targetOffsetY: -topInset))
+
+        // 5. Unfollowed timelines cancel initial end preposition immediately.
+        #expect(
+            ChatInitialEndPrepositionPlan.decide(
+                needsPreposition: true,
+                isFollowing: false,
+                isJumpAnimating: false,
+                bounds: viewport,
+                itemCount: rows.count,
+                estimatedContentHeight: geometry.totalHeight,
+                minOffsetY: -topInset,
+                baseBottomInset: baseBottomInset,
+                bottomObstruction: bottomObstruction,
+                collapseControlReserve: 0,
+                jumpControlClearance: jumpClearance,
+                currentJumpControlReserve: 0) == .cancel)
+    }
+
+    @Test func topObstructionAnimatesOnlyWhenIdleAtTopInWindowWithoutReduceMotion() {
+        // Mid-history (`wasAtTop == false`): updates top inset without pinning or animating (`0pt` jump).
+        let midHistory = ChatTopObstructionTransition.decide(
+            currentTopInset: 52,
+            baseTopInset: 8,
+            obstructionHeight: 102,
+            contentOffsetY: 320,
+            minOffsetY: -52,
+            isFollowing: false,
+            isUserScrolling: false,
+            isTracking: false,
+            isDecelerating: false,
+            hasWindow: true,
+            reduceMotion: false)
+        #expect(
+            midHistory
+                == ChatTopObstructionTransition(
+                    topInset: 110,
+                    indicatorTopInset: 102,
+                    pinsToNewMinOffset: false,
+                    animates: false))
+
+        // Resting unfollowed at top in a window: pins to new `minOffsetY` and animates over 0.2s.
+        let atTopAnimated = ChatTopObstructionTransition.decide(
+            currentTopInset: 52,
+            baseTopInset: 8,
+            obstructionHeight: 109.67,
+            contentOffsetY: -52,
+            minOffsetY: -52,
+            isFollowing: false,
+            isUserScrolling: false,
+            isTracking: false,
+            isDecelerating: false,
+            hasWindow: true,
+            reduceMotion: false)
+        #expect(
+            atTopAnimated
+                == ChatTopObstructionTransition(
+                    topInset: 117.67,
+                    indicatorTopInset: 109.67,
+                    pinsToNewMinOffset: true,
+                    animates: true))
+        #expect(ChatTopObstructionTransition.animationDuration == 0.2)
+
+        // Before window mount (`hasWindow == false`) or with Reduce Motion enabled: pins synchronously without animation.
+        let offscreen = ChatTopObstructionTransition.decide(
+            currentTopInset: 8,
+            baseTopInset: 8,
+            obstructionHeight: 58,
+            contentOffsetY: -8,
+            minOffsetY: -8,
+            isFollowing: false,
+            isUserScrolling: false,
+            isTracking: false,
+            isDecelerating: false,
+            hasWindow: false,
+            reduceMotion: false)
+        #expect(offscreen?.pinsToNewMinOffset == true)
+        #expect(offscreen?.animates == false)
+
+        let reducedMotion = ChatTopObstructionTransition.decide(
+            currentTopInset: 52,
+            baseTopInset: 8,
+            obstructionHeight: 110,
+            contentOffsetY: -52,
+            minOffsetY: -52,
+            isFollowing: false,
+            isUserScrolling: false,
+            isTracking: false,
+            isDecelerating: false,
+            hasWindow: true,
+            reduceMotion: true)
+        #expect(reducedMotion?.pinsToNewMinOffset == true)
+        #expect(reducedMotion?.animates == false)
     }
 }
 

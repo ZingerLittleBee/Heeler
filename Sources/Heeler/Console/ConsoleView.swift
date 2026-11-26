@@ -2972,30 +2972,46 @@ struct ConsoleView: View {
     }
 
     private var hostSections: [ConsoleHostSection] {
-        PerfTrace.span("console.list.host-sections") {
-            listPresentation.sections(
-                hosts: hosts.consoleHosts,
-                console: console,
-                filteredHostIDs: hostFilter,
-                searchQuery: agentSearchText)
-        }
+        listPresentation.sectionsWithVisibleIDs(
+            hosts: hosts.consoleHosts,
+            console: console,
+            filteredHostIDs: hostFilter,
+            searchQuery: agentSearchText
+        ).sections
     }
 
     private var workspaceCards: [ConsoleWorkspaceCard] {
-        PerfTrace.span("console.list.workspace-cards") {
-            ConsoleWorkspaceCard.cards(
-                listPresentation.workspaceSections(
-                    hosts: hosts.consoleHosts, console: console,
-                    filteredHostIDs: hostFilter, searchQuery: agentSearchText))
-        }
+        listPresentation.workspaceCardsWithVisibleIDs(
+            hosts: hosts.consoleHosts,
+            console: console,
+            filteredHostIDs: hostFilter,
+            searchQuery: agentSearchText
+        ).cards
     }
 
     /// Where previous and next can land.
     private var visibleAgentIDs: [ConsoleAgent.ID] {
         switch listPresentation.mode {
-        case .flat: filteredAgents.map(\.id)
-        case .grouped: hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) }
-        case .byWorkspace: workspaceCards.flatMap(\.visibleAgentIDs)
+        case .flat:
+            listPresentation.filteredAgentSlice(
+                in: console,
+                filteredHostIDs: hostFilter,
+                searchQuery: agentSearchText
+            ).filteredIDs
+        case .grouped:
+            listPresentation.sectionsWithVisibleIDs(
+                hosts: hosts.consoleHosts,
+                console: console,
+                filteredHostIDs: hostFilter,
+                searchQuery: agentSearchText
+            ).visibleAgentIDs
+        case .byWorkspace:
+            listPresentation.workspaceCardsWithVisibleIDs(
+                hosts: hosts.consoleHosts,
+                console: console,
+                filteredHostIDs: hostFilter,
+                searchQuery: agentSearchText
+            ).visibleAgentIDs
         }
     }
 
@@ -3022,27 +3038,29 @@ struct ConsoleView: View {
     }
 
     private var hostFilteredAgents: [ConsoleAgent] {
-        let agents = listPresentation.orderedAgents(in: console, searchQuery: agentSearchText)
-        guard !hostFilter.isEmpty else { return agents }
-        return agents.filter { hostFilter.contains($0.hostID) }
+        listPresentation.filteredAgentSlice(
+            in: console,
+            filteredHostIDs: hostFilter,
+            searchQuery: agentSearchText
+        ).hostFiltered
     }
 
     /// After the Host filter and the search, before the status filter: what
     /// the status menu counts.
     private var searchedAgents: [ConsoleAgent] {
-        let hostFiltered = hostFilteredAgents
-        let needle = agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return hostFiltered }
-        return hostFiltered.filter { $0.matchesAgentSearch(needle) }
+        listPresentation.filteredAgentSlice(
+            in: console,
+            filteredHostIDs: hostFilter,
+            searchQuery: agentSearchText
+        ).searched
     }
 
     private var filteredAgents: [ConsoleAgent] {
-        PerfTrace.span("console.list.filtered-agents") {
-            let statusFilter = listPresentation.statusFilter
-            let searched = searchedAgents
-            guard !statusFilter.isEmpty else { return searched }
-            return searched.filter { statusFilter.admits($0) }
-        }
+        listPresentation.filteredAgentSlice(
+            in: console,
+            filteredHostIDs: hostFilter,
+            searchQuery: agentSearchText
+        ).filtered
     }
 
     private var statusFilterCounts: [ConsoleAgentStatusFilter: Int] {
@@ -4290,20 +4308,35 @@ private struct ConsoleAgentListScrollFreeze: ViewModifier {
     let rowChanges: AgentRowChanges
     let mode: ConsoleListPresentationMode
 
+    private nonisolated static func scrollPosition(for geometry: ScrollGeometry) -> ConsoleListScrollPosition {
+        let offsetFromTop = geometry.contentOffset.y + geometry.contentInsets.top
+        let maxOffsetFromTop = max(
+            0,
+            geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+                - geometry.containerSize.height)
+        return ConsoleListScrollPosition(
+            offsetFromTop: offsetFromTop,
+            maxOffsetFromTop: maxOffsetFromTop)
+    }
+
     func body(content: Content) -> some View {
         content
             .onScrollPhaseChange { _, newPhase, context in
                 let active = newPhase.isScrolling
                 rowChanges.setScrollActive(active)
-                presentation.setScrollActive(active, userInitiated: newPhase == .interacting)
-                let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top
-                presentation.updateScrollOffsetFromTop(offset)
+                let position = Self.scrollPosition(for: context.geometry)
+                if active {
+                    presentation.setScrollActive(true, userInitiated: newPhase == .interacting)
+                    presentation.updateScrollPosition(position)
+                } else {
+                    presentation.updateScrollPosition(position)
+                    presentation.setScrollActive(false)
+                }
             }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-                    > ConsoleListPresentationStore.topScrollThreshold
-            } action: { _, scrolledFromTop in
-                presentation.setScrolledFromTop(scrolledFromTop)
+            .onScrollGeometryChange(for: ConsoleListScrollPosition.self) { geometry in
+                Self.scrollPosition(for: geometry)
+            } action: { _, position in
+                presentation.updateScrollPosition(position)
             }
             .onDisappear {
                 rowChanges.setScrollActive(false)
