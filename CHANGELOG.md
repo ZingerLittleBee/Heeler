@@ -28,6 +28,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep a Rex Host's open terminals and Agents, pins, Done and Chat when Rex restarts and brings back its sessions, as Rex 0.1.0-preview.25 does after it stops or crashes. Heeler read every restart as another Rex server: open terminals said **This Terminal belongs to a Rex server that is gone**, and pins and Done were cleared. A restored terminal reconnects and shows a fresh screen. Tried against Rex 0.1.0-preview.25 on macOS. (PR #854)
 - Keep Antigravity CLI Swarm Board and worker detail rows visible when scrolling offscreen and back, instead of leaving blank gaps or an empty screen over an expanded Assignment card, and show each Brief's leading addressee on the Board and in its worker's Assignment card rather than an earlier Brief that only mentions the worker in its body. (PR #853)
 - Read Chat for Claude Code and Codex in Rex 0.1.0-preview.23. That release no longer gives the programs in a terminal `REX_SESSION`, which Heeler required to tell the Agent's process was in that terminal, so Chat could not tell the conversation; Heeler now goes by the terminal's `REX_BLOCK`, which still names it. (PR #846)
 - Start an Agent in a new worktree of a partial clone on herdr-core and tmux Hosts. `git worktree add` failed there with "could not fetch … from promisor remote", because Heeler kept git from fetching the files a blobless clone leaves out. It now fetches them, and answers without waiting for the background maintenance that fetch can start. (PR #842)

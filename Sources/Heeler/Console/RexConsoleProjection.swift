@@ -6,8 +6,10 @@ import Foundation
 /// `RexOrganization` reads them, and a terminal running a known agent program
 /// is an Agent with the status it reported to Rex (ADR 0054).
 ///
-/// A Pane keeps to its server instance, as a tmux Pane does: another instance
-/// leaves every detail open on the last one's terminals, and its Pins go. A
+/// A Pane keeps to its server, as a tmux Pane does: another server leaves
+/// every detail open on the last one's terminals, and its Pins go. A server
+/// that restarted and restored its sessions is the same server under another
+/// instance, and keeps them (ADR 0050). A
 /// terminal opens from the server's redraw (ADR 0051) and takes input from its
 /// first paint (ADR 0052), whether it is a Terminal or the Terminal surface of
 /// an Agent's detail. Nothing is started, closed or renamed on a Rex Host, and
@@ -22,8 +24,8 @@ import Foundation
 /// 0055), the staged paths with the message.
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
-/// device's seen marks (`RexTurnState`) are kept by server instance on this
-/// device only, and an Agent's detail on either surface is looking at it.
+/// device's seen marks (`RexTurnState`) are kept by server on this device
+/// only, and an Agent's detail on either surface is looking at it.
 @MainActor
 final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var host: Host
@@ -36,9 +38,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var transportGeneration: UInt64 = 0
     /// The server on the Host's socket, while one answers.
     private(set) var server: RexServerStatus?
-    /// The instance whose terminals a detail keeps to: the last that answered,
-    /// kept through a reconnect until another one answers.
+    /// The core of the server whose terminals a detail keeps to: the last
+    /// that answered, kept through a reconnect until another server answers.
     private(set) var inventoryCore: String?
+    /// The instance of it that answered last. Another instance of the same
+    /// server runs every program anew.
+    private var inventoryInstance: String?
     /// Until the server that answered has listed its terminals, nothing says
     /// what the Host runs.
     private(set) var isAwaitingSnapshot = true
@@ -50,7 +55,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var terminalsByPane: [String: ConsoleTerminal] = [:]
     private(set) var agentsByPane: [String: ConsoleAgent] = [:]
     /// The Agents as last listed, for a detail open on one while the Host
-    /// recovers. Another instance's are not these.
+    /// recovers. Another server's are not these.
     private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
     private(set) var sidebarRevision: UInt64 = 0
     /// The last inventory folded into rows.
@@ -66,7 +71,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     let terminalLabelKeys: [String] = []
 
-    /// What this device keeps of the Host by server instance, and its Pins.
+    /// What this device keeps of the Host by server, and its Pins.
     private let memory: HerdrCoreHostMemory
     private let pins: PinnedAgentsStore
     private let onChange: @MainActor @Sendable () -> Void
@@ -92,7 +97,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// Time as Composer Send's submit window counts it.
     private let sendClock: BlockedCardClock
     /// Chat's typing by Pane, kept so the screen it last read is the one its
-    /// keys are checked against. Another instance's Panes are other Panes.
+    /// keys are checked against. Another server's Panes are other Panes.
     private var chatTypings: [String: RexChatTyping] = [:]
 
     init(
@@ -108,6 +113,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         self.sendClock = sendClock
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
+        session.seedLineage(memory.rexServerLineage(for: host.id))
     }
 
     /// A read the lab answered in milliseconds, with room for a redraw page
@@ -236,7 +242,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         case .server(let server):
             // What was listed came from the server that answered before, and
             // its Pane ids may repeat under this one.
-            if inventoryCore != server.instanceID {
+            if inventoryCore != server.coreID {
                 invalidateInventory()
                 if inventoryCore != nil {
                     pins.removePins(hostID: host.id)
@@ -246,15 +252,25 @@ final class RexConsoleProjection: ConsoleHostProjection {
                     droppedPicks = [:]
                     chatTypings = [:]
                 }
+            } else if inventoryInstance != server.instanceID {
+                // The same server restarted: its terminals and Pins stay, but
+                // each program in them runs anew, so no pick a send guard
+                // dropped is the new one's. Chat's typing stays, as a Chat
+                // holds its screen reads: it reads the program started again
+                // as another holder, and types nothing over an earlier screen.
+                droppedPicks = [:]
             }
             self.server = server
-            inventoryCore = server.instanceID
+            inventoryCore = server.coreID
+            inventoryInstance = server.instanceID
             // Turns, seen marks and picks this device kept of another
-            // instance, in this run or an earlier one, go with it.
-            memory.noteCore(server.instanceID, for: host.id)
+            // server, in this run or an earlier one, go with it.
+            memory.noteCore(server.coreID, for: host.id)
             learnKernel()
         case .inventory(let inventory):
-            guard status == .connected, server != nil else { return }
+            guard status == .connected, let server else { return }
+            memory.noteRexServerLineage(
+                RexServerLineage(server, sessionIDs: inventory.sessions.map(\.id)), for: host.id)
             noteSessionEvidence(in: inventory, previous: self.inventory)
             self.inventory = inventory
             noteTurns(in: inventory)
@@ -290,7 +306,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     // MARK: Inventory
 
-    /// A Pane belongs to its server: a detail open on another instance's
+    /// A Pane belongs to its server: a detail open on another server's
     /// terminal has left the inventory.
     var keepsDetailsToInventory: Bool { true }
 
@@ -394,10 +410,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     let usesProcessBoundChat = true
 
-    /// Another instance's terminals are other Agents, whose Transcripts are
+    /// Another server's terminals are other Agents, whose Transcripts are
     /// cached apart.
     var chatCacheScope: String? {
-        memory.coreID(for: host.id).map(ChatCacheKey.rexScope(instanceID:))
+        memory.coreID(for: host.id).map(ChatCacheKey.rexScope(coreID:))
     }
 
     func sessionEventRevision(of paneID: String) -> UInt64 {
@@ -437,7 +453,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         guard
             let tree = try await binder.readTerminalProcesses(of: chatRecord(at: address, details: details), ask: ask),
             let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid],
-            inventoryCore == activeServer.instanceID
+            inventoryCore == activeServer.coreID
         else { return nil }
         return ClaudePermissionMode.Launch(pid: pid, facts: facts)
     }
@@ -451,11 +467,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
         let answer = try await chatBinder(at: address, details: details, program: program, server: activeServer)
             .candidates(of: chatRecord(at: address, details: details))
         guard case .listed(var list) = answer else { return answer }
-        list.core = activeServer.instanceID
+        list.core = activeServer.coreID
         return .listed(list)
     }
 
-    /// Kept on this device for the terminal and its server instance, with
+    /// Kept on this device for the terminal and its server, with
     /// the foreground and Agent kind it was made on: nothing is written on
     /// the Host or the server.
     func writeChatPick(
@@ -465,8 +481,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             let value = HerdrCoreSessionHint.pickLabelValue(
                 session: candidate.sessionID, file: candidate.file, pid: list.pid, start: list.start)
         else { throw TransportError.cancelled }
-        guard let activeServer = server, inventoryCore == activeServer.instanceID,
-            list.core == nil || list.core == activeServer.instanceID
+        guard let activeServer = server, inventoryCore == activeServer.coreID,
+            list.core == nil || list.core == activeServer.coreID
         else { throw TransportError.rexServerGone }
         guard let address = RexPaneAddress(paneID: paneID), let details = listedDetails(at: address),
             let kind = RexAgentRule.agentKind(in: details)
@@ -524,13 +540,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
     ) -> HerdrCoreSessionBinder {
         let session = session
         let paneID = address.paneID
-        let instance = activeServer.instanceID
+        let core = activeServer.coreID
         return HerdrCoreSessionBinder(
             program: program,
             processes: { request in try await Self.reads(session).readProcesses(request) },
             files: chatHostFiles(),
-            clearLabels: { stale in await self.clearStalePick(stale, at: paneID, on: instance) },
-            currentLabels: { await self.pickLabels(at: paneID, on: instance) },
+            clearLabels: { stale in await self.clearStalePick(stale, at: paneID, on: core) },
+            currentLabels: { await self.pickLabels(at: paneID, on: core) },
             isDroppedPick: { value in await self.droppedPicks[paneID]?.contains(value) == true },
             hostSystem: HerdrCoreHostSystem(kernel: kernel),
             processScope: .rex(
@@ -565,8 +581,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// The terminal's pick as it stands now; nil once its server or the
     /// terminal is gone, which says nothing newer.
-    private func pickLabels(at paneID: String, on instance: String) -> [String: String]? {
-        guard inventoryCore == instance, let address = RexPaneAddress(paneID: paneID),
+    private func pickLabels(at paneID: String, on core: String) -> [String: String]? {
+        guard inventoryCore == core, let address = RexPaneAddress(paneID: paneID),
             listedDetails(at: address) != nil
         else { return nil }
         return memory.rexChatPicks(for: host.id)[paneID].map { [HerdrCoreSessionHint.pickLabel: $0.label] } ?? [:]
@@ -574,8 +590,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// A pick the binder found stale goes, if it is still the one kept. The
     /// check that found it already answers without it.
-    private func clearStalePick(_ stale: [String: String], at paneID: String, on instance: String) {
-        guard inventoryCore == instance, let value = stale[HerdrCoreSessionHint.pickLabel],
+    private func clearStalePick(_ stale: [String: String], at paneID: String, on core: String) {
+        guard inventoryCore == core, let value = stale[HerdrCoreSessionHint.pickLabel],
             memory.rexChatPicks(for: host.id)[paneID]?.label == value
         else { return }
         memory.setRexChatPick(nil, of: paneID, for: host.id)
@@ -804,7 +820,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func blockRequests(at address: RexPaneAddress, keepingTo pin: TerminalCorePin) async throws -> RexBlockRequests {
         guard admits(pin) else { throw TransportError.rexServerGone }
         let requests = try await session.blockRequests(at: address, readDeadline: chatReadDeadline)
-        guard pin.admits(requests.server.instanceID) else { throw TransportError.rexServerGone }
+        guard pin.admits(requests.server.coreID) else { throw TransportError.rexServerGone }
         return requests
     }
 
@@ -834,7 +850,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
             }
             do {
                 try await session.withTerminal(address) { connection in
-                    guard await handler.admitsCore(connection.server.instanceID) else {
+                    guard await handler.admitsCore(connection.server.coreID) else {
                         throw TerminalProgramEnd.finished
                     }
                     await handler.transportDidBecomeReady(connection.generation)
@@ -880,14 +896,14 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// a server that is gone stages nothing.
     var stagingSaysTransportFailures: Bool { true }
 
-    /// The live connection's staging, while its server is the instance `pin`
-    /// keeps to; another instance throws `TransportError.rexServerGone`
+    /// The live connection's staging, while its server is the one `pin`
+    /// keeps to; another server throws `TransportError.rexServerGone`
     /// before anything is staged, as Chat's block requests do. What the
     /// session throws while no server answers passes through.
     private func staging(keepingTo pin: TerminalCorePin) async throws -> any RexHostStaging {
         guard admits(pin) else { throw TransportError.rexServerGone }
-        let (staging, instanceID) = try await session.withConnection { ($0.transport.staging, $0.server.instanceID) }
-        guard admits(pin), pin.admits(instanceID) else { throw TransportError.rexServerGone }
+        let (staging, core) = try await session.withConnection { ($0.transport.staging, $0.server.coreID) }
+        guard admits(pin), pin.admits(core) else { throw TransportError.rexServerGone }
         return staging
     }
 
@@ -912,14 +928,14 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// Writes Heeler's extension into `folder` over the Host's SSH connection
     /// (`RexHostExtensionPlacing`), for the Agent on the server `corePin`
-    /// keeps to, then has its Chat look again. Another instance throws
+    /// keeps to, then has its Chat look again. Another server throws
     /// `TransportError.rexServerGone` before anything is written.
     func placeChatExtension(_ contents: Data, inFolder folder: String, keepingTo pin: TerminalCorePin?) async throws {
         if let pin { guard admits(pin) else { throw TransportError.rexServerGone } }
-        let (placing, instanceID) = try await session.withConnection {
-            ($0.transport.extensionPlacing, $0.server.instanceID)
+        let (placing, core) = try await session.withConnection {
+            ($0.transport.extensionPlacing, $0.server.coreID)
         }
-        if let pin { guard admits(pin), pin.admits(instanceID) else { throw TransportError.rexServerGone } }
+        if let pin { guard admits(pin), pin.admits(core) else { throw TransportError.rexServerGone } }
         try await placing.placeHeelersExtension(contents, inFolder: folder)
         inventoryReplacements &+= 1
         onChange()
