@@ -48705,6 +48705,16 @@
         }
       }
     },
+    "Plugin Updated on Host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件已更新到主机"
+          }
+        }
+      }
+    },
     "Plugin and Helper on %lld Hosts" : {
       "comment" : "Under the updates card's title: plugins and Helpers have updates. Argument: on how many Hosts.",
       "localizations" : {
@@ -77593,6 +77603,16 @@
         }
       }
     },
+    "Update Amp Plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 Amp 插件"
+          }
+        }
+      }
+    },
     "Update Heeler" : {
       "localizations" : {
         "ja" : {
@@ -77656,6 +77676,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新 Heeler，然後重新連線。"
+          }
+        }
+      }
+    },
+    "Update Heeler’s Amp plugin on this Host to read complete messages and tool output." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新此主机上的 Heeler Amp 插件，即可查看完整消息和工具输出。"
           }
         }
       }
@@ -77769,6 +77799,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新主機上的 herdr。"
+          }
+        }
+      }
+    },
+    "Update on This Host" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此主机上更新"
           }
         }
       }

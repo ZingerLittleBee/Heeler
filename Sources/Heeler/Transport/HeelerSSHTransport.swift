@@ -3382,17 +3382,17 @@ actor HeelerSSHTransport: Transport {
         do {
             data = try await channelAdmission.withChannel(.ordinaryForwarding, priority: .interactive) {
                 try await self.connection.exchangeStreamLocal(
-                    socketPath: record.socket, request: line, maximumResponseBytes: 2 << 20, timeout: timeout)
+                    socketPath: record.socket, request: line, maximumResponseBytes: 3 << 20, timeout: timeout)
             }
         } catch is CancellationError { throw CancellationError() }
         catch { throw AmpChatProblem.unreachable }
         return try JSONDecoder().decode(AmpChatReply.self, from: data)
     }
 
-    func installAmpChatPlugin(in directory: String) async throws {
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
         let contents = String(decoding: try AmpPluginLocation.bundledContents(), as: UTF8.self)
         let result = try await runBoundedScript(
-            AmpPluginLocation.installScript(directory: directory, contents: contents),
+            AmpPluginLocation.installScript(directory: directory, contents: contents, replacing: previous),
             feature: String(localized: "Amp Chat"), deadline: .seconds(15), remoteSeconds: 10,
             timeoutMarkerPrefix: "__HEELER_AMP_INSTALL_", timedOut: .hostFileTimedOut, priority: .interactive)
         if result.exitStatus == 73 { throw AmpChatProblem.conflict }

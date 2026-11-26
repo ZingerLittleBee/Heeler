@@ -149,9 +149,7 @@ struct ChatSendProfile: Sendable {
     static func standard(for program: ChatProgram) -> ChatSendProfile {
         switch program {
         case .amp:
-            ChatSendProfile(exitWords: [], refusal: { _, trimmed in
-                trimmed.hasPrefix("/") ? .unsafeText(String(localized: "Run Amp commands in the terminal.")) : nil
-            })
+            ChatSendProfile(exitWords: [])
         case .claude:
             // Claude Code runs `/exit` for these whole inputs.
             ChatSendProfile(exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"])
@@ -264,8 +262,9 @@ struct ChatSendRules: Sendable {
     /// from leaving a completion popup open when Enter arrives. A command
     /// the profile submits bare goes alone, without the space.
     func outgoingText(_ draft: String) -> String {
+        // Amp receives message text directly through its plugin, without a terminal paste.
+        if program == .amp { return TerminalTextSafety.normalizingNewlines(draft) }
         let clean = TerminalTextSafety.normalizingNewlines(Self.removingInvisibles(draft))
-        if program == .amp { return clean }
         let body: String
         switch read(draft) {
         case .command(let command, let arguments):
@@ -303,6 +302,7 @@ struct ChatSendRules: Sendable {
         let name = String(afterSlash.prefix { !$0.isWhitespace })
         // `/usr/bin/env` is a path in prose, not a command.
         if name.contains("/") { return .text }
+        if program == .amp { return .refused(.unsafeText(String(localized: "Run Amp commands in the terminal."))) }
         guard let command = ChatCommandMenu.command(named: name, in: commands) else {
             return .refused(.unknownCommand(name))
         }

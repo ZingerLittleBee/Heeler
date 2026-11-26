@@ -7,6 +7,7 @@ extension ChatUnavailableReason {
     var title: String {
         switch self {
         case .amp(.missing): String(localized: "Connect Amp Chat")
+        case .amp(.update): String(localized: "Update Amp Plugin")
         case .amp(.reload): String(localized: "Reload the Amp Plugin")
         case .amp(.noThread): String(localized: "Open an Amp Thread")
         case .amp: String(localized: "Amp Chat Is Unavailable")
@@ -722,14 +723,22 @@ struct ChatUnavailableView: View {
     /// Whether a settling action leads the capsule stack as the primary action.
     private var hasSettlingAction: Bool {
         chooseConversation != nil
-            || (reason == .amp(.missing) && installAmp != nil)
+            || (ampInstallTitle != nil && installAmp != nil)
             || (reviewEdit != nil && reason.offersOpenCodePluginEdit)
             || (addExtension != nil && reason.offersHeelersExtension)
     }
 
+    private var ampInstallTitle: String? {
+        switch reason {
+        case .amp(.missing): String(localized: "Install Amp Plugin")
+        case .amp(.update): String(localized: "Update Amp Plugin")
+        default: nil
+        }
+    }
+
     @ViewBuilder private var capsuleActions: some View {
-        if reason == .amp(.missing), let installAmp {
-            Button("Install Amp Plugin", action: installAmp)
+        if let ampInstallTitle, let installAmp {
+            Button(ampInstallTitle, action: installAmp)
                 .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
                 .accessibilityIdentifier("chat.amp.install")
         }

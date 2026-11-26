@@ -10,7 +10,7 @@ enum AmpInputBox {
             let top = rows[..<bottom].lastIndex(where: { $0.hasPrefix("╭─") && $0.hasSuffix("─╮") }),
             bottom > top + 1
         else { return unknown }
-        if hasOverlay(in: rows[..<top]) || rows[top].contains("│") { return .noComposer(openComposer) }
+        if hasCommandPalette(in: rows[..<top]) || rows[top].contains("│") { return .noComposer(openComposer) }
         let footer = rows[bottom]
         guard footer.hasPrefix("╰"), footer.hasSuffix("─╯") else { return unknown }
         var draft: [String] = []
@@ -26,38 +26,20 @@ enum AmpInputBox {
         return .empty(placeholder: nil)
     }
 
-    /// A floating dialog can leave transcript text visible on both sides
-    /// of its title. Amp draws Markdown tables with the same rounded corners.
-    private static func hasOverlay(in history: ArraySlice<String>) -> Bool {
+    /// A floating palette can leave transcript text on either side of its frame.
+    /// Require its search field as well as its title before holding a send.
+    private static func hasCommandPalette(in history: ArraySlice<String>) -> Bool {
         for index in history.indices {
             let line = history[index]
-            var remainder = line[...]
-            while let start = remainder.range(of: "╭─") {
-                let inside = line.index(after: start.lowerBound)
-                guard let edge = line[inside...].range(of: "─╮") else { break }
-                let prefix = line[..<start.lowerBound]
-                let border = line[inside..<line.index(before: edge.upperBound)]
-                guard isTable(border: border, prefix: prefix, rows: history[(index + 1)...]) else { return true }
-                remainder = line[edge.upperBound...]
-            }
+            guard let title = line.range(of: "╭─ Command Palette "),
+                line[title.upperBound...].hasPrefix("─"),
+                line[title.upperBound...].contains("─╮")
+            else { continue }
+            if history[(index + 1)...].prefix(3).contains(where: { row in
+                guard let field = row.range(of: "│ >") else { return false }
+                return row[field.upperBound...].contains("│")
+            }) { return true }
         }
         return false
-    }
-
-    /// Match the divider and bottom at the same inset and column junctions,
-    /// including a one-column table. The transcript scrollbar may follow them.
-    private static func isTable(border: Substring, prefix: Substring, rows: ArraySlice<String>) -> Bool {
-        guard border.allSatisfy({ $0 == "─" || $0 == "┬" }) else { return false }
-        let divider = prefix + "├" + border.replacingOccurrences(of: "┬", with: "┼") + "┤"
-        let bottom = prefix + "╰" + border.replacingOccurrences(of: "┬", with: "┴") + "╯"
-        let cell = prefix + "│"
-        var sawDivider = false
-        for row in rows {
-            if row.hasPrefix(bottom) { return sawDivider }
-            if row.hasPrefix(divider) { sawDivider = true }
-            else if !row.hasPrefix(cell) { return false }
-        }
-        // The viewport can cut off the lower rows of a tall table.
-        return sawDivider
     }
 }

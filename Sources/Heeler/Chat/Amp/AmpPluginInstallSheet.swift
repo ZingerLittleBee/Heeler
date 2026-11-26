@@ -1,9 +1,16 @@
 import SwiftUI
 
 struct AmpPluginInstallSheet: View {
+    struct Request: Identifiable {
+        let place: AmpPluginLocation
+        let updating: Bool
+        var id: String { place.id }
+    }
+
     let host: String
     let account: String?
     let place: AmpPluginLocation
+    let updating: Bool
     let connection: AmpChatConnection
     let installed: () -> Void
 
@@ -28,17 +35,18 @@ struct AmpPluginInstallSheet: View {
                 }
                 Section {
                     if finished {
-                        Label("Plugin Installed on Host", systemImage: "checkmark.circle")
+                        Label(updating ? String(localized: "Plugin Updated on Host") : String(localized: "Plugin Installed on Host"),
+                              systemImage: "checkmark.circle")
                         Text(AmpChatProblem.reload.explanation)
                     } else if writing {
                         ProgressView()
                     } else {
-                        Button("Install on This Host") {
+                        Button(updating ? String(localized: "Update on This Host") : String(localized: "Install on This Host")) {
                             writing = true
                             Task {
                                 defer { writing = false }
                                 do {
-                                    try await connection.install(place)
+                                    try await connection.install(place, updating: updating)
                                     finished = true
                                     detent = .large
                                     failure = nil
@@ -51,7 +59,7 @@ struct AmpPluginInstallSheet: View {
                     }
                 }
             }
-            .navigationTitle("Install Amp Plugin")
+            .navigationTitle(updating ? String(localized: "Update Amp Plugin") : String(localized: "Install Amp Plugin"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(writing) } }
         }

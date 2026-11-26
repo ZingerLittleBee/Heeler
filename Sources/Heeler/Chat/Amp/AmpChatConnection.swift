@@ -47,9 +47,10 @@ final class AmpChatConnection {
             guard check == inspection else { throw CancellationError() }
             location = place
             guard let record, record.pid == place.pid, record.start == place.start else {
-                throw try await place.installationProblem(files)
+                throw try await place.installation(files).problem
             }
             guard record.version == 1 else { throw AmpChatProblem.incompatible }
+            guard (record.contentRevision ?? 1) >= 2 else { throw try await place.installation(files).problem }
             let reply = try await exchange(AmpChatRequest("binding"), record: record)
             guard check == inspection else { throw CancellationError() }
             guard let binding = reply.binding, binding.version == 1, binding.instance == record.instance,
@@ -75,22 +76,34 @@ final class AmpChatConnection {
         return value
     }
 
-    func install(_ place: AmpPluginLocation) async throws {
+    func install(_ place: AmpPluginLocation, updating: Bool = false) async throws {
         guard try await locate() == place else { throw AmpChatProblem.changed }
-        try await projection().session.withTransportOnce { try await $0.installAmpChatPlugin(in: place.directory) }
+        let previous: Data?
+        if updating {
+            let state = try await place.installation(projection().chatHostFiles())
+            guard state.problem == .update || state.problem == .reload else { throw state.problem }
+            previous = state.previous
+        } else { previous = nil }
+        try await projection().session.withTransportOnce {
+            try await $0.installAmpChatPlugin(in: place.directory, replacing: previous)
+        }
     }
 
     private func exchange(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
         try await projection().session.withTransportOnce { try await $0.exchangeAmpChat(request, record: record) }
     }
 
-    func page(thread: String, expected: AmpChatTarget?, offset: Int?, limit: Int) async throws -> (AmpChatTarget, AmpChatPage) {
+    func page(
+        thread: String, expected: AmpChatTarget?, offset: Int?, limit: Int, expandedCall: String? = nil
+    ) async throws -> (AmpChatTarget, AmpChatPage) {
         guard let target = current, target.binding.thread == thread, expected == nil || expected == target else {
             throw ChatSourceUnavailable(reason: .amp(.changed))
         }
         var request = AmpChatRequest("page", target: target)
         request.offset = offset
         request.limit = limit
+        request.fullText = true
+        request.expandedCall = expandedCall
         let reply = try await exchange(request, record: target.record)
         guard current == target, reply.error != "stale" else { throw ChatSourceUnavailable(reason: .amp(.changed)) }
         guard let page = reply.page, page.total >= 0, page.offset >= 0, page.rows.count <= limit,

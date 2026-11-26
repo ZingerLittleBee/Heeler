@@ -58,7 +58,11 @@ struct AmpRecordSource: ChatTranscriptSource {
     }
 
     func line(at reference: ChatOutputReference, files: ChatHostFiles) async throws -> ChatLine? {
-        guard let index = Int(exactly: reference.offset), let row = held[index] else { return nil }
+        guard let index = Int(exactly: reference.offset), let heldRow = held[index], let target,
+            let call = reference.callID, heldRow.blocks.contains(where: { $0.type == "tool_result" && $0.call == call }),
+            let amp = files.amp else { return nil }
+        let (_, page) = try await amp.page(thread: thread, expected: target, offset: index, limit: 1, expandedCall: call)
+        guard let row = page.rows.first, row.id == heldRow.id else { return nil }
         return try ChatLine(offset: reference.offset, data: JSONEncoder().encode(row))
     }
 

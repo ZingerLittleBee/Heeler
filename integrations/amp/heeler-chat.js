@@ -9,6 +9,8 @@ import { join } from "node:path";
 const version = 1;
 const messageLimit = 20;
 const maxRequest = 128 * 1024;
+const maxPrompt = 96 * 1024;
+const expandedOutput = 64 * 1024;
 
 function privateDirectory(path) {
   mkdirSync(path, { recursive: true, mode: 0o700 });
@@ -30,23 +32,59 @@ function processStart(pid) {
 
 function text(value, limit) {
   if (typeof value !== "string") return "";
-  return value.length <= limit ? value : value.slice(0, limit) + "…";
+  if (value.length <= limit) return value.toWellFormed();
+  const last = value.charCodeAt(limit - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit;
+  return value.slice(0, end).toWellFormed() + "…";
 }
 
-function outputText(value) {
-  if (typeof value === "string") return value;
-  if (!Array.isArray(value)) return "";
-  return value.filter(part => part.type === "text").map(part => text(part.text, 4096)).join("\n");
+function toolResult(part, limit) {
+  const bytes = Buffer.allocUnsafe(limit);
+  let used = 0;
+  let truncated = false;
+  function append(value) {
+    const written = bytes.write(value, used, limit - used, "utf8");
+    used += written;
+    truncated = written < value.length || written < Buffer.byteLength(value);
+  }
+  if (typeof part.output === "string") append(part.output);
+  else if (Array.isArray(part.output)) {
+    let first = true;
+    for (const item of part.output) {
+      if (item?.type !== "text" || typeof item.text !== "string") continue;
+      if (!first) append("\n");
+      if (truncated) break;
+      append(item.text);
+      if (truncated) break;
+      first = false;
+    }
+  }
+  return { type: part.type, call: text(part.toolUseID, 256), status: part.status,
+    text: bytes.toString("utf8", 0, used), truncated: truncated || undefined };
 }
 
 function messageID(id) {
   return (typeof id === "number" ? "n:" : "s:") + id;
 }
 
-function row(message) {
+function blocksFor(message, request) {
+  const content = message.content ?? [];
+  if (request.expandedCall !== undefined) {
+    const result = content.find(part => part.type === "tool_result" && part.toolUseID === request.expandedCall);
+    return result ? [toolResult(result, expandedOutput)] : [];
+  }
+  // A submitted plain-text prompt is also its delivery receipt in the transcript.
+  // Preserve every prompt that fits a send envelope, including JSON escapes.
+  if (request.fullText === true && message.role === "user" && content.length === 1 && content[0].type === "text") {
+    const value = content[0].text;
+    if (typeof value === "string" && value.length <= maxPrompt && Buffer.byteLength(value) <= maxPrompt &&
+        Buffer.byteLength(JSON.stringify(value)) < maxRequest) {
+      return [{ type: "text", text: value.toWellFormed() }];
+    }
+  }
   let remaining = 14000;
   const blocks = [];
-  for (const part of message.content ?? []) {
+  for (const part of content) {
     if (remaining <= 0 || blocks.length >= 96) {
       blocks.push({ type: "text", text: "…" });
       break;
@@ -62,15 +100,19 @@ function row(message) {
           text: text(JSON.stringify(part.input ?? {}), Math.min(remaining, 4096)) };
         break;
       case "tool_result":
-        block = { type: part.type, call: text(part.toolUseID, 256), status: part.status,
-          text: text(outputText(part.output), Math.min(remaining, 4096)) };
+        block = toolResult(part, Math.min(remaining, 4096));
         break;
       default: continue;
     }
     remaining -= (block.text ?? "").length + 64;
     blocks.push(block);
   }
-  return { id: messageID(message.id), role: message.role, createdAt: message.createdAt, end: message.stopReason, blocks };
+  return blocks;
+}
+
+function row(message, request) {
+  return { id: messageID(message.id), role: message.role, createdAt: message.createdAt,
+    end: message.stopReason, blocks: blocksFor(message, request) };
 }
 
 export default function activate(amp) {
@@ -145,7 +187,7 @@ export default function activate(amp) {
     const thread = amp.threads.get(focused);
     if (q.op === "send") {
       if (typeof q.requestID !== "string" || !/^[0-9a-f-]{36}$/i.test(q.requestID) ||
-          typeof q.text !== "string" || !q.text.trim() || Buffer.byteLength(q.text) > 96 * 1024) return { error: "invalid" };
+          typeof q.text !== "string" || !q.text.trim() || Buffer.byteLength(q.text) > maxPrompt) return { error: "invalid" };
       const previous = submissions.get(q.requestID);
       if (previous) return previous.thread === focused && previous.revision === revision
         ? previous.result : { error: "stale" };
@@ -164,6 +206,10 @@ export default function activate(amp) {
     if (q.op !== "page") return { error: "invalid" };
     if (q.offset != null && (!Number.isSafeInteger(q.offset) || q.offset < 0)) return { error: "invalid" };
     if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > messageLimit) return { error: "invalid" };
+    if (q.expandedCall !== undefined &&
+        (typeof q.expandedCall !== "string" || q.expandedCall.length > 256 || q.offset == null || q.limit !== 1)) {
+      return { error: "invalid" };
+    }
     const total = await count(thread, q);
     if (!matches(q)) return { error: "stale" };
     knownCount = total;
@@ -171,7 +217,7 @@ export default function activate(amp) {
     const limit = Math.min(q.limit, Math.max(0, total - offset));
     const page = limit ? await thread.messages({ full: true, from: "start", offset, limit }) : [];
     if (!matches(q) || !isPublished()) return { error: "stale" };
-    return { page: { offset, total, rows: page.map(row) } };
+    return { page: { offset, total, rows: page.map(message => row(message, q)) } };
   }
 
   const server = createServer(client => {
@@ -199,7 +245,7 @@ export default function activate(amp) {
   server.listen(socket, () => {
     chmodSync(socket, 0o600);
     const temporary = record + "." + instance;
-    writeFileSync(temporary, JSON.stringify({ version, pid, start, uid, instance }), { flag: "wx", mode: 0o600 });
+    writeFileSync(temporary, JSON.stringify({ version, contentRevision: 2, pid, start, uid, instance }), { flag: "wx", mode: 0o600 });
     renameSync(temporary, record);
   });
   server.unref();

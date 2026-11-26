@@ -68,7 +68,8 @@ struct AmpTranscriptReducer: ChatTranscriptReducer {
                     case "cancelled": tool.status = .interrupted
                     default: tool.status = .running
                     }
-                    tool.preview = .init(capping: value)
+                    tool.preview = block.outputPreview
+                    tool.output = .init(offset: offset, length: 0, callID: call)
                     transcript.entries[position].content = .tool(tool)
                     continue
                 default: continue
@@ -81,6 +82,13 @@ struct AmpTranscriptReducer: ChatTranscriptReducer {
         }
         transcript.needsOlderHistory = context.windowStart != 0 && (transcript.turns.isEmpty || missingToolCall)
         return transcript
+    }
+
+    func output(of line: ChatLine, for tool: ChatToolActivity) -> ChatToolOutput? {
+        guard let call = tool.callID, let row = try? JSONDecoder().decode(AmpChatPage.Row.self, from: line.data),
+            let block = row.blocks.first(where: { $0.type == "tool_result" && $0.call == call })
+        else { return nil }
+        return .preview(block.outputPreview)
     }
 
     /// Amp appends suggestions as a standalone HTML block at the end of its

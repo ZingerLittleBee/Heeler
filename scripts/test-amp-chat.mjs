@@ -49,7 +49,8 @@ test("Amp publishes the focused thread and scopes pages and sends to that select
     for (let i = 0; i < 100; i++) {
       try {
         const path = join(home, ".local/state/heeler/amp", process.ppid + ".json");
-        const { uid, instance } = JSON.parse(await readFile(path, "utf8"));
+        const { uid, instance, contentRevision } = JSON.parse(await readFile(path, "utf8"));
+        assert.equal(contentRevision, 2);
         const socket = "/tmp/heeler-amp-" + uid + "/" + instance + ".sock";
         if (!sockets.includes(socket)) { sockets.push(socket); return socket; }
       } catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -81,12 +82,47 @@ test("Amp publishes the focused thread and scopes pages and sends to that select
   const acks = await Promise.all([request(socket, "send", send), request(socket, "send", send)]);
   assert.deepEqual(acks, [{ sent: true }, { sent: true }]);
 
+  const prompt = "a".repeat(15000) + " 👩🏽‍💻";
+  assert.deepEqual(await request(socket, "send", { ...send, requestID: randomUUID(), text: prompt }), { sent: true });
+  rows.push({ id: "long", role: "user", content: [{ type: "text", text: submissions.at(-1)[1] }] });
+  const assistantText = "x".repeat(13999) + "😀" + "x".repeat(90000);
+  rows.push({ id: "unicode", role: "assistant", content: [{ type: "text", text: assistantText }] });
+  const log = "x".repeat(8192) + " final error";
+  rows.push({ id: "tools", role: "user", content: [
+    { type: "tool_result", toolUseID: "build", status: "done", output: [
+      { type: "text", text: log }, { type: "text", text: "exit 1" },
+    ] },
+    { type: "tool_result", toolUseID: "test", status: "done", output: "π".repeat(40000) },
+  ] });
+  const projected = await request(socket, "page", { ...binding, fullText: true, offset: 51, limit: 3 });
+  const [user, assistant, tools] = projected.page.rows;
+  assert.equal(user.blocks[0].text, prompt, "every accepted mobile prompt must reconcile with its complete record");
+  assert.ok(assistant.blocks[0].text.isWellFormed(), "a truncated reply must decode as Unicode");
+  assert.equal(tools.blocks[0].truncated, true, "the app must know when to fetch the rest");
+  const legacy = await request(socket, "page", { ...binding, offset: 51, limit: 1 });
+  assert.ok(legacy.page.rows[0].blocks[0].text.length < prompt.length);
+  const expand = call => request(socket, "page", { ...binding, offset: 53, limit: 1, expandedCall: call });
+  const full = await expand("build");
+  assert.deepEqual(full.page.rows[0].blocks.map(block => [block.call, block.text]), [["build", log + "\nexit 1"]]);
+  const capped = (await expand("test")).page.rows[0].blocks[0];
+  assert.equal(capped.truncated, true);
+  assert.ok(capped.text.isWellFormed() && Buffer.byteLength(capped.text) <= 64 * 1024);
+  assert.deepEqual((await expand("missing")).page.rows[0].blocks, []);
+  assert.deepEqual(await request(socket, "page", { ...binding, limit: 20, expandedCall: "build" }), { error: "invalid" });
+  const escaped = '"'.repeat(30 * 1024) + "a".repeat(66 * 1024);
+  assert.deepEqual(await request(socket, "send", { ...send, requestID: randomUUID(), text: escaped }), { sent: true });
+  for (let i = 0; i < 20; i++) rows.push({ id: i + 54, role: "user", content: [{ type: "text", text: escaped }] });
+  const maxPage = await request(socket, "page", { ...binding, fullText: true, offset: 54, limit: 20 });
+  assert.equal(maxPage.page.rows.length, 20);
+  assert.ok(maxPage.page.rows.every(row => row.blocks[0].text === escaped));
+  assert.ok(Buffer.byteLength(JSON.stringify(maxPage)) < 3 * 1024 * 1024);
+
   duringRead = () => select(second);
-  assert.deepEqual(await request(socket, "page", { ...binding, limit: 20 }), { error: "stale" });
+  assert.deepEqual(await expand("build"), { error: "stale" });
   select(first);
   assert.deepEqual(await request(socket, "send", { ...send, requestID: randomUUID() }), { error: "stale" });
   const next = await load();
   assert.deepEqual(await request(socket, "binding"), { error: "stale" });
   assert.deepEqual(await request(next, "send", send), { error: "stale" });
-  assert.deepEqual(submissions, [[first, "same"]]);
+  assert.deepEqual(submissions, [[first, "same"], [first, prompt], [first, escaped]]);
 });

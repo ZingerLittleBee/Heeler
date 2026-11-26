@@ -740,11 +740,14 @@ struct ChatOutputReference: Equatable, Codable, Sendable {
     var path: String?
     var offset: UInt64
     var length: Int
+    /// The result to fetch when a single record holds multiple tool calls.
+    var callID: String?
 
-    init(path: String? = nil, offset: UInt64, length: Int) {
+    init(path: String? = nil, offset: UInt64, length: Int, callID: String? = nil) {
         self.path = path
         self.offset = offset
         self.length = length
+        self.callID = callID
     }
 }
 

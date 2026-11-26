@@ -71,6 +71,27 @@ struct AmpChatTests {
         }
     }
 
+    @Test func expandingAnAmpToolReadsItsOwnResultPastThePreview() throws {
+        func line(_ offset: UInt64, _ json: String) -> ChatLine { .init(offset: offset, data: Data(json.utf8)) }
+        let call = line(2, #"{"id":"s:a","role":"assistant","blocks":[{"type":"tool_use","call":"build","name":"shell_command"}]}"#)
+        let preview = line(3, #"{"id":"s:b","role":"user","blocks":[{"type":"tool_result","call":"build","status":"done","text":"start","truncated":true}]}"#)
+        var reducer = AmpTranscriptReducer()
+        reducer.append([call, preview])
+        let entry = try #require(reducer.transcript(.init()).entries.first)
+        guard case .tool(let tool) = entry.content else { Issue.record("Missing tool"); return }
+        let reference = try #require(tool.output)
+        #expect(reference.offset == 3)
+        #expect(tool.previewIsIncomplete)
+        let full = String(repeating: "x", count: 8192) + " final error"
+        let expanded = line(3, #"{"id":"s:b","role":"user","blocks":[{"type":"tool_result","call":"other","text":"wrong"},{"type":"tool_result","call":"build","text":"\#(full)"}]}"#)
+        let result = ChatToolPreview.$limits.withValue(ChatToolPreview.expandedLimits) {
+            reducer.output(of: expanded, for: tool)
+        }
+        guard case .preview(let output, _)? = result else { Issue.record("Missing expanded result"); return }
+        #expect(output?.text == full)
+        #expect(output?.isTruncated == false)
+    }
+
     @Test func aTranscriptTableAllowsSendButAFloatingPaletteStillHoldsIt() async throws {
         let composer = try ScreenFixture.text("amp-01-idle")
         let rules = ChatSendRules(program: .amp, commands: [])
@@ -85,6 +106,9 @@ struct AmpChatTests {
             [" ╭────────╮ █", " │ Result │ █", " ├────────┤ █", " │ Free   │ █", " ╰────────╯ █"],
             [" ╭───────┬──────╮", " │ Case  │ Free │", " ├───────┼──────┤", " │ Day 1 │ Yes  │"],
             ["Use ╭─ to begin a rounded border."],
+            ["Example: ╭────╮ and ╰────╯."],
+            ["╭────╮", "│ UI │", "╰────╯"],
+            ["The palette is drawn as ╭─ Command Palette ─╮ in the terminal."],
         ] {
             #expect(await preflight(table) == nil)
         }
@@ -92,6 +116,17 @@ struct AmpChatTests {
                        " text    ╰───────────────────╯ behind it"]
         guard case .inputNotReady = await preflight(overlay) else {
             Issue.record("A palette floating entirely above the composer must hold Send"); return
+        }
+    }
+
+    @Test func ampSendsFileReferencesAndUnicodeAsOrdinaryText() {
+        let rules = ChatSendRules(program: .amp, commands: [])
+        let path = HostFilesBrowser.reference(to: "/tmp/report.csv", from: "/work")
+        let draft = path + " 👩🏽‍💻 ❤️\r\ncheck the total"
+        #expect(rules.validate(draft) == nil)
+        #expect(rules.outgoingText(draft) == path + " 👩🏽‍💻 ❤️\ncheck the total")
+        guard case .unsafeText = rules.validate("/help") else {
+            Issue.record("Amp commands belong in Terminal"); return
         }
     }
 
@@ -149,9 +184,17 @@ struct AmpChatTests {
             ChatHostFiles(status: { _ in nil }, list: list, read: { _ in throw AmpChatProblem.unreachable },
                           home: { "/home/test" })
         }
-        #expect(try await location.installationProblem(files { _ in throw TransportError.hostFileUnreadable(status: 2) }) == .missing)
-        #expect(try await location.installationProblem(files { _ in
+        #expect(try await location.installation(files { _ in throw TransportError.hostFileUnreadable(status: 2) }).problem == .missing)
+        #expect(try await location.installation(files { _ in
             .init(entries: [.init(name: "heeler-chat.js", status: .init(kind: .symlink, size: 0))])
-        }) == .conflict)
+        }).problem == .conflict)
+        let bundled = try AmpPluginLocation.bundledContents()
+        for (contents, problem) in [(bundled, AmpChatProblem.reload), (Data(repeating: 32, count: 8078), .conflict)] {
+            let size = UInt64(contents.count)
+            let regular = ChatHostFiles(status: { _ in nil }, list: { _ in
+                .init(entries: [.init(name: "heeler-chat.js", status: .init(kind: .regular, size: size))])
+            }, read: { _ in .init(data: contents, length: size) }, home: { "/home/test" })
+            #expect(try await location.installation(regular).problem == problem)
+        }
     }
 }

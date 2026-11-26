@@ -21,10 +21,15 @@ thread stays unbound. Historical Chat data cannot authorize a send.
 
 The app bundles the plugin and offers to install it in the running Amp
 account's configuration after the user confirms the Host and path. An
-identical installation can be repeated safely. A different existing file is
-left for the user to inspect. The user reloads plugins in running terminals.
+identical installation can be repeated safely. Chat offers an update for a
+known earlier bundle, checks its bytes again before replacing it, and leaves
+custom files and symlinks for the user to inspect. The user reloads plugins
+in running terminals.
 
-Chat reads bounded pages of full messages from the selected thread. The
+Chat reads bounded pages from the selected thread. Each page keeps the
+complete text of a mobile prompt so Chat can confirm delivery. Tool results
+carry a small preview. Expanding one reads that call from the same message
+and binding, up to 1,000 lines or 64 KiB. The
 plugin checks the selection before and after asynchronous reads. Each load
 has its own instance and each change of selection advances a revision,
 including a switch away and back. The Composer sends ordinary text with
