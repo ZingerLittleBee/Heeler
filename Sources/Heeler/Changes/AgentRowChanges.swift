@@ -54,7 +54,11 @@ final class AgentRowChanges {
     /// so a row shown before its Agent reports a directory still counts.
     @ObservationIgnored private var visibleRows: [ConsoleAgent.ID: Int] = [:]
     @ObservationIgnored private var isScrollActive = false
+    @ObservationIgnored private var deferredForegroundHosts: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var bypassedForegroundYieldUntil: [Host.ID: ContinuousClock.Instant] = [:]
     @ObservationIgnored private let reads: @MainActor (ConsoleAgent) -> Bool
+    @ObservationIgnored private let defersForForegroundLoad: @MainActor (Host.ID) -> Bool
+    @ObservationIgnored private let yieldToForegroundLoad: @MainActor (Host.ID) async -> Void
     @ObservationIgnored private let makeStore: @MainActor (ConsoleAgent) -> ChangesStore
 
     /// `makeStore` reads the Checkout the Agent is in at the time of each
@@ -63,14 +67,19 @@ final class AgentRowChanges {
     /// (ADR 0056).
     init(
         reads: @escaping @MainActor (ConsoleAgent) -> Bool = { _ in true },
+        defersForForegroundLoad: @escaping @MainActor (Host.ID) -> Bool = { _ in false },
+        yieldToForegroundLoad: @escaping @MainActor (Host.ID) async -> Void = { _ in },
         makeStore: @escaping @MainActor (ConsoleAgent) -> ChangesStore
     ) {
         self.reads = reads
+        self.defersForForegroundLoad = defersForForegroundLoad
+        self.yieldToForegroundLoad = yieldToForegroundLoad
         self.makeStore = makeStore
     }
 
     deinit {
         for following in followings.values { following.cancel() }
+        for waiter in deferredForegroundHosts.values { waiter.cancel() }
     }
 
     /// Defers automatic row git reads while the user is actively scrolling,
@@ -162,11 +171,46 @@ final class AgentRowChanges {
                 branchesByAgent[id] = nil
             }
         }
+        let activeHosts = Set(entries.keys.map(\.hostID))
+        for hostID in Array(deferredForegroundHosts.keys) where !activeHosts.contains(hostID) {
+            deferredForegroundHosts.removeValue(forKey: hostID)?.cancel()
+            bypassedForegroundYieldUntil[hostID] = nil
+        }
     }
 
     private func startFollowing(_ entry: Entry, for id: ConsoleAgent.ID) {
         let store = entry.store
         followings[id] = Task { await store.followForRowTotals() }
+    }
+
+    private func shouldDeferForForegroundLoad(on hostID: Host.ID) -> Bool {
+        guard defersForForegroundLoad(hostID) else {
+            bypassedForegroundYieldUntil[hostID] = nil
+            return false
+        }
+        if let bypassUntil = bypassedForegroundYieldUntil[hostID], ContinuousClock.now < bypassUntil {
+            return false
+        }
+        scheduleForegroundLoadFlush(for: hostID)
+        return true
+    }
+
+    private func scheduleForegroundLoadFlush(for hostID: Host.ID) {
+        guard deferredForegroundHosts[hostID] == nil else { return }
+        deferredForegroundHosts[hostID] = Task { [weak self] in
+            guard let self else { return }
+            await self.yieldToForegroundLoad(hostID)
+            guard !Task.isCancelled else { return }
+            self.deferredForegroundHosts[hostID] = nil
+            if self.defersForForegroundLoad(hostID) {
+                self.bypassedForegroundYieldUntil[hostID] = ContinuousClock.now + .seconds(1)
+            } else {
+                self.bypassedForegroundYieldUntil[hostID] = nil
+            }
+            for id in self.visibleRows.keys where id.hostID == hostID {
+                self.entries[id]?.store.runPendingAutomaticRefresh()
+            }
+        }
     }
 
     private func entry(for agent: ConsoleAgent) -> Entry? {
@@ -178,7 +222,10 @@ final class AgentRowChanges {
         let id = agent.id
         store.defersAutomaticRefresh = { [weak self, weak entry] in
             guard let self, let entry else { return true }
-            return self.isScrollActive || self.visibleRows[id] == nil || entry.isStoodInFor
+            if self.isScrollActive || self.visibleRows[id] == nil || entry.isStoodInFor {
+                return true
+            }
+            return self.shouldDeferForForegroundLoad(on: id.hostID)
         }
         store.onReadCompleted = { [weak self] completed in
             self?.recordBranch(from: completed, for: id)

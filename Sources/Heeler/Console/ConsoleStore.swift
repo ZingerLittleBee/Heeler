@@ -148,7 +148,13 @@ final class ConsoleStore {
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
     @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
-        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges }
+        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges },
+        defersForForegroundLoad: { [weak self] hostID in
+            self?.hasForegroundChatInitialLoad(on: hostID) == true
+        },
+        yieldToForegroundLoad: { [weak self] hostID in
+            await self?.yieldToForegroundChatLoad(on: hostID)
+        }
     ) { [unowned self] agent in
         let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
@@ -1478,8 +1484,13 @@ final class ConsoleStore {
         }
     }
 
-    func yieldToForegroundChatLoad(on hostID: Host.ID) async {
-        let deadline = ContinuousClock.now + .seconds(8)
+    nonisolated static let foregroundChatLoadYieldCap: Duration = .seconds(60)
+
+    func yieldToForegroundChatLoad(
+        on hostID: Host.ID,
+        maximumWait: Duration = foregroundChatLoadYieldCap
+    ) async {
+        let deadline = ContinuousClock.now + maximumWait
         while !Task.isCancelled, isActive, ContinuousClock.now < deadline,
             hasForegroundChatInitialLoad(on: hostID)
         {

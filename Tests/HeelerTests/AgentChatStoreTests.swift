@@ -660,7 +660,7 @@ struct AgentChatStoreTests {
                 == .awaitingHost)
         #expect(
             ChatSurfacePresentation(conversation: conversation, hasPendingEchoes: false, isHostConnected: true)
-                == .empty)
+                == .readFailed)
         #expect(
             ChatSurfacePresentation(
                 conversation: Self.snapshot(.locating), hasPendingEchoes: false, isHostConnected: true)
@@ -5099,16 +5099,25 @@ struct AgentChatStoreTests {
         #expect(fixture.store.conversation.transcript.entries.count == 2)
     }
 
-    @Test func aLocatingReadFailureShowsRetryBannerWithoutLocatingSpinner() {
+    @Test func aLocatingReadFailureShowsRetryBannerWithoutLocatingSpinnerOrFalseEmptyState() {
         for failure: TransportError in [.hostFileTimedOut, .hostFileUnreadable(status: 4)] {
             var locating = Self.snapshot(.locating)
             locating.readFailure = failure
             #expect(
                 ChatBannerLine.lines(hostStatus: .connected, conversation: locating, hasPendingEchoes: false)
                     == [.readFailure(failure)])
+            let locatingSurface = ChatSurfacePresentation(
+                conversation: locating, hasPendingEchoes: false, isHostConnected: true)
+            #expect(locatingSurface == .readFailed)
+            #expect(locatingSurface != .locating)
+            #expect(locatingSurface != .empty)
+
+            var followingFailedEmpty = Self.snapshot(.following(path: "/p.jsonl"))
+            followingFailedEmpty.readFailure = failure
             #expect(
-                ChatSurfacePresentation(conversation: locating, hasPendingEchoes: false, isHostConnected: true)
-                    == .empty)
+                ChatSurfacePresentation(
+                    conversation: followingFailedEmpty, hasPendingEchoes: false, isHostConnected: true)
+                    == .readFailed)
 
             var codexWaiting = Self.snapshot(.unavailable(.noSession(.codex)))
             codexWaiting.readFailure = failure
@@ -5122,6 +5131,11 @@ struct AgentChatStoreTests {
         #expect(
             ChatSurfacePresentation(conversation: cleanLocating, hasPendingEchoes: false, isHostConnected: true)
                 == .locating)
+        let cleanFollowingEmpty = Self.snapshot(.following(path: "/p.jsonl"))
+        #expect(
+            ChatSurfacePresentation(
+                conversation: cleanFollowingEmpty, hasPendingEchoes: false, isHostConnected: true)
+                == .empty)
     }
 
     @Test func aProcessBoundSessionCheckFailureRecoversAutomaticallyWithoutManualRetry() async throws {

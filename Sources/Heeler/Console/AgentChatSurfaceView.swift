@@ -701,7 +701,7 @@ struct AgentChatSurfaceView: View {
             // Check Again's answer may fill the timeline under the held
             // placeholder; it shows when the hold eases to the answer.
             .modifier(HiddenConversation(isHidden: hidesConversation || checkAgain != nil))
-            if presentation != .timeline {
+            if presentation != .timeline, presentation != .readFailed {
                 GeometryReader { proxy in
                     ScrollView {
                         placeholder
@@ -761,7 +761,7 @@ struct AgentChatSurfaceView: View {
     @ViewBuilder
     private var placeholder: some View {
         switch presentation {
-        case .timeline:
+        case .timeline, .readFailed:
             EmptyView()
         case .departed(let departure):
             ContentUnavailableView(
@@ -1301,7 +1301,7 @@ struct AgentChatSurfaceView: View {
     /// SFTP transcript open.
     private func waitForInitialTranscriptLoad() async {
         guard let chat else { return }
-        let deadline = ContinuousClock.now + .seconds(8)
+        let deadline = ContinuousClock.now + ConsoleStore.foregroundChatLoadYieldCap
         while !Task.isCancelled, ContinuousClock.now < deadline, chat.isPerformingForegroundInitialLoad {
             do {
                 try await Task.sleep(for: .milliseconds(25))

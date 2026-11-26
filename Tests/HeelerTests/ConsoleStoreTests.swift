@@ -3936,6 +3936,137 @@ struct ConsoleStoreTests {
         }
         #expect(store.rebuildCountForTesting - before == 1)
     }
+
+    @Test func foregroundChatInitialLoadHoldsBackgroundPrefetchAndAutomaticRowChangesUntilSettled() async throws {
+        #expect(ConsoleStore.foregroundChatLoadYieldCap == .seconds(60))
+
+        let host = Host.fixture()
+        let firstSessionID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+        let secondSessionID = "9b27a1d4-61c0-45e9-8f12-7ef4120a91b3"
+        let firstAgent = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p1", revision: 1,
+            tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+            agentSession: AgentSessionInfo(
+                agent: "claude", kind: .id, source: "herdr:claude", value: firstSessionID),
+            cwd: "/home/dev/proj")
+        let secondAgent = AgentInfo(
+            agentStatus: .idle, focused: false, paneID: "w1:p2", revision: 1,
+            tabID: "t2", terminalID: "term-2", workspaceID: "w1", agent: "claude",
+            agentSession: AgentSessionInfo(
+                agent: "claude", kind: .id, source: "herdr:claude", value: secondSessionID),
+            cwd: "/home/dev/proj")
+
+        let firstPath = "/home/dev/.claude/projects/-home-dev-proj/\(firstSessionID).jsonl"
+        let secondPath = "/home/dev/.claude/projects/-home-dev-proj/\(secondSessionID).jsonl"
+        let files = VirtualHostFiles()
+        await files.write(NumberedChatReducer.lines(0..<3), at: firstPath)
+        await files.write(NumberedChatReducer.lines(10..<13), at: secondPath)
+
+        let openGate = ScriptedTransportCallGate()
+        let baseFiles = files.hostFiles()
+        let gatedFiles = ChatHostFiles(
+            status: baseFiles.status,
+            list: baseFiles.list,
+            read: { range in
+                if range.path == firstPath {
+                    await openGate.waitUntilOpen()
+                }
+                return try await baseFiles.read(range)
+            },
+            home: baseFiles.home,
+            queryOpenCode: baseFiles.queryOpenCode,
+            accountDirectories: baseFiles.accountDirectories,
+            retrySFTP: baseFiles.retrySFTP)
+
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [firstAgent]))
+        await transport.scriptChat(files: gatedFiles, agent: Agent(firstAgent))
+        await transport.scriptChat(files: gatedFiles, agent: Agent(secondAgent))
+        let changesRead = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        await transport.scriptChangesReads([.success(changesRead), .success(changesRead)])
+
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(15),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatAdapter: { _ in NumberedChatReducer.adapter() })
+        defer { store.setHosts([]) }
+
+        store.setHosts([host])
+        await store.resume()
+
+        let firstID = ConsoleAgent.ID(hostID: host.id, paneID: firstAgent.paneID)
+        let secondID = ConsoleAgent.ID(hostID: host.id, paneID: secondAgent.paneID)
+        try await waitUntil("first Agent inventory and platform resolved") {
+            store.hostPlatforms[host.id] == .posix && store.agents.contains { $0.id == firstID }
+        }
+        let firstRow = try #require(store.agents.first { $0.id == firstID })
+        let firstChat = try #require(store.chatStore(for: firstRow, program: .claude))
+        let viewer = UUID()
+        firstChat.show(viewer)
+        defer { firstChat.hide(viewer) }
+
+        try await waitUntil("foreground Chat enters gated initial transcript open") {
+            let entered = await openGate.entryCount >= 1
+            return entered && store.hasForegroundChatInitialLoad(on: host.id)
+        }
+
+        // Introduce a second Agent candidate and visible list rows while the foreground
+        // Chat initial open is still in flight.
+        await transport.setSnapshot(.fixture(agents: [firstAgent, secondAgent]))
+        await store.refreshTerminalInventory(on: host.id)
+        let secondRow = try #require(store.agents.first { $0.id == secondID })
+
+        store.rowChanges.rowAppeared(firstRow)
+        store.rowChanges.rowAppeared(secondRow)
+        defer {
+            store.rowChanges.rowDisappeared(firstID)
+            store.rowChanges.rowDisappeared(secondID)
+        }
+        let rowChangesStore = try #require(store.rowChanges.store(for: firstRow))
+
+        // Wait well past `ChangesStore.appearanceSettle` (300ms): both automatic row git
+        // reads and background `w1:p2` prefetch must stay yielded without holding `GitExecGate`.
+        try await Task.sleep(for: .milliseconds(380))
+        #expect(store.hasForegroundChatInitialLoad(on: host.id))
+        #expect(rowChangesStore.activeRead == nil)
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(await !files.reads.contains { $0.path == secondPath })
+
+        // Explicit user-driven `ChangesStore.refresh()` (`automatic: false`) is never
+        // deferred by `AgentRowChanges`.
+        let explicitReads = Mutex(0)
+        let standaloneRows = AgentRowChanges(
+            defersForForegroundLoad: { _ in true },
+            yieldToForegroundLoad: { _ in try? await Task.sleep(for: .seconds(60)) }
+        ) { _ in
+            ChangesStore(
+                directory: { "/home/dev/proj" },
+                read: { _ in
+                    explicitReads.withLock { $0 += 1 }
+                    return changesRead
+                })
+        }
+        let explicitStore = try #require(standaloneRows.store(for: firstRow))
+        await explicitStore.refresh()
+        #expect(explicitReads.withLock { $0 } == 1)
+        #expect(explicitStore.phase == .loaded(changesRead.changes))
+
+        // As soon as the foreground Chat initial load completes, both automatic `rowChanges`
+        // and background `chat.prefetch` wake immediately without waiting out the 60s cap.
+        await openGate.open()
+        try await waitUntil("foreground Chat open, deferred row Changes, and background prefetch settle") {
+            let prefetchedSecond = await files.reads.contains { $0.path == secondPath }
+            return !store.hasForegroundChatInitialLoad(on: host.id)
+                && firstChat.conversation.phase == .following(path: firstPath)
+                && rowChangesStore.phase == .loaded(changesRead.changes)
+                && prefetchedSecond
+        }
+        #expect(await transport.changesReadRequests.count == 1)
+    }
 }
 
 /// Hands out scripted transports in order, one per `connect`, so tests can
