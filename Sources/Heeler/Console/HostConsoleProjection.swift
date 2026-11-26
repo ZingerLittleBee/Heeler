@@ -32,6 +32,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
     let leakedEnvironmentNames: Set<String> = []
     private(set) var transportGeneration: UInt64 = 0
     private(set) var sidebarRevision: UInt64 = 0
+    private(set) var sidebarLayoutRevision: UInt64 = 0
     /// Labels are herdr-core's; a Herdr TUI Pane has none.
     let terminalLabelKeys: [String] = []
     /// A Herdr TUI inventory names no core, so no detail here ever leaves one,
@@ -83,7 +84,10 @@ final class HostConsoleProjection: ConsoleHostProjection {
 
     private static let eventResyncDebounce: Duration = .milliseconds(200)
     private let snapshotRetryDelay: Duration
+    private let onLatencyChange: (@MainActor @Sendable () -> Void)?
     private let onChange: @MainActor @Sendable () -> Void
+    private var appliedLayoutEpoch: UInt64?
+    private var forceNextSidebarLayoutRead = false
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var terminalTransportTask: Task<Void, Never>?
@@ -116,11 +120,13 @@ final class HostConsoleProjection: ConsoleHostProjection {
         host: Host,
         session: EventsSession,
         snapshotRetryDelay: Duration,
+        onLatencyChange: (@MainActor @Sendable () -> Void)? = nil,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
         self.snapshotRetryDelay = snapshotRetryDelay
+        self.onLatencyChange = onLatencyChange
         self.onChange = onChange
     }
 
@@ -140,9 +146,13 @@ final class HostConsoleProjection: ConsoleHostProjection {
         latencyTask = Task { [weak self] in
             guard let self else { return }
             for await _ in session.latencyUpdates {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, !self.hasEnded else { return }
                 self.latency = session.currentLatency
-                self.publish()
+                if let onLatencyChange = self.onLatencyChange {
+                    onLatencyChange()
+                } else {
+                    self.publish()
+                }
             }
         }
         terminalTransportTask = Task { [weak self] in
@@ -891,6 +901,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
     /// An explicit fields refresh converges Agent values as well as the
     /// separate sidebar file. It shares the event-driven coalescing owner.
     func refreshSidebarMetadata() async {
+        forceNextSidebarLayoutRead = true
         scheduleResync()
         while let task = resyncTask {
             await task.value
@@ -1004,6 +1015,11 @@ final class HostConsoleProjection: ConsoleHostProjection {
         let span = PerfTrace.begin("host.snapshot.apply")
         defer { PerfTrace.end(span) }
         sidebarRevision &+= 1
+        if appliedLayoutEpoch != snapshotEpoch || forceNextSidebarLayoutRead {
+            appliedLayoutEpoch = snapshotEpoch
+            forceNextSidebarLayoutRead = false
+            sidebarLayoutRevision &+= 1
+        }
         let builder = ConsolePaneRowBuilder(host: host, inventory: snapshot)
         let liveChange: (String) -> PaneInfo? = { [latestPaneChanges] paneID in
             guard let change = latestPaneChanges[paneID], change.revision > paneStartRevision

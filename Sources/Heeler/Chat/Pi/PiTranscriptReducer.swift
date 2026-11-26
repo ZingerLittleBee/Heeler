@@ -17,6 +17,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
     }
 
     private var records: [UInt64: Record] = [:]
+    private var orderedRecords: [Record] = []
     private var invalid: Set<UInt64> = []
     private var oversized: Set<UInt64> = []
     /// Oh My Pi flags every message that steered a running turn; only
@@ -41,8 +42,32 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
                 invalid.insert(line.offset)
                 continue
             }
-            records[line.offset] = Record(
+            let record = Record(
                 offset: line.offset, length: line.length, value: value, isTruncated: line.isTruncated)
+            let existed = records.updateValue(record, forKey: line.offset) != nil
+            upsertOrdered(record, existed: existed)
+        }
+    }
+
+    private mutating func upsertOrdered(_ record: Record, existed: Bool) {
+        if !existed, let last = orderedRecords.last, last.offset < record.offset {
+            orderedRecords.append(record)
+            return
+        }
+        var low = 0
+        var high = orderedRecords.count
+        while low < high {
+            let mid = (low + high) / 2
+            if orderedRecords[mid].offset < record.offset {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        if low < orderedRecords.count, orderedRecords[low].offset == record.offset {
+            orderedRecords[low] = record
+        } else {
+            orderedRecords.insert(record, at: low)
         }
     }
 
@@ -58,7 +83,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
     }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
-        let ordered = records.values.sorted { $0.offset < $1.offset }
+        let ordered = orderedRecords
         var byID: [String: Record] = [:]
         var leaf: String?
         var title: String?
@@ -722,14 +747,7 @@ struct PiTranscriptReducer: ChatTranscriptReducer {
     }
 
     private static func date(_ record: Record) -> Date? {
-        if let text = record.value["timestamp"]?.stringValue {
-            return Date.ISO8601FormatStyle(includingFractionalSeconds: true).parseStrategy.parseOptional(text)
-                ?? Date.ISO8601FormatStyle().parseStrategy.parseOptional(text)
-        }
-        return nil
+        guard let text = record.value["timestamp"]?.stringValue else { return nil }
+        return ClaudeTranscriptProjection.date(text)
     }
-}
-
-extension ParseStrategy where ParseInput == String, ParseOutput == Date {
-    fileprivate func parseOptional(_ input: String) -> Date? { try? parse(input) }
 }

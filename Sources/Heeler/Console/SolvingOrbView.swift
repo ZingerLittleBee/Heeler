@@ -41,6 +41,12 @@ struct SolvingOrbRenderer: Sendable {
     static let small = Preset(
         speed: 1.95, latRings: 9, lonDensity: 24,
         dotBase: 0.63, dotDepth: 1.785, dotActive: 0.315)
+    /// At 10–16 pt badge sizes, 6 latitude rings (~68 dots) remain a continuous
+    /// sphere on 3x Retina while halving per-frame projection, z-sort, and path
+    /// drawing compared with the 154-dot lattice.
+    static let badge = Preset(
+        speed: 1.95, latRings: 6, lonDensity: 16,
+        dotBase: 0.63, dotDepth: 1.785, dotActive: 0.315)
 
     /// A quarter-turn of one band of the sphere: every lattice point whose
     /// `axis` coordinate falls in [lo, lo + 0.5) rotates by `angle`.
@@ -98,6 +104,7 @@ struct SolvingOrbRenderer: Sendable {
         }
     }
 
+    static let badgeLattice = Lattice(latRings: badge.latRings, lonDensity: badge.lonDensity)
     static let smallLattice = Lattice(latRings: small.latRings, lonDensity: small.lonDensity)
     static let largeLattice = Lattice(latRings: large.latRings, lonDensity: large.lonDensity)
 
@@ -107,9 +114,16 @@ struct SolvingOrbRenderer: Sendable {
 
     init(size: Double) {
         self.size = size
-        let isSmall = size <= 40
-        self.preset = isSmall ? Self.small : Self.large
-        self.lattice = isSmall ? Self.smallLattice : Self.largeLattice
+        if size <= 16 {
+            self.preset = Self.badge
+            self.lattice = Self.badgeLattice
+        } else if size <= 40 {
+            self.preset = Self.small
+            self.lattice = Self.smallLattice
+        } else {
+            self.preset = Self.large
+            self.lattice = Self.largeLattice
+        }
     }
 
     /// Deterministic hash in [0, 1).
@@ -225,6 +239,7 @@ struct SolvingOrbView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isSidebarListShown) private var isSidebarListShown
     @State private var isOnScreen = false
 
     var body: some View {
@@ -237,7 +252,7 @@ struct SolvingOrbView: View {
                 // foreground, so a hidden orb costs nothing.
                 TimelineView(.animation(
                     minimumInterval: Self.frameInterval,
-                    paused: !isOnScreen || scenePhase != .active
+                    paused: !isOnScreen || scenePhase != .active || !isSidebarListShown
                 )) { timeline in
                     frame(
                         renderer,

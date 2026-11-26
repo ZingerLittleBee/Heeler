@@ -92,6 +92,47 @@ struct ChatTimelineGeometry: Sendable, Equatable {
         return ChatTimelineAnchor(index: index, minY: minY(at: index))
     }
 
+    /// The row whose top edge `ChatTimelineLayout` holds steady while the
+    /// reader is scrolled up (`!isFollowing`). When the topmost visible row is
+    /// cut off at `visibleTop` (`minY < visibleTop - 0.5`) and the next row's
+    /// top edge lies inside `visibleTop..<visibleBottom`, the unclipped row
+    /// anchors unconditionally so growth above `visibleTop` extends upward
+    /// off-screen without flipping anchors between layout passes.
+    func readingAnchor(visibleTop: CGFloat, visibleBottom: CGFloat) -> ChatTimelineAnchor? {
+        guard let first = anchor(visibleTop: visibleTop) else { return nil }
+        let next = first.index + 1
+        if first.minY < visibleTop - 0.5, next < count, minY(at: next) < visibleBottom {
+            return ChatTimelineAnchor(index: next, minY: minY(at: next))
+        }
+        return first
+    }
+
+    /// Visible row candidates for controller-level snapshot updates, ordered so
+    /// the same unclipped row chosen by `readingAnchor(visibleTop:visibleBottom:)`
+    /// leads `ScrollAnchor.rows`, with the clipped top row kept at the end as
+    /// fallback if every unclipped row below it disappears.
+    func orderedAnchorCandidates<ID: Equatable>(
+        visibleTop: CGFloat,
+        visibleBottom: CGFloat,
+        skipping skippedID: ID? = nil,
+        idAt: (Int) -> ID?
+    ) -> [(ID, CGFloat)] {
+        let range = indices(from: visibleTop, to: visibleBottom)
+        var rows = range.compactMap { index -> (ID, CGFloat)? in
+            guard let id = idAt(index) else { return nil }
+            return (id, minY(at: index) - visibleTop)
+        }
+        if let first = rows.first,
+            first.0 != skippedID,
+            first.1 < -0.5,
+            rows.dropFirst().contains(where: { $0.0 != skippedID })
+        {
+            rows.removeFirst()
+            rows.append(first)
+        }
+        return rows
+    }
+
     /// How far the content offset must move for `anchor` to stay where it
     /// was on screen, after any height or `visibleHeight` changes made since
     /// it was captured.
@@ -269,6 +310,9 @@ struct ChatRowExtent: Sendable, Equatable {
     var chrome: CGFloat = 0
     /// Width the row keeps from its text, within the reading column.
     var inset: CGFloat = 0
+    /// Hard line breaks in code blocks, tables or multi-line blocks that
+    /// stand on their own lines even when each line is short in UTF-8 bytes.
+    var minimumLines: Int = 0
 
     /// The height the text comes to in a column `textWidth` wide.
     ///
@@ -282,7 +326,9 @@ struct ChatRowExtent: Sendable, Equatable {
     func height(textWidth: CGFloat, metrics: ChatTextMetrics) -> CGFloat {
         let bytesPerLine = max(1, ((textWidth - inset) / (metrics.pointSize / 2)).rounded(.down))
         let breaks = CGFloat(max(0, blocks - 1))
-        let lines = max(1, (CGFloat(textBytes) / bytesPerLine).rounded(.up) + breaks / 2)
+        let wrappedLines = (CGFloat(textBytes) / bytesPerLine).rounded(.up)
+        let contentLines = max(wrappedLines, CGFloat(minimumLines))
+        let lines = max(1, contentLines + breaks / 2)
         return (chrome + lines * metrics.lineHeight + breaks * metrics.lineHeight / 2).rounded(.up)
     }
 }

@@ -310,44 +310,137 @@ struct AgentStatusAvatar: View {
     }
 }
 
+extension EnvironmentValues {
+    /// False inside an iPad sidebar list hidden behind the active list tab.
+    @Entry var isSidebarListShown = true
+}
+
 /// Working's ring: three quarters of a circle turning once every 1.2
-/// seconds. Every arc reads the wall clock, so they turn in step; reduced
-/// motion holds it still, still open where Done and Blocked are closed.
+/// seconds. Every arc phase-locks to `CACurrentMediaTime()` on the Core
+/// Animation render server, so they turn in step with zero main-thread frame
+/// ticks; reduced motion holds it still, still open where Done and Blocked
+/// are closed.
 private struct AgentWorkingArc: View {
     let lineWidth: CGFloat
 
-    private static let period: TimeInterval = 1.2
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isOnScreen = false
+    @Environment(\.isSidebarListShown) private var isSidebarListShown
 
     var body: some View {
-        Group {
-            if reduceMotion {
-                arc(turn: 0)
-            } else {
-                // Holds its last frame while off screen or not in the
-                // foreground, as the solving orb does.
-                TimelineView(.animation(
-                    minimumInterval: 1.0 / 60, paused: !isOnScreen || scenePhase != .active
-                )) { timeline in
-                    arc(turn: timeline.date.timeIntervalSinceReferenceDate / Self.period)
-                }
-            }
-        }
-        .onAppear { isOnScreen = true }
-        .onDisappear { isOnScreen = false }
+        AgentWorkingArcLayerView(
+            lineWidth: lineWidth,
+            isSpinning: !reduceMotion && scenePhase == .active && isSidebarListShown)
+    }
+}
+
+private struct AgentWorkingArcLayerView: UIViewRepresentable {
+    let lineWidth: CGFloat
+    let isSpinning: Bool
+
+    func makeUIView(context: Context) -> ArcView {
+        ArcView(lineWidth: lineWidth, isSpinning: isSpinning)
     }
 
-    private func arc(turn: Double) -> some View {
-        Circle()
-            .inset(by: lineWidth / 2)
-            .trim(from: 0, to: 0.72)
-            .stroke(
-                Color(uiColor: AgentStatus.working.inkUIColor),
-                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-            .rotationEffect(.degrees((turn - turn.rounded(.down)) * 360 - 50))
+    func updateUIView(_ view: ArcView, context: Context) {
+        view.configure(lineWidth: lineWidth, isSpinning: isSpinning)
+    }
+
+    final class ArcView: UIView {
+        private static let period: CFTimeInterval = 1.2
+        private static let animationKey = "heeler.workingArc.spin"
+        private static let startAngle = CGFloat(-50.0 * .pi / 180.0)
+        private static let endAngle = CGFloat((-50.0 + 0.72 * 360.0) * .pi / 180.0)
+
+        private let shapeLayer = CAShapeLayer()
+        private var lineWidth: CGFloat
+        private var isSpinning: Bool
+        private var lastBoundsSize: CGSize = .zero
+
+        init(lineWidth: CGFloat, isSpinning: Bool) {
+            self.lineWidth = lineWidth
+            self.isSpinning = isSpinning
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+            shapeLayer.fillColor = nil
+            shapeLayer.lineCap = .round
+            shapeLayer.lineWidth = lineWidth
+            layer.addSublayer(shapeLayer)
+            updateStrokeColor()
+            registerForTraitChanges([
+                UITraitUserInterfaceStyle.self,
+                UITraitAccessibilityContrast.self,
+            ]) { (self: Self, _) in
+                self.updateStrokeColor()
+            }
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+        func configure(lineWidth: CGFloat, isSpinning: Bool) {
+            if self.lineWidth != lineWidth {
+                self.lineWidth = lineWidth
+                shapeLayer.lineWidth = lineWidth
+                lastBoundsSize = .zero
+                setNeedsLayout()
+            }
+            if self.isSpinning != isSpinning {
+                self.isSpinning = isSpinning
+                syncAnimation()
+            }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            syncAnimation()
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard bounds.size != lastBoundsSize else { return }
+            lastBoundsSize = bounds.size
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            shapeLayer.frame = bounds
+            let radius = max(0, min(bounds.width, bounds.height) / 2 - lineWidth / 2)
+            let center = CGPoint(x: bounds.midX, y: bounds.midY)
+            shapeLayer.path = UIBezierPath(
+                arcCenter: center,
+                radius: radius,
+                startAngle: Self.startAngle,
+                endAngle: Self.endAngle,
+                clockwise: true
+            ).cgPath
+            CATransaction.commit()
+            syncAnimation()
+        }
+
+        private func updateStrokeColor() {
+            shapeLayer.strokeColor = AgentStatus.working.inkUIColor
+                .resolvedColor(with: traitCollection).cgColor
+        }
+
+        private func syncAnimation() {
+            let shouldAnimate = isSpinning && window != nil && bounds.width > 0 && bounds.height > 0
+            if shouldAnimate {
+                guard shapeLayer.animation(forKey: Self.animationKey) == nil else { return }
+                let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+                spin.fromValue = 0.0
+                spin.toValue = Double.pi * 2
+                spin.duration = Self.period
+                spin.repeatCount = .infinity
+                spin.isRemovedOnCompletion = false
+                let mediaNow = CACurrentMediaTime()
+                let layerNow = shapeLayer.convertTime(mediaNow, from: nil)
+                let phase = mediaNow.truncatingRemainder(dividingBy: Self.period)
+                spin.beginTime = layerNow - phase
+                shapeLayer.add(spin, forKey: Self.animationKey)
+            } else if shapeLayer.animation(forKey: Self.animationKey) != nil {
+                shapeLayer.removeAnimation(forKey: Self.animationKey)
+            }
+        }
     }
 }
 

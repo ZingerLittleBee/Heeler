@@ -76,4 +76,20 @@ struct ChatFollowLatch: Sendable, Equatable {
     mutating func disclosureSettled(isAtEnd: Bool) {
         isFollowing = !isUserScrolling && isAtEnd
     }
+
+    /// Whether incoming timeline updates should wait in `heldState` until the
+    /// active scroll or rubber-band bounce settles.
+    static func shouldHoldUpdate(
+        isHeldPastEnd: Bool,
+        isHeldPastStart: Bool,
+        sameGeneration: Bool,
+        isHoldingTopJump: Bool,
+        isUserScrolling: Bool,
+        isTracking: Bool,
+        isDecelerating: Bool
+    ) -> Bool {
+        if isHeldPastEnd || isHeldPastStart { return true }
+        guard sameGeneration, !isHoldingTopJump else { return false }
+        return isUserScrolling || isTracking || isDecelerating
+    }
 }

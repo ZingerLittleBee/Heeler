@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-enum AgentComposerKeyboardPresentation: Equatable {
+enum AgentComposerKeyboardPresentation: Equatable, Sendable {
     case hidden
     case system
     case tools
@@ -146,7 +146,7 @@ enum SavedChatRemovalCopy {
 /// What Close Agent's dialog asks for, fixed when it opens. A Host that
 /// connects behind the dialog must not turn the removal it promised into a
 /// remote close, so the dialog never rereads whether the Chat is still saved.
-enum AgentCloseRequest: Equatable {
+enum AgentCloseRequest: Equatable, Sendable {
     case closeAgent
     case removeSavedChat
 }
@@ -237,6 +237,9 @@ struct AgentComposerView: View {
     /// Read-only projection of the Host's own connection telemetry; nil
     /// whenever there is nothing proven to show.
     let hostTelemetry: HostTelemetryPresentation?
+    /// Optional lazy telemetry reader so Host latency updates redraw only the
+    /// status row without invalidating `AgentComposerView.body` or the text editor.
+    var hostTelemetryProvider: (@MainActor () -> HostTelemetryPresentation?)? = nil
     /// The Agent's Checkout totals for the status row.
     var changes: AgentDetailChanges? = nil
     /// The conversation's model and permission mode for the status row.
@@ -249,6 +252,9 @@ struct AgentComposerView: View {
     /// into near-black and the row disappears.
     let chromeColorScheme: ColorScheme
     let switcher: TerminalAgentSwitcher
+    /// Optional lazy switcher reader so `chatDisplayAgents` churn across other
+    /// Agents redraws only `TerminalAgentSwitcherRow` instead of `AgentComposerView`.
+    var switcherProvider: (@MainActor () -> TerminalAgentSwitcher)? = nil
     let keyboardHandoff: TerminalKeyboardHandoff
     /// False for the placeholder Agent detail builds before its retained
     /// terminal is prepared: that instance is torn down a moment later, and
@@ -348,8 +354,11 @@ struct AgentComposerView: View {
                         .modifier(ComposerInputReplacement(replacement: inputReplacement ?? liveVoiceRecorder))
                         .padding(inputAreaInsets)
 
-                    TerminalAgentSwitcherRow(
-                        switcher: focusPreservingSwitcher,
+                    ComposerSwitcherSlot(
+                        fallback: switcher,
+                        provider: switcherProvider,
+                        isInputFocused: isInputFocused,
+                        keyboardHandoff: keyboardHandoff,
                         isKeyboardUp: isKeyboardPresented,
                         toggleKeyboard: dismissOrPresentKeyboard,
                         isToolsKeyboardPresented: isToolsKeyboardPresented,
@@ -458,14 +467,25 @@ struct AgentComposerView: View {
         }
     }
 
+    @ViewBuilder
     private var statusChrome: some View {
-        AgentDetailStatusChrome(
-            status: status,
-            hostTelemetry: hostTelemetry,
-            changes: changes,
-            session: session,
-            sessionControls: sessionControls,
-            chromeColorScheme: chromeColorScheme)
+        if let hostTelemetryProvider {
+            ComposerStatusChromeSlot(
+                status: status,
+                hostTelemetryProvider: hostTelemetryProvider,
+                changes: changes,
+                session: session,
+                sessionControls: sessionControls,
+                chromeColorScheme: chromeColorScheme)
+        } else {
+            AgentDetailStatusChrome(
+                status: status,
+                hostTelemetry: hostTelemetry,
+                changes: changes,
+                session: session,
+                sessionControls: sessionControls,
+                chromeColorScheme: chromeColorScheme)
+        }
     }
 
     /// Pull down to hide the keyboard. It sits in the card's top inset, so
@@ -1122,6 +1142,64 @@ struct AgentComposerView: View {
         store.voice.isInRecordingMode ? 1.5 : dropHighlight.strokeWidth
     }
 
+}
+
+/// Isolates `HostTelemetryPresentation` observation to the status line so
+/// periodic SSH latency samples never re-evaluate `AgentComposerView.body`
+/// or `AgentComposerTextEditor.sizeThatFits`.
+private struct ComposerStatusChromeSlot: View {
+    let status: AgentStatus
+    let hostTelemetryProvider: @MainActor () -> HostTelemetryPresentation?
+    let changes: AgentDetailChanges?
+    let session: AgentSessionSettings?
+    let sessionControls: AgentSessionControls?
+    let chromeColorScheme: ColorScheme
+
+    var body: some View {
+        AgentDetailStatusChrome(
+            status: status,
+            hostTelemetry: hostTelemetryProvider(),
+            changes: changes,
+            session: session,
+            sessionControls: sessionControls,
+            chromeColorScheme: chromeColorScheme)
+    }
+}
+
+/// Isolates `TerminalAgentSwitcher` item building & `chatDisplayAgents`
+/// observation to the switcher strip so status updates on other Agents never
+/// rebuild `AgentComposerView.body` or `AgentComposerTextEditor`.
+private struct ComposerSwitcherSlot: View {
+    let fallback: TerminalAgentSwitcher
+    let provider: (@MainActor () -> TerminalAgentSwitcher)?
+    let isInputFocused: Bool
+    let keyboardHandoff: TerminalKeyboardHandoff
+    let isKeyboardUp: Bool
+    let toggleKeyboard: () -> Void
+    let isToolsKeyboardPresented: Bool
+    let switchKeyboard: (() -> Void)?
+    let modeControl: TerminalAgentSwitcherModeControl?
+
+    var body: some View {
+        let base = provider?() ?? fallback
+        let wrapped = TerminalAgentSwitcher(
+            items: base.items,
+            selectedID: base.selectedID,
+            onSelect: { id in
+                if isInputFocused {
+                    keyboardHandoff.arm(for: id)
+                }
+                base.onSelect(id)
+            },
+            onTogglePin: base.onTogglePin)
+        TerminalAgentSwitcherRow(
+            switcher: wrapped,
+            isKeyboardUp: isKeyboardUp,
+            toggleKeyboard: toggleKeyboard,
+            isToolsKeyboardPresented: isToolsKeyboardPresented,
+            switchKeyboard: switchKeyboard,
+            modeControl: modeControl)
+    }
 }
 
 /// The Composer card's surface: the theme's background a step deeper where

@@ -2909,6 +2909,57 @@ struct BlockedCardStoreTests {
         #expect(noteStore.notice == nil)
         #expect(noteStore.progress == .ready)
     }
+
+    @Test func supersededIdleGatedCallStopsReadingAndCleanIdleWatchBacksOff() async throws {
+        let pane = FakePane(ScreenFixture.synthetic(["  > "]))
+        let clock = ManualClock()
+        let parkedClock = BlockedCardClock(
+            now: clock.clock.now,
+            sleep: clock.parkedSleep(for:))
+        let store = BlockedCardStore(
+            program: .agy,
+            io: BlockedScreenIO(
+                readScreen: { try await pane.read() },
+                sendKeys: { await pane.send($0) },
+                paste: { await pane.paste($0) }),
+            clock: parkedClock)
+
+        let staleEdit = Self.agyCall("agy:1:tool:0", "edit_file", .fileEdit, "Edit A.swift")
+        let supersededTranscript = ChatTranscript(
+            entries: [
+                ChatEntry(
+                    id: staleEdit.entryID, sourceOffset: 0,
+                    content: .tool(
+                        ChatToolActivity(
+                            kind: .fileEdit, name: "edit_file", title: "Edit A.swift",
+                            status: .awaitingApproval, callID: staleEdit.callID))),
+                ChatEntry(
+                    id: ChatEntryID("agy:2:user"), sourceOffset: 1,
+                    content: .user(ChatUserMessage(text: "Move on to B.swift"))),
+            ],
+            pendingRequests: [staleEdit])
+        store.update(transcript: supersededTranscript)
+        store.update(activity: .idle)
+        await store.refresh()
+        #expect(await pane.reads == 0)
+
+        // An open gated call in the latest turn watches and backs off 1s -> 2s -> 5s when clean.
+        let currentEdit = Self.agyCall("agy:3:tool:0", "edit_file", .fileEdit, "Edit B.swift")
+        store.update(transcript: Self.agyTranscript(open: [currentEdit], status: .awaitingApproval))
+        store.show()
+        defer { store.end() }
+
+        await clock.untilParked(for: .seconds(1))
+        #expect(await pane.reads == 1)
+
+        clock.advance(.seconds(1))
+        await clock.untilParked(for: .seconds(2))
+        #expect(await pane.reads == 2)
+
+        clock.advance(.seconds(2))
+        await clock.untilParked(for: .seconds(5))
+        #expect(await pane.reads == 3)
+    }
 }
 
 @MainActor

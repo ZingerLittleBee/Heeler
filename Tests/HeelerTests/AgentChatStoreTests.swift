@@ -1,4 +1,5 @@
 import Foundation
+import HeelerSSH
 import Testing
 
 @testable import Heeler
@@ -652,12 +653,17 @@ struct AgentChatStoreTests {
 
         let conversation = fixture.store.conversation
         #expect(conversation.phase == .locating)
+        #expect(conversation.readFailure != nil)
         #expect(conversation.transcript.entries.isEmpty)
         #expect(
             ChatSurfacePresentation(conversation: conversation, hasPendingEchoes: false, isHostConnected: false)
                 == .awaitingHost)
         #expect(
             ChatSurfacePresentation(conversation: conversation, hasPendingEchoes: false, isHostConnected: true)
+                == .readFailed)
+        #expect(
+            ChatSurfacePresentation(
+                conversation: Self.snapshot(.locating), hasPendingEchoes: false, isHostConnected: true)
                 == .locating)
     }
 
@@ -5091,6 +5097,176 @@ struct AgentChatStoreTests {
 
         #expect(fixture.store.conversation.phase == .following(path: Self.path(Self.first)))
         #expect(fixture.store.conversation.transcript.entries.count == 2)
+    }
+
+    @Test func aLocatingReadFailureShowsRetryBannerWithoutLocatingSpinnerOrFalseEmptyState() {
+        for failure: TransportError in [.hostFileTimedOut, .hostFileUnreadable(status: 4)] {
+            var locating = Self.snapshot(.locating)
+            locating.readFailure = failure
+            #expect(
+                ChatBannerLine.lines(hostStatus: .connected, conversation: locating, hasPendingEchoes: false)
+                    == [.readFailure(failure)])
+            let locatingSurface = ChatSurfacePresentation(
+                conversation: locating, hasPendingEchoes: false, isHostConnected: true)
+            #expect(locatingSurface == .readFailed)
+            #expect(locatingSurface != .locating)
+            #expect(locatingSurface != .empty)
+
+            var followingFailedEmpty = Self.snapshot(.following(path: "/p.jsonl"))
+            followingFailedEmpty.readFailure = failure
+            #expect(
+                ChatSurfacePresentation(
+                    conversation: followingFailedEmpty, hasPendingEchoes: false, isHostConnected: true)
+                    == .readFailed)
+
+            var codexWaiting = Self.snapshot(.unavailable(.noSession(.codex)))
+            codexWaiting.readFailure = failure
+            #expect(
+                ChatSurfacePresentation(
+                    conversation: codexWaiting, hasPendingEchoes: false, isHostConnected: true, checkingLaunch: true)
+                    == .unavailable(.noSession(.codex)))
+        }
+
+        let cleanLocating = Self.snapshot(.locating)
+        #expect(
+            ChatSurfacePresentation(conversation: cleanLocating, hasPendingEchoes: false, isHostConnected: true)
+                == .locating)
+        let cleanFollowingEmpty = Self.snapshot(.following(path: "/p.jsonl"))
+        #expect(
+            ChatSurfacePresentation(
+                conversation: cleanFollowingEmpty, hasPendingEchoes: false, isHostConnected: true)
+                == .empty)
+    }
+
+    @Test func aProcessBoundSessionCheckFailureRecoversAutomaticallyWithoutManualRetry() async throws {
+        actor EvidenceBox {
+            var failure: TransportError? = .hostFileUnreadable(status: 3)
+            var reads = 0
+            let sessionID: String
+
+            init(sessionID: String) {
+                self.sessionID = sessionID
+            }
+
+            func setFailure(_ next: TransportError?) {
+                failure = next
+            }
+
+            func check() throws -> ChatSessionEvidence {
+                reads += 1
+                if let failure { throw failure }
+                return .bound(sessionID: sessionID, transcriptRoot: "/home/dev/.claude", directory: "/home/dev/proj")
+            }
+        }
+
+        let files = VirtualHostFiles()
+        await files.write(NumberedChatReducer.lines(0..<3), at: Self.path(Self.first))
+        let clock = Clock()
+        let evidence = EvidenceBox(sessionID: Self.first)
+        let agent = Self.agent(session: nil, program: .claude)
+        let store = AgentChatStore(
+            agentID: ConsoleAgent.ID(hostID: Self.host, paneID: agent.paneID),
+            agent: agent,
+            program: .claude,
+            source: AgentChatSource(
+                hostID: Self.host,
+                socketLocation: .defaultSession,
+                files: files.hostFiles(),
+                agentInfo: { agent },
+                cache: VolatileChatTranscriptCache(),
+                adapter: NumberedChatReducer.adapter(),
+                sessionEvidence: { try await evidence.check() },
+                coreScope: "core-1"),
+            timing: AgentChatStore.Timing(
+                activeInterval: .milliseconds(5), idleInterval: .milliseconds(5), sessionRecheck: 5),
+            now: { clock.now })
+
+        await store.step()
+        #expect(store.conversation.readFailure == .hostFileUnreadable(status: 3))
+        #expect(await evidence.reads == 1)
+
+        // Before `sessionRecheck` elapses, no tight-loop recheck runs.
+        clock.now = clock.now.addingTimeInterval(2)
+        await store.step()
+        #expect(await evidence.reads == 1)
+
+        // Once permissions / SFTP recover (`chmod 644`), the next periodic recheck clears
+        // `readFailure` and opens the conversation without requiring manual `Retry`.
+        await evidence.setFailure(nil)
+        clock.now = clock.now.addingTimeInterval(4)
+        await store.step()
+
+        #expect(await evidence.reads == 2)
+        #expect(store.conversation.readFailure == nil)
+        #expect(store.conversation.phase == .following(path: Self.path(Self.first)))
+        #expect(Self.ids(store) == NumberedChatReducer.ids(0..<3))
+    }
+
+    @Test func sessionFileClientPoolRetiresCondemnedClientOnConcurrentTimeoutAndStatus4() async throws {
+        func failure(_ error: any Error) -> (TransportError, Bool)? {
+            HeelerSSHTransport.hostFileFailure(for: error).map { ($0.error, $0.retiresChannel) }
+        }
+        #expect(failure(AsyncDeadlineError.timedOut)! == (.hostFileTimedOut, true))
+        #expect(failure(SSHError.sftpFailure(status: 4))! == (.hostFileUnreadable(status: 4), true))
+        #expect(failure(SSHError.sftpFailure(status: 5))! == (.hostFileUnreadable(status: 5), true))
+        #expect(failure(SSHError.sftpFailure(status: 2))! == (.hostFileUnreadable(status: 2), false))
+        #expect(failure(SSHError.sftpFailure(status: 3))! == (.hostFileUnreadable(status: 3), false))
+
+        let admission = SSHChannelAdmission()
+        let lease1 = try await admission.acquire(.ordinarySession, priority: .interactive)
+        let lease2 = try await admission.acquire(.ordinarySession, priority: .interactive)
+        var pool = SessionFileClientPool<Int>()
+
+        let installed1 = pool.install(client: 101, lease: lease1)
+        let acquiredA = pool.acquireCurrent()
+        let acquiredB = pool.acquireCurrent()
+        let readerA = try #require(acquiredA)
+        let readerB = try #require(acquiredB)
+        #expect(readerA.id == installed1 && readerA.client == 101)
+        #expect(readerB.id == installed1 && readerB.client == 101)
+
+        // Reader A times out while Reader B (`chat.prefetch`) is still in flight (`readsInFlight == 2`):
+        // client 101 is condemned immediately so `Retry` opens a fresh client, while lease1 stays held
+        // until both in-flight operations exit.
+        #expect(pool.condemn(id: readerA.id) == nil)
+        #expect(pool.currentID == nil)
+        #expect(pool.acquireCurrent() == nil)
+
+        // Immediate `Retry` installs and acquires fresh client 102 before Reader A/B finish unwinding.
+        let installed2 = pool.install(client: 102, lease: lease2)
+        let acquiredRetry = pool.acquireCurrent()
+        let retryReader = try #require(acquiredRetry)
+        #expect(retryReader.id == installed2 && retryReader.client == 102)
+
+        // Reader A unwinds cancellation; Reader B is still running on condemned client 101.
+        #expect(pool.finishRead(id: readerA.id, retiresChannel: false).retired == nil)
+        #expect(pool.entryCount == 2)
+
+        // Reader B finishes -> condemned client 101 is finally returned for close + lease release.
+        let retired1 = pool.finishRead(id: readerB.id, retiresChannel: false).retired
+        #expect(retired1?.client == 101)
+        await retired1?.lease.release()
+        #expect(pool.entryCount == 1)
+        #expect(pool.currentID == installed2)
+
+        // Benign file-level status (`status 3`, `retiresChannel: false`) preserves client 102.
+        let benignOutcome = pool.finishRead(id: retryReader.id, retiresChannel: false)
+        #expect(benignOutcome.retired == nil)
+        #expect(benignOutcome.becameIdleCurrentID == installed2)
+        #expect(pool.isCurrentIdle(installed2))
+
+        // Generic `SSH_FX_FAILURE` (`status 4`, `retiresChannel: true`) under concurrency retires 102.
+        let acquiredC = pool.acquireCurrent()
+        let acquiredD = pool.acquireCurrent()
+        let readerC = try #require(acquiredC)
+        let readerD = try #require(acquiredD)
+        #expect(pool.finishRead(id: readerC.id, retiresChannel: true).retired == nil)
+        #expect(pool.currentID == nil)
+        #expect(pool.acquireCurrent() == nil)
+        let retired2 = pool.finishRead(id: readerD.id, retiresChannel: false).retired
+        #expect(retired2?.client == 102)
+        await retired2?.lease.release()
+        #expect(pool.entryCount == 0)
     }
 
     private static func savedIDs(_ cache: VolatileChatTranscriptCache, _ key: ChatCacheKey) async -> [String] {

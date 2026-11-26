@@ -945,6 +945,281 @@ struct ConsoleListPresentationStoreTests {
         #expect(section.statusCounts == .init(blocked: 1, working: 1, done: 1))
         #expect(section.statusCounts.items.map(\.status) == [.blocked, .working, .done])
     }
+
+    @Test func scrollOrderFreezeHoldsRowAndWorkspaceCardPositionsWhileUpdatingStatusesInPlace() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "Perf Studio")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let initial = [
+            checkoutAgent(host: host, paneID: "p1", status: .working, workspaceID: "w1", label: "ws-01", repo: "r1"),
+            checkoutAgent(host: host, paneID: "p2", status: .idle, workspaceID: "w2", label: "ws-02", repo: "r2"),
+            checkoutAgent(host: host, paneID: "p3", status: .idle, workspaceID: "w3", label: "ws-03", repo: "r3"),
+        ].consoleSorted()
+        #expect(store.orderedAgents(initial).map(\.agent.paneID) == ["p1", "p2", "p3"])
+        #expect(store.workspaceSections(hosts: [host], agents: initial).map(\.id.workspaceID)
+            == ["w1", "w2", "w3"])
+
+        // Initial collapsing search-drawer tuck (<= 64pt without user touch) keeps top live.
+        store.updateScrollOffsetFromTop(52)
+        #expect(!store.isOrderFrozen)
+
+        // User scrolls mid-list and rests (like A.hold at +156pt).
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollOffsetFromTop(156)
+        store.setScrollActive(false)
+        #expect(store.isOrderFrozen)
+
+        // Status churn flips p3 -> blocked and p1 -> idle; canonical sort puts p3 first,
+        // while a new Agent p4 joins and p2 stays idle.
+        let churned = [
+            checkoutAgent(host: host, paneID: "p1", status: .idle, workspaceID: "w1", label: "ws-01", repo: "r1"),
+            checkoutAgent(host: host, paneID: "p2", status: .idle, workspaceID: "w2", label: "ws-02", repo: "r2"),
+            checkoutAgent(host: host, paneID: "p3", status: .blocked, workspaceID: "w3", label: "ws-03", repo: "r3"),
+            checkoutAgent(host: host, paneID: "p4", status: .working, workspaceID: "w4", label: "ws-04", repo: "r4"),
+        ].consoleSorted()
+        #expect(churned.map(\.agent.paneID) == ["p3", "p4", "p1", "p2"])
+
+        // Frozen mid-list: existing rows keep exact visual slots, new p4 appends, and
+        // every row's live status updates in place.
+        let frozenFlat = store.orderedAgents(churned)
+        #expect(frozenFlat.map(\.agent.paneID) == ["p1", "p2", "p3", "p4"])
+        #expect(frozenFlat.map(\.agent.status) == [.idle, .idle, .blocked, .working])
+
+        let frozenGrouped = store.sections(hosts: [host], agents: churned)
+        #expect(frozenGrouped.first?.agents.map(\.agent.paneID) == ["p1", "p2", "p3", "p4"])
+        #expect(frozenGrouped.first?.statusCounts == .init(blocked: 1, working: 1))
+
+        let frozenWorkspaces = store.workspaceSections(hosts: [host], agents: churned)
+        #expect(frozenWorkspaces.map(\.id.workspaceID) == ["w1", "w2", "w3", "w4"])
+        #expect(frozenWorkspaces[2].statusCounts == .init(blocked: 1))
+
+        // Returning to Row 1 on iPhone with the 52pt search drawer still tucked
+        // unfreezes once scrolling settles and flushes canonical priority order.
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollOffsetFromTop(52)
+        #expect(store.isOrderFrozen)
+        store.setScrollActive(false)
+        #expect(!store.isOrderFrozen)
+        #expect(store.orderedAgents(churned).map(\.agent.paneID) == ["p3", "p4", "p1", "p2"])
+        #expect(store.workspaceSections(hosts: [host], agents: churned).map(\.id.workspaceID)
+            == ["w3", "w4", "w1", "w2"])
+    }
+
+    @Test func barelyOverflowingListFreezesAtBottomWithoutFreezingLaunchTuckAndUnfreezesAtRowOne() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "Perf Studio")
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let initial = [
+            checkoutAgent(host: host, paneID: "p1", status: .working, workspaceID: "w1", label: "ws-01", repo: "r1"),
+            checkoutAgent(host: host, paneID: "p2", status: .idle, workspaceID: "w2", label: "ws-02", repo: "r2"),
+            checkoutAgent(host: host, paneID: "p3", status: .idle, workspaceID: "w3", label: "ws-03", repo: "r3"),
+        ].consoleSorted()
+        #expect(store.orderedAgents(initial).map(\.agent.paneID) == ["p1", "p2", "p3"])
+
+        // Programmatic launch search-drawer tuck (~52pt on a 54pt-overflowing 12-row list)
+        // must never freeze Row 1 before the user scrolls.
+        store.setScrollActive(true, userInitiated: false)
+        store.updateScrollPosition(.init(offsetFromTop: 52, maxOffsetFromTop: 54))
+        store.setScrollActive(false)
+        #expect(!store.isOrderFrozen)
+
+        // Non-overflowing list (maxOffset <= 4pt) stays live after rubber-band release.
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollPosition(.init(offsetFromTop: 2, maxOffsetFromTop: 2))
+        store.setScrollActive(false)
+        #expect(!store.isOrderFrozen)
+
+        // Barely-overflowing 12-row Flat list (maxOffset ~54pt <= 64pt) scrolled to bottom
+        // by the user freezes order at rest.
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollPosition(.init(offsetFromTop: 54, maxOffsetFromTop: 54))
+        store.setScrollActive(false)
+        #expect(store.isOrderFrozen)
+
+        let churned = [
+            checkoutAgent(host: host, paneID: "p1", status: .idle, workspaceID: "w1", label: "ws-01", repo: "r1"),
+            checkoutAgent(host: host, paneID: "p2", status: .idle, workspaceID: "w2", label: "ws-02", repo: "r2"),
+            checkoutAgent(host: host, paneID: "p3", status: .blocked, workspaceID: "w3", label: "ws-03", repo: "r3"),
+        ].consoleSorted()
+        #expect(store.orderedAgents(churned).map(\.agent.paneID) == ["p1", "p2", "p3"])
+
+        // Spawning rows below a resting frozen viewport (growing maxOffset without scrolling)
+        // keeps order frozen until the user scrolls back to Row 1.
+        store.updateScrollPosition(.init(offsetFromTop: 54, maxOffsetFromTop: 106))
+        #expect(store.isOrderFrozen)
+
+        // Returning to Row 1 (0pt on the 12-row list) unfreezes and flushes canonical priority.
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollPosition(.init(offsetFromTop: 0, maxOffsetFromTop: 54))
+        store.setScrollActive(false)
+        #expect(!store.isOrderFrozen)
+        #expect(store.orderedAgents(churned).map(\.agent.paneID) == ["p3", "p1", "p2"])
+
+        // Even a tiny 14pt overflow freezes at bottom and unfreezes at 52pt when maxOffset grows
+        // and the user actively scrolls back to tucked Row 1.
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollPosition(.init(offsetFromTop: 14, maxOffsetFromTop: 14))
+        store.setScrollActive(false)
+        #expect(store.isOrderFrozen)
+        store.setScrollActive(true, userInitiated: true)
+        store.updateScrollPosition(.init(offsetFromTop: 52, maxOffsetFromTop: 200))
+        store.setScrollActive(false)
+        #expect(!store.isOrderFrozen)
+    }
+
+    @Test func filteredAgentSlicesAndSwitcherItemsMemoizeRepeatedIntraFrameReadsAndInvalidateOnChanges() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture(name: "iPad WAN Studio")
+        let snapshot = SessionSnapshot.fixture(
+            agents: [
+                .fixture(paneID: "p1", status: .working, workspaceID: "w1"),
+                .fixture(paneID: "p2", status: .blocked, workspaceID: "w2"),
+                .fixture(paneID: "p3", status: .idle, workspaceID: "w1"),
+            ],
+            workspaces: [
+                .fixture(workspaceID: "w1", label: "repo-alpha"),
+                .fixture(workspaceID: "w2", label: "repo-beta"),
+            ])
+        let transport = ScriptedTransport(snapshot: snapshot)
+        let pins = PinnedAgentsStore(defaults: defaults)
+        let console = ConsoleStore(
+            pins: pins, rowLayouts: AgentRowLayoutStore(defaults: defaults)
+        ) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.resume()
+        for _ in 0..<200 where console.chatDisplayAgents.count < 3 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(console.chatDisplayAgents.count == 3)
+
+        let presentation = ConsoleListPresentationStore(defaults: defaults)
+        let slice1 = presentation.filteredAgentSlice(in: console, searchQuery: "")
+        let slice2 = presentation.filteredAgentSlice(in: console, searchQuery: "")
+        #expect(slice1 == slice2)
+        #expect(slice1.filteredIDs.count == 3)
+
+        let sections1 = presentation.sectionsWithVisibleIDs(hosts: [host], console: console)
+        let sections2 = presentation.sectionsWithVisibleIDs(hosts: [host], console: console)
+        #expect(sections1.sections == sections2.sections)
+        #expect(sections1.visibleAgentIDs == slice1.filteredIDs)
+
+        let cards1 = presentation.workspaceCardsWithVisibleIDs(hosts: [host], console: console)
+        let cards2 = presentation.workspaceCardsWithVisibleIDs(hosts: [host], console: console)
+        #expect(cards1.cards == cards2.cards)
+        #expect(cards1.visibleAgentIDs.count == 3)
+
+        // Status filter invalidates the memoized slice and narrows results immediately.
+        presentation.toggleStatusFilter(.blocked)
+        let narrowed = presentation.filteredAgentSlice(in: console, searchQuery: "")
+        #expect(narrowed.filtered.map(\.agent.paneID) == ["p2"])
+        #expect(narrowed.searched.count == 3)
+
+        // Switcher items memoize identical inputs and update chip status/pin in place.
+        let agents = console.chatDisplayAgents
+        var layoutReads = 0
+        let items1 = TerminalAgentSwitcherItem.items(for: agents, pins: pins) { _ in
+            layoutReads += 1
+            return .heelerDefault
+        }
+        let readsAfterFirst = layoutReads
+        let items2 = TerminalAgentSwitcherItem.items(for: agents, pins: pins) { _ in
+            layoutReads += 1
+            return .heelerDefault
+        }
+        #expect(items1 == items2)
+        #expect(layoutReads == readsAfterFirst + 1)
+
+        pins.togglePin(hostID: host.id, paneID: "p3")
+        let itemsAfterPin = TerminalAgentSwitcherItem.items(for: agents, pins: pins) { _ in .heelerDefault }
+        #expect(itemsAfterPin.first(where: { $0.id.paneID == "p3" })?.isPinned == true)
+
+        // Pure switcher update diffing skips identical scheduled updates and isolates
+        // status-only / pin-only chip patches without touching title/qualifier layout.
+        #expect(
+            TerminalAgentSwitcherUpdateDiff.shouldSkipScheduledUpdate(
+                hasChips: true,
+                hasPendingUpdate: false,
+                currentItems: items1,
+                currentSelectedID: items1.first?.id,
+                nextItems: items1,
+                nextSelectedID: items1.first?.id))
+        #expect(
+            !TerminalAgentSwitcherUpdateDiff.shouldSkipScheduledUpdate(
+                hasChips: true,
+                hasPendingUpdate: false,
+                currentItems: items1,
+                currentSelectedID: items1.first?.id,
+                nextItems: itemsAfterPin,
+                nextSelectedID: itemsAfterPin.first?.id))
+
+        let p3Before = try #require(items1.first(where: { $0.id.paneID == "p3" }))
+        let p3Pinned = try #require(itemsAfterPin.first(where: { $0.id.paneID == "p3" }))
+        #expect(
+            TerminalAgentSwitcherUpdateDiff.chipPatch(
+                from: p3Before, previousSelected: false, to: p3Before, selected: false) == nil)
+        let pinPatch = try #require(
+            TerminalAgentSwitcherUpdateDiff.chipPatch(
+                from: p3Before, previousSelected: false, to: p3Pinned, selected: false))
+        #expect(pinPatch.updatesPin)
+        #expect(!pinPatch.updatesTitle)
+        #expect(!pinPatch.updatesQualifier)
+        #expect(!pinPatch.updatesStatus)
+        #expect(pinPatch.updatesAccessibilityValue)
+        #expect(!pinPatch.updatesAccessibilityLabel)
+    }
+
+    @Test func workspaceAndAgentRowKeysIsolateSiblingAndWireRevisionChanges() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let host = Host.fixture()
+        let store = ConsoleListPresentationStore(defaults: defaults)
+
+        let a1 = ConsoleAgent(
+            hostID: host.id, hostName: host.hostName,
+            agent: Agent(
+                terminalID: "t1", kind: "claude", title: "Audit list", status: .working,
+                workspaceID: "w1", tabID: "w1:t1", paneID: "p1", cwd: "/repo", revision: 1),
+            workspaceLabel: "Heeler", repositoryCheckout: nil)
+        var a1RevisionBump = a1
+        a1RevisionBump.agent = Agent(
+            terminalID: "t1", kind: "claude", title: "Audit list", status: .working,
+            workspaceID: "w1", tabID: "w1:t1", paneID: "p1", cwd: "/repo", revision: 99,
+            stateChangeSeq: 42)
+        let a2 = ConsoleAgent(
+            hostID: host.id, hostName: host.hostName,
+            agent: Agent(
+                terminalID: "t2", kind: "codex", title: "Fix chat", status: .idle,
+                workspaceID: "w1", tabID: "w1:t2", paneID: "p2", cwd: "/repo", revision: 1),
+            workspaceLabel: "Heeler", repositoryCheckout: nil)
+        var a2Blocked = a2
+        a2Blocked.agent = Agent(
+            terminalID: "t2", kind: "codex", title: "Fix chat", status: .blocked,
+            workspaceID: "w1", tabID: "w1:t2", paneID: "p2", cwd: "/repo", revision: 2)
+
+        // Wire revision / stateChangeSeq bumps alone keep flat/grouped row keys equal.
+        #expect(ConsoleAgentRowKey.makeForTesting(a1) == ConsoleAgentRowKey.makeForTesting(a1RevisionBump))
+        #expect(ConsoleAgentRowKey.makeForTesting(a2) != ConsoleAgentRowKey.makeForTesting(a2Blocked))
+
+        // Updating sibling a2 inside a multi-agent Workspace card leaves a1's row key equal.
+        let cardBefore = try #require(
+            ConsoleWorkspaceCard.cards(store.workspaceSections(hosts: [host], agents: [a1, a2])).first)
+        let cardAfter = try #require(
+            ConsoleWorkspaceCard.cards(
+                store.workspaceSections(hosts: [host], agents: [a1RevisionBump, a2Blocked])
+            ).first)
+        let keysBefore = ConsoleWorkspaceRowKey.makeAgentKeysForTesting(in: cardBefore)
+        let keysAfter = ConsoleWorkspaceRowKey.makeAgentKeysForTesting(in: cardAfter)
+        #expect(keysBefore[a1.id] == keysAfter[a1.id])
+        #expect(keysBefore[a2.id] != keysAfter[a2.id])
+    }
 }
 
 @Suite("Agent card presentation")

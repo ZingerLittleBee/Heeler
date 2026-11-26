@@ -194,4 +194,30 @@ struct ChatFollowLatchTests {
         #expect(ChatFollowLatch.isAtEnd(offset: 1_040, maxOffset: 1_000))
         #expect(ChatFollowLatch.isAtEnd(offset: -20, maxOffset: -20))
     }
+
+    @Test("Update hold defers same-generation updates during active user scroll or bounce")
+    func updateHoldPolicy() {
+        // Active in-bounds user scroll or deceleration holds same-generation updates.
+        #expect(ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false, isHeldPastStart: false, sameGeneration: true,
+            isHoldingTopJump: false, isUserScrolling: true, isTracking: false, isDecelerating: false))
+        #expect(ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false, isHeldPastStart: false, sameGeneration: true,
+            isHoldingTopJump: false, isUserScrolling: false, isTracking: false, isDecelerating: true))
+        // Conversation switches and Jump-to-Top long-press loads apply immediately when in bounds.
+        #expect(!ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false, isHeldPastStart: false, sameGeneration: false,
+            isHoldingTopJump: false, isUserScrolling: true, isTracking: true, isDecelerating: false))
+        #expect(!ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false, isHeldPastStart: false, sameGeneration: true,
+            isHoldingTopJump: true, isUserScrolling: true, isTracking: false, isDecelerating: false))
+        // Rubber-band overscroll past start or end always holds.
+        #expect(ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: true, isHeldPastStart: false, sameGeneration: false,
+            isHoldingTopJump: true, isUserScrolling: false, isTracking: false, isDecelerating: false))
+        // Settled in bounds applies immediately.
+        #expect(!ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false, isHeldPastStart: false, sameGeneration: true,
+            isHoldingTopJump: false, isUserScrolling: false, isTracking: false, isDecelerating: false))
+    }
 }

@@ -45,6 +45,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Nil on a Herdr TUI Host, and before the first one is known.
     var inventoryCore: String? { get }
     var sidebarRevision: UInt64 { get }
+    var sidebarLayoutRevision: UInt64 { get }
     var terminalLabelKeys: [String] { get }
 
     // MARK: What a detail keeps to
@@ -264,6 +265,8 @@ extension ConsoleHostProjection {
     var statusExplanations: [String: HerdrCoreStatusExplanation] { [:] }
 
     var inventoryCore: String? { nil }
+
+    var sidebarLayoutRevision: UInt64 { 0 }
 
     var panesAwaitingForeground: Set<String> { [] }
 

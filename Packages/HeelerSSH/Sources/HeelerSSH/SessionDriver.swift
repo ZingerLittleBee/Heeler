@@ -802,7 +802,7 @@ actor SessionDriver {
                 do {
                     try await awaitSessionProgress(progress.wait, until: deadline)
                 } catch {
-                    await acquireOperation()
+                    await acquireOperation(priority: .interactive)
                     await finishOwnedSendIfNeeded(owner: owner) {
                         guard let channel = try? resolveChannel(.pty(id)) else { return nil }
                         var scratch = [UInt8](repeating: 0, count: maximumBytes)
@@ -828,7 +828,7 @@ actor SessionDriver {
             let stderrCapacity = 16 * 1024
 
             while true {
-                await acquireOperation()
+                await acquireOperation(priority: .interactive)
                 let progress: (
                     data: Data, eof: Bool, pendingSend: Bool,
                     madeProgress: Bool, wait: SessionWaitPlan)
@@ -929,7 +929,7 @@ actor SessionDriver {
                     do {
                         try await awaitSessionProgress(progress.wait, until: deadline)
                     } catch {
-                        await acquireOperation()
+                        await acquireOperation(priority: .interactive)
                         await finishExecReadsIfNeeded(
                             id: id, stdoutOwner: stdoutOwner, stderrOwner: stderrOwner,
                             stdoutCapacity: maximumBytes, stderrCapacity: stderrCapacity)
@@ -1264,7 +1264,7 @@ actor SessionDriver {
             let owner = allocateTransportSendOwner()
 
             while offset < data.count {
-                await acquireOperation()
+                await acquireOperation(priority: .interactive)
                 let progress: (written: Int, wait: SessionWaitPlan, parkedOutbound: Bool)
                 do {
                     try await holdOwnedLoopTopForTestingIfNeeded(owner: owner)
@@ -1311,7 +1311,7 @@ actor SessionDriver {
                     do {
                         try await awaitSessionProgress(progress.wait, until: deadline)
                     } catch {
-                        await acquireOperation()
+                        await acquireOperation(priority: .interactive)
                         await finishOwnedSendIfNeeded(owner: owner) {
                             writeChannelOnce(identity: .streamLocal(id), data: data, offset: offset)
                         }
@@ -1334,7 +1334,7 @@ actor SessionDriver {
             let owner = allocateTransportSendOwner()
 
             while true {
-                await acquireOperation()
+                await acquireOperation(priority: .interactive)
                 let progress: (data: Data, eof: Bool, wait: SessionWaitPlan)
                 do {
                     try checkProgress(deadline: deadline)
@@ -1372,7 +1372,7 @@ actor SessionDriver {
                 do {
                     try await awaitSessionProgress(progress.wait, until: deadline)
                 } catch {
-                    await acquireOperation()
+                    await acquireOperation(priority: .interactive)
                     await finishOwnedSendIfNeeded(owner: owner) {
                         guard let channel = try? resolveChannel(.streamLocal(id)) else { return nil }
                         var scratch = [UInt8](repeating: 0, count: maximumBytes)

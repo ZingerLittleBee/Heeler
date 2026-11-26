@@ -16,6 +16,7 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
     /// The directory the session started in, which paths read relative to.
     let directory: String?
     private var records: [UInt64: GrokUpdateRecord] = [:]
+    private var orderedRecords: [GrokUpdateRecord] = []
     private var invalid: Set<UInt64> = []
     private var oversized: Set<UInt64> = []
 
@@ -43,14 +44,37 @@ struct GrokTranscriptReducer: ChatTranscriptReducer {
                 invalid.insert(line.offset)
                 continue
             }
-            records[line.offset] = record
+            let existed = records.updateValue(record, forKey: line.offset) != nil
+            upsertOrdered(record, existed: existed)
+        }
+    }
+
+    private mutating func upsertOrdered(_ record: GrokUpdateRecord, existed: Bool) {
+        if !existed, let last = orderedRecords.last, last.offset < record.offset {
+            orderedRecords.append(record)
+            return
+        }
+        var low = 0
+        var high = orderedRecords.count
+        while low < high {
+            let mid = (low + high) / 2
+            if orderedRecords[mid].offset < record.offset {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        if low < orderedRecords.count, orderedRecords[low].offset == record.offset {
+            orderedRecords[low] = record
+        } else {
+            orderedRecords.insert(record, at: low)
         }
     }
 
     mutating func prepend(_ lines: [ChatLine]) { append(lines) }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
-        let ordered = records.values.sorted { $0.offset < $1.offset }
+        let ordered = orderedRecords
         let rewound = Self.rewound(ordered, windowStart: context.windowStart)
         var projection = Projection(activity: context.activity, directory: directory)
         for (index, record) in ordered.enumerated() where !rewound.contains(index) {

@@ -624,4 +624,28 @@ struct ClaudeTranscriptReducerTests {
         #expect(plan.status == .succeeded)
         #expect(plan.filePath == "/Users/developer/.claude/plans/plan-creating-a-file-elegant-glade.md")
     }
+
+    @Test("Cached ISO 8601 date parser matches Foundation bit-for-bit")
+    func cachedDateParsingMatchesFoundationBitForBit() throws {
+        let samples = [
+            "1970-01-01T00:00:00Z",
+            "2024-02-29T23:59:59.125Z",
+            "2026-10-06T05:46:41.729Z",
+            "2026-10-06T05:53:05.873Z",
+            "2026-10-06T05:53:05.881Z",
+            "2026-11-26T17:21:00+08:00",
+            "2026-07-04T09:15:30.5-05:30",
+        ]
+        let fracStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let plainStyle = Date.ISO8601FormatStyle()
+        for sample in samples {
+            let expected = try #require(
+                (try? Date(sample, strategy: fracStyle)) ?? (try? Date(sample, strategy: plainStyle)))
+            // First call populates cache; second call hits cache; both match Foundation bit-for-bit.
+            #expect(ClaudeTranscriptProjection.date(sample) == expected, "\(sample)")
+            #expect(ClaudeTranscriptProjection.date(sample) == expected, "\(sample) cached")
+        }
+        #expect(ClaudeTranscriptProjection.date("not-a-timestamp") == nil)
+        #expect(ClaudeTranscriptProjection.date("not-a-timestamp") == nil)
+    }
 }

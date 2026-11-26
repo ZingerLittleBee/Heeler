@@ -452,6 +452,9 @@ enum ChatSurfacePresentation: Equatable {
     case departed(ChatAgentDeparture)
     /// Searching the Host for the transcript, with nothing saved to show.
     case locating
+    /// Searching or opening on the Host failed before any message could be read;
+    /// the read-failure banner above explains what happened and offers Retry.
+    case readFailed
     /// Nothing saved to show, and the Host to search isn't connected:
     /// nothing is being looked for until it is.
     case awaitingHost
@@ -480,11 +483,21 @@ enum ChatSurfacePresentation: Equatable {
             return
         }
         switch conversation.phase {
-        case .locating: self = isHostConnected ? .locating : .awaitingHost
-        case .following: self = .empty
+        case .locating:
+            if !isHostConnected {
+                self = .awaitingHost
+            } else if conversation.readFailure != nil {
+                self = .readFailed
+            } else {
+                self = .locating
+            }
+        case .following:
+            self = isHostConnected && conversation.readFailure != nil ? .readFailed : .empty
         case .unavailable(let reason):
             let mayBeNotice = reason.launchNotice(.codexSharedServer) != nil
-            self = checkingLaunch && mayBeNotice && isHostConnected ? .locating : .unavailable(reason)
+            self =
+                checkingLaunch && mayBeNotice && isHostConnected && conversation.readFailure == nil
+                ? .locating : .unavailable(reason)
         }
     }
 }

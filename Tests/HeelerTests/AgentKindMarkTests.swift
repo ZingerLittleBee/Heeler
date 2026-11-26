@@ -119,4 +119,11 @@ struct AgentCardStatusRingTests {
         #expect(rings(false) == [.turning, .closed, .closed, .closed, .hairline, .hairline, .hairline])
         #expect(rings(true) == [.turning, .closed, .dashed, .dashed, .hairline, .hairline, .hairline])
     }
+
+    @Test func badgeSizedSolvingOrbUsesLighterLatticeAtSmallClockSpeed() {
+        let badge = SolvingOrbRenderer(size: 12)
+        let large = SolvingOrbRenderer(size: 64)
+        #expect(badge.preset.speed == SolvingOrbRenderer.small.speed)
+        #expect(badge.dots(at: 0.6).count < large.dots(at: 0.6).count)
+    }
 }

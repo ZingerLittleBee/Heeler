@@ -21,6 +21,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Speed up the Agents list, switcher, and Chat while scrolling and over high-latency connections: hold scrolled Agent row and Workspace card order steady while updating live statuses in place until you return to Row 1, pre-position newly opened Chats directly to the latest messages instead of sizing top-of-history rows first, hold timeline updates during active drags and momentum scrolling while stabilizing mid-history anchors, precompute Chat row extents, image links, and settled turn projections off the main thread, offload Working arcs to Core Animation, and hold background Chat prefetches and automatic row Changes reads while a foreground Chat loads. (PR #861)
 - Leave out a program from the Usage Limits widget if its Usage Limits are off or if it isn't installed or can't run, unless you choose that program or every program would be left out. (PR #859)
 - Speak Rex API revision 19, the newest Rex 0.1.0-preview.23 offers, and keep working with Rex servers that offer revisions 12 to 18. Heeler worked with revision 12 only. Checked against Rex 0.1.0-preview.23 on macOS and Windows. (PR #846)
 - A terminal on a Rex Host now wears its own colors, as Rex shows it, rather than your Heeler theme, and follows them when they change there; Heeler's theme stays for any color Rex keeps built in. Tried against Rex 0.1.0-preview.23 on macOS. (PR #846)
@@ -31,6 +32,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Open large Chat conversations reliably over slow cellular connections and recover cleanly from SFTP timeouts: read transcripts in 256 KiB chunks so multi-megabyte files open within the request deadline at 64 KiB/s, retire timed-out or failed shared SFTP handles immediately so **Retry** and concurrent reads open a fresh channel instead of failing with SFTP status 4, stop status changes from re-arming background Chat prefetches after timeouts or on sessionless panes, clear read-failure banners automatically once the next poll succeeds, and show a quiet canvas rather than **No Messages Yet** under the **Retry** banner when an initial Chat read times out. (PR #861)
 - Name a new worktree's Workspace on a Herdr TUI Host after its branch instead of the new Agent's name (such as `claude-2` or `agy-3`). (PR #860)
 - Keep a Rex Host's open terminals and Agents, pins, Done and Chat when Rex restarts and brings back its sessions, as Rex 0.1.0-preview.25 does after it stops or crashes. Heeler read every restart as another Rex server: open terminals said **This Terminal belongs to a Rex server that is gone**, and pins and Done were cleared. A restored terminal reconnects and shows a fresh screen. Tried against Rex 0.1.0-preview.25 on macOS. (PR #854)
 - Keep Antigravity CLI Swarm Board and worker detail rows visible when scrolling offscreen and back, instead of leaving blank gaps or an empty screen over an expanded Assignment card, and show each Brief's leading addressee on the Board and in its worker's Assignment card rather than an earlier Brief that only mentions the worker in its body. (PR #853)

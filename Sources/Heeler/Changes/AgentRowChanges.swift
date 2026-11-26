@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// The Agents list's Changes totals, read by the list itself: one store per
 /// Agent, made when its row first shows and kept while the Agent is in the
@@ -10,7 +11,13 @@ import Foundation
 /// them hands their newer read over. Rows in every window share one store,
 /// so a second window costs the Host no second read.
 @MainActor
+@Observable
 final class AgentRowChanges {
+    struct ResolvedBranch: Equatable, Sendable {
+        let topLevelPath: String
+        let branch: CheckoutHead.Branch
+    }
+
     @MainActor
     private final class Entry {
         let store: ChangesStore
@@ -33,15 +40,26 @@ final class AgentRowChanges {
         weak var store: ChangesStore?
     }
 
-    private var entries: [ConsoleAgent.ID: Entry] = [:]
+    /// Cached branch per Agent from the latest loaded CheckoutChanges, updated
+    /// only when `(topLevelPath, branch)` actually changes so By Workspace
+    /// checkout headers never subscribe `ConsoleView.content` to unrelated
+    /// `ChangesStore.phase` transitions.
+    private var branchesByAgent: [ConsoleAgent.ID: ResolvedBranch] = [:]
+
+    @ObservationIgnored private var entries: [ConsoleAgent.ID: Entry] = [:]
     /// Each store's reads, kept apart from the entries so the registry's
     /// deinit can end them.
-    private var followings: [ConsoleAgent.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var followings: [ConsoleAgent.ID: Task<Void, Never>] = [:]
     /// Rows on screen per Agent, across windows, kept apart from the stores
     /// so a row shown before its Agent reports a directory still counts.
-    private var visibleRows: [ConsoleAgent.ID: Int] = [:]
-    private let reads: @MainActor (ConsoleAgent) -> Bool
-    private let makeStore: @MainActor (ConsoleAgent) -> ChangesStore
+    @ObservationIgnored private var visibleRows: [ConsoleAgent.ID: Int] = [:]
+    @ObservationIgnored private var isScrollActive = false
+    @ObservationIgnored private var deferredForegroundHosts: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var bypassedForegroundYieldUntil: [Host.ID: ContinuousClock.Instant] = [:]
+    @ObservationIgnored private let reads: @MainActor (ConsoleAgent) -> Bool
+    @ObservationIgnored private let defersForForegroundLoad: @MainActor (Host.ID) -> Bool
+    @ObservationIgnored private let yieldToForegroundLoad: @MainActor (Host.ID) async -> Void
+    @ObservationIgnored private let makeStore: @MainActor (ConsoleAgent) -> ChangesStore
 
     /// `makeStore` reads the Checkout the Agent is in at the time of each
     /// read, following its status. `reads` says whether an Agent's row reads
@@ -49,14 +67,43 @@ final class AgentRowChanges {
     /// (ADR 0056).
     init(
         reads: @escaping @MainActor (ConsoleAgent) -> Bool = { _ in true },
+        defersForForegroundLoad: @escaping @MainActor (Host.ID) -> Bool = { _ in false },
+        yieldToForegroundLoad: @escaping @MainActor (Host.ID) async -> Void = { _ in },
         makeStore: @escaping @MainActor (ConsoleAgent) -> ChangesStore
     ) {
         self.reads = reads
+        self.defersForForegroundLoad = defersForForegroundLoad
+        self.yieldToForegroundLoad = yieldToForegroundLoad
         self.makeStore = makeStore
     }
 
     deinit {
         for following in followings.values { following.cancel() }
+        for waiter in deferredForegroundHosts.values { waiter.cancel() }
+    }
+
+    /// Defers automatic row git reads while the user is actively scrolling,
+    /// flushing any waiting reads for visible rows as soon as scrolling settles.
+    func setScrollActive(_ active: Bool) {
+        guard isScrollActive != active else { return }
+        isScrollActive = active
+        if !active {
+            for id in visibleRows.keys {
+                entries[id]?.store.runPendingAutomaticRefresh()
+            }
+        }
+    }
+
+    /// Returns the proven git branch for `checkoutPath` from any of `agents`,
+    /// observing only branch changes rather than every `ChangesStore.phase` tick.
+    func branch(at checkoutPath: String?, for agents: [ConsoleAgent]) -> CheckoutHead.Branch? {
+        guard let checkoutPath else { return nil }
+        for agent in agents {
+            if let resolved = branchesByAgent[agent.id], resolved.topLevelPath == checkoutPath {
+                return resolved.branch
+            }
+        }
+        return nil
     }
 
     /// The row's store, made on first use; nil for an Agent that has not
@@ -109,6 +156,7 @@ final class AgentRowChanges {
         guard let entry = entries[id] else { return }
         entry.shown.removeAll { $0.store == nil || $0.store === shown }
         entry.store.adoptNewerRead(of: shown)
+        recordBranch(from: entry.store, for: id)
         entry.store.resumeAutomaticRefresh(after: shown)
     }
 
@@ -119,12 +167,50 @@ final class AgentRowChanges {
             followings.removeValue(forKey: id)?.cancel()
             entry.store.stopFollowingForRowTotals()
             entries[id] = nil
+            if branchesByAgent[id] != nil {
+                branchesByAgent[id] = nil
+            }
+        }
+        let activeHosts = Set(entries.keys.map(\.hostID))
+        for hostID in Array(deferredForegroundHosts.keys) where !activeHosts.contains(hostID) {
+            deferredForegroundHosts.removeValue(forKey: hostID)?.cancel()
+            bypassedForegroundYieldUntil[hostID] = nil
         }
     }
 
     private func startFollowing(_ entry: Entry, for id: ConsoleAgent.ID) {
         let store = entry.store
         followings[id] = Task { await store.followForRowTotals() }
+    }
+
+    private func shouldDeferForForegroundLoad(on hostID: Host.ID) -> Bool {
+        guard defersForForegroundLoad(hostID) else {
+            bypassedForegroundYieldUntil[hostID] = nil
+            return false
+        }
+        if let bypassUntil = bypassedForegroundYieldUntil[hostID], ContinuousClock.now < bypassUntil {
+            return false
+        }
+        scheduleForegroundLoadFlush(for: hostID)
+        return true
+    }
+
+    private func scheduleForegroundLoadFlush(for hostID: Host.ID) {
+        guard deferredForegroundHosts[hostID] == nil else { return }
+        deferredForegroundHosts[hostID] = Task { [weak self] in
+            guard let self else { return }
+            await self.yieldToForegroundLoad(hostID)
+            guard !Task.isCancelled else { return }
+            self.deferredForegroundHosts[hostID] = nil
+            if self.defersForForegroundLoad(hostID) {
+                self.bypassedForegroundYieldUntil[hostID] = ContinuousClock.now + .seconds(1)
+            } else {
+                self.bypassedForegroundYieldUntil[hostID] = nil
+            }
+            for id in self.visibleRows.keys where id.hostID == hostID {
+                self.entries[id]?.store.runPendingAutomaticRefresh()
+            }
+        }
     }
 
     private func entry(for agent: ConsoleAgent) -> Entry? {
@@ -136,11 +222,16 @@ final class AgentRowChanges {
         let id = agent.id
         store.defersAutomaticRefresh = { [weak self, weak entry] in
             guard let self, let entry else { return true }
-            return self.visibleRows[id] == nil || entry.isStoodInFor
+            if self.isScrollActive || self.visibleRows[id] == nil || entry.isStoodInFor {
+                return true
+            }
+            return self.shouldDeferForForegroundLoad(on: id.hostID)
         }
         store.onReadCompleted = { [weak self] completed in
+            self?.recordBranch(from: completed, for: id)
             self?.shareCompletedRead(from: completed, hostID: id.hostID)
         }
+        recordBranch(from: store, for: id)
         entries[agent.id] = entry
         return entry
     }
@@ -151,6 +242,17 @@ final class AgentRowChanges {
     private func shareCompletedRead(from source: ChangesStore, hostID: Host.ID) {
         for (siblingID, siblingEntry) in entries where siblingID.hostID == hostID {
             siblingEntry.store.adoptFreshSiblingRead(of: source)
+            recordBranch(from: siblingEntry.store, for: siblingID)
+        }
+    }
+
+    private func recordBranch(from store: ChangesStore, for id: ConsoleAgent.ID) {
+        guard case .loaded(let changes) = store.phase else { return }
+        let next = ResolvedBranch(
+            topLevelPath: String(decoding: changes.checkout.topLevel, as: UTF8.self),
+            branch: changes.head.branch)
+        if branchesByAgent[id] != next {
+            branchesByAgent[id] = next
         }
     }
 }

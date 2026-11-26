@@ -5,8 +5,8 @@ import UIKit
 /// with the unchanged lines between hunks counted. One gutter numbers each
 /// line as Claude Code's terminal does: a removed line by its old number,
 /// every other line by its new one.
-struct ChatFileDiff: Equatable {
-    struct Hunk: Identifiable, Equatable {
+struct ChatFileDiff: Equatable, Sendable {
+    struct Hunk: Identifiable, Equatable, Sendable {
         /// Unchanged lines between the hunk before and this one; nil for
         /// the first, or when they touch.
         var unchangedBefore: Int?
@@ -170,6 +170,7 @@ struct ChatFileChangesList: View {
     /// What an open file says while its lines were never read; nil when
     /// they can't be.
     let missingOutputText: String?
+    var precomputedDiffs: [String: ChatFileDiff] = [:]
     let actions: ChatFileActions
 
     var body: some View {
@@ -187,7 +188,8 @@ struct ChatFileChangesList: View {
                             ) { actions.toggle(file.path) }
                             if isExpanded {
                                 ChatInlineFileDiff(
-                                    file: file, read: read, missingOutputText: missingOutputText, actions: actions)
+                                    file: file, read: read, missingOutputText: missingOutputText,
+                                    precomputedDiff: precomputedDiffs[file.path], actions: actions)
                             }
                         }
                     }
@@ -295,10 +297,11 @@ struct ChatInlineFileDiff: View {
     let file: ChatFileChange
     let read: ChatToolActivity.OutputRead?
     let missingOutputText: String?
+    var precomputedDiff: ChatFileDiff? = nil
     let actions: ChatFileActions
 
     var body: some View {
-        let diff = ChatFileDiff(file.keeping(ChatFileChanges.rowLimits))
+        let diff = precomputedDiff ?? ChatFileDiff(file.keeping(ChatFileChanges.rowLimits))
         let footer = ChatFileDiffFooter(file: file, read: read, missingOutputText: missingOutputText)
         VStack(alignment: .leading, spacing: 6) {
             if !diff.hunks.isEmpty {

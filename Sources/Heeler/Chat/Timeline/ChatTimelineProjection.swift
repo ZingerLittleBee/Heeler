@@ -36,6 +36,39 @@ enum ChatTimelineProjection {
         var trajectories: [Trajectory] = []
     }
 
+    /// Memoizes settled turn segments so 1-second streaming updates on the
+    /// newest turn skip re-projecting and re-summarizing unchanged earlier turns.
+    final class Cache {
+        struct Key: Hashable {
+            let segmentDigest: Int
+            let folds: Bool
+            let foldsFinishedTurns: Bool
+            let isLive: Bool
+            let openHeaders: Set<ChatRowID>
+        }
+
+        struct Entry {
+            let rows: [ChatRow]
+            let owners: [(ChatRowID, ChatRowID)]
+            let trajectory: Trajectory
+        }
+
+        private var entries: [ChatRowID: (key: Key, entry: Entry)] = [:]
+
+        func lookup(id: ChatRowID, key: Key) -> Entry? {
+            guard let cached = entries[id], cached.key == key else { return nil }
+            return cached.entry
+        }
+
+        func store(id: ChatRowID, key: Key, entry: Entry) {
+            entries[id] = (key, entry)
+        }
+
+        func removeAll() {
+            entries.removeAll()
+        }
+    }
+
     /// Whether the newest turn runs, waits on Background Work, or is done.
     enum Phase: Equatable {
         case running
@@ -69,7 +102,7 @@ enum ChatTimelineProjection {
 
     static func project(
         _ rows: [ChatRow], turns: [ChatTurn], precedingTurnEnd: ChatTurnEnd? = nil, signals: ChatTurnSignals,
-        open: Set<ChatRowID>
+        open: Set<ChatRowID>, cache: Cache? = nil
     ) -> Output {
         var output = Output(rows: [], owners: [:])
         output.rows.reserveCapacity(rows.count)
@@ -77,7 +110,8 @@ enum ChatTimelineProjection {
         var pending: [ChatRow] = []
         var hasOlder = false
         let records = Dictionary(turns.map { (ChatRowID.entry($0.firstEntryID), $0) }, uniquingKeysWith: { _, last in last })
-        for row in signals.isLive ? rows : rows.map(lastSeen) {
+        for var row in rows {
+            if !signals.isLive { row = lastSeen(row) }
             if case .olderHistory(let older) = row.content {
                 hasOlder = older != .reachedStart
                 output.rows.append(row)
@@ -89,7 +123,8 @@ enum ChatTimelineProjection {
             if case .pending = row.content {
                 pending.append(row)
             } else if let record = records[row.id] {
-                segments.append(Segment(head: holdsHead(row) ? row : nil, body: holdsHead(row) ? [] : [row], record: record))
+                let isHead = holdsHead(row)
+                segments.append(Segment(head: isHead ? row : nil, body: isHead ? [] : [row], record: record))
             } else if turns.isEmpty, case .user(let message) = row.content, message.delivery == .direct {
                 // Without the program's turns, a prompt opens one, unless it
                 // joined the running turn or still waits for it.
@@ -104,19 +139,59 @@ enum ChatTimelineProjection {
             }
         }
         for index in segments.indices {
-            let phase = index == segments.count - 1 ? newestPhase(of: segments[index], signals: signals) : .settled
+            let segment = segments[index]
+            let phase = index == segments.count - 1 ? newestPhase(of: segment, signals: signals) : .settled
             // Rows of a turn whose start is still to load show as they
             // arrive: folded, each page would add nothing to see. Once
             // earlier messages wait for the user, the turn reads as finished
             // as far as it is loaded.
             let isPartial =
-                index == 0 && segments[0].head == nil && segments[0].record == nil && hasOlder
+                index == 0 && segment.head == nil && segment.record == nil && hasOlder
                 && !signals.olderAwaitsUser
+            let folds = !isPartial
+
+            if phase == .settled, let cache, let cacheID = segment.head?.id ?? segment.body.first?.id {
+                let key = segmentCacheKey(
+                    segment, folds: folds, foldsFinishedTurns: signals.foldsFinishedTurns,
+                    isLive: signals.isLive, open: open)
+                if let hit = cache.lookup(id: cacheID, key: key) {
+                    output.rows.append(contentsOf: hit.rows)
+                    for (owned, owner) in hit.owners {
+                        output.owners[owned] = owner
+                    }
+                    output.trajectories.append(hit.trajectory)
+                    continue
+                }
+                var local = Output(rows: [], owners: [:])
+                emit(segment, phase: phase, folds: folds, signals: signals, open: open, into: &local)
+                var members = Set(segment.body.map(\.id))
+                if let head = segment.head { members.insert(head.id) }
+                members.formUnion(local.rows.map(\.id))
+                let trajectory = Trajectory(
+                    rowIDs: members, shownIDs: local.rows.map(\.id),
+                    turnHeader: local.rows.first(where: {
+                        if case .turnHeader(let header) = $0.content { return header.isFoldable }
+                        return false
+                    })?.id)
+                cache.store(
+                    id: cacheID, key: key,
+                    entry: Cache.Entry(
+                        rows: local.rows,
+                        owners: Array(local.owners),
+                        trajectory: trajectory))
+                output.rows.append(contentsOf: local.rows)
+                for (owned, owner) in local.owners {
+                    output.owners[owned] = owner
+                }
+                output.trajectories.append(trajectory)
+                continue
+            }
+
             let first = output.rows.count
-            emit(segments[index], phase: phase, folds: !isPartial, signals: signals, open: open, into: &output)
+            emit(segment, phase: phase, folds: folds, signals: signals, open: open, into: &output)
             let shown = output.rows[first...]
-            var members = Set(segments[index].body.map(\.id))
-            if let head = segments[index].head { members.insert(head.id) }
+            var members = Set(segment.body.map(\.id))
+            if let head = segment.head { members.insert(head.id) }
             members.formUnion(shown.map(\.id))
             output.trajectories.append(Trajectory(
                 rowIDs: members, shownIDs: shown.map(\.id),
@@ -131,6 +206,103 @@ enum ChatTimelineProjection {
                 before: output.rows[index].content, after: index > 0 ? output.rows[index - 1].content : nil)
         }
         return output
+    }
+
+    /// Projects `rows` while keeping a newly settled `.turn` or `.group` open
+    /// when `!isFollowing` and the reader's anchored rows were previously
+    /// visible inside that turn or live tool group.
+    static func projectPreservingReader(
+        _ rows: [ChatRow],
+        turns: [ChatTurn],
+        precedingTurnEnd: ChatTurnEnd? = nil,
+        signals: ChatTurnSignals,
+        open: inout Set<ChatRowID>,
+        isFollowing: Bool,
+        anchoredIDs: [ChatRowID],
+        previouslyShown: Set<ChatRowID>,
+        previousOpenLiveGroups: [ChatEntryID],
+        cache: Cache? = nil
+    ) -> Output {
+        var output = project(
+            rows, turns: turns, precedingTurnEnd: precedingTurnEnd, signals: signals, open: open, cache: cache)
+        guard !isFollowing else { return output }
+
+        for _ in 0..<2 {
+            let shownIDs = Set(output.rows.map(\.id))
+            var openedAny = false
+            for firstID in previousOpenLiveGroups {
+                if !shownIDs.contains(.liveGroup(firstID)),
+                    case .group(let lastID)? = output.owners[.entry(firstID)],
+                    open.insert(.group(lastID)).inserted
+                {
+                    open.remove(.liveGroup(firstID))
+                    openedAny = true
+                }
+            }
+            for id in anchoredIDs where previouslyShown.contains(id) && !shownIDs.contains(id) {
+                guard let owner = output.owners[id], !previouslyShown.contains(owner) else { continue }
+                switch owner {
+                case .turn, .group:
+                    if open.insert(owner).inserted {
+                        openedAny = true
+                    }
+                default:
+                    break
+                }
+            }
+            guard openedAny else { break }
+            output = project(
+                rows, turns: turns, precedingTurnEnd: precedingTurnEnd, signals: signals, open: open, cache: cache)
+        }
+        return output
+    }
+
+    private static func segmentCacheKey(
+        _ segment: Segment, folds: Bool, foldsFinishedTurns: Bool, isLive: Bool, open: Set<ChatRowID>
+    ) -> Cache.Key {
+        var hasher = Hasher()
+        if let head = segment.head {
+            hasher.combine(head.id)
+            hasher.combine(head.revision)
+        } else {
+            hasher.combine(0)
+        }
+        hasher.combine(segment.body.count)
+        for row in segment.body {
+            hasher.combine(row.id)
+            hasher.combine(row.revision)
+        }
+        hasher.combine(segment.record?.firstEntryID)
+        hasher.combine(segment.record?.startedAt)
+        hasher.combine(segment.record?.endedAt)
+        hasher.combine(segment.record?.ending)
+        hasher.combine(segment.precedingEnd?.ending)
+        hasher.combine(segment.precedingEnd?.endedAt)
+        hasher.combine(segment.precedingEnd?.duration)
+
+        var segmentOpen: Set<ChatRowID> = []
+        if !open.isEmpty {
+            let entryIDs = Set(segment.body.compactMap { row -> ChatEntryID? in
+                if case .entry(let id) = row.id { return id }
+                return nil
+            })
+            for header in open {
+                switch header {
+                case .turn(let id), .group(let id), .liveGroup(let id):
+                    if entryIDs.contains(id) {
+                        segmentOpen.insert(header)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        return Cache.Key(
+            segmentDigest: hasher.finalize(),
+            folds: folds,
+            foldsFinishedTurns: foldsFinishedTurns,
+            isLive: isLive,
+            openHeaders: segmentOpen)
     }
 
     /// The newest turn's phase, from how its records say it ended.
@@ -210,8 +382,20 @@ enum ChatTimelineProjection {
     private static func coalescingSubagents(
         _ rows: [ChatRow], owners: inout [ChatRowID: ChatRowID]
     ) -> [ChatRow] {
+        struct PendingMerge {
+            let firstRow: ChatRow
+            var latestTool: ChatToolActivity
+            let path: String
+            var events: [String]
+            var revisionHasher: Hasher
+            var didMerge = false
+        }
+
         var result: [ChatRow] = []
+        result.reserveCapacity(rows.count)
         var indices: [String: Int] = [:]
+        var merges: [Int: PendingMerge] = [:]
+
         for row in rows {
             if case .user = row.content { indices.removeAll() }
             if case .divider = row.content { indices.removeAll() }
@@ -221,29 +405,37 @@ enum ChatTimelineProjection {
                 result.append(row)
                 continue
             }
-            guard let index = indices[path], case .tool(let previous) = result[index].content,
-                let previousActivity = previous.subagentActivity
-            else {
-                indices[path] = result.count
+            guard let index = indices[path], var pending = merges[index] else {
+                let slot = result.count
+                indices[path] = slot
+                var hasher = Hasher()
+                hasher.combine(row.revision)
+                merges[slot] = PendingMerge(
+                    firstRow: row, latestTool: tool, path: path, events: activity.events,
+                    revisionHasher: hasher)
                 result.append(row)
                 continue
             }
-            var merged = tool
-            merged.subagentActivity = ChatSubagentActivity(
-                agentPath: path, events: previousActivity.events + activity.events)
+            pending.didMerge = true
+            pending.latestTool = tool
+            pending.events.append(contentsOf: activity.events)
+            pending.revisionHasher.combine(row.revision)
+            merges[index] = pending
+            owners[row.id] = pending.firstRow.id
+        }
+
+        for (index, var pending) in merges where pending.didMerge {
+            var merged = pending.latestTool
+            merged.subagentActivity = ChatSubagentActivity(agentPath: pending.path, events: pending.events)
             merged.preview = nil
             merged.output = nil
-            var hasher = Hasher()
-            hasher.combine(result[index].revision)
-            hasher.combine(row.revision)
-            hasher.combine(merged.title)
-            hasher.combine(merged.status)
-            hasher.combine(merged.subagentActivity?.events)
-            let first = result[index]
+            pending.revisionHasher.combine(merged.title)
+            pending.revisionHasher.combine(merged.status)
+            pending.revisionHasher.combine(pending.events)
+            let first = pending.firstRow
             result[index] = ChatRow(
-                id: first.id, content: .tool(merged), revision: hasher.finalize(), topSpacing: first.topSpacing,
-                isNested: first.isNested, isMuted: first.isMuted)
-            owners[row.id] = result[index].id
+                id: first.id, content: .tool(merged), revision: pending.revisionHasher.finalize(),
+                topSpacing: first.topSpacing, isNested: first.isNested, isMuted: first.isMuted)
         }
         return result
     }

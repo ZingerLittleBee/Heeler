@@ -6,11 +6,29 @@ struct ChatTimelineInput: Equatable, Sendable {
     var entries: [ChatEntry]
     var pending: [ChatPendingEcho]
     var older: ChatOlderHistory
+    /// Optional digest identifying `entries` (transcript revision + overlay
+    /// state) so `@MainActor` `updateIfNeeded` skips O(N) entry comparisons
+    /// when only signals or pending echoes changed.
+    var entriesRevision: Int?
 
-    init(entries: [ChatEntry] = [], pending: [ChatPendingEcho] = [], older: ChatOlderHistory = .reachedStart) {
+    init(
+        entries: [ChatEntry] = [], pending: [ChatPendingEcho] = [], older: ChatOlderHistory = .reachedStart,
+        entriesRevision: Int? = nil
+    ) {
         self.entries = entries
         self.pending = pending
         self.older = older
+        self.entriesRevision = entriesRevision
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard lhs.older == rhs.older, lhs.pending == rhs.pending, lhs.entries.count == rhs.entries.count else {
+            return false
+        }
+        if let lRev = lhs.entriesRevision, let rRev = rhs.entriesRevision, lRev == rRev {
+            return true
+        }
+        return lhs.entries == rhs.entries
     }
 }
 
@@ -34,6 +52,7 @@ actor ChatRowBuilder {
         var topSpacing: CGFloat
         var revision: Int
         var blocks: [ChatMarkdownBlock]
+        var row: ChatRow
     }
 
     private var memos: [ChatRowID: Memo] = [:]
@@ -43,6 +62,7 @@ actor ChatRowBuilder {
         var rows: [ChatRow] = []
         rows.reserveCapacity(input.entries.count + input.pending.count + 1)
         var next: [ChatRowID: Memo] = [:]
+        next.reserveCapacity(input.entries.count + input.pending.count + 1)
 
         func append(_ id: ChatRowID, _ source: Source) {
             // Diffable data sources raise on duplicate identifiers; the
@@ -51,21 +71,42 @@ actor ChatRowBuilder {
                 assertionFailure("duplicate Chat row \(id)")
                 return
             }
-            let spacing = Self.spacing(before: Self.content(for: source, blocks: []), after: rows.last?.content)
+            let probeContent = Self.content(for: source, blocks: [])
+            let spacing = Self.spacing(before: probeContent, after: rows.last?.content)
             let memo: Memo
-            if let old = memos[id], old.source == source, old.topSpacing == spacing {
+            if let old = memos[id], old.topSpacing == spacing, old.source == source {
                 memo = old
             } else {
                 lastRevision += 1
+                let existing = memos[id]
+                let blocks = Self.blocks(for: source, reusing: existing)
+                let builtContent = Self.content(for: source, blocks: blocks)
+                let markedText: AttributedString?
+                let messageImages: [ChatImageLink.Reference]
+                let inlineDiffs: [String: ChatFileDiff]
+                if let existing, existing.source == source {
+                    markedText = existing.row.precomputedMarkedText
+                    messageImages = existing.row.precomputedMessageImages ?? []
+                    inlineDiffs = existing.row.precomputedInlineDiffs
+                } else {
+                    markedText = ChatRow.computeMarkedText(for: builtContent)
+                    messageImages = ChatRow.computeMessageImages(for: builtContent, markedText: markedText)
+                    inlineDiffs = ChatRow.computeInlineDiffs(for: builtContent)
+                }
+                let builtRow = ChatRow(
+                    id: id,
+                    content: builtContent,
+                    revision: lastRevision,
+                    topSpacing: spacing,
+                    precomputedMarkedText: markedText,
+                    precomputedMessageImages: messageImages,
+                    precomputedInlineDiffs: inlineDiffs)
                 memo = Memo(
                     source: source, topSpacing: spacing, revision: lastRevision,
-                    blocks: Self.blocks(for: source, reusing: memos[id]))
+                    blocks: blocks, row: builtRow)
             }
             next[id] = memo
-            rows.append(
-                ChatRow(
-                    id: id, content: Self.content(for: memo.source, blocks: memo.blocks),
-                    revision: memo.revision, topSpacing: spacing))
+            rows.append(memo.row)
         }
 
         if input.older != .reachedStart {

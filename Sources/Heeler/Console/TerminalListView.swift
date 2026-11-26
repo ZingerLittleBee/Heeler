@@ -22,11 +22,13 @@ struct TerminalListView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isSidebarColumn) private var isSidebarColumn
+    @Environment(\.isSidebarListShown) private var isSidebarListShown
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var closeFailure: String?
+    @State private var hiddenSidebarCache = HiddenTerminalListCache()
 
     /// Between Workspace cards; the header's own 44-point row already
     /// separates collapsed ones.
@@ -80,12 +82,7 @@ struct TerminalListView: View {
 
     @ViewBuilder
     private var byWorkspace: some View {
-        let workspaces = projection.workspaces(
-            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
-        let hasVisibleIssues =
-            workspaces.isEmpty
-            && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !projection.issues(filteredHostIDs: filteredHostIDs).isEmpty
+        let (workspaces, hasVisibleIssues) = resolvedByWorkspace()
         if workspaces.isEmpty && !hasVisibleIssues {
             emptyState
         } else if workspaces.isEmpty {
@@ -109,8 +106,7 @@ struct TerminalListView: View {
 
     @ViewBuilder
     private var byHost: some View {
-        let groups = projection.hostGroups(
-            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
+        let groups = resolvedByHost()
         let hasWorkspaces = groups.contains { !$0.workspaces.isEmpty }
         if !hasWorkspaces && groups.allSatisfy(\.issues.isEmpty) {
             emptyState
@@ -152,6 +148,32 @@ struct TerminalListView: View {
         }
     }
 
+    private func resolvedByWorkspace() -> (workspaces: [TerminalWorkspaceGroup], hasVisibleIssues: Bool) {
+        if !isSidebarListShown, let cached = hiddenSidebarCache.byWorkspace {
+            return cached
+        }
+        let current = projection
+        let workspaces = current.workspaces(
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
+        let hasVisibleIssues =
+            workspaces.isEmpty
+            && searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !current.issues(filteredHostIDs: filteredHostIDs).isEmpty
+        let result = (workspaces, hasVisibleIssues)
+        hiddenSidebarCache.byWorkspace = result
+        return result
+    }
+
+    private func resolvedByHost() -> [TerminalHostGroup] {
+        if !isSidebarListShown, let cached = hiddenSidebarCache.byHost {
+            return cached
+        }
+        let groups = projection.hostGroups(
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
+        hiddenSidebarCache.byHost = groups
+        return groups
+    }
+
     /// One By Host Workspace: its header, then its card's rows.
     @ViewBuilder
     private func workspaceRows(_ workspace: TerminalWorkspaceGroup) -> some View {
@@ -172,15 +194,16 @@ struct TerminalListView: View {
             // Where the Host cannot start a terminal now, its last shell
             // closes the card.
             let endsInNewTerminal = console.capabilities(for: workspace.id.hostID).startsTerminals
-            ForEach(Array(terminals.enumerated()), id: \.element.id) { @Sendable index, terminal in
-                MainActorContent {
-                    let edges = TerminalCardEdges.shell(
-                        at: index, of: terminals.count, endsInNewTerminal: endsInNewTerminal)
-                    terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
+            let keys = makeTerminalRowKeys(
+                terminals, showsTab: terminals.count > 1,
+                liftsCard: true, endsInNewTerminal: endsInNewTerminal)
+            ForEach(keys, id: \.terminal.id) { @Sendable key in
+                KeyedContent(key: key) {
+                    terminalRow(key.terminal, showsTab: key.showsTab, liftsCard: true)
                         .modifier(
                             TerminalCardRow(
-                                isFirst: edges.isFirst, isLast: edges.isLast,
-                                isSelected: isShownSelected(terminal)))
+                                isFirst: key.isFirst, isLast: key.isLast,
+                                isSelected: key.isSelected))
                 }
             }
             if endsInNewTerminal {
@@ -222,10 +245,13 @@ struct TerminalListView: View {
     ) -> some View {
         Section {
             if !workspace.isCollapsed {
-                ForEach(workspace.terminals) { @Sendable terminal in
-                    MainActorContent {
-                        terminalRow(terminal, showsTab: workspace.terminals.count > 1)
-                            .listRowBackground(cardSlice(isSelected: isShownSelected(terminal)))
+                let keys = makeTerminalRowKeys(
+                    workspace.terminals, showsTab: workspace.terminals.count > 1,
+                    liftsCard: false, endsInNewTerminal: false)
+                ForEach(keys, id: \.terminal.id) { @Sendable key in
+                    KeyedContent(key: key) {
+                        terminalRow(key.terminal, showsTab: key.showsTab)
+                            .listRowBackground(cardSlice(isSelected: key.isSelected))
                     }
                 }
                 // Every card ends in New Terminal, clear of the header's
@@ -248,6 +274,46 @@ struct TerminalListView: View {
                         bottom: Self.workspaceHeaderPadding, trailing: 0))
         }
         .listSectionSpacing(.custom(Self.workspaceSpacing))
+    }
+
+    private func makeTerminalRowKeys(
+        _ terminals: [ConsoleTerminal], showsTab: Bool, liftsCard: Bool, endsInNewTerminal: Bool
+    ) -> [TerminalRowKey] {
+        var capabilitiesByHost: [Host.ID: HostCapabilities] = [:]
+        return terminals.enumerated().map { index, terminal in
+            let capabilities = capabilitiesByHost[terminal.hostID] ?? {
+                let resolved = console.capabilities(for: terminal.hostID)
+                capabilitiesByHost[terminal.hostID] = resolved
+                return resolved
+            }()
+            let edges = TerminalCardEdges.shell(
+                at: index, of: terminals.count, endsInNewTerminal: endsInNewTerminal)
+            let rowPresentation = TerminalRowPresentation(terminal: terminal, showsTab: showsTab)
+            return TerminalRowKey(
+                terminal: terminal,
+                paneID: terminal.paneID,
+                workspaceID: terminal.workspaceID,
+                title: rowPresentation.title,
+                subtitle: rowPresentation.subtitle,
+                displayCwd: terminal.displayCwd,
+                displayTabTitle: terminal.displayTabTitle,
+                workspaceLabel: terminal.workspaceLabel,
+                hostName: terminal.hostName,
+                cwd: terminal.cwd,
+                isRestarting: terminal.isRestarting,
+                showsTab: showsTab,
+                liftsCard: liftsCard,
+                isFirst: edges.isFirst,
+                isLast: edges.isLast,
+                isSelected: isShownSelected(terminal),
+                isSidebarColumn: isSidebarColumn,
+                capabilities: capabilities,
+                closeActionTitle: closeLabel(for: terminal))
+        }
+    }
+
+    private func currentTerminal(_ fallback: ConsoleTerminal) -> ConsoleTerminal {
+        console.terminals.first { $0.id == fallback.id } ?? fallback
     }
 
     /// A By Workspace row's slice of its card. The list rounds the card's
@@ -282,16 +348,16 @@ struct TerminalListView: View {
                     if capabilities(of: terminal).startsIn(terminal.cwd) {
                         if capabilities(of: terminal).startsTerminals {
                             Button("New Terminal Here", systemImage: "plus.rectangle") {
-                                create(beside: terminal)
+                                create(beside: currentTerminal(terminal))
                             }
                         }
                         Button("Copy Path", systemImage: "doc.on.doc") {
-                            UIPasteboard.general.string = terminal.cwd
+                            UIPasteboard.general.string = currentTerminal(terminal).cwd
                         }
                     }
                     if capabilities(of: terminal).movesPanes {
                         Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
-                            movePaneRequest = MovePaneRequest(terminal: terminal)
+                            movePaneRequest = MovePaneRequest(terminal: currentTerminal(terminal))
                         }
                     }
                     if capabilities(of: terminal).copiesPaneID {
@@ -300,7 +366,7 @@ struct TerminalListView: View {
                 }
                 if capabilities(of: terminal).closeTab {
                     Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
-                        pendingClose = terminal
+                        pendingClose = currentTerminal(terminal)
                     }
                 }
             } preview: {
@@ -311,7 +377,7 @@ struct TerminalListView: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if capabilities(of: terminal).closeTab {
                 Button {
-                    pendingClose = terminal
+                    pendingClose = currentTerminal(terminal)
                 } label: {
                     Label("Close", systemImage: "trash")
                 }
@@ -698,4 +764,54 @@ private struct TerminalHostHeader: View {
 
     /// A failing Host never expands; its chevron points at the sheet.
     private var isFolded: Bool { group.isCollapsed || group.opensConnectionDetail }
+}
+
+@MainActor
+private final class HiddenTerminalListCache {
+    var byWorkspace: (workspaces: [TerminalWorkspaceGroup], hasVisibleIssues: Bool)?
+    var byHost: [TerminalHostGroup]?
+}
+
+private struct TerminalRowKey: Equatable, Sendable {
+    let terminal: ConsoleTerminal
+    let paneID: String
+    let workspaceID: String
+    let title: String
+    let subtitle: String
+    let displayCwd: String
+    let displayTabTitle: String
+    let workspaceLabel: String?
+    let hostName: String
+    let cwd: String?
+    let isRestarting: Bool
+    let showsTab: Bool
+    let liftsCard: Bool
+    let isFirst: Bool
+    let isLast: Bool
+    let isSelected: Bool
+    let isSidebarColumn: Bool
+    let capabilities: HostCapabilities
+    let closeActionTitle: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.terminal.id == rhs.terminal.id
+            && lhs.paneID == rhs.paneID
+            && lhs.workspaceID == rhs.workspaceID
+            && lhs.title == rhs.title
+            && lhs.subtitle == rhs.subtitle
+            && lhs.displayCwd == rhs.displayCwd
+            && lhs.displayTabTitle == rhs.displayTabTitle
+            && lhs.workspaceLabel == rhs.workspaceLabel
+            && lhs.hostName == rhs.hostName
+            && lhs.cwd == rhs.cwd
+            && lhs.isRestarting == rhs.isRestarting
+            && lhs.showsTab == rhs.showsTab
+            && lhs.liftsCard == rhs.liftsCard
+            && lhs.isFirst == rhs.isFirst
+            && lhs.isLast == rhs.isLast
+            && lhs.isSelected == rhs.isSelected
+            && lhs.isSidebarColumn == rhs.isSidebarColumn
+            && lhs.capabilities == rhs.capabilities
+            && lhs.closeActionTitle == rhs.closeActionTitle
+    }
 }

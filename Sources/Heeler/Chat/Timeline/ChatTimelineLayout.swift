@@ -27,6 +27,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
     /// end, which throws the rows out by far more than the row changed, so
     /// rows above the reader's keep their heights until the list is back.
     var isPastEnd: () -> Bool = { false }
+    var visibleBottomOverride: ((UICollectionView) -> CGFloat)?
     var onMeasure: ((ChatRowID, ChatMeasuredHeight) -> Void)?
     var onForgetMeasurements: ((Set<ChatRowID>) -> Void)?
     /// Room at the trailing edge that rows end short of, for chrome that
@@ -162,11 +163,14 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         guard preferredAttributes.representedElementCategory == .cell, index < geometry.count else {
             return false
         }
-        record(preferredAttributes.size.height, at: index)
-        guard abs(preferredAttributes.size.height - geometry.height(at: index)) >= 0.5 else { return false }
+        guard abs(preferredAttributes.size.height - geometry.height(at: index)) >= 0.5 else {
+            record(preferredAttributes.size.height, at: index)
+            return false
+        }
         if isPastEnd(), !isFollowing(), let collectionView, let id = id(at: index),
             let anchor = stableAnchor(in: collectionView), index < anchor.index
         {
+            record(preferredAttributes.size.height, at: index)
             held[id] = held[id] ?? geometry.height(at: index)
             return false
         }
@@ -209,6 +213,7 @@ final class ChatTimelineLayout: UICollectionViewLayout {
         guard let collectionView, index < geometry.count else { return context }
         PerfTrace.count("chat.layout.resized-row")
         let anchor = isFollowing() ? nil : stableAnchor(in: collectionView)
+        record(preferredAttributes.size.height, at: index)
         let delta = geometry.setHeight(preferredAttributes.size.height, at: index)
         context.contentSizeAdjustment = CGSize(width: 0, height: delta)
         let adjustment = geometry.offsetAdjustment(restoring: anchor)
@@ -220,18 +225,16 @@ final class ChatTimelineLayout: UICollectionViewLayout {
 
     /// The first row whose top edge shows, or the first row showing when
     /// none does. A row cut off at the top grows upward, off screen, rather
-    /// than pushing what is below it.
+    /// than pushing what is below it; a row whose top is in view keeps its
+    /// top in place when its own content grows.
     private func stableAnchor(in collectionView: UICollectionView) -> ChatTimelineAnchor? {
         if let id = disclosureAnchor(), let index = indexByID[id] {
             return ChatTimelineAnchor(index: index, minY: geometry.minY(at: index))
         }
         let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
-        guard let first = geometry.anchor(visibleTop: visibleTop) else { return nil }
-        let next = first.index + 1
-        if first.minY < visibleTop - 0.5, next < geometry.count {
-            return ChatTimelineAnchor(index: next, minY: geometry.minY(at: next))
-        }
-        return first
+        let bottom = visibleBottomOverride?(collectionView)
+            ?? (collectionView.contentOffset.y + collectionView.bounds.height - collectionView.adjustedContentInset.bottom)
+        return geometry.readingAnchor(visibleTop: visibleTop, visibleBottom: bottom)
     }
 
     private func attributes(at index: Int) -> UICollectionViewLayoutAttributes {

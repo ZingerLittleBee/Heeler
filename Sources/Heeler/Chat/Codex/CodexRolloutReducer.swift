@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Whether the adapter can read a rollout, decided by its first line
 /// (docs/research/codex-rollout-format.md, "Dialect detection").
@@ -79,9 +80,22 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
     private var bases: [CodexSegment] = []
     /// The rollout whose base could not be read, when one could not.
     private var unavailableBaseOf: String?
-    private var timeline = CodexTimeline()
-    private var ordinals = CodexOrdinalDiagnostics()
-    private var diagnostics = ChatTranscriptDiagnostics()
+    private var liveDiagnostics = ChatTranscriptDiagnostics()
+    private var baseDiagnostics = ChatTranscriptDiagnostics()
+    /// Lazily populated on demand in `projection(_:)` and replaced with a fresh
+    /// instance on every mutation so multi-chunk `append`/`prepend` batches
+    /// coalesce into one `CodexPaginatedBuilder.build` while keeping strict
+    /// value semantics.
+    private var rebuildCache = RebuildCache()
+
+    private struct BuiltState: Sendable {
+        var timeline: CodexTimeline
+        var ordinals: CodexOrdinalDiagnostics
+    }
+
+    private final class RebuildCache: Sendable {
+        let storage = OSAllocatedUnfairLock<BuiltState?>(initialState: nil)
+    }
 
     init(rolloutID: String) {
         self.rolloutID = rolloutID
@@ -120,7 +134,7 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
     mutating func setSessionMeta(_ line: ChatLine) {
         guard support == .pending else { return }
         adopt(line)
-        rebuild()
+        rebuildCache = RebuildCache()
     }
 
     /// Lines already fed are ignored, so a caller may resend an overlap.
@@ -145,10 +159,11 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
         let known = Set([rolloutID] + bases.map(\.rolloutID))
         if !known.contains(baseID), let segment = Self.baseSegment(base, rolloutID: baseID, path: path, lines: baseLines) {
             bases.append(segment)
+            Self.foldDiagnostics(segment.lines, into: &baseDiagnostics)
         } else {
             unavailableBaseOf = bases.last?.rolloutID ?? rolloutID
         }
-        rebuild()
+        rebuildCache = RebuildCache()
     }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
@@ -173,20 +188,25 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
     }
 
     func projection(_ context: ChatProjectionContext) -> CodexProjection {
-        var timeline = timeline
+        let built = resolvedState()
+        var timeline = built.timeline
         if context.windowStart > 0 {
             // Older history sits above lines the window has not loaded yet.
             timeline = Self.liveOnly(timeline, rolloutID: rolloutID)
         }
+        let combinedDiagnostics = ChatTranscriptDiagnostics(
+            invalidLines: liveDiagnostics.invalidLines + baseDiagnostics.invalidLines,
+            oversizedLines: liveDiagnostics.oversizedLines + baseDiagnostics.oversizedLines,
+            unknownRecordTypes: liveDiagnostics.unknownRecordTypes.union(baseDiagnostics.unknownRecordTypes))
         let output = CodexTimelineProjector.project(timeline, context: context, liveRolloutID: rolloutID)
         var transcript = ChatTranscript(
             entries: output.entries, needsOlderHistory: context.windowStart > 0 || pendingHistoryBase != nil,
             pendingRequests: output.pendingRequests, recordedPrompts: output.recordedPrompts,
-            diagnostics: diagnostics, turns: output.chatTurns, precedingTurnEnd: output.precedingTurnEnd)
+            diagnostics: combinedDiagnostics, turns: output.chatTurns, precedingTurnEnd: output.precedingTurnEnd)
         transcript.model = timeline.model
         transcript.effort = timeline.effort
         return CodexProjection(
-            transcript: transcript, turns: output.turns, echoCandidates: output.echoCandidates, ordinals: ordinals)
+            transcript: transcript, turns: output.turns, echoCandidates: output.echoCandidates, ordinals: built.ordinals)
     }
 
     // MARK: Lines
@@ -205,9 +225,10 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
             return
         case .supported:
             let decoded = newLines.map(decode)
+            Self.foldDiagnostics(decoded, into: &liveDiagnostics)
             lines = atEnd ? lines + decoded : decoded + lines
         }
-        rebuild()
+        rebuildCache = RebuildCache()
     }
 
     /// Reads the dialect from a `session_meta` line and decodes whatever
@@ -219,7 +240,9 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
         let waiting = undecided
         undecided = []
         if case .supported = support {
-            lines = waiting.map(decode) + lines
+            let decoded = waiting.map(decode)
+            Self.foldDiagnostics(decoded, into: &liveDiagnostics)
+            lines = decoded + lines
         }
     }
 
@@ -310,9 +333,10 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
 
     // MARK: Rebuild
 
-    private mutating func rebuild() {
-        diagnostics = ChatTranscriptDiagnostics()
-        for line in lines + bases.flatMap(\.lines) {
+    private static func foldDiagnostics(
+        _ batch: [CodexStoredLine], into diagnostics: inout ChatTranscriptDiagnostics
+    ) {
+        for line in batch {
             if line.outcome.isInvalid {
                 diagnostics.invalidLines += 1
             }
@@ -323,12 +347,27 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
                 diagnostics.unknownRecordTypes.insert(type)
             }
         }
+    }
+
+    private func resolvedState() -> BuiltState {
+        if let cached = rebuildCache.storage.withLock({ $0 }) {
+            return cached
+        }
+        let computed = computeState()
+        return rebuildCache.storage.withLock { slot in
+            if let existing = slot { return existing }
+            slot = computed
+            return computed
+        }
+    }
+
+    private func computeState() -> BuiltState {
         guard let dialect, let meta else {
-            timeline = CodexTimeline()
-            ordinals = CodexOrdinalDiagnostics()
-            return
+            return BuiltState(timeline: CodexTimeline(), ordinals: CodexOrdinalDiagnostics())
         }
         let live = CodexSegment(rolloutID: rolloutID, path: nil, meta: meta, lines: lines)
+        var timeline: CodexTimeline
+        let ordinals: CodexOrdinalDiagnostics
         switch dialect {
         case .paginated:
             (timeline, ordinals) = CodexPaginatedBuilder.build(bases.reversed() + [live])
@@ -344,5 +383,6 @@ struct CodexRolloutReducer: ChatTranscriptReducer {
                     content: .divider(ChatDivider(kind: .historyUnavailable)))
             ]
         }
+        return BuiltState(timeline: timeline, ordinals: ordinals)
     }
 }

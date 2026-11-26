@@ -387,34 +387,26 @@ private struct ChatBackgroundWorkSummaryLine: View {
     }
 }
 
-/// Continuously turning status arc driven by `TimelineView(.animation)` so
-/// periodic 1-second timer ticks never reset or hitch the rotation.
-struct ChatBackgroundWorkSpinningArc: View {
+/// Continuously turning status arc driven by Core Animation on the render
+/// server (`0` `@MainActor` wakeups per second), `Equatable` so 1-second strip
+/// timer ticks never rebuild or reset the rotation.
+struct ChatBackgroundWorkSpinningArc: View, Equatable {
     var size: CGFloat = 13
     var lineWidth: CGFloat = 2
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var isOnScreen = false
-
-    var body: some View {
-        if reduceMotion {
-            arc(angle: .degrees(-45))
-        } else {
-            TimelineView(.animation(
-                minimumInterval: 1.0 / 30,
-                paused: !isOnScreen || scenePhase != .active
-            )) { context in
-                let period = 1.1
-                let turns = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
-                arc(angle: .degrees(turns * 360))
-            }
-            .onAppear { isOnScreen = true }
-            .onDisappear { isOnScreen = false }
-        }
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.size == rhs.size && lhs.lineWidth == rhs.lineWidth
     }
 
-    private func arc(angle: Angle) -> some View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isSpinning = false
+
+    private var shouldSpin: Bool {
+        !reduceMotion && scenePhase == .active
+    }
+
+    var body: some View {
         ZStack {
             Circle()
                 .stroke(lineWidth: lineWidth)
@@ -422,10 +414,30 @@ struct ChatBackgroundWorkSpinningArc: View {
             Circle()
                 .trim(from: 0, to: 0.28)
                 .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(angle)
+                .rotationEffect(.degrees(reduceMotion ? -45 : (isSpinning ? 360 : 0)))
+                .animation(
+                    isSpinning
+                        ? .linear(duration: 1.1).repeatForever(autoreverses: false)
+                        : .default,
+                    value: isSpinning)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+        .onAppear {
+            if shouldSpin, !isSpinning {
+                isSpinning = true
+            }
+        }
+        .onDisappear {
+            if isSpinning {
+                isSpinning = false
+            }
+        }
+        .onChange(of: shouldSpin) { _, active in
+            if isSpinning != active {
+                isSpinning = active
+            }
+        }
     }
 }
 
@@ -466,6 +478,7 @@ struct ChatBackgroundWorkGlyph: View {
             switch status {
             case .running:
                 ChatBackgroundWorkSpinningArc(size: size.arc, lineWidth: 2)
+                    .equatable()
                     // Sits on the line as a symbol does, not on its foot.
                     .alignmentGuide(.firstTextBaseline) { $0[.bottom] - size.arc * 0.16 }
             case .unconfirmed, .quiet:

@@ -15,6 +15,66 @@ struct TerminalAgentSwitcherItem: Equatable, Sendable {
 }
 
 extension TerminalAgentSwitcherItem {
+    @MainActor
+    private struct TitleCacheKey: Equatable {
+        let layout: AgentRowLayout
+        let hostName: String
+        let backend: AgentBackend?
+        let hostUsername: String?
+        let workspaceLabel: String?
+        let tabLabel: String?
+        let paneLabel: String?
+        let tabPosition: Int?
+        let workspaceTabCount: Int
+        let repoName: String?
+        let kind: String
+        let name: String?
+        let title: String
+        let paneTitle: String?
+        let terminalTitle: String?
+        let terminalTitleStripped: String?
+        let cwd: String
+        let tokens: [String: String]?
+        let status: AgentStatus?
+    }
+
+    @MainActor
+    private struct ResolvedEntry: Equatable {
+        let id: ConsoleAgent.ID
+        let title: String
+        let namesAgent: Bool
+        let program: String
+    }
+
+    @MainActor
+    private struct ItemsCacheKey: Equatable {
+        let pinsID: ObjectIdentifier
+        let pinsRevision: UInt64
+        let agents: [ConsoleAgent]
+        let hostFilter: Set<Host.ID>
+        let shownID: ConsoleAgent.ID?
+        let layoutsByHost: [Host.ID: AgentRowLayout]
+    }
+
+    @MainActor private static var cachedTitleKeyByAgent: [ConsoleAgent.ID: TitleCacheKey] = [:]
+    @MainActor private static var cachedShownByAgent: [ConsoleAgent.ID: AgentTitleQualifier.Shown] = [:]
+    @MainActor private static var cachedResolved: [ResolvedEntry] = []
+    @MainActor private static var cachedQualifiers: [ConsoleAgent.ID: String] = [:]
+    @MainActor private static var cachedItems: (key: ItemsCacheKey, items: [TerminalAgentSwitcherItem])?
+
+    @MainActor
+    private static func layoutReadsStatus(_ layout: AgentRowLayout) -> Bool {
+        let firstRows = layout.rows.prefix(1) + layout.rowsByAgent.values.compactMap(\.first)
+        return firstRows.contains { row in
+            row.contains { field in
+                switch field.token {
+                case .status, .stateText, .stateIcon, .statusBadge: true
+                default: false
+                }
+            }
+        }
+    }
+
     /// Maps a Console row through the same pin store the list uses, so a pin
     /// made on either surface shows up on the other.
     @MainActor
@@ -45,17 +105,156 @@ extension TerminalAgentSwitcherItem {
         showing shownID: ConsoleAgent.ID? = nil, pins: PinnedAgentsStore,
         layout: (Host.ID) -> AgentRowLayout
     ) -> [TerminalAgentSwitcherItem] {
-        let agents = hostFilter.isEmpty
+        let pinsRevision = pins.revision
+        var layoutsByHost: [Host.ID: AgentRowLayout] = [:]
+        for agent in agents where layoutsByHost[agent.hostID] == nil {
+            layoutsByHost[agent.hostID] = layout(agent.hostID)
+        }
+        let cacheKey = ItemsCacheKey(
+            pinsID: ObjectIdentifier(pins),
+            pinsRevision: pinsRevision,
+            agents: agents,
+            hostFilter: hostFilter,
+            shownID: shownID,
+            layoutsByHost: layoutsByHost)
+        if let cached = cachedItems, cached.key == cacheKey {
+            return cached.items
+        }
+
+        let visibleAgents = hostFilter.isEmpty
             ? agents
             : agents.filter { hostFilter.contains($0.hostID) || $0.id == shownID }
-        let qualifiers = AgentTitleQualifier.qualifiers(for: agents) { agent in
-            let card = AgentCardPresentation(agent: agent, layout: layout(agent.hostID))
-            return .init(title: card.switcherTitle, namesAgent: card.namesAgent(inFirst: 1))
+        var readsStatusByHost: [Host.ID: Bool] = [:]
+        var resolved: [ResolvedEntry] = []
+        resolved.reserveCapacity(visibleAgents.count)
+
+        for agent in visibleAgents {
+            let hostLayout = layoutsByHost[agent.hostID] ?? layout(agent.hostID)
+            let readsStatus = readsStatusByHost[agent.hostID] ?? {
+                let value = layoutReadsStatus(hostLayout)
+                readsStatusByHost[agent.hostID] = value
+                return value
+            }()
+            let titleKey = TitleCacheKey(
+                layout: hostLayout,
+                hostName: agent.hostName,
+                backend: agent.backend,
+                hostUsername: agent.hostUsername,
+                workspaceLabel: agent.workspaceLabel,
+                tabLabel: agent.tabLabel,
+                paneLabel: agent.paneLabel,
+                tabPosition: agent.tabPosition,
+                workspaceTabCount: agent.workspaceTabCount,
+                repoName: agent.repoName,
+                kind: agent.agent.kind,
+                name: agent.agent.name,
+                title: agent.agent.title,
+                paneTitle: agent.agent.paneTitle,
+                terminalTitle: agent.agent.terminalTitle,
+                terminalTitleStripped: agent.agent.terminalTitleStripped,
+                cwd: agent.agent.cwd,
+                tokens: agent.agent.tokens,
+                status: readsStatus ? agent.agent.status : nil)
+            let shown: AgentTitleQualifier.Shown
+            if cachedTitleKeyByAgent[agent.id] == titleKey,
+                let cached = cachedShownByAgent[agent.id]
+            {
+                shown = cached
+            } else {
+                let card = AgentCardPresentation(agent: agent, layout: hostLayout)
+                shown = .init(title: card.switcherTitle, namesAgent: card.namesAgent(inFirst: 1))
+                cachedTitleKeyByAgent[agent.id] = titleKey
+                cachedShownByAgent[agent.id] = shown
+            }
+            resolved.append(
+                ResolvedEntry(
+                    id: agent.id,
+                    title: shown.title,
+                    namesAgent: shown.namesAgent,
+                    program: AgentNotificationIdentity.kindLabel(agent.agent.kind)))
         }
-        return agents.map {
+
+        if cachedTitleKeyByAgent.count > visibleAgents.count * 2 + 16 {
+            let live = Set(visibleAgents.map(\.id))
+            cachedTitleKeyByAgent = cachedTitleKeyByAgent.filter { live.contains($0.key) }
+            cachedShownByAgent = cachedShownByAgent.filter { live.contains($0.key) }
+        }
+
+        let qualifiers: [ConsoleAgent.ID: String]
+        if resolved == cachedResolved {
+            qualifiers = cachedQualifiers
+        } else {
+            let programsByTitle = Dictionary(grouping: resolved, by: \.title)
+                .mapValues { Set($0.map(\.program)) }
+            var computed: [ConsoleAgent.ID: String] = [:]
+            for entry in resolved where !entry.namesAgent {
+                guard let programs = programsByTitle[entry.title], programs.count > 1 else { continue }
+                computed[entry.id] = entry.program
+            }
+            cachedResolved = resolved
+            cachedQualifiers = computed
+            qualifiers = computed
+        }
+
+        let built = zip(visibleAgents, resolved).map { agent, entry in
             TerminalAgentSwitcherItem(
-                agent: $0, pins: pins, layout: layout($0.hostID), qualifier: qualifiers[$0.id])
+                id: agent.id,
+                title: entry.title,
+                status: agent.agent.status,
+                isPinned: pins.isPinned(hostID: agent.hostID, paneID: agent.agent.paneID),
+                qualifier: qualifiers[agent.id])
         }
+        cachedItems = (cacheKey, built)
+        return built
+    }
+}
+
+/// Pure update-diffing rules for `TerminalAgentSwitcherBar` and `TerminalAgentChip`.
+enum TerminalAgentSwitcherUpdateDiff {
+    struct ChipPatch: Equatable, Sendable {
+        let updatesTitle: Bool
+        let updatesSelection: Bool
+        let updatesQualifier: Bool
+        let updatesPin: Bool
+        let updatesStatus: Bool
+        let updatesAccessibilityLabel: Bool
+        let updatesAccessibilityValue: Bool
+    }
+
+    static func shouldSkipScheduledUpdate(
+        hasChips: Bool,
+        hasPendingUpdate: Bool,
+        currentItems: [TerminalAgentSwitcherItem],
+        currentSelectedID: ConsoleAgent.ID?,
+        nextItems: [TerminalAgentSwitcherItem],
+        nextSelectedID: ConsoleAgent.ID?
+    ) -> Bool {
+        hasChips && !hasPendingUpdate && currentItems == nextItems && currentSelectedID == nextSelectedID
+    }
+
+    static func chipPatch(
+        from previousItem: TerminalAgentSwitcherItem?,
+        previousSelected: Bool?,
+        to item: TerminalAgentSwitcherItem,
+        selected: Bool
+    ) -> ChipPatch? {
+        if previousItem == item, previousSelected == selected {
+            return nil
+        }
+        return ChipPatch(
+            updatesTitle: previousItem?.title != item.title,
+            updatesSelection: previousSelected != selected,
+            updatesQualifier: previousItem == nil || previousItem?.qualifier != item.qualifier,
+            updatesPin: previousItem == nil || previousItem?.isPinned != item.isPinned,
+            updatesStatus: previousItem?.status != item.status,
+            updatesAccessibilityLabel:
+                previousItem == nil
+                || previousItem?.title != item.title
+                || previousItem?.qualifier != item.qualifier,
+            updatesAccessibilityValue:
+                previousItem == nil
+                || previousItem?.status != item.status
+                || previousItem?.isPinned != item.isPinned)
     }
 }
 
@@ -274,6 +473,16 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
             update(items: items, selectedID: selectedID)
             return
         }
+        if TerminalAgentSwitcherUpdateDiff.shouldSkipScheduledUpdate(
+            hasChips: !chips.isEmpty,
+            hasPendingUpdate: pendingUpdate != nil,
+            currentItems: self.items,
+            currentSelectedID: self.selectedID,
+            nextItems: items,
+            nextSelectedID: selectedID)
+        {
+            return
+        }
         let isScheduled = pendingUpdate != nil
         pendingUpdate = (items, selectedID)
         guard !isScheduled else { return }
@@ -311,8 +520,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
         let stale = Array(reusable.values)
         chips = ordered
 
+        let orderChanged = ordered.map(\.id) != previousIDs
         let layoutChanged =
-            ordered.map(\.id) != previousIDs
+            orderChanged
             || items.contains { previousPinByID[$0.id] != $0.isPinned }
         // Same membership only: an added chip still has a zero frame, and
         // inserting it inside the animation is the documented grow-in.
@@ -328,7 +538,9 @@ final class TerminalAgentSwitcherBar: UIView, UIScrollViewDelegate,
             for (item, chip) in zip(items, ordered) {
                 chip.apply(item, selected: item.id == selectedID)
             }
-            self.syncArrangedSubviews(ordered, removing: stale)
+            if !stale.isEmpty || orderChanged {
+                self.syncArrangedSubviews(ordered, removing: stale)
+            }
             // A reorder moves chips inside a row whose width stays the same,
             // so nothing lays the strip out again on its own, and the open
             // Agent's chip can slide off screen: an Agent restarted in its
@@ -608,6 +820,8 @@ final class TerminalAgentChip: UIControl {
     private var widthLimit: NSLayoutConstraint?
     private let pinView = UIImageView()
     private var isWorking = false
+    private var appliedItem: TerminalAgentSwitcherItem?
+    private var appliedSelected: Bool?
 
     override var isHighlighted: Bool {
         didSet { alpha = isHighlighted ? 0.5 : 1 }
@@ -633,38 +847,59 @@ final class TerminalAgentChip: UIControl {
     }
 
     func apply(_ item: TerminalAgentSwitcherItem, selected: Bool) {
+        guard let patch = TerminalAgentSwitcherUpdateDiff.chipPatch(
+            from: appliedItem,
+            previousSelected: appliedSelected,
+            to: item,
+            selected: selected)
+        else { return }
+        appliedItem = item
+        appliedSelected = selected
+
         isSelected = selected
-        label.text = item.title
-        label.textColor = selected ? .label : .secondaryLabel
-        qualifierText = item.qualifier
-        qualifierLabel.text = item.qualifier.map { "· \($0)" }
-        qualifierLabel.textColor = label.textColor
-        // UIStackView balances arranged-subview hidden flips made inside
-        // animation blocks with an internal counter; assigning the value the
-        // view already has unbalances it, after which the opposite
-        // assignment stops taking effect and the glyph sticks. Write only
-        // real changes.
-        if pinView.isHidden != !item.isPinned {
+        if patch.updatesTitle {
+            label.text = item.title
+        }
+        if patch.updatesSelection {
+            label.textColor = selected ? .label : .secondaryLabel
+            qualifierLabel.textColor = label.textColor
+            backgroundColor = selected ? ThemeVeil.selection : .clear
+            accessibilityTraits = selected ? [.button, .selected] : .button
+            accessibilityHint = selected ? nil : String(localized: "Switches to that Agent")
+        }
+        if patch.updatesQualifier {
+            qualifierText = item.qualifier
+            qualifierLabel.text = item.qualifier.map { "· \($0)" }
+            qualifierLabel.textColor = label.textColor
+            // UIStackView balances arranged-subview hidden flips made inside
+            // animation blocks with an internal counter; assigning the value the
+            // view already has unbalances it, after which the opposite
+            // assignment stops taking effect and the glyph sticks. Write only
+            // real changes.
+            if qualifierLabel.isHidden != (item.qualifier == nil) {
+                qualifierLabel.isHidden = item.qualifier == nil
+            }
+            // The program name adds to the chip rather than taking from the
+            // title, which keeps the room an unqualified chip gives it.
+            widthLimit?.constant = Self.maximumWidth
+                + (item.qualifier == nil
+                    ? 0 : qualifierLabel.intrinsicContentSize.width + Self.qualifierSpacing)
+        }
+        if patch.updatesPin, pinView.isHidden != !item.isPinned {
             pinView.isHidden = !item.isPinned
         }
-        if qualifierLabel.isHidden != (item.qualifier == nil) {
-            qualifierLabel.isHidden = item.qualifier == nil
+        if patch.updatesStatus {
+            dot.backgroundColor = item.status.inkUIColor
+            isWorking = item.status == .working
+            updatePulse()
         }
-        // The program name adds to the chip rather than taking from the
-        // title, which keeps the room an unqualified chip gives it.
-        widthLimit?.constant = Self.maximumWidth
-            + (item.qualifier == nil
-                ? 0 : qualifierLabel.intrinsicContentSize.width + Self.qualifierSpacing)
-        dot.backgroundColor = item.status.inkUIColor
-        backgroundColor = selected ? ThemeVeil.selection : .clear
-        isWorking = item.status == .working
-        updatePulse()
-
-        accessibilityLabel = item.qualifier.map { "\(item.title), \($0)" } ?? item.title
-        let value = [item.isPinned ? String(localized: "Pinned") : nil, item.status.displayTitle].compactMap { $0 }
-        accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
-        accessibilityTraits = selected ? [.button, .selected] : .button
-        accessibilityHint = selected ? nil : String(localized: "Switches to that Agent")
+        if patch.updatesAccessibilityLabel {
+            accessibilityLabel = item.qualifier.map { "\(item.title), \($0)" } ?? item.title
+        }
+        if patch.updatesAccessibilityValue {
+            let value = [item.isPinned ? String(localized: "Pinned") : nil, item.status.displayTitle].compactMap { $0 }
+            accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
+        }
     }
 
     private func configureContent() {

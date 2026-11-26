@@ -20,6 +20,7 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
     static let revision = 9
 
     private var steps: [UInt64: AgyStep] = [:]
+    private var orderedSteps: [AgyStep] = []
     private var invalid: Set<UInt64> = []
     private var oversized: Set<UInt64> = []
 
@@ -32,14 +33,37 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
                 invalid.insert(line.offset)
                 continue
             }
-            steps[line.offset] = step
+            let existed = steps.updateValue(step, forKey: line.offset) != nil
+            upsertOrdered(step, existed: existed)
+        }
+    }
+
+    private mutating func upsertOrdered(_ step: AgyStep, existed: Bool) {
+        if !existed, let last = orderedSteps.last, last.offset < step.offset {
+            orderedSteps.append(step)
+            return
+        }
+        var low = 0
+        var high = orderedSteps.count
+        while low < high {
+            let mid = (low + high) / 2
+            if orderedSteps[mid].offset < step.offset {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        if low < orderedSteps.count, orderedSteps[low].offset == step.offset {
+            orderedSteps[low] = step
+        } else {
+            orderedSteps.insert(step, at: low)
         }
     }
 
     mutating func prepend(_ lines: [ChatLine]) { append(lines) }
 
     func transcript(_ context: ChatProjectionContext) -> ChatTranscript {
-        let ordered = steps.values.sorted { $0.offset < $1.offset }
+        let ordered = orderedSteps
         var projection = Projection(activity: context.activity, windowStart: context.windowStart)
         // A fork's file starts where its parent stopped numbering, without
         // the parent's steps.

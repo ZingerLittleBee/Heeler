@@ -141,11 +141,20 @@ final class ConsoleStore {
     @ObservationIgnored private var agentStatusObservers: [
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
     ] = [:]
+    @ObservationIgnored private var lastPublishedAgentStatuses: [
+        ConsoleAgent.ID: AgentStatusUpdate
+    ] = [:]
     @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
     /// The Agents list's Changes totals, one store per Agent, shared by
     /// every window's rows and by nothing else.
     @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges(
-        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges }
+        reads: { [unowned self] agent in capabilities(for: agent.hostID).rowsReadChanges },
+        defersForForegroundLoad: { [weak self] hostID in
+            self?.hasForegroundChatInitialLoad(on: hostID) == true
+        },
+        yieldToForegroundLoad: { [weak self] hostID in
+            await self?.yieldToForegroundChatLoad(on: hostID)
+        }
     ) { [unowned self] agent in
         let store = makeChangesStore(
             agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
@@ -258,6 +267,10 @@ final class ConsoleStore {
     @ObservationIgnored private var chatPrefetched: [ConsoleAgent.ID: String] = [:]
     /// Prefetches that found no conversation yet, by the key they ran for.
     @ObservationIgnored private var chatPrefetchRetries: [ConsoleAgent.ID: (key: String, count: Int)] = [:]
+    /// Status recorded when a prefetch finished without reaching `.following`,
+    /// so a status transition on a brand-new or missing session re-arms prefetch
+    /// without re-prefetching already-followed conversations on status flips.
+    @ObservationIgnored private var chatPrefetchAwaitingTurnStatus: [ConsoleAgent.ID: AgentStatus] = [:]
     /// The connection whose saved Chat bindings were last re-proved, per Host.
     @ObservationIgnored private var chatCacheValidatedGenerations: [Host.ID: UInt64] = [:]
     @ObservationIgnored private var chatCacheRetention: Task<Void, Never>?
@@ -375,8 +388,18 @@ final class ConsoleStore {
         self.connectCore = connectCore
         self.connectTmux = connectTmux
         self.connectPortPreview = connectPortPreview
-        cachedChats.onChange = { [weak self] in
-            self?.rebuildAgentOrder()
+        cachedChats.onChange = { [weak self] hostID in
+            guard let self, !self.isRebuilding else { return }
+            if let hostID, let projection = self.projections[hostID],
+                !projection.showsSavedChats,
+                self.sidebarSnapshots.snapshot(for: hostID) != nil
+            {
+                let hasUnresolvedAgy = projection.agentsByPane.values.contains {
+                    $0.agent.kind == ChatProgram.agy.rawValue && !self.agyTitles.hasResolvedState(for: $0)
+                }
+                if !hasUnresolvedAgy { return }
+            }
+            self.rebuildAgentOrder()
         }
         sidebarSnapshots.onLoaded = { [weak self] hostID, snapshot in
             guard let self, let host = projections[hostID]?.host else { return }
@@ -427,8 +450,12 @@ final class ConsoleStore {
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
             chatPrefetchTasks[id] = nil
+            chatPrefetchActiveAgent[id] = nil
             chatPrefetched = chatPrefetched.filter { $0.key.hostID != id }
             chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != id }
+            chatPrefetchAwaitingTurnStatus = chatPrefetchAwaitingTurnStatus.filter {
+                $0.key.hostID != id
+            }
             chatCacheValidatedGenerations[id] = nil
         }
         for (id, session) in composerSessions where incoming[id.hostID] == nil {
@@ -845,7 +872,8 @@ final class ConsoleStore {
             hostPlatforms[hostID] = platform
             rebuildCapabilities()
         }
-        reconcileChatCache()
+        syncCachedChats()
+        reconcileChatPrefetches()
         reconcileAgyAnnotationTitles()
     }
 
@@ -1262,6 +1290,15 @@ final class ConsoleStore {
         source.onDidBecomeVisible = { [weak self] in
             self?.preemptBackgroundPrefetchForVisibleChat(agent.id)
         }
+        source.onWillPerformVisibleRead = { [weak self] in
+            self?.preemptBackgroundPrefetchForVisibleChat(agent.id)
+        }
+        source.yieldToVisibleChat = { [weak self] in
+            await self?.yieldToForegroundChatLoad(on: hostID)
+        }
+        source.hasVisibleChatOnHost = { [weak self] in
+            self?.hasVisibleChat(on: hostID) == true
+        }
         let rawAgent =
             projections[hostID]?.agentsByPane[paneID].map { applyingAgyAnnotationTitle(to: $0).agent }
             ?? agent.agent
@@ -1455,12 +1492,24 @@ final class ConsoleStore {
         return directories
     }
 
-    func hasForegroundChatInitialLoad(on hostID: Host.ID) -> Bool {
-        chatStores.contains { $0.key.hostID == hostID && $0.value.isPerformingForegroundInitialLoad }
+    func hasVisibleChat(on hostID: Host.ID) -> Bool {
+        chatStores.contains { $0.key.hostID == hostID && $0.value.isVisible }
     }
 
-    func yieldToForegroundChatLoad(on hostID: Host.ID) async {
-        let deadline = ContinuousClock.now + .seconds(8)
+    func hasForegroundChatInitialLoad(on hostID: Host.ID) -> Bool {
+        chatStores.contains {
+            $0.key.hostID == hostID
+                && ($0.value.isPerformingForegroundInitialLoad || $0.value.isPerformingVisibleStep)
+        }
+    }
+
+    nonisolated static let foregroundChatLoadYieldCap: Duration = .seconds(60)
+
+    func yieldToForegroundChatLoad(
+        on hostID: Host.ID,
+        maximumWait: Duration = foregroundChatLoadYieldCap
+    ) async {
+        let deadline = ContinuousClock.now + maximumWait
         while !Task.isCancelled, isActive, ContinuousClock.now < deadline,
             hasForegroundChatInitialLoad(on: hostID)
         {
@@ -1469,12 +1518,14 @@ final class ConsoleStore {
     }
 
     /// Cancels an in-flight background `prefetch()` of another Agent on the
-    /// same Host when a Chat opens on screen and needs the SFTP channel for its
-    /// initial open, resuming background prefetches once foreground loading
-    /// settles.
+    /// same Host when a Chat opens on screen or performs a visible read and
+    /// needs the SFTP channel immediately, resuming background prefetches once
+    /// foreground work settles.
     private func preemptBackgroundPrefetchForVisibleChat(_ visibleAgentID: ConsoleAgent.ID) {
         let hostID = visibleAgentID.hostID
-        guard let chat = chatStores[visibleAgentID], chat.isPerformingForegroundInitialLoad else { return }
+        guard let chat = chatStores[visibleAgentID],
+            chat.isPerformingForegroundInitialLoad || chat.isPerformingVisibleStep
+        else { return }
         var preemptedPrefetch = false
         if let runningTask = chatPrefetchTasks[hostID],
             let activePrefetch = chatPrefetchActiveAgent[hostID],
@@ -1486,13 +1537,14 @@ final class ConsoleStore {
             chatPrefetched[activePrefetch] = nil
             preemptedPrefetch = true
         }
-        let preemptedAgyTitles = agyTitles.cancelInFlight(on: hostID)
+        let preemptedAgyTitles =
+            chat.isPerformingForegroundInitialLoad ? agyTitles.cancelInFlight(on: hostID) : false
         guard preemptedPrefetch || preemptedAgyTitles else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.yieldToForegroundChatLoad(on: hostID)
             guard self.isActive else { return }
-            if preemptedPrefetch { self.reconcileChatCache() }
+            if preemptedPrefetch { self.reconcileChatPrefetches() }
             if preemptedAgyTitles { self.reconcileAgyAnnotationTitles() }
         }
     }
@@ -1508,11 +1560,29 @@ final class ConsoleStore {
         let defersUncachedAgyLocate =
             chatStores[agentID]?.isPerformingForegroundInitialLoad == true
             && !agyTitles.hasCachedResolution(for: fresh, paneID: paneID, on: hostID, generation: generation)
-        let enriched =
-            defersUncachedAgyLocate
-            ? fresh
-            : await readAgyTitleForRename(
+        var snapshotRowForAgy = snapshot
+        snapshotRowForAgy?.agent = fresh
+        let skipsSteadyIdleAgyRecheck =
+            snapshotRowForAgy.map { row in
+                fresh.kind == ChatProgram.agy.rawValue
+                    && fresh.agentSession != nil
+                    && fresh.agentSession == snapshot?.agent.agentSession
+                    && agyTitles.hasResolvedState(for: row)
+                    && titleRenamesInFlight[agentID] == nil
+            } ?? false
+        let enriched: Agent
+        if defersUncachedAgyLocate {
+            enriched = fresh
+        } else if skipsSteadyIdleAgyRecheck {
+            enriched =
+                agyTitles.knownTitle(for: fresh, id: agentID).map(fresh.applyingConversationTitle)
+                ?? (snapshotRowForAgy.map(agyTitles.isKnownUntitled) == true
+                    ? fresh.clearingUntrackedConversationTitle()
+                    : fresh)
+        } else {
+            enriched = await readAgyTitleForRename(
                 fresh: fresh, paneID: paneID, hostID: hostID, generation: generation)
+        }
         guard projections[hostID] === origin, origin.transportGeneration == generation,
             !origin.isAwaitingSnapshot else { throw TransportError.cancelled }
         if hostPlatforms[hostID] == .posix, let snapshot,
@@ -1545,7 +1615,9 @@ final class ConsoleStore {
         let (stream, continuation) = AsyncStream.makeStream(
             of: AgentStatusUpdate.self, bufferingPolicy: .bufferingNewest(1))
         agentStatusObservers[id, default: [:]][observerID] = continuation
-        continuation.yield(agentStatusUpdate(for: id))
+        let initial = agentStatusUpdate(for: id)
+        lastPublishedAgentStatuses[id] = initial
+        continuation.yield(initial)
         continuation.onTermination = { [weak self] _ in
             Task { @MainActor in
                 self?.removeAgentStatusObserver(observerID, for: id)
@@ -2344,6 +2416,9 @@ final class ConsoleStore {
     /// Each Server Kind has its own projection, behind one seam (ADR 0032).
     private func startProjection(for host: Host) {
         let onChange: @MainActor @Sendable () -> Void = { [weak self] in self?.scheduleRebuild() }
+        let onLatencyChange: @MainActor @Sendable () -> Void = { [weak self, id = host.id] in
+            self?.updateHostLatency(for: id)
+        }
         let projection: any ConsoleHostProjection =
             if let makeProjection {
                 makeProjection(host)
@@ -2361,6 +2436,7 @@ final class ConsoleStore {
                         onSeenMarksChanged: { [weak self, id = host.id] core, marks in
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },
+                        onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .tmux:
                     TmuxConsoleProjection(
@@ -2373,22 +2449,33 @@ final class ConsoleStore {
                         onSeenMarksChanged: { [weak self, id = host.id] core, marks in
                             self?.onCoreSeenMarksChanged?(id, core, marks)
                         },
+                        onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .rex:
                     RexConsoleProjection(
                         host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
+                        onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .herdrTUI, .unconfirmed:
                     HostConsoleProjection(
                         host: host,
                         session: makeSession(host, HostConsoleProjection.subscriptions(paneIDs: [])),
                         snapshotRetryDelay: snapshotRetryDelay,
+                        onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 }
             }
         projections[host.id] = projection
         projection.setShownAgents(shownAgents(on: host.id))
         projection.start(isActive: isActive)
+    }
+
+    private func updateHostLatency(for hostID: Host.ID) {
+        guard let projection = projections[hostID] else { return }
+        let latest = projection.latency
+        if hostLatencies[hostID] != latest {
+            hostLatencies[hostID] = latest
+        }
     }
 
     #if DEBUG
@@ -2581,7 +2668,7 @@ final class ConsoleStore {
                 let generation = hostConnectionGenerations[projection.host.id]
             else { return nil }
             return (projection.host.id, HerdrSidebarSnapshotStore.Connection(
-                generation: generation, revision: projection.sidebarRevision))
+                generation: generation, revision: projection.sidebarLayoutRevision))
         })
         sidebarSnapshots.reconcile(sidebarConnections, transports: self) { [weak self] in
             self?.rebuildAgentOrder()
@@ -2608,9 +2695,10 @@ final class ConsoleStore {
             .sorted { ($0.hostID.uuidString, $0.agent.paneID) < ($1.hostID.uuidString, $1.agent.paneID) }
         if departedAgents != nextDeparted { departedAgents = nextDeparted }
         publishChatAgents()
+        syncCachedChats()
         rebuildAgentOrder()
         publishAgentStatuses()
-        reconcileChatCache()
+        reconcileChatPrefetches()
         reconcileAgyAnnotationTitles()
         reconcilePendingTitleRenames()
         // A reconnecting Host's empty projection is not proof its Agents
@@ -3617,19 +3705,12 @@ final class ConsoleStore {
             for: agent.agent, platform: .posix, hasAdapter: { chatAdapter($0) != nil })
     }
 
-    private func reconcileChatCache() {
-        let span = PerfTrace.begin("console.rebuild.chat-cache")
-        defer { PerfTrace.end(span) }
+    private func syncCachedChats() {
         for projection in projections.values {
             let host = projection.host
             guard host.capabilities.chat, isActive,
-                projection.status == .connected, !projection.isAwaitingSnapshot else {
-                chatPrefetchTasks[host.id]?.cancel()
-                chatPrefetchTasks[host.id] = nil
-                chatPrefetched = chatPrefetched.filter { $0.key.hostID != host.id }
-                chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != host.id }
-                continue
-            }
+                projection.status == .connected, !projection.isAwaitingSnapshot
+            else { continue }
             guard hostPlatforms[host.id] == .posix else { continue }
             if chatCacheValidatedGenerations[host.id] != projection.transportGeneration {
                 chatCacheValidatedGenerations[host.id] = projection.transportGeneration
@@ -3654,6 +3735,36 @@ final class ConsoleStore {
                 return row
             }
             cachedChats.observe(observed, conversationTitles: conversationTitles, on: host)
+        }
+    }
+
+    private func reconcileChatPrefetches() {
+        let span = PerfTrace.begin("console.rebuild.chat-cache")
+        defer { PerfTrace.end(span) }
+        for projection in projections.values {
+            let host = projection.host
+            guard host.capabilities.chat, isActive,
+                projection.status == .connected, !projection.isAwaitingSnapshot else {
+                chatPrefetchTasks[host.id]?.cancel()
+                chatPrefetchTasks[host.id] = nil
+                chatPrefetchActiveAgent[host.id] = nil
+                chatPrefetched = chatPrefetched.filter { $0.key.hostID != host.id }
+                chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != host.id }
+                chatPrefetchAwaitingTurnStatus = chatPrefetchAwaitingTurnStatus.filter {
+                    $0.key.hostID != host.id
+                }
+                continue
+            }
+            guard hostPlatforms[host.id] == .posix else { continue }
+            for agent in projection.agentsByPane.values {
+                if let priorStatus = chatPrefetchAwaitingTurnStatus[agent.id],
+                    priorStatus != agent.agent.status
+                {
+                    chatPrefetchAwaitingTurnStatus[agent.id] = nil
+                    chatPrefetched[agent.id] = nil
+                    chatPrefetchRetries[agent.id] = nil
+                }
+            }
             guard chatPrefetchTasks[host.id] == nil else { continue }
             let generation = projection.transportGeneration
             let candidates = projection.agentsByPane.values.filter { agent in
@@ -3694,21 +3805,44 @@ final class ConsoleStore {
                     }
                     guard !Task.isCancelled else { return }
                     let snapshot = chat.conversation
+                    let latestStatus = projection.agentsByPane[agent.agent.paneID]?.agent.status ?? agent.agent.status
+                    chatPrefetchAwaitingTurnStatus[agent.id] =
+                        Self.chatPrefetchRearmsOnStatusChange(snapshot) ? latestStatus : nil
                     let retries = chatPrefetchRetries[agent.id].flatMap { $0.key == key ? $0.count : nil } ?? 0
-                    chatPrefetchRetries[agent.id] =
-                        Self.chatPrefetchWaits(on: snapshot.phase) ? (key, retries + 1) : nil
-                    if !prefetched || snapshot.readFailure != nil
-                        || Self.chatPrefetchRetries(after: retries, phase: snapshot.phase)
-                    {
+                    if !prefetched {
                         chatPrefetched[agent.id] = nil
                         needsRetry = true
+                    } else {
+                        let tracksRetry = snapshot.readFailure != nil || Self.chatPrefetchWaits(on: snapshot.phase)
+                        chatPrefetchRetries[agent.id] = tracksRetry ? (key, retries + 1) : nil
+                        if Self.chatPrefetchRetries(after: retries, snapshot: snapshot) {
+                            chatPrefetched[agent.id] = nil
+                            needsRetry = true
+                        }
                     }
                 }
                 if needsRetry { try? await Task.sleep(for: chatPrefetchRetryDelay) }
                 guard !Task.isCancelled, projections[host.id] === projection else { return }
                 chatPrefetchTasks[host.id] = nil
-                reconcileChatCache()
+                reconcileChatPrefetches()
             }
+        }
+    }
+
+    /// Whether a subsequent Agent status change should re-arm a completed
+    /// background prefetch: only when the Host answered cleanly
+    /// (`readFailure == nil`) and the bound conversation is genuinely awaiting
+    /// its transcript file to be created by a turn — never on SFTP/read
+    /// timeouts or sessionless (`.noSession` / deferred `.locating`) panes.
+    nonisolated static func chatPrefetchRearmsOnStatusChange(
+        _ snapshot: ChatConversationSnapshot
+    ) -> Bool {
+        guard snapshot.readFailure == nil else { return false }
+        switch snapshot.phase {
+        case .unavailable(.awaitingFirstMessage), .unavailable(.notFound):
+            return true
+        default:
+            return false
         }
     }
 
@@ -3731,8 +3865,21 @@ final class ConsoleStore {
         chatPrefetchWaits(on: phase) && retries < 3
     }
 
+    /// Whether a completed prefetch pass for `snapshot` should retry in the
+    /// background after `retries` earlier attempts for the same key.
+    nonisolated static func chatPrefetchRetries(
+        after retries: Int,
+        snapshot: ChatConversationSnapshot
+    ) -> Bool {
+        if let failure = snapshot.readFailure {
+            if case .hostFeatureUnavailable = failure { return false }
+            return retries < 3
+        }
+        return chatPrefetchRetries(after: retries, phase: snapshot.phase)
+    }
+
     private func chatPrefetchKey(_ agent: ConsoleAgent, generation: UInt64) -> String {
-        "\(generation):\(agent.agent.terminalID):\(agent.agent.kind):\(agent.agent.status):\(agent.agent.agentSession?.value ?? "")"
+        "\(generation):\(agent.agent.terminalID):\(agent.agent.kind):\(agent.agent.agentSession?.value ?? "")"
     }
 
     /// Hands each Chat its Agent's latest record, and ends the Chats of
@@ -3794,6 +3941,8 @@ final class ConsoleStore {
     private func publishAgentStatuses() {
         for (id, observers) in agentStatusObservers {
             let update = agentStatusUpdate(for: id)
+            guard lastPublishedAgentStatuses[id] != update else { continue }
+            lastPublishedAgentStatuses[id] = update
             for continuation in observers.values {
                 continuation.yield(update)
             }
@@ -3814,6 +3963,7 @@ final class ConsoleStore {
         agentStatusObservers[id]?[observerID] = nil
         if agentStatusObservers[id]?.isEmpty == true {
             agentStatusObservers[id] = nil
+            lastPublishedAgentStatuses[id] = nil
         }
     }
 }

@@ -1071,6 +1071,43 @@ struct AgentRowChangesTests {
         #expect(await transport.changesReadRequests.isEmpty)
     }
 
+    @Test func activeScrollDefersAutomaticReadsUntilSettledAndCachesCheckoutBranch() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 4, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        let fixture = Self.fixture(transport: transport, clock: clock, feed: feed)
+        defer { fixture.rows.retain { _ in false } }
+
+        fixture.rows.setScrollActive(true)
+        fixture.rows.rowAppeared(fixture.agent)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        // While actively scrolling, the row waits instead of running git reads mid-pan.
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(fixture.rows.branch(at: Self.trackingDirectory, for: [fixture.agent]) == nil)
+
+        // Settling flushes the pending read and caches the proven checkout branch.
+        fixture.rows.setScrollActive(false)
+        let store = try #require(fixture.rows.store(for: fixture.agent))
+        await Self.waitUntilSettled(store, .loaded(first.changes))
+        #expect(await transport.changesReadRequests.count == 1)
+        #expect(
+            fixture.rows.branch(at: Self.trackingDirectory, for: [fixture.agent])
+                == first.changes.head.branch)
+
+        // Subsequent file changes on the same branch keep the cached branch steady.
+        await Self.exitWorking(feed, clock: clock)
+        await Self.waitUntilSettled(store, .loaded(second.changes))
+        #expect(
+            fixture.rows.branch(at: Self.trackingDirectory, for: [fixture.agent])
+                == second.changes.head.branch)
+    }
+
     static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }

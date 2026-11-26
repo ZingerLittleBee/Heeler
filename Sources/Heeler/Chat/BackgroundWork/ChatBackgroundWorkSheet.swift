@@ -361,6 +361,9 @@ struct ChatTextTruncationProbe: ViewModifier {
     let font: Font
     var isCode = false
     let lineLimit: Int
+    /// Extra width an inline trailing chevron took once truncation became true,
+    /// added back to the probe width so showing the chevron cannot oscillate.
+    var trailingAllowance: CGFloat = 0
     @Binding var isTruncated: Bool
 
     @State private var limitedHeight: CGFloat = 0
@@ -370,7 +373,7 @@ struct ChatTextTruncationProbe: ViewModifier {
         content
             .background {
                 GeometryReader { proxy in
-                    let probeWidth = max(1, proxy.size.width + 1)
+                    let probeWidth = max(1, proxy.size.width + trailingAllowance + 1)
                     ZStack(alignment: .topLeading) {
                         probeText
                             .lineLimit(lineLimit)
@@ -393,6 +396,13 @@ struct ChatTextTruncationProbe: ViewModifier {
                 .hidden()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
+            }
+            .onChange(of: text) { _, _ in
+                limitedHeight = 0
+                fullHeight = 0
+                if isTruncated {
+                    isTruncated = false
+                }
             }
     }
 

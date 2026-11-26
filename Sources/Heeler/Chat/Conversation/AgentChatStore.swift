@@ -42,6 +42,13 @@ struct AgentChatSource: Sendable {
     /// Notifies listeners when a Chat becomes visible so in-flight background
     /// prefetches of other Agents on the same Host can yield the SFTP channel.
     var onDidBecomeVisible: (@MainActor @Sendable () -> Void)? = nil
+    /// Notifies listeners when a visible Chat begins a network poll/open step so
+    /// in-flight background prefetches yield SFTP immediately.
+    var onWillPerformVisibleRead: (@MainActor @Sendable () -> Void)? = nil
+    /// Yields hidden background-work loops while a foreground Chat is reading.
+    var yieldToVisibleChat: (@MainActor @Sendable () async -> Void)? = nil
+    /// Whether any Chat on this Host is currently visible on screen.
+    var hasVisibleChatOnHost: (@MainActor @Sendable () -> Bool)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -260,6 +267,10 @@ final class AgentChatStore {
         if case .locating = conversation.phase, conversation.readFailure == nil { return true }
         return false
     }
+
+    @ObservationIgnored private(set) var isPerformingVisibleStep = false
+    @ObservationIgnored private var isRunningUnviewedPrefetch = false
+    @ObservationIgnored private var warmedPrefetchKey: (generation: Int, revision: Int)?
 
     /// Whether a live read on a connected Host shows non-stale Background Work
     /// or Swarm task workers still running.
@@ -617,12 +628,17 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             // Background prefetches back off looking for a missing
             // transcript; opening Chat looks at once and backs off afresh.
-            switch conversation.phase {
-            case .locating, .unavailable(.notFound):
+            if conversation.readFailure != nil {
                 nextOpen = nil
                 failedOpens = 0
-            default:
-                break
+            } else {
+                switch conversation.phase {
+                case .locating, .unavailable(.notFound):
+                    nextOpen = nil
+                    failedOpens = 0
+                default:
+                    break
+                }
             }
         }
         viewers.insert(viewer)
@@ -677,6 +693,7 @@ final class AgentChatStore {
     func end() {
         viewers.removeAll()
         isVisible = false
+        warmedPrefetchKey = nil
         stopLoop()
         timeline.reset()
         swarmBoard.reset()
@@ -690,6 +707,9 @@ final class AgentChatStore {
 
     private func warmTimelineFromPrefetch() async {
         guard !isVisible, !conversation.transcript.entries.isEmpty else { return }
+        if source.hasVisibleChatOnHost?() == true { return }
+        let key = (generation: conversationGeneration, revision: conversation.revision)
+        if let warmedPrefetchKey, warmedPrefetchKey == key { return }
         let transcript = conversation.transcript
         let markedEntries = outputs.marking(blocked.history.marking(transcript.entries))
         let foldsFinishedTurns =
@@ -710,6 +730,7 @@ final class AgentChatStore {
             signals: signals,
             isReady: isReady)
         await timeline.settled()
+        warmedPrefetchKey = key
     }
 
     /// Warms the local document once after a fresh Host snapshot, without
@@ -740,7 +761,9 @@ final class AgentChatStore {
             if !Task.isCancelled {
                 // Warming is for the newest rows.
                 self.pollsBeforeNextOlderPage = true
+                self.isRunningUnviewedPrefetch = !self.isVisible
                 await self.step()
+                self.isRunningUnviewedPrefetch = false
                 await self.engine?.save(force: true)
                 if !Task.isCancelled {
                     await self.warmTimelineFromPrefetch()
@@ -858,12 +881,18 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             needsAgentRefresh = true
         }
-        switch conversation.phase {
-        case .locating, .unavailable(.notFound):
+        if conversation.readFailure != nil {
             nextOpen = nil
             failedOpens = 0
-        default:
-            break
+            timedOutReads = 0
+        } else {
+            switch conversation.phase {
+            case .locating, .unavailable(.notFound):
+                nextOpen = nil
+                failedOpens = 0
+            default:
+                break
+            }
         }
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
@@ -1153,8 +1182,14 @@ final class AgentChatStore {
     /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
+        let runningVisible = isVisible
+        if runningVisible {
+            isPerformingVisibleStep = true
+            source.onWillPerformVisibleRead?()
+        }
         let retries = retryRequests
         defer {
+            if runningVisible { isPerformingVisibleStep = false }
             if isRetrying, retries == retryRequests, !Task.isCancelled { isRetrying = false }
         }
         await restoreIfNeeded()
@@ -1266,23 +1301,36 @@ final class AgentChatStore {
         if olderRequest == nil, program == .claude, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
         {
-            let commandOutputs = await engine.followClaudeCommandOutputs()
-            if engine === self.engine { claudeCommandEvidence = commandOutputs }
-            let teammates = await engine.followClaudeTeammates()
-            if engine === self.engine {
-                claudeTeammateEvidence = stampingEndPromptOffsets(teammates, previous: claudeTeammateEvidence)
+            if snapshot.transcript.backgroundWork.contains(where: { $0.kind == .command })
+                || !claudeCommandEvidence.isEmpty
+            {
+                let commandOutputs = await engine.followClaudeCommandOutputs()
+                if engine === self.engine { claudeCommandEvidence = commandOutputs }
+            }
+            if !snapshot.readsFromStart
+                || snapshot.transcript.backgroundWork.contains(where: { $0.kind == .teammate })
+                || !claudeTeammateEvidence.isEmpty
+            {
+                let teammates = await engine.followClaudeTeammates()
+                if engine === self.engine {
+                    claudeTeammateEvidence = stampingEndPromptOffsets(teammates, previous: claudeTeammateEvidence)
+                }
             }
         }
         if olderRequest == nil, program == .agy, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
         {
-            let fileEvidence = await engine.followAgyBackgroundWork()
-            if engine === self.engine {
-                agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+            if !snapshot.transcript.backgroundWork.isEmpty || !agyFileEvidence.isEmpty {
+                let fileEvidence = await engine.followAgyBackgroundWork()
+                if engine === self.engine {
+                    agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+                }
             }
-            let swarm = await engine.followAgySwarm()
-            if engine === self.engine {
-                rawAgySwarm = swarm
+            if snapshot.transcript.hasSwarmActivity || !snapshot.readsFromStart || rawAgySwarm != nil {
+                let swarm = await engine.followAgySwarm()
+                if engine === self.engine {
+                    rawAgySwarm = swarm
+                }
             }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
@@ -1350,6 +1398,10 @@ final class AgentChatStore {
             }
             while !Task.isCancelled {
                 guard let self, self.shouldRunLoop else { break }
+                if !self.isVisible {
+                    await self.source.yieldToVisibleChat?()
+                    guard !Task.isCancelled, self.shouldRunLoop else { break }
+                }
                 self.isWatchingWhileHidden = !self.isVisible
                 await self.step()
                 guard !Task.isCancelled, self.shouldRunLoop else { break }
@@ -1452,11 +1504,13 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
+        if agentRefreshFailure != nil {
+            guard let lastAgentRefresh else { return true }
+            return now().timeIntervalSince(lastAgentRefresh) >= timing.sessionRecheck
+        }
         guard source.sessionEvidence == nil || (program == .amp && isVisible) else { return false }
         let interval: TimeInterval
-        if engine == nil || isUnavailable || agentRefreshFailure != nil
-            || consecutiveAgentRefreshLinkFailures > 0
-        {
+        if engine == nil || isUnavailable || consecutiveAgentRefreshLinkFailures > 0 {
             interval = timing.sessionRecheck
         } else if isVisible, program == .amp || ChatAgentActivity(agent.status) == .idle {
             interval = timing.idleSessionRecheck
@@ -1476,6 +1530,10 @@ final class AgentChatStore {
         let recordRevision = sessionRecordRevision
         do {
             if let sessionEvidence = source.sessionEvidence {
+                if isRunningUnviewedPrefetch, !isVisible, agent.agentSession == nil, engine == nil {
+                    needsAgentRefresh = true
+                    return nil
+                }
                 let evidence = try await sessionEvidence()
                 guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
                 agentRefreshFailure = nil
@@ -2331,7 +2389,8 @@ final class AgentChatStore {
 
     private func apply(_ snapshot: ChatConversationSnapshot, from origin: ChatConversationEngine) {
         // A session switch may have replaced the engine during the read.
-        guard origin === engine, snapshot.revision != appliedRevision,
+        guard origin === engine,
+            snapshot.revision != appliedRevision || snapshot.readFailure != transcriptReadFailure,
             !isAwaitingSession || snapshot.isFromCache
         else { return }
         let span = PerfTrace.begin("chat.store.apply")
