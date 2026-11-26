@@ -81,6 +81,11 @@ enum HerdrCoreHostSystem: Equatable, Sendable {
     func cannotTellSession(_ program: ChatProgram) -> ChatUnavailableReason {
         self == .windows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
     }
+
+    /// What Chat says when the process holds more than one conversation, in this Host's form.
+    func multipleSessions(_ program: ChatProgram) -> ChatUnavailableReason {
+        .multipleSessions(program, offersPick: self != .windows)
+    }
 }
 
 /// Binds a herdr-core Agent's Chat from what the Host shows about the Agent's own
@@ -185,6 +190,10 @@ struct HerdrCoreSessionBinder: Sendable {
 
     var cannotTell: ChatSessionEvidence {
         .unavailable(cannotTellReason)
+    }
+
+    var multipleSessions: ChatSessionEvidence {
+        .unavailable(hostSystem.multipleSessions(program))
     }
 
     /// A Pi or Oh My Pi in a Rex terminal has its own reason, since what names

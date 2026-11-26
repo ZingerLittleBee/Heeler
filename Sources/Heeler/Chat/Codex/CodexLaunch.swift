@@ -26,9 +26,13 @@ enum ChatLaunchNotice: Equatable, Sendable {
 
     /// The user guide's section for the notice.
     var guideURL: URL? {
+        guideURL()
+    }
+
+    func guideURL(localization: String = Bundle.main.preferredLocalizations.first ?? "en") -> URL? {
         switch self {
         case .codexSharedServer:
-            URL(string: "https://docs.heeler.bybee.dev/chat-troubleshooting#codex-started-without---no-daemon")
+            ChatTroubleshootingGuide.url(for: .codexSharedServer, localization: localization)
         }
     }
 }

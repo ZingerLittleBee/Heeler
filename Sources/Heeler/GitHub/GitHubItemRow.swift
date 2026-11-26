@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// One pull request or issue in three lines: where it is and how old, its
-/// title, and how it stands (ADR 0065).
+/// One pull request or issue in two parts (ADR 0065): an over line with its
+/// state glyph, where it is and how old, and how it stands at the trailing
+/// end; then its title across the row. An issue with labels adds them on a
+/// third line.
 struct GitHubItemRow: View {
     let item: GitHubItem
     let context: GitHubRowContext
@@ -9,33 +11,34 @@ struct GitHubItemRow: View {
 
     var body: some View {
         // At accessibility sizes a line that fits a phone holds a word or
-        // two, so the lines wrap rather than cut off what they say.
+        // two, so the lines wrap rather than cut off what they say, and the
+        // status goes under the over line rather than squeeze it.
         let wraps = dynamicTypeSize.isAccessibilitySize
-        HStack(alignment: .gitHubRowTitle, spacing: 10) {
-            // In the title's face, on its first baseline: the glyph sits
-            // on the title's first line as one set in its text would, at
-            // every text size, wherever the line above leaves it.
-            Image(systemName: Self.symbol(for: item))
-                .foregroundStyle(Self.tint(for: item))
-                .font(.body.weight(.medium))
-                .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 3) {
-                overLine(wraps: wraps)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(item.title)
-                    .font(.body.weight(.medium))
-                    .lineLimit(wraps ? 4 : 2)
-                    .alignmentGuide(.gitHubRowTitle) { $0[.firstTextBaseline] }
-                status(wraps: wraps)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Group {
+                if wraps {
+                    overLine(wraps: true)
+                    status
+                } else {
+                    overLine(wraps: false)
+                }
             }
-            // Every row's separator starts at its text, rather than where
-            // the list guesses its first text begins.
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            Text(item.title)
+                .font(.body.weight(.medium))
+                .lineLimit(wraps ? 4 : 2)
+            if let labels {
+                Text(verbatim: labels)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(wraps ? nil : 1)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Every row's separator starts at its text, rather than where the
+        // list guesses its first text begins.
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -83,59 +86,73 @@ struct GitHubItemRow: View {
         return parts.joined(separator: ", ")
     }
 
-    /// "Heeler #712 · riley-dev · 2h": the author where it is someone else
-    /// and the list is not of one person's items. On one line a long
-    /// repository or author name gives way, never the number or the age.
+    /// "Heeler #712 · riley-dev · 2h" after the state glyph: the author
+    /// where it is someone else and the list is not of one person's items.
+    /// On one line, with the status at its end, as `GitHubOverLineLayout`
+    /// fits them.
     @ViewBuilder
     private func overLine(wraps: Bool) -> some View {
         let author = context.shownAuthor(of: item)
         let age = Self.age(of: item.updatedAt)
+        let glyph = Text(Image(systemName: Self.symbol(for: item))).foregroundStyle(Self.tint(for: item))
         if wraps {
-            Text(verbatim: ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
-                .joined(separator: " · "))
+            glyph
+                + Text(verbatim: " " + ["\(item.repositoryName) #\(item.number)", author, age].compactMap(\.self)
+                    .joined(separator: " · "))
         } else {
-            HStack(spacing: 0) {
-                Text(verbatim: item.repositoryName).layoutPriority(1)
-                Text(verbatim: " #\(item.number)").layoutPriority(2)
+            GitHubOverLineLayout {
+                glyph.padding(.trailing, 5)
+                    .layoutValue(key: OverLinePartKey.self, value: .glyph)
+                Text(verbatim: item.repositoryName).shortens()
+                    .layoutValue(key: OverLinePartKey.self, value: .repository)
+                Text(verbatim: String(item.repositoryName.prefix(8)) + "…").hidden()
+                    .layoutValue(key: OverLinePartKey.self, value: .repositoryLeast)
+                Text(verbatim: " #\(item.number)")
+                    .layoutValue(key: OverLinePartKey.self, value: .number)
                 if let author {
-                    Text(verbatim: " · \(author)").layoutPriority(1)
+                    Text(verbatim: " · \(author)").shortens()
+                        .layoutValue(key: OverLinePartKey.self, value: .author)
+                    Text(verbatim: " · " + String(author.prefix(3)) + "…").hidden()
+                        .layoutValue(key: OverLinePartKey.self, value: .authorLeast)
                 }
-                Text(verbatim: " · \(age)").layoutPriority(2)
+                Text(verbatim: " · \(age)")
+                    .layoutValue(key: OverLinePartKey.self, value: .age)
+                if let status {
+                    status
+                        .layoutValue(key: OverLinePartKey.self, value: .status)
+                }
             }
             .lineLimit(1)
         }
     }
 
-    @ViewBuilder
-    private func status(wraps: Bool) -> some View {
+    /// How the item stands, in one word at the over line's end. A pull
+    /// request: its checks' glyph, then what asks for attention (your
+    /// review, the change size, the review decision), else the checks'
+    /// word; with no checks, Draft for a draft, else that ask alone. Merged
+    /// and closed say only that, in their colours. An issue: its comment
+    /// count, if any.
+    private var status: Text? {
         switch item.kind {
-        case .pullRequest: pullRequestStatus.lineLimit(wraps ? nil : 1)
-        case .issue: issueStatus(wraps: wraps)
+        case .pullRequest:
+            if item.state == .merged {
+                return Text("Merged").foregroundStyle(GitHubInk.purple)
+            }
+            if item.state == .closed {
+                return Text(GitHubItemWords.state(of: item)).foregroundStyle(GitHubInk.red)
+            }
+            let checks = item.checks?.summary ?? .none
+            if let symbol = Self.symbol(for: checks) {
+                return Text(Image(systemName: symbol)).font(.caption2).foregroundStyle(Self.tint(for: checks))
+                    + Text(verbatim: " \(pullRequestRest ?? Self.title(for: checks))")
+            }
+            if item.state == .draft { return Text("Draft") }
+            return pullRequestRest.map { Text(verbatim: $0) }
+        case .issue:
+            guard item.commentCount > 0 else { return nil }
+            return Text(Image(systemName: "bubble.left")).font(.caption2)
+                + Text(verbatim: " \(item.commentCount.formatted())")
         }
-    }
-
-    /// One Text, so it wraps as a sentence at accessibility sizes.
-    private var pullRequestStatus: Text {
-        if item.state == .merged {
-            return Text("Merged").foregroundStyle(GitHubInk.purple)
-        }
-        if item.state == .closed {
-            return Text(GitHubItemWords.state(of: item)).foregroundStyle(GitHubInk.red)
-        }
-        let checks = item.checks?.summary ?? .none
-        var line = Text(verbatim: "")
-        if item.state == .draft {
-            line = Text("Draft") + Text(verbatim: " · ")
-        }
-        if let symbol = Self.symbol(for: checks) {
-            line = line + Text(Image(systemName: symbol)).font(.caption2).foregroundStyle(Self.tint(for: checks))
-                + Text(verbatim: " ")
-        }
-        line = line + Text(Self.title(for: checks))
-        if let rest = pullRequestRest {
-            line = line + Text(verbatim: " · \(rest)")
-        }
-        return line
     }
 
     /// After the checks: where someone else asks for your review, that, or
@@ -149,7 +166,7 @@ struct GitHubItemRow: View {
             }
             return String(
                 localized: "Needs your review",
-                comment: "In a GitHub list row's status line: the pull request asks for the account's review.")
+                comment: "At the end of a GitHub list row's first line: the pull request asks for the account's review.")
         }
         if let review = item.review, item.state != .draft {
             return GitHubItemWords.decision(review)
@@ -157,28 +174,10 @@ struct GitHubItemRow: View {
         return nil
     }
 
-    /// Labels, then the comment count, which long labels never push off
-    /// the line.
-    @ViewBuilder
-    private func issueStatus(wraps: Bool) -> some View {
-        let labels = item.labels.prefix(3).map(\.name).joined(separator: " · ")
-        let comments =
-            item.commentCount > 0
-            ? String(localized: "\(item.commentCount) comments", comment: "An issue's comment count in the GitHub list.")
-            : nil
-        if labels.isEmpty {
-            Text(comments ?? String(localized: "No comments"))
-        } else if wraps {
-            Text(verbatim: [labels, comments].compactMap(\.self).joined(separator: " · "))
-        } else {
-            HStack(spacing: 0) {
-                Text(verbatim: labels)
-                if let comments {
-                    Text(verbatim: " · \(comments)").layoutPriority(1)
-                }
-            }
-            .lineLimit(1)
-        }
+    /// An issue's first three labels, on a line of their own.
+    private var labels: String? {
+        guard item.kind == .issue, !item.labels.isEmpty else { return nil }
+        return item.labels.prefix(3).map(\.name).joined(separator: " · ")
     }
 
     // MARK: Glyphs and words
@@ -250,7 +249,8 @@ struct GitHubItemRow: View {
             .units(allowed: [.days, .hours, .minutes, .seconds], width: width, maximumUnitCount: 1))
     }
 
-    /// A row's shape while the first read runs.
+    /// A row's shape while the first read runs: an over line with a
+    /// status, and a title of two lines.
     static var placeholder: some View {
         GitHubItemRow(
             item: GitHubItem(
@@ -261,21 +261,128 @@ struct GitHubItemRow: View {
                 additions: nil, deletions: nil, labels: []),
             context: GitHubRowContext())
             .redacted(reason: .placeholder)
-            // Redacted, its label reads as a run of blank glyphs; the
-            // section's "Reading from…" heading says what is happening.
+            // Redacted, its label reads as a run of blank glyphs; the line
+            // under the title, or before iOS 26 the section's "Reading
+            // from…" heading, says what is happening.
             .accessibilityHidden(true)
     }
 }
 
-extension VerticalAlignment {
-    private enum GitHubRowTitle: AlignmentID {
-        static func defaultValue(in context: ViewDimensions) -> CGFloat {
-            context[.firstTextBaseline]
+/// A piece of a row's over line, as `GitHubOverLineLayout` fits it.
+private enum OverLinePart {
+    case glyph, repository, number, author, age, status
+    /// Hidden: the repository's first eight characters, the least it keeps.
+    case repositoryLeast
+    /// Hidden: the author's first three characters, the least it keeps.
+    case authorLeast
+}
+
+private struct OverLinePartKey: LayoutValueKey {
+    static let defaultValue: OverLinePart? = nil
+}
+
+private extension View {
+    /// Shortens to whatever width the over line gives it, down to nothing.
+    func shortens() -> some View {
+        frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
+    }
+}
+
+/// A row's over line on one line, with the status at its end. Short of
+/// room, the author gives way first, shortening and then leaving with its
+/// dot, then the repository, which keeps about eight characters before its
+/// number; past that the status goes under the line, as at accessibility
+/// sizes. The glyph, the number and the age never shorten.
+private struct GitHubOverLineLayout: Layout {
+    private static let statusGap: CGFloat = 8
+    private static let lineGap: CGFloat = 3
+
+    private struct Placement {
+        let subview: LayoutSubview
+        let origin: CGPoint
+        let proposal: ProposedViewSize
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(width: proposal.width, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for placement in arrange(width: bounds.width, subviews: subviews).placements {
+            placement.subview.place(
+                at: CGPoint(x: bounds.minX + placement.origin.x, y: bounds.minY + placement.origin.y),
+                proposal: placement.proposal)
         }
     }
 
-    /// A GitHub row's title's first baseline, which its icon shares.
-    fileprivate static let gitHubRowTitle = VerticalAlignment(GitHubRowTitle.self)
+    private func arrange(width: CGFloat?, subviews: Subviews) -> (size: CGSize, placements: [Placement]) {
+        func part(_ piece: OverLinePart) -> LayoutSubview? { subviews.first { $0[OverLinePartKey.self] == piece } }
+        func ideal(_ piece: OverLinePart) -> CGFloat { part(piece)?.sizeThatFits(.unspecified).width ?? 0 }
+
+        let repository = ideal(.repository)
+        let author = ideal(.author)
+        let status = part(.status)
+        let statusRoom = status == nil ? 0 : ideal(.status) + Self.statusGap
+        let fixed = ideal(.glyph) + ideal(.number) + ideal(.age)
+        let lineWidth = width ?? fixed + repository + author + statusRoom
+        let repositoryLeast = min(repository, ideal(.repositoryLeast))
+        let authorLeast = min(author, ideal(.authorLeast))
+        // The widths the repository and the author get in a room.
+        func fit(_ room: CGFloat) -> (repository: CGFloat, author: CGFloat)? {
+            if room >= repository + authorLeast { return (repository, min(author, room - repository)) }
+            if room >= repositoryLeast { return (min(repository, room), 0) }
+            return nil
+        }
+        let statusIsBelow: Bool
+        let widths: (repository: CGFloat, author: CGFloat)
+        if let fitted = fit(lineWidth - fixed - statusRoom) {
+            statusIsBelow = false
+            widths = fitted
+        } else {
+            statusIsBelow = status != nil
+            let room = lineWidth - fixed
+            widths = fit(room) ?? (max(room, 0), 0)
+        }
+
+        var line: [(subview: LayoutSubview, proposal: ProposedViewSize, x: CGFloat)] = []
+        var x: CGFloat = 0
+        for piece in [OverLinePart.glyph, .repository, .number, .author, .age] {
+            guard let subview = part(piece) else { continue }
+            let proposal: ProposedViewSize =
+                switch piece {
+                case .repository: ProposedViewSize(width: widths.repository, height: nil)
+                case .author: ProposedViewSize(width: widths.author, height: nil)
+                default: .unspecified
+                }
+            line.append((subview, proposal, x))
+            x += subview.sizeThatFits(proposal).width
+        }
+        if let status, !statusIsBelow {
+            line.append((status, .unspecified, lineWidth - status.sizeThatFits(.unspecified).width))
+        }
+        // Every piece on its first baseline.
+        let dimensions = line.map { $0.subview.dimensions(in: $0.proposal) }
+        let baseline = dimensions.map { $0[VerticalAlignment.firstTextBaseline] }.max() ?? 0
+        var placements: [Placement] = []
+        var height: CGFloat = 0
+        for (piece, size) in zip(line, dimensions) {
+            let y = baseline - size[VerticalAlignment.firstTextBaseline]
+            placements.append(Placement(subview: piece.subview, origin: CGPoint(x: piece.x, y: y), proposal: piece.proposal))
+            height = max(height, y + size.height)
+        }
+        if let status, statusIsBelow {
+            let proposal = ProposedViewSize(width: min(status.sizeThatFits(.unspecified).width, lineWidth), height: nil)
+            placements.append(Placement(subview: status, origin: CGPoint(x: 0, y: height + Self.lineGap), proposal: proposal))
+            height += Self.lineGap + status.sizeThatFits(proposal).height
+        }
+        // The hidden measures take no room.
+        for piece in [OverLinePart.repositoryLeast, .authorLeast] {
+            if let subview = part(piece) {
+                placements.append(Placement(subview: subview, origin: .zero, proposal: .zero))
+            }
+        }
+        return (CGSize(width: lineWidth, height: height), placements)
+    }
 }
 
 /// What the list around a row says of it, which its words leave out or add.

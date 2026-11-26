@@ -122,7 +122,8 @@ struct HerdrCoreProgramBinderTests {
     }
 
     /// The rollout comes with the first prompt, and until then Codex holds only a
-    /// lock, which names a thread that has no conversation to read yet.
+    /// single thread-writer lock, so Chat shows the empty new-conversation view and
+    /// lets the user send the first message directly.
     @Test func atItsPromptACodexHoldsNoRolloutAndSaysSo() async throws {
         let scene = try HostEvidenceFixture.named("codex/no-daemon").scene("at-prompt")
         let rig = Rig(program: .codex)
@@ -130,7 +131,7 @@ struct HerdrCoreProgramBinderTests {
 
         let evidence = try await rig.binder.check(try Self.record(for: try Self.firstRow(scene)))
 
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+        #expect(evidence == .unavailable(.noConversationYet(.codex)))
         #expect(await rig.reads.isEmpty)
         #expect(await rig.files.statuses.isEmpty)
     }
@@ -175,7 +176,7 @@ struct HerdrCoreProgramBinderTests {
 
         let evidence = try await Self.afterNewEvidence { _ in held }
 
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+        #expect(evidence == .unavailable(.multipleSessions(.codex)))
     }
 
     /// The same process before `/new`, in the same recording, binds its one root.
@@ -203,7 +204,7 @@ struct HerdrCoreProgramBinderTests {
             return (keepingTheOldLock ? held : held.filter { !$0.hasSuffix(".lock") }) + [newLock]
         }
 
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+        #expect(evidence == .unavailable(.multipleSessions(.codex)))
     }
 
     /// Written for the test: a lock in a name Codex is not recorded using could be
@@ -215,7 +216,7 @@ struct HerdrCoreProgramBinderTests {
             "\(Self.codexHome)/thread-writer-locks/writer.lock": "",
         ])
 
-        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
+        #expect(try await rig.binder.check(record) == .unavailable(.multipleSessions(.codex)))
     }
 
     private static func meta(thread: String = firstThread, fields: String = #""source":"cli""#) -> String {
@@ -259,7 +260,7 @@ struct HerdrCoreProgramBinderTests {
         }
         let (rig, record) = try await Self.codexRig(holding: files)
 
-        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
+        #expect(try await rig.binder.check(record) == .unavailable(.multipleSessions(.codex)))
         #expect(await rig.reads.isEmpty)
     }
 
@@ -410,7 +411,7 @@ struct HerdrCoreProgramBinderTests {
             foreground: ["/bin/sh", "/home/user/bin/codex.sh"],
             holds: ["/home/user/lab/iso/codexd/codex-home/thread-writer-locks/\(Self.firstThread).lock"])
 
-        #expect(try await rig.binder.check(record) == .unavailable(.cannotTellSession(.codex)))
+        #expect(try await rig.binder.check(record) == .unavailable(.noConversationYet(.codex)))
     }
 
     @Test func withNoSocketThatCodexIsNotOnTheDaemon() async throws {
@@ -433,7 +434,7 @@ struct HerdrCoreProgramBinderTests {
 
         let evidence = try await rig.binder.check(try Self.record(for: try Self.firstRow(scene)))
 
-        #expect(evidence == .unavailable(.cannotTellSession(.codex)))
+        #expect(evidence == .unavailable(.noConversationYet(.codex)))
     }
 
     /// A native Codex with nothing above it (the 0.166 observation), whose daemon
@@ -566,7 +567,7 @@ struct HerdrCoreProgramBinderTests {
         await rig.write(try fixture.scene("after-new-in-first-terminal").files)
 
         #expect(
-            try await rig.binder.check(try Self.record(for: row)) == .unavailable(.cannotTellSession(.grok)))
+            try await rig.binder.check(try Self.record(for: row)) == .unavailable(.multipleSessions(.grok)))
     }
 
     /// The row names the Terminal's process while a leader, of another name, holds

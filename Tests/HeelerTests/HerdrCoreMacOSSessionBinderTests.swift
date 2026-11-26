@@ -188,7 +188,7 @@ struct HerdrCoreMacOSSessionBinderTests {
     @Test func codexBeforeItsFirstPromptHoldsOnlyALock() async throws {
         let rig = try await Rig("codex-before-prompt")
 
-        #expect(try await rig.binder(.codex).check(try rig.record()) == Self.cannotTell(.codex))
+        #expect(try await rig.binder(.codex).check(try rig.record()) == .unavailable(.noConversationYet(.codex)))
         #expect(await rig.files.reads.isEmpty)
     }
 
@@ -240,17 +240,23 @@ struct HerdrCoreMacOSSessionBinderTests {
     }
 
     @Test(arguments: [
-        grokRow(pidStart: 1_793_572_941_000_000), grokRow(pidStart: 1_793_572_939_999_999),
+        (grokRow(pidStart: 1_793_572_941_000_000), ChatSessionEvidence.unavailable(.cannotTellSession(.grok))),
+        (grokRow(pidStart: 1_793_572_939_999_999), .unavailable(.cannotTellSession(.grok))),
         // Seconds, or Linux's ticks, are not this form.
-        grokRow(pidStart: 1_793_572_940), grokRow(pidStart: 145585), grokRow(pid: 1858, pidStart: 1_793_572_940_135_416),
+        (grokRow(pidStart: 1_793_572_940), .unavailable(.cannotTellSession(.grok))),
+        (grokRow(pidStart: 145585), .unavailable(.cannotTellSession(.grok))),
+        (grokRow(pid: 1858, pidStart: 1_793_572_940_135_416), .unavailable(.cannotTellSession(.grok))),
         // After `/new` nothing says which the screen shows.
-        grokRow(pidStart: 1_793_572_940_135_416) + "," + grokRow(pidStart: 1_793_572_940_135_416),
+        (
+            grokRow(pidStart: 1_793_572_940_135_416) + "," + grokRow(pidStart: 1_793_572_940_135_416),
+            .unavailable(.multipleSessions(.grok))
+        ),
     ])
-    func aGrokRowOfAnythingElseBindsNothing(_ rows: String) async throws {
+    func aGrokRowOfAnythingElseBindsNothing(_ rows: String, expected: ChatSessionEvidence) async throws {
         let rig = try await Rig("grok")
         await rig.files.write("[\(rows)]", at: "\(Self.lab)/grok/grok-home/active_sessions.json")
 
-        #expect(try await rig.binder(.grok).check(try rig.record()) == Self.cannotTell(.grok))
+        #expect(try await rig.binder(.grok).check(try rig.record()) == expected)
     }
 
     // MARK: OpenCode, Pi and Oh My Pi

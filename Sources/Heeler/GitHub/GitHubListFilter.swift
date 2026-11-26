@@ -2,7 +2,8 @@ import Foundation
 
 /// What one segment of the GitHub list shows: the filter row's four choices
 /// (ADR 0065). Each segment keeps its own on the device; at the default it
-/// is what involves the account, open and in any repository.
+/// is what involves the account, open and in any repository, and with a
+/// Repository chosen it is everyone's there.
 struct GitHubListFilter: Codable, Sendable, Hashable {
     enum State: String, Codable, Sendable, CaseIterable {
         /// Open, drafts included.
@@ -36,6 +37,17 @@ struct GitHubListFilter: Codable, Sendable, Hashable {
         var isViewer: Bool { login == nil }
     }
 
+    /// Whose items a segment shows.
+    enum People: Sendable, Hashable {
+        /// What involves the account: two searches, by role (ADR 0065).
+        case yours
+        /// Anyone's, in the repositories the filter names. Without one it
+        /// would search all of GitHub, so it needs a Repository.
+        case anyone
+        /// One role of one person.
+        case person(Person)
+    }
+
     enum Repository: Codable, Sendable, Hashable {
         /// `owner/name`.
         case repository(String)
@@ -53,13 +65,27 @@ struct GitHubListFilter: Codable, Sendable, Hashable {
     }
 
     var state: State = .open
-    /// Nil is All: what involves the account, as the list showed before
-    /// there were filters.
-    var person: Person?
+    /// Nil is the default for the Repository chosen: Yours across
+    /// repositories, Anyone in a repository or an owner's.
+    var people: People?
     var repository: Repository?
     var label: String?
 
     var isDefault: Bool { self == GitHubListFilter() }
+
+    /// Whose items the filter shows, its default resolved. Anyone with no
+    /// Repository reads as Yours, never as all of GitHub.
+    var whose: People {
+        switch people {
+        case .anyone? where repository == nil, nil: repository == nil ? .yours : .anyone
+        case let people?: people
+        }
+    }
+
+    /// The person a role names, when the filter shows one.
+    var person: Person? {
+        if case .person(let person) = whose { person } else { nil }
+    }
 
     /// The states a segment offers, in the menu's order.
     static func states(for kind: GitHubItem.Kind) -> [State] {
@@ -82,9 +108,62 @@ struct GitHubListFilter: Codable, Sendable, Hashable {
     func valid(for kind: GitHubItem.Kind) -> GitHubListFilter {
         var filter = self
         if !Self.states(for: kind).contains(filter.state) { filter.state = .open }
-        if let person, !Self.roles(for: kind).contains(person.role) { filter.person = nil }
+        if let person, !Self.roles(for: kind).contains(person.role) { filter.people = nil }
+        // Anyone is the default in a Repository and needs one; Yours is the
+        // default without one. Kept as nil, the default follows the
+        // Repository, and the defaults compare equal.
+        switch filter.people {
+        case .anyone?: filter.people = nil
+        case .yours? where filter.repository == nil: filter.people = nil
+        default: break
+        }
         return filter
     }
+
+    // MARK: Kept on the device
+
+    private enum CodingKeys: String, CodingKey {
+        /// A role of a person's, as 0.1.24 kept it.
+        case person
+        /// Yours or Anyone, chosen over the Repository's default.
+        case people
+        case state, repository, label
+    }
+
+    private enum Choice: String, Codable {
+        case yours, anyone
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decodeIfPresent(State.self, forKey: .state) ?? .open
+        repository = try container.decodeIfPresent(Repository.self, forKey: .repository)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        if let person = try container.decodeIfPresent(Person.self, forKey: .person) {
+            people = .person(person)
+        } else {
+            people = switch try container.decodeIfPresent(Choice.self, forKey: .people) {
+            case .yours?: .yours
+            case .anyone?: .anyone
+            case nil: nil
+            }
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(repository, forKey: .repository)
+        try container.encodeIfPresent(label, forKey: .label)
+        switch people {
+        case .person(let person)?: try container.encode(person, forKey: .person)
+        case .yours?: try container.encode(Choice.yours, forKey: .people)
+        case .anyone?: try container.encode(Choice.anyone, forKey: .people)
+        case nil: break
+        }
+    }
+
+    init() {}
 }
 
 // MARK: - What the row of chips and its menus say
@@ -161,9 +240,17 @@ extension GitHubListFilter {
     /// The State chip's words.
     func stateTitle(for kind: GitHubItem.Kind) -> String { state.title(for: kind) }
 
-    /// The Person chip's words: "All" at the default.
+    /// The Person chip's words: Yours, Anyone, or the role.
     var personTitle: String {
-        person?.title ?? String(localized: "All")
+        switch whose {
+        case .yours:
+            String(localized: "GitHub person Yours", defaultValue: "Yours", comment: "A GitHub Person filter: what involves you.")
+        case .anyone:
+            String(
+                localized: "GitHub person Anyone", defaultValue: "Anyone",
+                comment: "A GitHub Person filter: everyone's, in the repositories chosen.")
+        case .person(let person): person.title
+        }
     }
 
     /// The Repository chip's words: the repository's name, "All of acme"

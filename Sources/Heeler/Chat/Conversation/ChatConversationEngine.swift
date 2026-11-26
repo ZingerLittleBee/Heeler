@@ -35,6 +35,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// Nothing on the Host shows which conversation a herdr-core Agent is in,
     /// and Chat never guesses (ADR 0034).
     case cannotTellSession(ChatProgram)
+    /// The Agent's process holds more than one conversation (for example after
+    /// `/new` in Codex or Grok Build), so Chat can't tell which one is on
+    /// screen (ADR 0034). `offersPick` is false on Windows, which has no picker.
+    case multipleSessions(ChatProgram, offersPick: Bool = true)
     /// The same on a native Windows Host, which has no Host Helper to offer.
     case cannotTellSessionOnWindows(ChatProgram)
     /// The same for a Pi or Oh My Pi that hasn't loaded Heeler's extension, which is
@@ -72,6 +76,7 @@ enum ChatUnavailableReason: Equatable, Sendable {
     var leavesItToAPick: Bool {
         switch self {
         case .cannotTellSession, .extensionNotLoaded: true
+        case .multipleSessions(_, let offersPick): offersPick
         default: false
         }
     }

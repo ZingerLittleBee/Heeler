@@ -19,7 +19,10 @@ Entries reference the pull request that made the change.
 
 - Speak Rex API revision 19, the newest Rex 0.1.0-preview.23 offers, and keep working with Rex servers that offer revisions 12 to 18. Heeler worked with revision 12 only. Checked against Rex 0.1.0-preview.23 on macOS and Windows. (PR #846)
 - A terminal on a Rex Host now wears its own colors, as Rex shows it, rather than your Heeler theme, and follows them when they change there; Heeler's theme stays for any color Rex keeps built in. Tried against Rex 0.1.0-preview.23 on macOS. (PR #846)
+- Streamline Chat's **Can't Tell the Conversation** screen into concise actionable guidance with a **Learn More** link to the troubleshooting guide, separate multi-session (`/new`) notices for Codex and Grok Build from first-message states, and show **No Messages Yet** (allowing the first message to be sent directly from Chat) for a fresh `--no-daemon` Codex at its prompt, matching Claude Code and Antigravity CLI. (PR #850)
 - Show a Markdown task list's boxes in Chat and in GitHub descriptions, which VoiceOver reads as Checked or Unchecked. `- [ ]` and `- [x]` items showed their brackets as typed. (PR #842)
+- Switch between **Pull Requests** and **Issues** in the **GitHub** tab from the list's title, which names the list it shows, rather than from a picker over the filters. A row puts the repository, number, author, age and status on one line over the full-width title, so more of a list fits on screen. (PR #849)
+- See everyone's open pull requests or issues in a repository you choose with the **GitHub** tab's Repository filter, as its page on GitHub shows them; across repositories a list still holds yours. The Person filter says which it shows, **Yours** or **Anyone**, where it read All. The next page reads by itself as you near the end of a list, and offline a list still says how many it shows of how many there are. (PR #849)
 
 ### Fixed
 
@@ -34,6 +37,8 @@ Entries reference the pull request that made the change.
 - Keep a command Heeler runs on a Host within its time limit after the connection drops. Changes, worktree git, GitHub and Heeler's other short commands on a Host stop at a limit, which a dropped connection disarmed, so the command ran on until it ended by itself. (PR #842)
 - Hear a Markdown table with VoiceOver in Chat and in GitHub descriptions: each value is read after its column's name, and a table too wide for a Chat message is read too. Each header cell, and a Chat message holding a table, had been announced as a heading, and a wide table was not read at all. (PR #842)
 - Set a code block in Chat in a fixed-width face under every Chat font. Under System, Rounded and Serif it took the conversation's proportional face. (PR #842)
+- Keep the **GitHub** list and a pull request's or issue's page still when the Host goes offline or a read runs or fails. The line under the title is always there, saying when the list was read or what is wrong, where it came and went and moved the list; on iOS 26 a page no longer opens a banner above its details. (PR #849)
+- Show the **GitHub** tab's Host button as one capsule. When its Host had a status, it drew an amber capsule inside the toolbar's own. (PR #849)
 
 ## [0.1.23]
 
