@@ -1217,10 +1217,11 @@ struct RexConsoleTests {
         #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
     }
 
-    /// The session is made but Rex refuses the attach that follows, twice:
-    /// New Workspace still gives the terminal it made, and sends no give back
-    /// Rex would refuse from a client not attached to the session. The block
-    /// stays this client's until the session's next attach gives it back.
+    /// The session is made but Rex refuses the attach that follows: New
+    /// Workspace still gives the terminal it made, tries no second attach,
+    /// and sends no give back Rex would refuse from a client not attached to
+    /// the session. The block stays this client's until the session's next
+    /// attach gives it back.
     @Test func aNewWorkspaceWhoseAttachIsRefusedGivesItsBlockBackOnTheNextAttach() async throws {
         let (console, server, world) = await newTerminalRig()
         defer { console.setHosts([]) }
@@ -1239,7 +1240,7 @@ struct RexConsoleTests {
         let attaches = await server.requests.filter {
             $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2"
         }
-        #expect(attaches.count == 2)
+        #expect(attaches.count == 1)
         #expect(await !server.requests.contains { $0.method == RexTerminalAttach.giveBackMethod })
         #expect(world.owner(of: "block:made-1", in: "session:made-2") == FakeRexServer.Welcome().clientID)
 

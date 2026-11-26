@@ -758,8 +758,9 @@ actor RexHostSession {
     /// live control link. It never waits for a server, and a request that
     /// left is never sent again, so one with no answer may still have made
     /// its terminal. The window is not made active, and the block is given
-    /// back at once, as a size this client took is (ADR 0053): the view that
-    /// opens it takes its size as it takes any other terminal's.
+    /// back at once, as a size this client took is (ADR 0053), or, in a new
+    /// session the client could not attach, once that session is attached:
+    /// the view that opens it takes its size as it takes any other terminal's.
     func createTerminal(_ placement: RexNewTerminal.Placement, cwd: String?) async throws -> RexNewTerminal.Created {
         guard let ready = readyConnection else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
@@ -778,21 +779,25 @@ actor RexHostSession {
                 let response = try await control.call(
                     RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd))
                 created = try RexNewTerminal.newSession(from: response.result(JSONValue.self))
-                // The session is made, so a failed attach is tried once more
-                // and never fails the request. Rex refuses a give back from a
-                // client not attached to the session, so a block whose attach
-                // failed twice is kept as a size this client took: the next
-                // attach of its session or of the block, or a link that takes
-                // the client back, gives it back.
+                // The session is made, so a failed attach never fails the
+                // request. Rex refuses a give back from a client not attached
+                // to the session, so the block of one whose attach failed is
+                // kept as a size this client took: the next attach of its
+                // session or of the block, or a link that takes the client
+                // back, gives it back. Another attach now would only add its
+                // deadline to New Workspace's wait.
                 let sessionID = created.address.sessionID
-                if (try? await attachForCreating(sessionID, on: control)) == nil,
-                    (try? await attachForCreating(sessionID, on: control)) == nil
-                {
+                if (try? await attachForCreating(sessionID, on: control)) == nil {
+                    // What the old client claimed went with it.
+                    guard clientEpoch == epoch else { return created }
                     sizeClaims.note(.taken, at: created.address, epoch: epoch)
                     unreturnedCreatedBlocks[created.address] = epoch
-                    // Another request may have attached the session while
-                    // these waited, past its own look for blocks to give back.
-                    if attachedSessions[sessionID] == epoch { giveBackLeftSizes(inSession: sessionID, on: control) }
+                    // Another request may have attached the session while this
+                    // one waited, past its own look for blocks to give back,
+                    // and on the link that took the client back if this one ended.
+                    if attachedSessions[sessionID] == epoch, let live = readyConnection?.control {
+                        giveBackLeftSizes(inSession: sessionID, on: live)
+                    }
                     return created
                 }
             }
