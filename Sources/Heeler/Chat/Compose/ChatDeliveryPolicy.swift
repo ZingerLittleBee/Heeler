@@ -132,6 +132,8 @@ extension InputBoxState {
                 // Ctrl+C before the first output puts the turn's prompt back
                 // in the box.
                 String(localized: "Grok Build's input box already has text, such as a draft or a message Stop put back. Send or clear it in the terminal first.")
+            case .amp:
+                String(localized: "Amp already has a draft. Send or clear it in the terminal first.")
             case .opencode:
                 // OpenCode's `/undo` puts the undone prompt back in the box,
                 // and Up recalls an earlier one.

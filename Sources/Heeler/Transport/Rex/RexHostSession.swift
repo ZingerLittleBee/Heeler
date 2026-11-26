@@ -100,9 +100,12 @@ actor RexHostSession {
     /// Which follow may publish, so a late inventory from one that stopped is
     /// dropped, and what the last one published and on which server
     /// instance, whose details the next one on the same instance starts from.
+    /// `lineage` is the last server and the sessions it listed, which say
+    /// whether the next instance restored them.
     private final class Follows: Sendable {
         let run = Mutex<UInt64>(0)
         let lastInventory = Mutex<(instanceID: String, inventory: RexInventory)?>(nil)
+        let lineage = Mutex<RexServerLineage?>(nil)
 
         func stopAll() {
             run.withLock { $0 &+= 1 }
@@ -377,7 +380,8 @@ actor RexHostSession {
                 let (transport, link) = try await ensureLink(for: generation)
                 let started = ContinuousClock.now
                 let status = try await link.call("server.status")
-                let server = try RexServerStatus(reading: try status.result(JSONValue.self))
+                let server = try await identify(
+                    RexServerStatus(reading: try status.result(JSONValue.self)), on: link)
                 guard activationIsCurrent(generation) else { break }
                 await settleTerminals(on: link, server: server)
                 guard activationIsCurrent(generation) else { break }
@@ -406,6 +410,49 @@ actor RexHostSession {
             let delay = retryAtOnce ? Duration.zero : reconnectPolicy.delay(beforeAttempt: attempt)
             yieldStatus(.reconnecting(attempt: attempt, delay: delay, failure: failure))
             if delay > .zero { try? await wait(delay) }
+        }
+    }
+
+    /// What this device knew of the Host's server before this session, from
+    /// an earlier run, for the first instance to continue. A session that
+    /// already followed one keeps its own.
+    nonisolated func seedLineage(_ lineage: RexServerLineage?) {
+        follows.lineage.withLock { if $0 == nil { $0 = lineage } }
+    }
+
+    /// The server `answered` is (ADR 0050). The instance the last link
+    /// reached continues its core. Another instance continues it only when
+    /// it sees the same files and lists one of the sessions the last one
+    /// listed, as a server restored from its saved sessions does; it is asked
+    /// for its list only then. Any other is another server, with a core of
+    /// its own.
+    private func identify(_ answered: RexServerStatus, on link: RexControlLink) async throws -> RexServerStatus {
+        var server = answered
+        var listed: [String] = []
+        if let last = follows.lineage.withLock({ $0 }) {
+            if last.instanceID == answered.instanceID {
+                server = answered.continuing(last.coreID)
+                listed = last.sessionIDs
+            } else if last.mayContinue(in: answered) {
+                let ids = try await listedSessionIDs(on: link)
+                if last.isContinued(byListing: ids) {
+                    server = answered.continuing(last.coreID)
+                    listed = ids
+                }
+            }
+        }
+        follows.lineage.withLock { $0 = RexServerLineage(server, sessionIDs: listed) }
+        return server
+    }
+
+    /// The ids `session.list` names. A server that refuses the list, or
+    /// answers in a way Heeler cannot read, says nothing of what it restored.
+    private func listedSessionIDs(on link: RexControlLink) async throws -> [String] {
+        do {
+            let response = try await link.call("session.list")
+            return RexInventoryWire.sessions(try response.result(JSONValue.self))?.map(\.id) ?? []
+        } catch RexControlError.server(_), RexControlError.unreadableResult(_) {
+            return []
         }
     }
 
@@ -446,6 +493,7 @@ actor RexHostSession {
         ) { [updatesContinuation, follows] inventory in
             guard follows.run.withLock({ $0 == run }) else { return }
             follows.lastInventory.withLock { $0 = (server.instanceID, inventory) }
+            follows.lineage.withLock { $0 = RexServerLineage(server, sessionIDs: inventory.sessions.map(\.id)) }
             updatesContinuation.yield(.inventory(inventory))
         }
         let ending = await follower.run()
@@ -774,7 +822,8 @@ actor RexHostSession {
 
     /// One read of Chat's, on the live control link while it is still the
     /// one the read was pinned to. Another server is gone for good; another
-    /// connection or client says the one it read on went.
+    /// connection or client says the one it read on went, as does another
+    /// instance of the same server.
     private func askBlock(
         _ method: String, payload: JSONValue, deadline: RexDeliveryDeadline, server: RexServerStatus,
         generation: UInt64, epoch: UInt64
@@ -782,8 +831,8 @@ actor RexHostSession {
         guard let ready = readyConnection else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
-        guard ready.server == server else { throw TransportError.rexServerGone }
-        guard ready.generation == generation, clientEpoch == epoch else {
+        guard ready.server.isSameServer(as: server) else { throw TransportError.rexServerGone }
+        guard ready.server == server, ready.generation == generation, clientEpoch == epoch else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         let response = try await ready.control.call(method, payload: payload, waiting: deadline)

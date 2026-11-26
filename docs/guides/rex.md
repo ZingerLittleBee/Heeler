@@ -81,6 +81,7 @@ Tap a terminal in **Terminals** to open it. An Agent in **Agents** opens like an
 - **Opening:** The terminal appears once Rex has redrawn its screen and history, so a long history can take a few seconds on a slow connection. A program that keeps writing, such as a spinner, can show a few lines twice or out of place until it pauses; Heeler then paints it again.
 - **Typing and pasting:** Type in Text or Keys mode, tap **Paste**, or send a Snippet. You can type whichever device set the terminal's size. What you type reaches the terminal in order, and Heeler never sends it twice: when the connection drops before Rex answers, the terminal shows **Connection dropped** with **Reattach**, and nothing typed after that point was sent. Keys typed while Heeler reconnects are not sent either; the terminal reconnects and paints again. A paste too large to send in one piece is blocked rather than split; paste less at a time.
 - **Ending:** When a terminal closes in Rex or its program exits, its view ends.
+- **Rex restarting:** When Rex restarts and brings back its sessions, its terminals, your pins and Chat stay. An open terminal reconnects and shows a fresh screen, since what ran in it started again or ended.
 
 When a terminal stops, it says why:
 
@@ -89,7 +90,7 @@ When a terminal stops, it says why:
 | **Connection dropped** | Something you typed may not have arrived. Tap **Reattach** and check the screen before typing again. |
 | **This terminal's history is too long to show** | Clear the terminal's scrollback in Rex, then tap **Reattach**. |
 | **Rex stopped sending this terminal's output** | Rex stopped the terminal's output while the Host stayed connected. Tap **Reattach**. When the connection to the Host drops, the terminal reconnects and paints again by itself instead. |
-| **This Terminal belongs to a Rex server that is gone** | Rex restarted. Open the terminal again from **Terminals**. |
+| **This Terminal belongs to a Rex server that is gone** | Another Rex server answers, one that did not bring back this terminal's session. Open the terminal again from **Terminals**. |
 
 ### Fitted to your screen
 
@@ -134,7 +135,7 @@ To start an Agent, open a New Terminal and start it there. It moves to **Agents*
 - **Send:** **Send** pastes your message and presses Enter once it checks that the same Agent still holds the terminal, is not **Blocked**, and accepts a paste. The Composer under the terminal sends the same way. If Rex does not answer, Heeler never sends the message again; check the terminal first.
 - **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Send** becomes **Stop**, which presses Esc once it checks that the same Agent still holds the terminal. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal. A Claude Code that has finished its turn while a command it put in the background still runs reads **Done** or **Idle**, so you can send its next message; **Stop** never ends that command, so end it in the terminal.
 - **Commands:** `/` offers `/compact` while the Agent reports it is idle, and not the Agent's skills. Use the terminal for the rest.
-- **Images and files:** In Chat or on the Agent's terminal, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Heeler uploads the file over the Host's SSH connection, not through Rex, into a new folder in the temporary folder of the account you sign in with (on Windows, `AppData\Local\Temp` in its user folder), and adds its path to your message; **Send** types the path with your message, once. An image is sent as a JPEG or PNG of at most 16 MiB, and a file can be up to 64 MiB. Heeler never deletes uploaded files from the Host. If Rex restarts, an upload started afterwards stops with **This Terminal belongs to a Rex server that is gone**; one already under way finishes and its file stays on the Host, but **Send** then refuses the message with the same words. Open the Agent again from the list.
+- **Images and files:** In Chat or on the Agent's terminal, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Heeler uploads the file over the Host's SSH connection, not through Rex, into a new folder in the temporary folder of the account you sign in with (on Windows, `AppData\Local\Temp` in its user folder), and adds its path to your message; **Send** types the path with your message, once. An image is sent as a JPEG or PNG of at most 16 MiB, and a file can be up to 64 MiB. Heeler never deletes uploaded files from the Host. If another Rex server takes over, one that did not bring back the Agent's session, an upload started afterwards stops with **This Terminal belongs to a Rex server that is gone**; one already under way finishes and its file stays on the Host, but **Send** then refuses the message with the same words. Open the Agent again from the list.
 
 ### Pi and Oh My Pi
 

@@ -95,6 +95,8 @@ final class FakeRexWorld: Sendable {
 
     private struct State {
         var instanceID: String
+        /// What `server.status` names as `host_id`; nil answers without one.
+        var hostID: String?
         var sessions: [Session]
         /// Numbers the windows, blocks and sessions New Terminal makes.
         var made = 0
@@ -108,8 +110,11 @@ final class FakeRexWorld: Sendable {
     /// without one.
     let platform: String?
 
-    init(instanceID: String = "instance-0001", sessions: [Session] = [], platform: String? = "darwin_arm64") {
-        state = Mutex(State(instanceID: instanceID, sessions: sessions))
+    init(
+        instanceID: String = "instance-0001", hostID: String? = nil, sessions: [Session] = [],
+        platform: String? = "darwin_arm64"
+    ) {
+        state = Mutex(State(instanceID: instanceID, hostID: hostID, sessions: sessions))
         self.platform = platform
     }
 
@@ -119,7 +124,9 @@ final class FakeRexWorld: Sendable {
         state.withLock { change(&$0.sessions) }
     }
 
-    /// Another server process on the same socket.
+    /// Another server process on the same socket, seeing the same files, so
+    /// with the same `host_id`. Its sessions stay unless `update` changes
+    /// them, as a server that restored them keeps them.
     func restart(as instanceID: String) {
         state.withLock {
             $0.instanceID = instanceID
@@ -132,12 +139,16 @@ final class FakeRexWorld: Sendable {
     /// and what an open terminal asks of `client`'s blocks.
     func install(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
         await server.answer("server.status") { [self] _ in
-            .result(["instance_id": .string(state.withLock { $0.instanceID }), "session_count": 1])
+            let (instanceID, hostID) = state.withLock { ($0.instanceID, $0.hostID) }
+            var status: [String: JSONValue] = ["instance_id": .string(instanceID), "session_count": 1]
+            if let hostID { status["host_id"] = .string(hostID) }
+            return .result(.object(status))
         }
         await server.answer("server.version") { [platform] _ in
             .result(.object(platform.map { ["platform": .string($0)] } ?? [:]))
         }
         await server.answer("session.attach_all") { [self] _ in .result(attachAll) }
+        await server.answer("session.list") { [self] _ in .result(attachAll) }
         await server.answer("session.view") { [self] request in
             guard let session = session(request) else { return Self.sessionNotFound }
             return .result(Self.view(session))

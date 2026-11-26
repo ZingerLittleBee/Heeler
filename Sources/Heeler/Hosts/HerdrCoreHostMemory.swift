@@ -11,10 +11,12 @@ import Foundation
 /// A tmux Host keeps its server instance here as its core id (ADR 0045): pane
 /// ids belong to one run of the server as addresses belong to one core, and so
 /// do its Panes' turns and seen marks (ADR 0046), which go with the instance.
-/// A Rex Host keeps its server instance and its terminals' turns and seen
+/// A Rex Host keeps its server's core and its terminals' turns and seen
 /// marks the same way (ADR 0054), and the conversation the user picked for a
 /// terminal's Agent, which a tmux Host keeps on the Pane: nothing is written
-/// on a Rex Host, so the pick stays on this device.
+/// on a Rex Host, so the pick stays on this device. A restarted Rex server
+/// that restored its sessions keeps its core, so with the core goes what says
+/// so: the instance, files and sessions it last listed (ADR 0050).
 @MainActor
 final class HerdrCoreHostMemory {
     /// A Rex terminal's pick (ADR 0034): the `heeler.chat` value, with the
@@ -45,6 +47,8 @@ final class HerdrCoreHostMemory {
         var rexTurns: [String: RexTurnState] = [:]
         /// A Rex Host's picks, by pane id.
         var rexChatPicks: [String: RexChatPick] = [:]
+        /// A Rex Host's server as last listed, of the core above.
+        var rexServer: RexServerLineage?
 
         init(coreID: String? = nil) {
             self.coreID = coreID
@@ -60,6 +64,7 @@ final class HerdrCoreHostMemory {
             tmuxTurns = try fields.decodeIfPresent([String: TmuxTurnState].self, forKey: .tmuxTurns) ?? [:]
             rexTurns = try fields.decodeIfPresent([String: RexTurnState].self, forKey: .rexTurns) ?? [:]
             rexChatPicks = try fields.decodeIfPresent([String: RexChatPick].self, forKey: .rexChatPicks) ?? [:]
+            rexServer = try fields.decodeIfPresent(RexServerLineage.self, forKey: .rexServer)
         }
     }
 
@@ -180,6 +185,23 @@ final class HerdrCoreHostMemory {
         var entry = entries[hostID] ?? Entry()
         guard entry.rexChatPicks[paneID] != pick else { return }
         entry.rexChatPicks[paneID] = pick
+        entries[hostID] = entry
+        save()
+    }
+
+    /// The Rex server this device last followed on the Host, for the next
+    /// run's first connection to tell whether a new instance continues it.
+    func rexServerLineage(for hostID: Host.ID) -> RexServerLineage? {
+        guard let entry = entries[hostID], let lineage = entry.rexServer, lineage.coreID == entry.coreID else {
+            return nil
+        }
+        return lineage
+    }
+
+    /// Notes the Rex server a listing came from, for its own core only.
+    func noteRexServerLineage(_ lineage: RexServerLineage, for hostID: Host.ID) {
+        guard var entry = entries[hostID], entry.coreID == lineage.coreID, entry.rexServer != lineage else { return }
+        entry.rexServer = lineage
         entries[hostID] = entry
         save()
     }

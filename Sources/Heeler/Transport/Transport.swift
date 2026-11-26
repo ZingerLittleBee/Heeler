@@ -2,7 +2,7 @@ import Foundation
 
 /// The app-side abstraction that executes herdr API requests over SSH.
 /// UI code talks to Transport, never to SSH primitives (ADR 0011).
-protocol Transport: HostServices, HostNotificationFiles {
+protocol Transport: HostServices, HostNotificationFiles, AmpChatHost {
     /// The catalog route this connection reached (ADR 0022); nil where the
     /// transport does not know one.
     var routeID: UUID? { get }

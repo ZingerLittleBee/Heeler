@@ -45,10 +45,11 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
         "tmux:\(TmuxSocketName.normalized(socketName)):\(instanceID)"
     }
 
-    /// A Rex Host is one server, so its instance alone keeps its entries apart
-    /// from another run's.
-    static func rexScope(instanceID: String) -> String {
-        "rex:\(instanceID)"
+    /// A Rex Host is one server, so its core alone keeps its entries apart
+    /// from another server's; a restarted server that restored its sessions
+    /// keeps its core, and its entries (ADR 0050).
+    static func rexScope(coreID: String) -> String {
+        "rex:\(coreID)"
     }
 
     /// The document's file name: a digest, so no session name, path or id
@@ -71,8 +72,7 @@ struct ChatCacheDocument: Codable, Equatable, Sendable {
 
     var formatVersion: Int
     var key: ChatCacheKey
-    /// Bumped by an adapter whose normalization changed; an older document
-    /// is discarded rather than mixed with new entries.
+    /// The adapter uses this to restore entries in its current representation.
     var adapterRevision: Int
     var transcriptPath: String
     /// The transcript's first bytes when the entries were read. A file whose
@@ -191,7 +191,14 @@ struct ChatCachePolicy: Equatable, Sendable {
 
 /// Where Chat keeps conversations between visits, so a Chat opens instantly
 /// and stays readable offline.
-protocol ChatTranscriptCache: Sendable {
+/// A cache on this device as Settings shows it: its size, and a way to
+/// clear it.
+protocol DeviceCache: Sendable {
+    func removeAll() async
+    func diskUsage() async -> Int64
+}
+
+protocol ChatTranscriptCache: DeviceCache {
     func load(_ key: ChatCacheKey) async -> ChatCacheLoadResult
     func save(_ document: ChatCacheDocument) async
     func remove(_ key: ChatCacheKey) async
@@ -205,8 +212,6 @@ protocol ChatTranscriptCache: Sendable {
     /// saves for any other Host, so a save racing a Host's removal cannot
     /// bring its messages back.
     func retainHosts(_ hostIDs: Set<UUID>) async
-    func removeAll() async
-    func diskUsage() async -> Int64
     func prune() async
 }
 

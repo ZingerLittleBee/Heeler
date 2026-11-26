@@ -909,7 +909,7 @@ extension DialogOption {
         case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
             return String(
                 localized: "Antigravity CLI won't ask again in this conversation for commands that start this way.")
-        case .claude, .codex, .pi, .agy:
+        case .claude, .codex, .pi, .agy, .amp:
             return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
             return String(localized: "Saves an OpenCode rule for this project that can allow more than this request.")

@@ -554,6 +554,45 @@ struct RexHostSessionTests {
         await session.end()
     }
 
+    /// A server restarted on the same files that lists the sessions the last
+    /// one listed restored them, so it continues the last one's core; one
+    /// that lists none of them is another server.
+    @Test(arguments: [(true, ["instance-0001", "instance-0001"]), (false, ["instance-0001", "instance-0002"])])
+    func aRestartedServerContinuesItsCoreOnlyWithItsSessions(restored: Bool, cores: [String]) async throws {
+        let world = FakeRexWorld(hostID: "host-0001", sessions: [FakeRexWorld.studio()])
+        let first = await server(world)
+        let second = await server(world)
+        let session = session(Dialer([ScriptedRexHost(control: [.server(first), .server(second)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+
+        world.restart(as: "instance-0002")
+        if !restored { world.update { $0 = [FakeRexWorld.studio(id: "session:other")] } }
+        await first.close(.goingAway, reason: "shutting down")
+        try await log.waitUntil("the restarted server") { $0.servers.count == 2 }
+
+        #expect(log.servers == ["instance-0001", "instance-0002"])
+        #expect(log.snapshot.cores == cores)
+        await session.end()
+    }
+
+    /// What an earlier run knew of the server lets the first connection of
+    /// this one continue its core.
+    @Test func aSeededLineageContinuesTheEarlierRunsCore() async throws {
+        let world = FakeRexWorld(hostID: "host-0001", sessions: [FakeRexWorld.studio()])
+        let session = session(Dialer([ScriptedRexHost(control: [.server(await server(world))])]))
+        session.seedLineage(
+            RexServerLineage(
+                RexServerStatus(instanceID: "instance-0000", hostID: "host-0001"), sessionIDs: ["session:studio"]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await log.waitUntil("the server") { $0.servers.count == 1 }
+
+        #expect(log.snapshot.cores == ["instance-0000"])
+        await session.end()
+    }
+
     // MARK: Failures
 
     /// A server that is not running is retried; a socket SSH will not forward
@@ -590,6 +629,10 @@ struct RexHostSessionUpdateLog {
 
     var servers: [String] {
         updates.compactMap { if case .server(let server) = $0 { server.instanceID } else { nil } }
+    }
+
+    var cores: [String] {
+        updates.compactMap { if case .server(let server) = $0 { server.coreID } else { nil } }
     }
 
     var inventories: [RexInventory] {

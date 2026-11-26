@@ -64,6 +64,7 @@ enum InputBoxStateDetector {
         case .pi, .omp: return PiInputBoxDetector.detect(screen, program: program)
         case .grok: return GrokInputBoxDetector.detect(screen)
         case .opencode: return OpenCodeScreenReader.read(screen).state
+        case .amp: return AmpInputBox.read(screen)
         case .agy: return AgyInputBoxDetector.detect(screen)
         }
     }
@@ -73,7 +74,7 @@ enum InputBoxStateDetector {
     /// and must never be bypassed by `Send Anyway`.
     static func hardHold(in screen: ANSIScreen, program: ChatProgram) -> InputBoxState? {
         switch program {
-        case .claude, .codex: nil
+        case .claude, .codex, .amp: nil
         case .pi, .omp: PiInputBoxDetector.hardHold(in: screen, program: program)
         case .grok: GrokInputBoxDetector.hardHold(in: screen)
         case .opencode: OpenCodeScreenReader.read(screen).hardHold

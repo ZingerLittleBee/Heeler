@@ -92,6 +92,8 @@ struct SettingsView: View {
     @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
     /// Injected app-wide by `ContentView`; absent in previews.
     @Environment(VoiceInputSession.self) private var voiceInput: VoiceInputSession?
+    /// Counts Clear Chat Cache taps, which empty Downloaded Files too.
+    @State private var chatCacheClears = 0
 
     static let agentListDestination = SettingsAgentListDestination.fields
     static let overlayNetworksDestination = SettingsOverlayNetworksDestination.networks
@@ -269,7 +271,10 @@ struct SettingsView: View {
                 }
             }
 
-            ChatCacheSettingsSection(cache: console.chatCache)
+            ChatCacheSettingsSection(
+                cache: console.chatCache, alsoClearing: [console.hostFileCache],
+                didClear: { chatCacheClears += 1 })
+            HostFileCacheSettingsSection(cache: console.hostFileCache, remeasuring: chatCacheClears)
 
             Section {
                 ForEach(Self.aboutRows) { @Sendable row in

@@ -320,4 +320,38 @@ struct RexChatTypingTests {
         #expect(await rig.inputs().isEmpty)
         #expect(try rig.projection.chatTyping(at: RexChatRig.paneID) !== typing)
     }
+
+    /// A server restarted on the same files that restored the terminal's
+    /// session is the same server: the typing a Chat holds stays and reads
+    /// on, and the program started again since its last read is another
+    /// holder, given nothing until a read settles it.
+    @Test func aRestoredServerKeepsTheTyping() async throws {
+        let world = FakeRexWorld(hostID: "host-0001", sessions: [RexChatRig.studio()])
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog), world: world, servers: 2)
+        defer { rig.end() }
+        // As a Chat holds it: its screen alone, which holds the typing weakly.
+        let screen = try typing(rig).blockedScreen
+        weak var held = try typing(rig)
+        _ = try await screen.readScreen()
+
+        // The restored terminal runs its program anew, under another pid.
+        var restored = RexChatRig.studio()
+        restored.windows[0].layers[0].blocks[2].processID = 6262
+        restored.windows[0].layers[0].blocks[2].status = restored.windows[0].layers[0].blocks[2].record(
+            "working", app: "claude")
+        world.update { $0 = [restored] }
+        world.restart(as: "instance-b")
+        await rig.server.close(.goingAway)
+        try await rig.waitUntil("the restored server") {
+            rig.projection.server?.instanceID == "instance-b" && !rig.projection.isAwaitingSnapshot
+        }
+
+        #expect(held != nil)
+        #expect(try rig.projection.chatTyping(at: RexChatRig.paneID) === held)
+        let stale = await refusal { try await screen.type(.keys(["1"])) { _ in true } }
+        #expect(stale == "Another process took over the terminal after Heeler read the screen, so Heeler pressed nothing.")
+        _ = try await screen.readScreen()
+        _ = try await screen.readScreen()
+        try await screen.type(.keys(["1"])) { _ in true }
+    }
 }

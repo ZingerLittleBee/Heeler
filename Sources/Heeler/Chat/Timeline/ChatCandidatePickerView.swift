@@ -11,6 +11,7 @@ struct ChatCandidatePickerView: View {
     /// directory has none.
     static func emptyListDescription(for program: ChatProgram) -> String {
         switch program {
+        case .amp: AmpChatProblem.noThread.explanation
         case .agy:
             String(localized: "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither.")
         case .claude, .codex, .pi, .omp, .grok, .opencode:

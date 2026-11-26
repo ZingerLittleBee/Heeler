@@ -34,6 +34,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// A core on a native Windows machine. Its Terminals start in directories of that
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
+    var offersAmpPlugin = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -63,7 +64,7 @@ struct HostCapabilities: Equatable, Sendable {
     }
 
     func offersChat(for program: ChatProgram) -> Bool {
-        chat && chatPrograms?.contains(program) != false
+        chat && (program != .amp || offersAmpPlugin) && chatPrograms?.contains(program) != false
     }
 
     func renameWorkspace(id: String) -> Bool {
@@ -209,6 +210,7 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
+            offersAmpPlugin: offered && platform == .posix,
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
@@ -273,7 +275,7 @@ extension HostCapabilities {
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
     /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.amp])
 }
 
 extension Host {

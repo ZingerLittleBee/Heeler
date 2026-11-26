@@ -167,6 +167,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
                 case .codex: try await checkCodex(record, tree: tree)
                 case .grok: try await checkGrokBuild(tree)
+                case .amp: .unavailable(.amp(.unidentified))
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
                 case .agy: checkAntigravity(record, tree: tree)
@@ -238,7 +239,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
-        case .opencode: ProcessAsk()
+        case .opencode, .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         case .agy: antigravityProcessAsk
         }
@@ -260,6 +261,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok:
             isOnWindows
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
+        case .amp: nil
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
         // A native binary that calls itself `agy`, with nothing of its own under
@@ -276,7 +278,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode: nil
+        case .opencode, .amp: nil
         case .pi, .omp: piFamilySessions(of: process)
         case .agy: antigravityRoot(of: process)
         }

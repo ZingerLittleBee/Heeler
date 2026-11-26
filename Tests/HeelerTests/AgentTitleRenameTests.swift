@@ -37,7 +37,7 @@ struct AgentTitleRenameTests {
     /// Antigravity CLI prints its rename confirmation on screen without setting
     /// a terminal title by default, and `/rename` with no argument is an error.
     @Test func antigravityConfirmsRenameOnScreenWithoutGeneration() async throws {
-        #expect(ChatProgram.allCases.allSatisfy(AgentTitleNaming.supportsRename))
+        #expect(ChatProgram.allCases.filter(AgentTitleNaming.supportsRename) == ChatProgram.allCases.filter { $0 != .amp })
         #expect(!AgentTitleNaming.supportsGeneration(.agy))
         let rig = try Rig(.agy)
         rig.apply = false
@@ -461,6 +461,7 @@ struct AgentTitleRenameTests {
             case .grok: "grok-01-idle-empty"
             case .opencode: "opencode-02-session-empty-180"
             case .agy: "agy-02-idle-empty-120x40"
+            case .amp: throw CocoaError(.featureUnsupported)
             }
             empty = try ScreenFixture.screen(fixture)
         }
@@ -473,7 +474,7 @@ struct AgentTitleRenameTests {
             case .omp: "π > 📝 MANUAL: " + title
             case .grok: title + " - grok"
             case .opencode: OpenCodeTerminalTitle.expected(sessionTitle: title)
-            case .agy: title
+            case .agy, .amp: title
             }
             return Agent(terminalID: "term-one", kind: program.rawValue, title: displayed, status: status,
                 workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/project", revision: 1,

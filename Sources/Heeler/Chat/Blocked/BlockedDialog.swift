@@ -424,7 +424,7 @@ enum BlockedDialogParser {
         case .opencode: OpenCodeDialogParser.parse(screen)
         case .agy: AgyDialogParser.parse(screen)
         // Pi has no dialog parser yet.
-        case .pi: .none
+        case .pi, .amp: .none
         }
     }
 }
