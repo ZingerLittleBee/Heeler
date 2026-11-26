@@ -215,6 +215,7 @@ final class ConsoleStore {
     /// the same turn, so the store lives here rather than only on the view.
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
+    @ObservationIgnored let dismissedLaunchNotices: ChatLaunchNoticeDismissalStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
     let pluginStatuses = HeelerPluginStatusStore()
     /// Made on demand while a view reads them, so not observed: each store
@@ -291,6 +292,7 @@ final class ConsoleStore {
         chatPrefetchRetryDelay: Duration = .seconds(5),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
+        dismissedLaunchNotices: ChatLaunchNoticeDismissalStore = ChatLaunchNoticeDismissalStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
@@ -361,6 +363,7 @@ final class ConsoleStore {
         self.chatPrefetchRetryDelay = chatPrefetchRetryDelay
         self.pins = pins
         self.rowLayouts = rowLayouts
+        self.dismissedLaunchNotices = dismissedLaunchNotices
         self.makeSession = makeSession
         self.connectCore = connectCore
         self.connectTmux = connectTmux
@@ -436,11 +439,13 @@ final class ConsoleStore {
         // running leaves a cache no one else would delete. Chained, so the
         // cache ends on the latest catalog whatever order tasks start in.
         let hostIDs = Set(incoming.keys)
+        dismissedLaunchNotices.retainHosts(hostIDs)
         chatCacheRetention = Task { [previous = chatCacheRetention, chatCache] in
             await previous?.value
             await chatCache.retainHosts(hostIDs)
         }
         for (id, projection) in projections where incoming[id] != projection.host {
+            dismissedLaunchNotices.removeHost(id)
             sidebarSnapshots.invalidate(id)
             pluginStatuses.invalidate(id)
             agyTitles.invalidateHost(id)
@@ -1242,7 +1247,8 @@ final class ConsoleStore {
             projections[hostID]?.agentsByPane[paneID].map { applyingAgyAnnotationTitle(to: $0).agent }
             ?? agent.agent
         let store = AgentChatStore(
-            agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
+            agentID: agent.id, agent: rawAgent, program: program, source: source,
+            dismissedLaunchNotices: dismissedLaunchNotices, timing: chatTiming, now: chatNow)
         store.hostConnectionChanged(hostStatuses[hostID] == .connected)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
@@ -2481,6 +2487,17 @@ final class ConsoleStore {
             current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
         if hostsAwaitingSnapshot != nextAwaitingSnapshot {
             hostsAwaitingSnapshot = nextAwaitingSnapshot
+        }
+        if !dismissedLaunchNotices.isEmpty {
+            for projection in current {
+                let hostID = projection.host.id
+                guard hostStatuses[hostID] == .connected,
+                    !hostsAwaitingSnapshot.contains(hostID),
+                    dismissedLaunchNotices.hasEntries(for: hostID)
+                else { continue }
+                let liveTerminalIDs = Set(projection.agentsByPane.values.map(\.agent.terminalID))
+                dismissedLaunchNotices.retainTerminals(hostID: hostID, terminalIDs: liveTerminalIDs)
+            }
         }
         let nextAwaitingForeground = Set(
             current.lazy.flatMap { projection in

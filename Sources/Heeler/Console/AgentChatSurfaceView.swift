@@ -820,7 +820,7 @@ struct AgentChatSurfaceView: View {
                         systemImage: banner.systemImage, text: banner.text,
                         showsProgress: banner.showsProgress, actionTitle: banner.actionTitle,
                         action: banner.action, secondaryActionTitle: banner.secondaryActionTitle,
-                        secondaryAction: banner.secondaryAction)
+                        secondaryAction: banner.secondaryAction, dismiss: banner.dismiss)
                 }
             }
         }
@@ -841,12 +841,13 @@ struct AgentChatSurfaceView: View {
         var action: (() -> Void)?
         var secondaryActionTitle: String?
         var secondaryAction: (() -> Void)?
+        var dismiss: (() -> Void)?
     }
 
     private var bannerContent: [Banner] {
         let lines = ChatBannerLine.lines(
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
-            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.launchNotice,
+            hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.visibleLaunchNotice,
             departure: console.chatDeparture(of: agent.id))
         return lines.map { line in
             var banner = Banner(
@@ -878,6 +879,11 @@ struct AgentChatSurfaceView: View {
                 if let guide = notice.guideURL {
                     banner.actionTitle = String(localized: "Read More")
                     banner.action = { openURL(guide) }
+                }
+                banner.dismiss = {
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                        chat?.dismissLaunchNotice()
+                    }
                 }
             }
             return banner

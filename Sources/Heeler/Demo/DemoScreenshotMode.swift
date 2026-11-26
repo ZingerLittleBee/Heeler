@@ -555,6 +555,7 @@
                 snapshotRetryDelay: .seconds(30),
                 pins: PinnedAgentsStore(defaults: defaults),
                 rowLayouts: AgentRowLayoutStore(defaults: defaults),
+                dismissedLaunchNotices: ChatLaunchNoticeDismissalStore(defaults: defaults),
                 usageSettings: AgentUsageSettings(defaults: defaults),
                 gitHubSettings: GitHubSettings(defaults: defaults),
                 makeSession: { host, subscriptions in
