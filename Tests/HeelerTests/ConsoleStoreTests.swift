@@ -586,6 +586,97 @@ struct ConsoleStoreTests {
         #expect(await transport.chatAgentReads.count == 8)
     }
 
+    @Test func statusTransitionsDoNotReprefetchFollowedChatOrRereadSidebarLayout() async throws {
+        let host = Host.fixture()
+        let sessionID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+        let session = AgentSessionInfo(
+            agent: "claude", kind: .id, source: "herdr:claude", value: sessionID)
+        func makeAgent(_ status: AgentStatus, revision: Int) -> AgentInfo {
+            AgentInfo(
+                agentStatus: status, focused: false, paneID: "w1:p1", revision: revision,
+                tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+                agentSession: session, cwd: "/home/dev/proj")
+        }
+        let initial = makeAgent(.idle, revision: 1)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [initial]))
+        await transport.setSidebarLayout(
+            Data(#"{"v":1,"agent_panel_sort":"priority","sidebar":{"agents":{"rows":[[{"token":"agent"}]]}}}"#.utf8))
+        let files = VirtualHostFiles()
+        let path = "/home/dev/.claude/projects/-home-dev-proj/\(sessionID).jsonl"
+        await files.write(NumberedChatReducer.lines(0..<3), at: path)
+        await transport.scriptChat(files: files.hostFiles(), agent: Agent(initial))
+
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(15),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatAdapter: { _ in NumberedChatReducer.adapter() })
+        defer { store.setHosts([]) }
+
+        store.setHosts([host])
+        await store.resume()
+
+        try await waitUntil("initial prefetch read transcript and sidebar layout loaded") {
+            let readTranscript = await files.reads.contains { $0.path == path }
+            return readTranscript && store.sidebarSnapshots.snapshot(for: host.id) != nil
+        }
+        try await Task.sleep(for: .milliseconds(60))
+
+        let readsAfterPrefetch = await files.reads.count
+        let agentReadsAfterPrefetch = await transport.chatAgentReads.count
+        let sidebarReadsAfterConnect = await transport.sidebarLayoutReads
+        #expect(sidebarReadsAfterConnect == 1)
+
+        for (index, nextStatus) in [AgentStatus.working, .blocked, .idle].enumerated() {
+            let snapshotsBefore = await transport.snapshotFetchCount
+            await transport.setSnapshot(.fixture(agents: [makeAgent(nextStatus, revision: index + 2)]))
+            _ = await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: nextStatus))
+            try await waitUntil("status \(nextStatus) and snapshot converged") {
+                let nextFetchCount = await transport.snapshotFetchCount
+                return store.agents.first?.agent.status == nextStatus && nextFetchCount > snapshotsBefore
+            }
+        }
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(await files.reads.count == readsAfterPrefetch)
+        #expect(await transport.chatAgentReads.count == agentReadsAfterPrefetch)
+        #expect(await transport.sidebarLayoutReads == 1)
+    }
+
+    @Test func keepaliveLatencyUpdatesDoNotTriggerConsoleRebuild() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport(snapshot: .fixture(agents: []))
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { transport },
+                    reconnectPolicy: Self.fastPolicy,
+                    keepalive: KeepalivePolicy(interval: .milliseconds(25)))
+            })
+        defer { store.setHosts([]) }
+
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("connected and initial snapshot applied") {
+            !store.hostsAwaitingSnapshot.contains(host.id) && store.hostLatencies[host.id] != nil
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        let rebuildsBefore = store.rebuildCountForTesting
+        let pingsBefore = await transport.pingCount
+
+        try await waitUntil("multiple keepalive pings completed") {
+            (await transport.pingCount) >= pingsBefore + 3
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(store.rebuildCountForTesting == rebuildsBefore)
+    }
+
     @Test func connectingCachesChatWithoutOpeningItsDetail() async throws {
         let host = Host.fixture()
         let sessionID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"

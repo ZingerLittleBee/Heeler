@@ -204,6 +204,8 @@ final class BlockedCardStore {
     @ObservationIgnored private var firstUnknownReadLimit: Task<Void, Never>?
     @ObservationIgnored private var awaitingSession = false
     @ObservationIgnored private var pendingRequests: [ChatPendingRequest] = []
+    @ObservationIgnored private var latestTurnOpenCallIDs: Set<ChatEntryID> = []
+    @ObservationIgnored private var consecutiveCleanIdleReads = 0
     /// Antigravity CLI permission calls a confirmed answer went to, until
     /// the transcript resolves them. agy writes a call's result only once
     /// it has run, and can draw the next dialog before Chat reads that
@@ -263,6 +265,7 @@ final class BlockedCardStore {
     /// idle Claude is read once (`readsIdleOnce`).
     func show() {
         isVisible = true
+        consecutiveCleanIdleReads = 0
         if program == .claude, activity == .idle, content == .none { readsIdleOnce = true }
         updateWatching()
     }
@@ -279,6 +282,7 @@ final class BlockedCardStore {
 
     func resume() {
         isSuspended = false
+        consecutiveCleanIdleReads = 0
         updateWatching()
     }
 
@@ -298,6 +302,7 @@ final class BlockedCardStore {
     /// when a narrower screen wraps its footer, and nothing else.
     func update(activity: ChatAgentActivity) {
         guard activity != self.activity else { return }
+        consecutiveCleanIdleReads = 0
         let previous = self.activity
         let readUnknown = readsUnknownTrust
         self.activity = activity
@@ -327,6 +332,15 @@ final class BlockedCardStore {
         let waiting = Set(pendingRequests.compactMap(\.callID))
         pendingRequests = transcript.pendingRequests
         let openCalls = Set(pendingRequests.compactMap(\.callID))
+        if openCalls != waiting { consecutiveCleanIdleReads = 0 }
+        if let lastUserIndex = transcript.entries.lastIndex(where: {
+            if case .user = $0.content { return true }
+            return false
+        }) {
+            latestTurnOpenCallIDs = Set(transcript.entries[lastUserIndex...].map(\.id))
+        } else {
+            latestTurnOpenCallIDs = Set(transcript.entries.map(\.id))
+        }
         answeredCalls.formIntersection(openCalls)
         shownDialogs = shownDialogs.filter { openCalls.contains($0.key) }
         if !program.offersKeysWhenBlockedWithoutDialog { latestFailure = Self.latestFailure(in: transcript) }
@@ -372,6 +386,7 @@ final class BlockedCardStore {
     /// one only after its first prompt.
     func update(awaitingSession: Bool) {
         guard awaitingSession != self.awaitingSession else { return }
+        consecutiveCleanIdleReads = 0
         let readUnknown = readsUnknownTrust
         self.awaitingSession = awaitingSession
         if !readsScreen, progress != .acting { clear() }
@@ -399,7 +414,10 @@ final class BlockedCardStore {
     /// Working to idle is also read once (`readsIdleOnce`).
     private var readsIdleGatedCall: Bool {
         program == .agy && activity == .idle
-            && pendingRequests.contains { AgyToolCall.userGatedTools.contains($0.toolName) }
+            && pendingRequests.contains {
+                AgyToolCall.userGatedTools.contains($0.toolName)
+                    && (latestTurnOpenCallIDs.isEmpty || latestTurnOpenCallIDs.contains($0.entryID))
+            }
     }
 
     /// herdr 0.9.5 reports Codex 0.165.0's folder-trust screen idle, not
@@ -688,6 +706,15 @@ final class BlockedCardStore {
 
     // MARK: Watching
 
+    private var currentWatchInterval: Duration {
+        guard activity != .blocked, content == .none else { return timing.watchInterval }
+        switch consecutiveCleanIdleReads {
+        case ..<2: return timing.watchInterval
+        case 2: return timing.watchInterval * 2
+        default: return timing.watchInterval * 5
+        }
+    }
+
     private func updateWatching() {
         let shouldWatch = isVisible && !isSuspended && readsScreen
         if shouldWatch, watcher == nil {
@@ -695,7 +722,7 @@ final class BlockedCardStore {
                 while !Task.isCancelled {
                     guard let self else { return }
                     await self.refresh()
-                    try? await self.clock.sleep(self.timing.watchInterval)
+                    try? await self.clock.sleep(self.currentWatchInterval)
                 }
             }
         } else if !shouldWatch, let watcher {
@@ -722,12 +749,26 @@ final class BlockedCardStore {
                 content = .unreadable
                 if answerHandedTurnBack { answerHandedTurnBack = false }
             }
-            if content == .none { endIdleRead() }
+            if content == .none {
+                if activity != .blocked { consecutiveCleanIdleReads += 1 }
+                endIdleRead()
+            } else {
+                consecutiveCleanIdleReads = 0
+            }
             return
         }
         releaseIfChanged(observation)
         present(observation)
-        if observation.result.dialog == nil { endIdleRead() }
+        if observation.result.dialog == nil {
+            if activity != .blocked, content == .none {
+                consecutiveCleanIdleReads += 1
+            } else {
+                consecutiveCleanIdleReads = 0
+            }
+            endIdleRead()
+        } else {
+            consecutiveCleanIdleReads = 0
+        }
     }
 
     /// The idle read found no dialog it names, or failed: it was the one

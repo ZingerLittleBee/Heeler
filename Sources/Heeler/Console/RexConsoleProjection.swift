@@ -69,6 +69,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// What this device keeps of the Host by server instance, and its Pins.
     private let memory: HerdrCoreHostMemory
     private let pins: PinnedAgentsStore
+    private let onLatencyChange: (@MainActor @Sendable () -> Void)?
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
@@ -98,7 +99,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
     init(
         host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         pins: PinnedAgentsStore, chatReadDeadline: RexDeliveryDeadline = RexConsoleProjection.chatReadDeadline,
-        sendClock: BlockedCardClock = .live, onChange: @escaping @MainActor @Sendable () -> Void
+        sendClock: BlockedCardClock = .live,
+        onLatencyChange: (@MainActor @Sendable () -> Void)? = nil,
+        onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
         self.session = session
@@ -106,6 +109,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         self.pins = pins
         self.chatReadDeadline = chatReadDeadline
         self.sendClock = sendClock
+        self.onLatencyChange = onLatencyChange
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
     }
@@ -127,9 +131,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
         // against the statuses, as `HostConsoleProjection` reads it.
         latencyTask = Task { [weak self, session] in
             for await _ in session.latencyUpdates {
-                guard !Task.isCancelled, let self else { return }
+                guard !Task.isCancelled, let self, !self.hasEnded else { return }
                 self.latency = session.currentLatency
-                self.onChange()
+                if let onLatencyChange = self.onLatencyChange {
+                    onLatencyChange()
+                } else {
+                    self.onChange()
+                }
             }
         }
         if isActive {

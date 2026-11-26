@@ -415,6 +415,78 @@ struct AgyAnnotationTitleTests {
         await reopened.refreshInitialTitle()
         #expect(reopened.input == "Mac Renamed Title")
     }
+
+    @Test func untitledResolvedConversationDoesNotRetryOnStatusAndSequenceChurn() async throws {
+        let host = Host(address: "tui.example", username: "dev", serverKind: .herdrTUI)
+        let files = VirtualHostFiles(home: Self.home)
+        let pbtxt = Self.pbtxtPath(id: Self.firstID)
+        await files.write(Self.rootTranscript(), at: Self.transcriptPath(id: Self.firstID))
+
+        func makeInfo(status: AgentStatus, seq: Int, revision: Int) -> AgentInfo {
+            AgentInfo(
+                agentStatus: status, focused: false, paneID: "w1:p1", revision: revision,
+                tabID: "w1:t1", terminalID: "term-1", workspaceID: "w1",
+                agent: ChatProgram.agy.rawValue,
+                agentSession: AgentSessionInfo(
+                    agent: ChatProgram.agy.rawValue, kind: .id,
+                    source: "herdr:antigravity_cli", value: Self.firstID),
+                cwd: "/home/dev/proj",
+                stateChangeSeq: seq,
+                terminalTitleStripped: "~/h/d/proj",
+                title: "~/h/d/proj")
+        }
+
+        let initial = makeInfo(status: .idle, seq: 1, revision: 1)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: [initial]))
+        await transport.scriptChat(files: files.hostFiles(), agent: Agent(initial))
+
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(15),
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+            })
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("initial agy row") { !store.agents.isEmpty }
+        await store.resolveHostPlatform(host.id)
+        try await waitUntil("platform resolved") { store.hostPlatforms[host.id] != nil }
+        let transcript = Self.transcriptPath(id: Self.firstID)
+        for _ in 0..<200 {
+            let paths = await files.reads.map(\.path)
+            if paths.contains(pbtxt), paths.contains(transcript) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await Task.sleep(for: .milliseconds(30))
+        let initialChecks = await files.reads.filter { $0.path == pbtxt }.count
+        #expect(initialChecks >= 1)
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(await files.reads.filter { $0.path == pbtxt }.count == initialChecks)
+
+        // Turning working and bumping stateChangeSeq must not re-read missing .pbtxt.
+        let snapshotsBeforeWorking = await transport.snapshotFetchCount
+        let working = makeInfo(status: .working, seq: 2, revision: 2)
+        await transport.setSnapshot(.fixture(agents: [working]))
+        _ = await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .working))
+        for _ in 0..<200 {
+            let snapshotsNow = await transport.snapshotFetchCount
+            if store.agents.first?.agent.status == .working, snapshotsNow > snapshotsBeforeWorking { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(await files.reads.filter { $0.path == pbtxt }.count == initialChecks)
+
+        // Finishing a turn (.working -> .idle) re-checks once and picks up a newly written title.
+        await files.write("title: \"Auto Turn Title\"\n", at: pbtxt)
+        let finished = makeInfo(status: .idle, seq: 3, revision: 3)
+        await transport.setSnapshot(.fixture(agents: [finished]))
+        _ = await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: .idle))
+        try await waitUntil("turn-end title picked up") {
+            store.agents.first?.agent.title == "Auto Turn Title"
+        }
+    }
 }
 
 private struct CoreTestServices: HostServices {

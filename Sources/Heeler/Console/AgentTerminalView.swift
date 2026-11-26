@@ -458,16 +458,31 @@ struct AgentTerminalView: View {
     /// a reader glances at, not a live meter, and every refresh costs a round
     /// trip. An Agent with no session file on the Host clears the strip and
     /// stops, so nothing polls for a figure that cannot arrive.
+    private struct SessionUsageFollowKey: Equatable {
+        let path: String?
+        let isActive: Bool
+    }
+
+    private var sessionUsageFollowKey: SessionUsageFollowKey {
+        SessionUsageFollowKey(
+            path: agent.sessionFilePath,
+            isActive: agent.agent.status == .working || agent.agent.status == .blocked)
+    }
+
     private func followSessionUsage() async {
         guard let path = agent.sessionFilePath else {
             sessionUsage.clear()
             return
         }
+        let isActive = agent.agent.status == .working || agent.agent.status == .blocked
         let read = console.sessionFileReader(for: agent.hostID)
         let resolveContextWindow = console.modelContextWindowResolver(for: agent.hostID)
         while !Task.isCancelled {
             await sessionUsage.refresh(
                 path: path, read: read, resolveContextWindow: resolveContextWindow)
+            if sessionUsage.fileIsMissing || (!isActive && sessionUsage.isCaughtUp) {
+                return
+            }
             do {
                 try await Task.sleep(for: .seconds(Self.sessionUsageInterval))
             } catch {
@@ -616,7 +631,7 @@ struct AgentTerminalView: View {
         // Keyed on the path, not the Agent: herdr hands a pane a new session
         // file when the Agent starts a fresh session, and the loop must follow
         // it instead of re-reading a file nothing writes to any more.
-        .task(id: agent.sessionFilePath) { await followSessionUsage() }
+        .task(id: sessionUsageFollowKey) { await followSessionUsage() }
         .modifier(ConsoleTerminalCommandRegistration(
             agentID: agent.id,
             isFocused: keyboardControl.isFirstResponder,

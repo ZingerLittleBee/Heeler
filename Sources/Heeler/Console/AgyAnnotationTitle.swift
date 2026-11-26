@@ -429,6 +429,7 @@ final class AgyAnnotationTitleStore {
         var known: KnownState = .unknown
         var lastReadKey: String?
         var retries: (key: String, count: Int)?
+        var lastObservedStatus: AgentStatus?
     }
 
     private struct ResolvedSession {
@@ -763,7 +764,20 @@ final class AgyAnnotationTitleStore {
                     }
                     continue
                 }
-                let key = "\(generation):\(row.agent.terminalID):\(token):\(row.agent.status.rawValue):\(row.agent.stateChangeSeq ?? 0):\(epoch)"
+                let key = "\(generation):\(row.agent.terminalID):\(token):\(epoch)"
+                let finishedTurnWhileUntitled: Bool =
+                    if case .untitled = entry.known {
+                        entry.lastObservedStatus == .working
+                            && (row.agent.status == .idle || row.agent.status == .done)
+                    } else {
+                        false
+                    }
+                if finishedTurnWhileUntitled {
+                    entry.lastReadKey = nil
+                    entry.retries = nil
+                }
+                entry.lastObservedStatus = row.agent.status
+                entries[id] = entry
                 if entry.lastReadKey != key {
                     candidates.append((row, key))
                 }
@@ -804,9 +818,9 @@ final class AgyAnnotationTitleStore {
                     self.entries[agentID]?.lastReadKey = key
 
                     switch outcome {
-                    case .titled:
+                    case .titled, .untitled:
                         self.entries[agentID]?.retries = nil
-                    case .untitled, .unresolved:
+                    case .unresolved:
                         if priorRetries < 3 {
                             self.entries[agentID]?.retries = (key, priorRetries + 1)
                             self.entries[agentID]?.lastReadKey = nil

@@ -16,6 +16,7 @@ struct AgyBackgroundWorkFollower: Sendable {
         /// How long a subagent's own transcript stays idle after its final
         /// reply before standing in for a missing parent `SYSTEM_MESSAGE`.
         var subagentIdleSettle: TimeInterval = 5
+        var unchangedSideFileInterval: TimeInterval = 2
         var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
     }
 
@@ -47,6 +48,7 @@ struct AgyBackgroundWorkFollower: Sendable {
     private var taskLogs: [String: FollowedTaskLog] = [:]
     private var subagents: [String: FollowedSubagent] = [:]
     private var pollCount = 0
+    private var lastPollDate: Date?
 
     mutating func poll(
         root: String,
@@ -60,6 +62,7 @@ struct AgyBackgroundWorkFollower: Sendable {
             trackedRoot = root
             taskLogs = [:]
             subagents = [:]
+            lastPollDate = nil
         }
 
         let runningItems = items.filter { $0.state == .running }
@@ -101,6 +104,8 @@ struct AgyBackgroundWorkFollower: Sendable {
             }
         }
 
+        let clockAdvanced = lastPollDate.map { date > $0 } ?? false
+        lastPollDate = date
         pollCount += 1
 
         let dueTaskLogs = taskLogs
@@ -113,13 +118,18 @@ struct AgyBackgroundWorkFollower: Sendable {
             do {
                 if let status = try await files.status(followed.path) {
                     followed.failures = 0
-                    followed.nextLook = nil
+                    let hadPreviousStat = followed.previousStat != nil
                     let mtimeDate = status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
                     let grew =
                         followed.previousStat.map {
                             status.size != $0.size || status.modificationTime != $0.modificationTime
                         } ?? false
                     followed.previousStat = (status.size, status.modificationTime)
+                    if hadPreviousStat, !grew, clockAdvanced {
+                        followed.nextLook = date.addingTimeInterval(limits.unchangedSideFileInterval)
+                    } else {
+                        followed.nextLook = nil
+                    }
                     followed.lastSeenAt =
                         [followed.lastSeenAt, mtimeDate, grew ? date : nil].compactMap(\.self).max()
                 } else {
@@ -174,7 +184,11 @@ struct AgyBackgroundWorkFollower: Sendable {
                     followed.isUnreadable = true
                 }
                 followed.failures = 0
-                followed.nextLook = nil
+                if !changed, followed.hasCaughtUpOnce, clockAdvanced, followed.idleSince == nil {
+                    followed.nextLook = date.addingTimeInterval(limits.unchangedSideFileInterval)
+                } else {
+                    followed.nextLook = nil
+                }
                 let mtimeDate = follower.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
                 let grewAfterCatchUp = followed.hasCaughtUpOnce && changed
                 followed.lastSeenAt = [

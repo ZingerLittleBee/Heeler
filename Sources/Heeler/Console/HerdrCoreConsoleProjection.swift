@@ -63,6 +63,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     private let memory: HerdrCoreHostMemory
     private let pins: PinnedAgentsStore
+    private let onLatencyChange: (@MainActor @Sendable () -> Void)?
     private let onChange: @MainActor @Sendable () -> Void
     private var records: [HerdrCoreTerminalRecord] = []
     private var consumeTask: Task<Void, Never>?
@@ -141,6 +142,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         isNativeWindows: @escaping @MainActor () -> Bool,
         stopClock: BlockedCardClock = .live,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
+        onLatencyChange: (@MainActor @Sendable () -> Void)? = nil,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -154,6 +156,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         self.isNativeWindows = isNativeWindows
         self.stopClock = stopClock
         self.onSeenMarksChanged = onSeenMarksChanged
+        self.onLatencyChange = onLatencyChange
         self.onChange = onChange
     }
 
@@ -170,9 +173,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         // against the statuses, as `HostConsoleProjection` reads it.
         latencyTask = Task { [weak self, session] in
             for await _ in session.latencyUpdates {
-                guard !Task.isCancelled, let self else { return }
+                guard !Task.isCancelled, let self, !self.hasEnded else { return }
                 self.latency = session.currentLatency
-                self.publish()
+                if let onLatencyChange = self.onLatencyChange {
+                    onLatencyChange()
+                } else {
+                    self.publish()
+                }
             }
         }
         environmentTask = Task { [weak self, session] in
@@ -403,8 +410,16 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             noteTurns(of: terminal) { _, _ in }
             notifyProgramWatches(of: terminal, .sample(foreground))
         case .status(let terminal, let status, let records, let reported):
-            sessionEventCounts[terminal, default: 0] += 1
-            let turn = self.records.first { $0.address == terminal }?.turn ?? 0
+            let currentRecord = self.records.first { $0.address == terminal }
+            let previousState = currentRecord?.status?.state
+            let nextState = status?.state
+            let staysWithinActiveTurn =
+                (previousState == "working" || previousState == "blocked")
+                && (nextState == "working" || nextState == "blocked")
+            if !staysWithinActiveTurn {
+                sessionEventCounts[terminal, default: 0] += 1
+            }
+            let turn = currentRecord?.turn ?? 0
             update(terminal) {
                 $0.status = status
                 $0.records = records
@@ -414,7 +429,10 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 state.noteStatus(word: status?.state, turn: turn, kind: kind)
             }
         case .turn(let terminal, let turn, _):
-            sessionEventCounts[terminal, default: 0] += 1
+            let currentState = self.records.first { $0.address == terminal }?.status?.state
+            if currentState != "working" && currentState != "blocked" {
+                sessionEventCounts[terminal, default: 0] += 1
+            }
             update(terminal) { $0.turn = turn }
             noteTurns(of: terminal) { state, _ in state.noteTurn(turn) }
         case .labels(let terminal, let labels):

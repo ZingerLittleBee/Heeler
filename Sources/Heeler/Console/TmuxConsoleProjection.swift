@@ -58,6 +58,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private let pins: PinnedAgentsStore
     private let onPathsResolved: @MainActor (TmuxPaths) -> Void
     private let onSeenMarksChanged: @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void
+    private let onLatencyChange: (@MainActor @Sendable () -> Void)?
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
@@ -103,6 +104,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         sendClock: BlockedCardClock = .live,
         onPathsResolved: @escaping @MainActor (TmuxPaths) -> Void,
         onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
+        onLatencyChange: (@MainActor @Sendable () -> Void)? = nil,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
         self.host = host
@@ -113,6 +115,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         self.sendClock = sendClock
         self.onPathsResolved = onPathsResolved
         self.onSeenMarksChanged = onSeenMarksChanged
+        self.onLatencyChange = onLatencyChange
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
     }
@@ -130,9 +133,13 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         // against the statuses, as `HostConsoleProjection` reads it.
         latencyTask = Task { [weak self, session] in
             for await _ in session.latencyUpdates {
-                guard !Task.isCancelled, let self else { return }
+                guard !Task.isCancelled, let self, !self.hasEnded else { return }
                 self.latency = session.currentLatency
-                self.onChange()
+                if let onLatencyChange = self.onLatencyChange {
+                    onLatencyChange()
+                } else {
+                    self.onChange()
+                }
             }
         }
         if isActive {

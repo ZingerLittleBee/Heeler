@@ -15,8 +15,9 @@ struct AgySwarmFollower: Sendable {
         var memberBudget = 128 << 10
         var memberCallBudget = 256 << 10
         var membersPerCall = 4
-        var unhintedRosterCheckInterval: TimeInterval = 15
+        var unhintedRosterCheckInterval: TimeInterval = 30
         var hintedMissingInterval: TimeInterval = 1
+        var unchangedSideFileInterval: TimeInterval = 2
         var viewCheckInterval: TimeInterval = 3
         var backoff: [TimeInterval] = [2, 4, 8, 16, 30]
     }
@@ -61,6 +62,7 @@ struct AgySwarmFollower: Sendable {
     private var nextViewLook: Date?
     private var members: [String: FollowedMember] = [:]
     private var pollCount = 0
+    private var lastPollDate: Date?
 
     mutating func reset() {
         trackedRoot = nil
@@ -86,6 +88,7 @@ struct AgySwarmFollower: Sendable {
         nextViewLook = nil
         members = [:]
         pollCount = 0
+        lastPollDate = nil
     }
 
     mutating func poll(
@@ -121,12 +124,15 @@ struct AgySwarmFollower: Sendable {
             return snapshot(isLive: true, at: date)
         }
 
+        let clockAdvanced = lastPollDate.map { date > $0 } ?? false
+        lastPollDate = date
         pollCount += 1
 
         // 1. Read or refresh `members.json`.
         if nextRosterLook.map({ date >= $0 }) ?? true {
             let ok = await pollRoster(
-                atPath: membersPath, hasSwarmHint: sawSwarmHint, files: files, limits: limits, at: date,
+                atPath: membersPath, hasSwarmHint: sawSwarmHint, clockAdvanced: clockAdvanced,
+                files: files, limits: limits, at: date,
                 isCancellation: isCancellation)
             if !ok { return snapshot(isLive: true, at: date) }
         }
@@ -203,9 +209,10 @@ struct AgySwarmFollower: Sendable {
                 let change = try await follower.poll(files, budget: min(budget, limits.memberBudget))
                 budget -= Int(follower.readOffset >= before ? follower.readOffset - before : follower.readOffset)
                 followed.follower = follower
+                var wasUnchanged = false
                 switch change {
                 case .unchanged:
-                    break
+                    wasUnchanged = true
                 case .appended(let lines):
                     followed.transcript.apply(lines)
                 case .restarted(let lines):
@@ -220,7 +227,11 @@ struct AgySwarmFollower: Sendable {
                     followed.isUnreadable = true
                 }
                 followed.failures = 0
-                followed.nextLook = nil
+                if wasUnchanged, followed.hasCaughtUpOnce, clockAdvanced {
+                    followed.nextLook = date.addingTimeInterval(limits.unchangedSideFileInterval)
+                } else {
+                    followed.nextLook = nil
+                }
                 followed.transcript.modificationDate = follower.modificationTime.map {
                     Date(timeIntervalSince1970: TimeInterval($0))
                 }
@@ -340,6 +351,7 @@ struct AgySwarmFollower: Sendable {
     private mutating func pollRoster(
         atPath path: String,
         hasSwarmHint: Bool,
+        clockAdvanced: Bool,
         files: ChatHostFiles,
         limits: Limits,
         at date: Date,
@@ -364,6 +376,9 @@ struct AgySwarmFollower: Sendable {
             let currentStat = StatFingerprint(
                 path: path, size: status.size, modificationTime: status.modificationTime)
             if roster != nil, settledRosterStat == currentStat {
+                if clockAdvanced {
+                    nextRosterLook = date.addingTimeInterval(limits.unchangedSideFileInterval)
+                }
                 return true
             }
             guard let data = try await files.read(

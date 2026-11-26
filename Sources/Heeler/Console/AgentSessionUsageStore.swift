@@ -48,6 +48,8 @@ final class AgentSessionUsageStore {
     /// store, so it is excluded from observation.
     @ObservationIgnored private var followedPath: String?
     @ObservationIgnored private var offset: UInt64 = 0
+    @ObservationIgnored private(set) var isCaughtUp = false
+    @ObservationIgnored private(set) var fileIsMissing = false
     /// Bytes after the last newline: a line is folded only once it is complete,
     /// so a refresh never parses half of a line another process is still
     /// writing.
@@ -109,8 +111,11 @@ final class AgentSessionUsageStore {
                 // The session file is gone. Its figures were never Heeler's to
                 // invent, so the strip goes back to showing nothing.
                 clear()
+                fileIsMissing = true
+                isCaughtUp = true
                 return
             }
+            fileIsMissing = false
             if length < offset {
                 // The path now holds a shorter file than the one the offset
                 // addresses — replaced or rotated. Start over from its head,
@@ -122,10 +127,15 @@ final class AgentSessionUsageStore {
             offset += UInt64(slice.data.count)
             budget -= slice.data.count
             pending.append(slice.data)
-            foldCompleteLines()
+            await foldCompleteLines(generation: generation)
+            guard generation == refreshGeneration, !Task.isCancelled else { return }
             // A short read is the end of the file: stop here instead of issuing
             // another round trip that could only return nothing.
-            if slice.data.count < maxBytes { return }
+            if slice.data.count < maxBytes {
+                isCaughtUp = true
+                return
+            }
+            isCaughtUp = false
         }
     }
 
@@ -136,6 +146,7 @@ final class AgentSessionUsageStore {
         followedPath = nil
         showsTokenRate = false
         configReadAt = nil
+        fileIsMissing = false
         restart()
     }
 
@@ -199,18 +210,44 @@ final class AgentSessionUsageStore {
     /// Forgets what was read of the followed file, keeping the path.
     private func restart() {
         offset = 0
+        isCaughtUp = false
         pending = Data()
-        usage = AgentSessionUsage()
-        contextWindow = nil
+        if usage != AgentSessionUsage() { usage = AgentSessionUsage() }
+        if contextWindow != nil { contextWindow = nil }
     }
 
-    private func foldCompleteLines() {
-        while let newline = pending.firstIndex(of: 0x0A) {
-            let line = pending[pending.startIndex..<newline]
-            if !line.isEmpty {
-                usage.fold(line: Data(line))
+    private static let offActorFoldThreshold = 16 * 1_024
+
+    nonisolated private static func foldChunk(_ chunk: Data, into initial: AgentSessionUsage) -> AgentSessionUsage {
+        var folded = initial
+        var cursor = chunk.startIndex
+        while cursor < chunk.endIndex {
+            let end = chunk[cursor...].firstIndex(of: 0x0A) ?? chunk.endIndex
+            if end > cursor {
+                folded.fold(line: Data(chunk[cursor..<end]))
             }
-            pending.removeSubrange(pending.startIndex...newline)
+            cursor = end < chunk.endIndex ? chunk.index(after: end) : chunk.endIndex
+        }
+        return folded
+    }
+
+    private func foldCompleteLines(generation: UInt64) async {
+        guard let lastNewline = pending.lastIndex(of: 0x0A) else { return }
+        let completeEnd = pending.index(after: lastNewline)
+        let chunk = Data(pending[pending.startIndex..<completeEnd])
+        pending.removeSubrange(pending.startIndex..<completeEnd)
+        let base = usage
+        let updated: AgentSessionUsage
+        if chunk.count >= Self.offActorFoldThreshold {
+            updated = await Task.detached(priority: .utility) {
+                Self.foldChunk(chunk, into: base)
+            }.value
+            guard generation == refreshGeneration, !Task.isCancelled else { return }
+        } else {
+            updated = Self.foldChunk(chunk, into: base)
+        }
+        if updated != usage {
+            usage = updated
         }
     }
 }

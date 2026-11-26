@@ -1633,18 +1633,18 @@ actor HeelerSSHTransport: Transport {
     }
 
     func readSidebarLayout() async throws -> Data? {
-        try await readPluginConfigFile(named: Self.sidebarLayoutFileName)
+        try await readPluginConfigFile(named: Self.sidebarLayoutFileName, enforcesPermissions: false)
     }
 
     func readUsageAccountFile() async throws -> Data? {
-        try await readPluginConfigFile(named: UsageAccountFile.fileName)
+        try await readPluginConfigFile(named: UsageAccountFile.fileName, enforcesPermissions: false)
     }
 
     func replaceUsageAccountFile(_ contents: Data) async throws {
         try await replacePluginConfigFile(named: UsageAccountFile.fileName, contents: contents)
     }
 
-    private func readPluginConfigFile(named name: String) async throws -> Data? {
+    private func readPluginConfigFile(named name: String, enforcesPermissions: Bool = true) async throws -> Data? {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.readFailed(
@@ -1657,6 +1657,7 @@ actor HeelerSSHTransport: Transport {
                 try await self.performNotificationFileRead(
                     at: path,
                     configDirectory: directory,
+                    enforcesPermissions: enforcesPermissions,
                     operationID: operationID)
             }
         }
@@ -1689,6 +1690,7 @@ actor HeelerSSHTransport: Transport {
     private func performNotificationFileRead(
         at path: String,
         configDirectory: String,
+        enforcesPermissions: Bool = true,
         operationID: UUID
     ) async throws -> Data? {
         let sftp: SSHSFTPClient
@@ -1701,14 +1703,16 @@ actor HeelerSSHTransport: Transport {
 
         do {
             try Task.checkCancellation()
-            try await enforceNotificationPermissions(
-                0o700,
-                at: configDirectory,
-                over: sftp)
+            if enforcesPermissions {
+                try await enforceNotificationPermissions(
+                    0o700,
+                    at: configDirectory,
+                    over: sftp)
+            }
             let contents = try await sftp.readFileIfPresent(
                 at: path,
                 timeout: requestTimeout)
-            if contents != nil {
+            if enforcesPermissions, contents != nil {
                 try await enforceNotificationPermissions(0o600, at: path, over: sftp)
             }
             notificationFileClients[operationID] = nil
@@ -1941,6 +1945,8 @@ actor HeelerSSHTransport: Transport {
         at path: String,
         over sftp: SSHSFTPClient
     ) async throws {
+        let initial = try await sftp.attributes(at: path, timeout: requestTimeout)
+        if initial.permissions == permissions { return }
         try await sftp.setPermissions(permissions, at: path, timeout: requestTimeout)
         let attributes = try await sftp.attributes(at: path, timeout: requestTimeout)
         guard attributes.permissions == permissions else {

@@ -14,11 +14,15 @@ final class ConsoleChatCache {
     /// Each Host's last loaded plugin sidebar snapshot, saved with its
     /// entries so layout fields and sort order do not jump while connecting.
     private(set) var sidebarSnapshots: [Host.ID: AgentRowLayoutSnapshot] = [:]
-    @ObservationIgnored var onChange: (@MainActor () -> Void)?
+    @ObservationIgnored var onChange: (@MainActor (Host.ID?) -> Void)?
     @ObservationIgnored private let cache: any ChatTranscriptCache
+    @ObservationIgnored private let writeDebounce: Duration
     @ObservationIgnored private var hosts: [Host.ID: Host] = [:]
     @ObservationIgnored private var loads: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var writes: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var debounceTasks: [Host.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var pendingDirectoryContents:
+        [Host.ID: (host: Host, contents: ChatAgentDirectory.Contents)] = [:]
     @ObservationIgnored private var revisions: [Host.ID: Int] = [:]
     @ObservationIgnored private var confirmed: [ConsoleAgent.ID: ConfirmedSession] = [:]
     /// Live updates must merge with the disk directory, not cancel its
@@ -44,7 +48,10 @@ final class ConsoleChatCache {
         let conversationTitle: String?
     }
 
-    init(cache: any ChatTranscriptCache) { self.cache = cache }
+    init(cache: any ChatTranscriptCache, writeDebounce: Duration = .seconds(2)) {
+        self.cache = cache
+        self.writeDebounce = writeDebounce
+    }
 
     func setHosts(_ next: [Host]) {
         let incoming = Dictionary(next.map { ($0.id, $0) }) { _, last in last }
@@ -52,6 +59,7 @@ final class ConsoleChatCache {
         for id in hosts.keys where hosts[id] != incoming[id] {
             loads[id]?.cancel()
             loads[id] = nil
+            flushPendingDirectoryWrite(for: id)
             if records[id] != nil || structures[id] != nil || sidebarSnapshots[id] != nil {
                 records[id] = nil
                 structures[id] = nil
@@ -65,7 +73,7 @@ final class ConsoleChatCache {
         let changed = incoming.values.filter { hosts[$0.id] != $0 }
         hosts = incoming
         if removedAny {
-            onChange?()
+            onChange?(nil)
         }
         for host in changed {
             let revision = revisions[host.id, default: 0]
@@ -82,7 +90,7 @@ final class ConsoleChatCache {
                 loads[host.id] = nil
                 applyPendingUpdates(on: host)
                 if changedLoaded {
-                    onChange?()
+                    onChange?(host.id)
                 }
             }
         }
@@ -95,6 +103,7 @@ final class ConsoleChatCache {
     /// restore. A load already in flight reads the current trust itself.
     func revalidate(on host: Host) {
         guard hosts[host.id] == host, loads[host.id] == nil else { return }
+        flushPendingDirectoryWrite(for: host.id)
         let revision = revisions[host.id, default: 0]
         loads[host.id] = Task { [weak self, cache, write = writes[host.id]] in
             await write?.value
@@ -114,7 +123,7 @@ final class ConsoleChatCache {
             }
             applyPendingUpdates(on: host)
             if cleared {
-                onChange?()
+                onChange?(host.id)
             }
         }
     }
@@ -272,6 +281,7 @@ final class ConsoleChatCache {
         guard case .bound(let reference) = ConversationReference.resolve(removed.agentSession),
             !remaining.contains(where: { ConversationReference.resolve($0.agentSession) == .bound(reference) })
         else { return }
+        flushPendingDirectoryWrite(for: host.id)
         let key = ChatCacheKey(hostID: host.id, socketLocation: host.socketLocation, reference: reference)
         writes[host.id] = Task { [previous = writes[host.id], cache] in
             await previous?.value
@@ -321,6 +331,9 @@ final class ConsoleChatCache {
     /// Test and lifecycle boundary: no queued disk work remains.
     func settled() async {
         for task in Array(loads.values) { await task.value }
+        for id in Array(pendingDirectoryContents.keys) {
+            flushPendingDirectoryWrite(for: id)
+        }
         for task in Array(writes.values) { await task.value }
     }
 
@@ -330,6 +343,27 @@ final class ConsoleChatCache {
                 && $0.workspaceID == agent.agent.workspaceID && $0.tabID == agent.agent.tabID
                 && $0.kind == agent.agent.kind
         }?.agentSession
+    }
+
+    private func flushPendingDirectoryWrite(for id: Host.ID) {
+        debounceTasks.removeValue(forKey: id)?.cancel()
+        guard let pending = pendingDirectoryContents.removeValue(forKey: id) else { return }
+        writes[id] = Task { [previous = writes[id], cache] in
+            await previous?.value
+            await cache.saveAgentDirectory(pending.contents, for: pending.host)
+        }
+    }
+
+    private func scheduleDirectoryWrite(_ contents: ChatAgentDirectory.Contents, on host: Host) {
+        pendingDirectoryContents[host.id] = (host, contents)
+        guard debounceTasks[host.id] == nil else { return }
+        let delay = writeDebounce
+        debounceTasks[host.id] = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.debounceTasks[host.id] = nil
+            self.flushPendingDirectoryWrite(for: host.id)
+        }
     }
 
     private func replace(
@@ -350,12 +384,9 @@ final class ConsoleChatCache {
         records[host.id] = next
         structures[host.id] = structure
         sidebarSnapshots[host.id] = sidebarSnapshot
-        onChange?()
+        onChange?(host.id)
         let contents = ChatAgentDirectory.Contents(
             agents: next, workspaces: structure, sidebarSnapshot: sidebarSnapshot)
-        writes[host.id] = Task { [previous = writes[host.id], cache] in
-            await previous?.value
-            await cache.saveAgentDirectory(contents, for: host)
-        }
+        scheduleDirectoryWrite(contents, on: host)
     }
 }
