@@ -104,6 +104,33 @@ struct CodexLaunchTests {
         }
     }
 
+    @Test func cannotTellConversationReasonsLinkToTroubleshootingGuide() {
+        let english = "https://docs.heeler.bybee.dev/chat-troubleshooting#cant-tell-the-conversation"
+        let chinese = "https://docs.heeler.bybee.dev/zh/chat-troubleshooting#cant-tell-the-conversation"
+        let reasons: [ChatUnavailableReason] = [
+            .cannotTellSession(.codex),
+            .multipleSessions(.codex),
+            .multipleSessions(.grok, offersPick: false),
+            .cannotTellSession(.claude),
+            .cannotTellSession(.pi),
+            .cannotTellSessionOnWindows(.codex),
+            .cannotTellSessionOnWindows(.pi),
+            .cannotReadProcessesOnWindows(.claude),
+            .extensionNotLoaded(.pi, turnedOff: true),
+            .extensionNotLoaded(.omp, turnedOff: false),
+            .cannotTellSessionOnRex(.pi, extensionInPlace: false),
+            .cannotTellSessionOnRex(.omp, extensionInPlace: true),
+        ]
+        for reason in reasons {
+            #expect(reason.guideURL(launchNotice: nil, localization: "en")?.absoluteString == english)
+            #expect(reason.guideURL(launchNotice: nil, localization: "zh-Hans")?.absoluteString == chinese)
+            #expect(reason.guideURL(launchNotice: nil, localization: "ja")?.absoluteString == english)
+        }
+        #expect(
+            ChatLaunchNotice.codexSharedServer.guideURL(localization: "zh-Hans")?.absoluteString
+                == "https://docs.heeler.bybee.dev/zh/chat-troubleshooting#codex-started-without---no-daemon")
+    }
+
     @MainActor
     @Test func checkAgainHoldWaitsForMinimumAndEndsAtAnswerOrLimit() async {
         let clock = ContinuousClock()

@@ -658,6 +658,34 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
+    /// A fresh `--no-daemon` Codex holding only its thread-writer lock shows No Messages Yet
+    /// (matching Claude Code and Antigravity CLI) and lets Chat send the first message.
+    @Test func aFreshCodexAtPromptShowsNoMessagesYetAndAllowsFirstSend() async throws {
+        let rig = codexRig()
+        let row = Self.process(
+            name: "codex", environment: ["CODEX_HOME": Self.accountRoot], argv: ["codex", "--no-daemon"],
+            files: ["\(Self.accountRoot)/thread-writer-locks/\(Self.codexThread).lock"])
+        try await rig.start([row])
+        let chat = try rig.chat(.codex)
+        chat.show()
+
+        try await rig.waitUntil("Chat to show empty conversation") {
+            chat.conversation.phase == .unavailable(.noConversationYet(.codex))
+        }
+        #expect(ChatUnavailableReason.noConversationYet(.codex).isAwaitingFirstMessage)
+        #expect(await chat.confirmSessionBeforeSend() == nil)
+
+        var holding = row
+        holding.openFiles.append(Self.rollout())
+        await rig.transport.processTable.add(holding)
+        await rig.files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: Self.rollout())
+        await rig.transport.deliver(Self.statusEvent(sequence: 2, state: "working", app: "codex"))
+
+        try await rig.waitUntil("Chat to follow it") { chat.conversation.phase == .following(path: Self.rollout()) }
+        chat.end()
+        rig.store.setHosts([])
+    }
+
     /// The rollout comes with the first prompt, whose turn the core reports.
     @Test func aCodexChatFollowsOnceTheFirstPromptMakesTheRollout() async throws {
         let rig = codexRig()
@@ -700,7 +728,7 @@ struct HerdrCoreProgramChatTests {
 
         let refusal = try #require(await chat.confirmSessionBeforeSend())
         #expect(refusal.contains("can't tell"))
-        #expect(chat.conversation.phase == .unavailable(.cannotTellSession(.codex)))
+        #expect(chat.conversation.phase == .unavailable(.multipleSessions(.codex)))
         chat.end()
         rig.store.setHosts([])
     }
@@ -769,7 +797,7 @@ struct HerdrCoreProgramChatTests {
 
         chat.show()
 
-        try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.cannotTellSession(.grok)) }
+        try await rig.waitUntil("Chat to say so") { chat.conversation.phase == .unavailable(.multipleSessions(.grok)) }
         chat.end()
         rig.store.setHosts([])
     }
@@ -1109,16 +1137,17 @@ struct HerdrCoreProgramChatTests {
     // MARK: What it says
 
     @Test func cantTellSaysWhatEachProgramNeeds() {
-        func explanation(_ program: ChatProgram) -> String {
-            ChatUnavailableReason.cannotTellSession(program).explanation
-                .replacingOccurrences(of: "\u{2011}", with: "-")
+        func explanation(_ reason: ChatUnavailableReason) -> String {
+            reason.explanation.replacingOccurrences(of: "\u{2011}", with: "-")
         }
-        #expect(explanation(.codex).contains("first message"))
-        #expect(explanation(.codex).contains("/new"))
-        #expect(explanation(.codex).contains("codex resume --no-daemon"))
-        #expect(explanation(.grok).contains("/new"))
-        #expect(explanation(.opencode).contains("OpenCode 2.1 or later"))
-        #expect(explanation(.opencode).contains("New Agent"))
-        #expect(explanation(.claude).contains("reaches its prompt"))
+        #expect(explanation(.cannotTellSession(.codex)).contains("first message"))
+        #expect(!explanation(.cannotTellSession(.codex)).contains("/new"))
+        #expect(explanation(.multipleSessions(.codex)).contains("codex resume --no-daemon"))
+        #expect(explanation(.cannotTellSession(.grok)).contains("first message"))
+        #expect(explanation(.multipleSessions(.grok)).contains("multiple conversations"))
+        #expect(explanation(.cannotTellSession(.opencode)).contains("OpenCode 2.1 or later"))
+        #expect(explanation(.cannotTellSession(.opencode)).contains("New Agent"))
+        #expect(explanation(.cannotTellSession(.claude)).contains("signing in"))
+        #expect(explanation(.cannotTellSession(.claude)).contains("prompt"))
     }
 }

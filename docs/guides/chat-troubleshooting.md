@@ -22,6 +22,20 @@ Codex was started without `--no-daemon` while its background server runs, so her
 
 Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/issues/48500): its background server runs herdr's integration with the settings of the terminal that started the server. [openai/codex#44902](https://github.com/openai/codex/issues/44902) proposes a fix, and herdr follows it in [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649).
 
+## Can't Tell the Conversation
+
+On [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) Hosts, Chat identifies an Agent's conversation from what the Host shows about its running process and never guesses. Chat checks again automatically when the Agent's status changes, or whenever you tap **Check Again**. On macOS and Linux, you can also tap **Choose a Conversation** to pick the conversation yourself.
+
+| Program or situation | Why Chat can't tell and what to do |
+| --- | --- |
+| **Codex** | A fresh `--no-daemon` Codex starts its conversation with the first message (sent from Chat or the terminal). If Chat still can't tell—for example after `/new`, when Codex keeps more than one thread open—exit Codex, run `codex resume --no-daemon`, and pick the conversation. If Codex started without `--no-daemon`, see [Codex Started Without --no-daemon](#codex-started-without---no-daemon). |
+| **Claude Code** | Claude Code registers its session once it reaches its prompt. Finish signing in or answer any trust or startup prompt in the terminal. |
+| **Grok Build** | Grok Build lists its active conversation while it runs. After `/new`, it lists both conversations for the same process, so restart Grok Build or use **Choose a Conversation**. |
+| **Pi and Oh My Pi** | Pi and Oh My Pi name their conversation through Heeler's extension (`heeler-session.js`). On macOS and Linux herdr-core and tmux Hosts, install the [Host Helper](herdr-core.md#host-helper) from the Host's details and restart the Agent. On [Rex](rex.md#pi-and-oh-my-pi) and [native Windows](herdr-core.md#chat) Hosts, tap **Add Heeler's Extension…** in Chat and restart the Agent. If the extension is already installed, the Agent started before it was added or with `--no-extensions`—restart it with extensions enabled. Without the extension, Oh My Pi still binds after its first message. |
+| **Antigravity CLI** | Antigravity CLI creates its conversation on its first message; Chat can send that first message only to a bare `agy` launch, so send it in the terminal otherwise. A conversation already open in another terminal is not locked by a second one, so close the other terminal first. |
+| **OpenCode** | OpenCode reports its conversation when started from **New Agent** (version 2.1 or later) or through Heeler's plugin (**Let Chat Follow OpenCode…**). |
+| **Windows process read failed** | Heeler couldn't inspect the Agent's process on the Host. Run `herdr-core` and your SSH session at the same elevation (both non-administrator), and avoid PowerShell Constrained Language Mode. |
+
 ## Conversation Not Found
 
 - A Claude Code, Codex, or Grok Build Agent started with its own configuration folder (such as `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or `GROK_HOME`), or an OpenCode Agent using another database (such as `OPENCODE_DB`), can't show in Chat. Chat reads only their default locations.

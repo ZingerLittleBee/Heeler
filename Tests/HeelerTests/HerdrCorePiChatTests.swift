@@ -518,7 +518,7 @@ struct HerdrCorePiChatTests {
         let reason = ChatUnavailableReason.cannotTellSession(program)
         #expect(reason.title == "Can't Tell the Conversation")
         #expect(reason.explanation.contains("Host Helper"))
-        #expect(reason.explanation.contains("doesn't guess"))
+        #expect(reason.guideURL(launchNotice: nil)?.fragment == "cant-tell-the-conversation")
         #expect(reason.offersRetry)
         #expect(await rig.checks == 1)
         #expect(await rig.files.listings.isEmpty)
@@ -546,13 +546,15 @@ struct HerdrCorePiChatTests {
 
         let reason = ChatUnavailableReason.extensionNotLoaded(program, turnedOff: false)
         #expect(reason.title == "Can't Tell the Conversation")
-        #expect(!reason.explanation.contains("Install the Helper"))
-        #expect(reason.explanation.contains("--no-extensions"))
+        #expect(!reason.explanation.contains("Install the Host Helper"))
+        #expect(reason.explanation.contains("extensions enabled"))
+        #expect(reason.guideURL(launchNotice: nil)?.fragment == "cant-tell-the-conversation")
         #expect(reason.offersRetry)
         #expect(chat.offersCandidates)
         let turnedOff = ChatUnavailableReason.extensionNotLoaded(program, turnedOff: true).explanation
-        #expect(turnedOff.contains("started with its extensions turned off (--no-extensions)"))
-        #expect(!turnedOff.contains("Install the Helper"))
+            .replacingOccurrences(of: "\u{2011}", with: "-")
+        #expect(turnedOff.contains("without --no-extensions"))
+        #expect(!turnedOff.contains("Install the Host Helper"))
         chat.end()
         rig.store.setHosts([])
     }

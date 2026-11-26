@@ -271,7 +271,9 @@ struct HerdrCoreWindowsSessionBinderTests {
         let rig = Rig(agentImage: "grok.exe")
         await rig.files.write(Data("[\(Self.row()),\(Self.row(session: Self.other))]".utf8), at: Self.grokPath)
 
-        #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+        #expect(
+            try await rig.binder(.grok).check(try Self.record())
+                == .unavailable(.multipleSessions(.grok, offersPick: false)))
     }
 
     /// Grok Build 1.0.70's rows on the owner's machine, which have no `pid_start`, and
@@ -323,7 +325,9 @@ struct HerdrCoreWindowsSessionBinderTests {
             + "\(Self.openedRow(session: Self.other, openedAt: "2026-11-03T07:59:10.638095400Z"))]"
         await rig.files.write(Data(rows.utf8), at: Self.grokPath)
 
-        #expect(try await rig.binder(.grok).check(try Self.record()) == .unavailable(.cannotTellSessionOnWindows(.grok)))
+        #expect(
+            try await rig.binder(.grok).check(try Self.record())
+                == .unavailable(.multipleSessions(.grok, offersPick: false)))
     }
 
     @Test("A row with neither pid_start nor opened_at, or an opened_at in another form, binds nothing")
