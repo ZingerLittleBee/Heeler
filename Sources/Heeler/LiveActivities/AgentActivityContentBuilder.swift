@@ -7,6 +7,12 @@ struct AgentActivityDesire: Equatable, Sendable {
     var counts: AgentActivityAttributes.ContentState.Counts
     var hostName: String
     var agents: [AgentActivityDetails.AgentDetail]
+
+    var statusCountsByPaneID: [String: [String: Int]] {
+        Dictionary(grouping: agents, by: \.paneID).mapValues { agents in
+            Dictionary(agents.map { ($0.status, 1) }, uniquingKeysWith: +)
+        }
+    }
 }
 
 /// Builds a Host's Live Activity `ContentState` from the Console's Agent

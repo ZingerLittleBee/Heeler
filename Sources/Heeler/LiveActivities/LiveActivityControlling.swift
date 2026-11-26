@@ -49,7 +49,7 @@ protocol LiveActivityControlling: AnyObject {
         content: AgentActivityAttributes.ContentState
     ) throws -> LiveActivityHandle
 
-    func update(id: String, content: AgentActivityAttributes.ContentState)
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool)
 
     func end(
         id: String,
@@ -97,8 +97,8 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         }
     }
 
-    func update(id: String, content: AgentActivityAttributes.ContentState) {
-        Task { await Self.pushUpdate(id: id, content: content) }
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool) {
+        Task { await Self.pushUpdate(id: id, content: content, refreshesRelevance: refreshesRelevance) }
     }
 
     func end(
@@ -153,12 +153,16 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
     }
 
     nonisolated private static func pushUpdate(
-        id: String, content: AgentActivityAttributes.ContentState
+        id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool
     ) async {
         guard let activity = activity(id: id) else { return }
         let shown = activity.content
-        let score = content.counts.relevanceScore(
-            at: Date(), replacing: (shown.state.counts, shown.relevanceScore))
+        let now = Date()
+        let score = if refreshesRelevance {
+            content.counts.relevanceScore(at: now)
+        } else {
+            content.counts.relevanceScore(at: now, replacing: (shown.state.counts, shown.relevanceScore))
+        }
         await activity.update(ActivityContent(state: content, staleDate: nil, relevanceScore: score))
     }
 
@@ -209,7 +213,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         throw LiveActivityRequestError.requestFailed("ActivityKit unavailable")
     }
 
-    func update(id: String, content: AgentActivityAttributes.ContentState) {}
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool) {}
 
     func end(
         id: String,

@@ -37,7 +37,8 @@ struct AgentActivityAttributes: Codable, Hashable, Sendable {
 
             /// An update with the same counts keeps the score the activity
             /// has, so reopening the app or a title change does not make a
-            /// Host look newly changed or undo the relay's push time.
+            /// Host look newly changed or undo the relay's push time. The
+            /// coordinator skips this when an Agent's status changed.
             func relevanceScore(
                 at date: Date, replacing previous: (counts: Self, score: Double)?
             ) -> Double {
