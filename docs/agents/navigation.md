@@ -258,10 +258,14 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   writes from those stores, modeled in
   [UsageWidgetSnapshot](../../Sources/HeelerUsageCore/UsageWidgetSnapshot.swift)
   (shared with the extension, as are the formats in `AgentUsageStyle`);
-  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account.
+  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account,
+  and the publisher marks `leftOut` the entries of a program whose limits are
+  off, or that is missing with no Account reporting windows. With no Host
+  chosen, the Usage Limits widget, its timeline and its Host picker use
+  `defaultLimitsHost`.
   [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
   draws every size, with `UsageLimitsLayout` and `UsageLimitsPick` choosing
-  each size's layout and reading, including which programs to leave out,
+  each size's layout and reading and skipping left-out entries,
   and is compiled into the app for tests;
   [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
   the timelines and configuration. Stale Hosts are re-read for the widgets

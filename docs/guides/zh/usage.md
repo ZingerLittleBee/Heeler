@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/usage.md at b1b5b8b6 -->
+<!-- Translated from docs/guides/usage.md at 09cddbfd -->
 # 查看 Usage 与 Usage Limits
 
 在 iPhone 或 iPad 上查看 Claude Code 和 Codex 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
