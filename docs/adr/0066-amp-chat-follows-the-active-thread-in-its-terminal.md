@@ -29,9 +29,12 @@ plugin checks the selection before and after asynchronous reads. Each load
 has its own instance and each change of selection advances a revision,
 including a switch away and back. The Composer sends ordinary text with
 Amp's `appendUserMessage` on the displayed thread after checking the screen
-and binding. A submission carries the Composer's message ID, so repeating
-that request within the binding appends it at most once. A lost reply leaves
-the outcome unknown. Commands, attachments and approval dialogs use Terminal.
+and binding. When Chat cannot recognize the input box, **Send Anyway** reads
+the screen and checks the binding again. A visible terminal draft, an open
+menu or a Blocked Agent still holds the message. A submission carries the
+Composer's message ID, so repeating that request within the binding appends
+it at most once. A lost reply leaves the outcome unknown. Commands,
+attachments and approval dialogs use Terminal.
 
 ## Consequences
 

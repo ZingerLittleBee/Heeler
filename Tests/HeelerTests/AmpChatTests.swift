@@ -42,21 +42,32 @@ struct AmpChatTests {
         #expect(tool.preview?.text == "ok")
     }
 
-    @Test func terminalDraftAndCommandPaletteHoldChatSend() async throws {
+    @Test func sendAnywayOverridesAnUnconfirmedAmpBoxAndHoldsOnDraftsAndMenus() async throws {
         let ready = try ScreenFixture.text("amp-01-idle")
-        let screens = [
-            ready.replacingOccurrences(of: "│        ", with: "│ draft  "),
-            try ScreenFixture.text("amp-02-command-palette"),
-            "Unknown screen",
-        ]
+        let streaming = ready.replacingOccurrences(of: "╰─", with: "╰ ∼ Streaming 32─")
         let rules = ChatSendRules(program: .amp, commands: [])
         #expect(rules.outgoingText("hello") == "hello")
-        for value in screens {
-            let policy = ComposerDeliveryPolicy.chat(rules: rules, activity: { .idle },
-                readScreen: { ANSIScreenDecoder.decode(value) })
-            guard case .inputNotReady = await policy.preflight?("hello") else {
-                Issue.record("An occupied or unrecognized screen must hold Amp Send"); continue
+        func policy(_ value: String) -> ComposerDeliveryPolicy {
+            .chat(rules: rules, activity: { .working }, readScreen: { ANSIScreenDecoder.decode(value) })
+        }
+        for value in ["Unknown screen", streaming] {
+            let delivery = policy(value)
+            guard case .unconfirmedInputBox = await delivery.preflight?("hello") else {
+                Issue.record("An unconfirmed Amp input box must offer Send Anyway"); continue
             }
+            #expect(await delivery.admittingUnconfirmedInputBox().preflight?("hello") == nil)
+        }
+        for value in [
+            ready.replacingOccurrences(of: "│        ", with: "│ draft  "),
+            streaming.replacingOccurrences(of: "│        ", with: "│ draft  "),
+            try ScreenFixture.text("amp-02-command-palette"),
+        ] {
+            let delivery = policy(value)
+            let refusal = await delivery.preflight?("hello")
+            guard case .inputNotReady = refusal else {
+                Issue.record("A terminal draft or menu must hold Amp Send"); continue
+            }
+            #expect(await delivery.admittingUnconfirmedInputBox().preflight?("hello") == refusal)
         }
     }
 

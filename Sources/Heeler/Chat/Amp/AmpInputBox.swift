@@ -4,21 +4,26 @@ import Foundation
 enum AmpInputBox {
     static func read(_ screen: ANSIScreen) -> InputBoxState {
         let rows = screen.rows.map { $0.text.trimmingCharacters(in: .whitespaces) }
-        let unknown = InputBoxState.unknown(String(localized: "Open the ordinary Amp input box in the terminal."))
+        let openComposer = String(localized: "Open the ordinary Amp input box in the terminal.")
+        let unknown = InputBoxState.unknown(openComposer)
         guard let bottom = rows.lastIndex(where: { !$0.isEmpty }),
-            rows[bottom].hasPrefix("╰─"), rows[bottom].hasSuffix("─╯"),
-            rows[bottom].contains("/") || rows[bottom].contains("~"),
             let top = rows[..<bottom].lastIndex(where: { $0.hasPrefix("╭─") && $0.hasSuffix("─╮") }),
             bottom > top + 1
         else { return unknown }
-        guard !hasOverlay(in: rows[..<top]), !rows[top].contains("│") else { return unknown }
+        if hasOverlay(in: rows[..<top]) || rows[top].contains("│") { return .noComposer(openComposer) }
+        let footer = rows[bottom]
+        guard footer.hasPrefix("╰"), footer.hasSuffix("─╯") else { return unknown }
         var draft: [String] = []
         for row in rows[(top + 1)..<bottom] {
             guard row.first == "│", row.last == "│", row.count >= 2 else { return unknown }
             let value = row.dropFirst().dropLast().trimmingCharacters(in: .whitespaces)
             if !value.isEmpty { draft.append(value) }
         }
-        return draft.isEmpty ? .empty(placeholder: nil) : .text(draft.joined(separator: "\n"))
+        if !draft.isEmpty { return .text(draft.joined(separator: "\n")) }
+        // Amp replaces the start of this border with its streaming status during a turn.
+        // A visible draft still holds above, even when the footer cannot confirm an idle box.
+        guard footer.hasPrefix("╰─"), footer.contains("/") || footer.contains("~") else { return unknown }
+        return .empty(placeholder: nil)
     }
 
     /// A floating dialog can leave transcript text visible on both sides

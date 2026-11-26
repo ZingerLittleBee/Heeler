@@ -62,7 +62,6 @@ extension ComposerDeliveryPolicy {
             case .holdBlocked:
                 return .agentBlocked
             case .hold(let state):
-                if program == .amp { return .inputNotReady(state.holdReason(for: program)) }
                 if state.allowsSendAnyway {
                     if let hardHold = InputBoxStateDetector.hardHold(in: screen, program: program) {
                         return .inputNotReady(
