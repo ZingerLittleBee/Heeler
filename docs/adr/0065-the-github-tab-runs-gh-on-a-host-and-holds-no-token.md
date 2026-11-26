@@ -78,23 +78,59 @@ Close.
   Writes are not GraphQL: they are gh's porcelain commands, below.
 - **One list per segment, under a row of filters.** Pull Requests and Issues
   each show one list with no headings, most recently updated first. A row of
-  chips under the picker sets State, Person, Repository and Label
+  chips under the list's title sets State, Person, Repository and Label
   (`GitHubListFilter`, `GitHubFilterBar`); each segment keeps its own on the
   device (`GitHubSettings`, written only when the user picks one), and a
   change reads once. State is Open (drafts included), Draft, Merged, Closed
   (unmerged) or All States for pull requests, and Open, Closed or All States
-  for issues. Person is All, a role of the account's (Created by, Needs
-  Review or Reviewed by for pull requests, Assigned to, Mentioning) or a role
-  of another login, picked from the people the lists read or typed in a sheet.
+  for issues. Person is Yours, Anyone, a role of the account's (Created by,
+  Needs Review or Reviewed by for pull requests, Assigned to, Mentioning) or
+  a role of another login, picked from the people the lists read or typed in
+  a sheet. Its default follows Repository: Yours across repositories, Anyone
+  in a repository or an owner's, so choosing Heeler shows everyone's pull
+  requests there, as a repository's page on GitHub does. Anyone is offered
+  only with a Repository, since without one it would search all of GitHub.
   Repository is a repository or an owner, `org:` or `user:` as GitHub says
   the owner is, asked first when no list has shown it. Label is one name.
-- **All is two searches that never share an item.** Person All is what
+- **The list's title is the segment, and switches it.** A large title cannot
+  be tapped on iOS 26 (a `.largeTitle` toolbar item is drawn about 25 points
+  too high and takes no taps on 26.5 or 27.0), so the bar stays inline and
+  the list's first row is its own header: "Pull Requests" or "Issues" in the
+  large title's font with a chevron, a menu of the two (`GitHubListHeader`),
+  the line under it, then the chips. It scrolls with the rows and does not
+  pin. The title and its line each fade with the scroll as they pass under
+  the bar (`FadesUnderBar`), since iOS 26's glass shows what is under it;
+  once both are gone the bar's own title fades in, with the same menu
+  (`toolbarTitleMenu`) and, on iOS 26, the line as its subtitle
+  (`GitHubListTitle`). Scrolling back, the header stays clear until the
+  bar's title has faded out, so no frame shows both. The bar is crossfaded
+  because SwiftUI swaps a bar's title without animation (`BarTitleFade`).
+  The rows never move when it switches. A pushed detail's back button reads the segment. A screen that
+  takes the list's place shows GitHub in the same place, without a menu, so
+  going between it and the list leaves the title where it is. iOS 18 has the
+  same header. Beside an iPad's detail the sidebar's title is its menu of
+  lists, so a segmented control sized to its words sits over the chips there.
+- **A row is a line about the item over its title.** The list is plain and
+  full width, with no disclosure chevron, so a row is as wide offline as
+  online (`GitHubItemRow`). Its first line is the state's glyph in its colour,
+  then `repo #number · author · age`, and at its end the status: a pull
+  request's checks glyph with one word (Needs your review, the change's size,
+  Approved, Changes requested, else the checks' Passing, failing count or
+  Running; Draft or that word alone without checks; Merged or Closed in their
+  colour), an issue's comment count when above zero. Short of room the author
+  gives way first, shortening and then leaving with its dot, then the
+  repository, which keeps about eight characters; past that the status goes
+  under the first line (`GitHubOverLineLayout`). The number and the age never
+  shorten. The title follows on up to two lines (four at accessibility sizes,
+  where the status is always under the first line), and an issue's labels
+  take a third line when it has any.
+- **Yours is two searches that never share an item.** Person Yours is what
   involves the account: for pull requests `author:@me` and
   `review-requested:@me -author:@me`, for issues `assignee:@me` and
   `author:@me -assignee:@me`. Their counts add up, and the list shows the
   newest of what both read; Show More reads only the search whose read items
   run out before the next 30, and stops where a search with more on GitHub has
-  none left to place.
+  none left to place. Anyone is one search with no role in it.
 - **The list is kept for display, never watched.** Each Host's list at the
   filters' defaults is saved on the device (`FileGitHubListCache`, `v2`) by
   the rules
@@ -116,8 +152,9 @@ Close.
   (`GitHubStore.details`), and the row it returns replaces the list's copy,
   which is saved again. `GitHubStore.reread(_:on:)` reads one item again on
   request, so an action can check the item before it acts and the list
-  follows after. An item GitHub no longer shows to the account says so in
-  the detail's banner.
+  follows after. An item GitHub no longer shows to the account says so as
+  a failed read's words: in the detail's "⋯" on iOS 26, in its banner
+  before.
 - **Send to Agent puts a message in a running Agent's Composer.** From a
   detail, a sheet asks what the Agent should do, worded as one English
   sentence and the item's address (not localized, ADR 0041, and shown before
@@ -421,12 +458,23 @@ Close.
   `gh auth login` with Open Terminal on the Host where it can start Terminals,
   each with Check Again. A Host that fails reads otherwise shows the last list
   it gave, dimmed when the Host is offline, and the title bar says why, never
-  a line among the rows: the Host button carries a glyph on amber (offline,
-  rate limited, or a failed read), and on iOS 26 a subtitle under the title
-  says it with when the list was read, or when to try again; an iPad sidebar,
-  whose bar shows its title menu instead of a title, has that line just under
-  the bar. After a failed read the Host menu holds gh's own words and Check
-  Again, so the button shows with one Host too while it has a status.
+  a line among the rows: the Host button, the toolbar's own, puts an amber
+  glyph before the Host's name (offline, rate limited, or a failed read),
+  with no fill of its own inside iOS 26's glass. A line under the list's
+  title is there whenever the list area is, from its first frame, so the
+  header keeps its height and the list does not move for anything that
+  comes and goes (at accessibility sizes it takes the lines its words need,
+  with none kept empty under a short one): Reading… while a read has nothing to show yet or runs over
+  the rows, then when the rows were read, or the status with when they were
+  read or when to try again, the status alone where no rows show. It is the
+  only place the list says so: no footer or heading among the rows repeats
+  it. A screen that takes the list's place has no line. An iPad sidebar,
+  whose bar shows its title menu instead of a title, has that line just
+  under the bar. On iOS 26 a detail has one under its number by the same
+  rules once it shows, with gh's words after a failed read in its "⋯" over
+  Check Again; before iOS 26 a banner between its header and its facts says
+  it instead. After a failed read the Host menu holds gh's own words and
+  Check Again, so the button shows with one Host too while it has a status.
   Without a list, the tab says why in its place: offline, rate limited
   (with when to try again), or gh's own message.
 - Lists are per Host. Two Hosts signed in to the same account each keep and
@@ -445,7 +493,13 @@ Close.
   second run, and the checkout read answered with git 2.47. No gh was signed
   in there: the list and a detail were parsed from a recorded response.
 - A list shows 30 items, then Show More with how many it shows of how many
-  GitHub found. Under All the count is the two searches' sum. When reading
+  GitHub found. Under Yours the count is the two searches' sum. The next
+  page reads by itself once the row ten above the end comes on, or Show More
+  does, about a screen ahead on an iPhone; the row stays a button for
+  VoiceOver and Switch Control. A read that failed waits for Try Again.
+  Offline the row stays, greyed and not tappable, so the rows read do not
+  look like all there is; a failure row stays too, with Try Again greyed, so
+  nothing above it moves. When reading
   the next page fails, its row says why in Show More's place, with Try Again:
   the rows stay, and the title bar keeps the status of the list's own read.
   gh missing or signed out, or the Host offline, is shown as for any read.
@@ -453,8 +507,8 @@ Close.
   segment's results), apps left out, so it changes with what was read; anyone
   else is typed.
   A label name cannot hold a double quote, since the query quotes it.
-- A pull request asking for the account's review says "Needs your review" in
-  its status line when a pending review request names the account, or names
+- A pull request asking for the account's review says "Needs your review" at
+  the end of its first line when a pending review request names the account, or names
   the team whose request reached it (`viewerLatestReviewRequest`). Under
   Needs Your Review, where every row asks, it gives the change's size instead.
 - The Worktree is made in the Workspace's checkout, and its commit is

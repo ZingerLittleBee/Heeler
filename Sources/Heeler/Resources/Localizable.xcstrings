@@ -13524,6 +13524,28 @@
         }
       }
     },
+    "By anyone, not only you" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなた以外のものも含む"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人的，不只是你的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任何人的，不只是你的"
+          }
+        }
+      }
+    },
     "By program" : {
       "localizations" : {
         "ja" : {
@@ -28017,6 +28039,66 @@
         }
       }
     },
+    "GitHub person Anyone" : {
+      "comment" : "A GitHub Person filter: everyone's, in the repositories chosen.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Anyone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全員"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有人"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有人"
+          }
+        }
+      }
+    },
+    "GitHub person Yours" : {
+      "comment" : "A GitHub Person filter: what involves you.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Yours"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに関連"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你相关"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你相關"
+          }
+        }
+      }
+    },
     "GitHub sheet Approve" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -39204,7 +39286,7 @@
       }
     },
     "Needs your review" : {
-      "comment" : "In a GitHub list row's status line: the pull request asks for the account's review.",
+      "comment" : "At the end of a GitHub list row's first line: the pull request asks for the account's review.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -50464,36 +50546,8 @@
         }
       }
     },
-    "Read at %@ from %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read at %1$@ from %2$@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ に %2$@ から読み取り"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "读取于 %1$@，来自 %2$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "讀取於 %1$@，來自 %2$@"
-          }
-        }
-      }
-    },
     "Read on %@ at %@" : {
-      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "comment" : "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -50517,34 +50571,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "讀取於 %1$@ %2$@"
-          }
-        }
-      }
-    },
-    "Read on %@ at %@ from %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read on %1$@ at %2$@ from %3$@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ %2$@ に %3$@ から読み取り"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "读取于 %1$@ %2$@，来自 %3$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "讀取於 %1$@ %2$@，來自 %3$@"
           }
         }
       }
@@ -50638,7 +50664,7 @@
       }
     },
     "Read yesterday at %@" : {
-      "comment" : "After a Host's status under the GitHub tab's title: when the list shown was read.",
+      "comment" : "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -50656,34 +50682,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "讀取於昨天 %@"
-          }
-        }
-      }
-    },
-    "Read yesterday at %@ from %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Read yesterday at %1$@ from %2$@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "昨日 %1$@ に %2$@ から読み取り"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "读取于昨天 %1$@，来自 %2$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "讀取於昨天 %1$@，來自 %2$@"
           }
         }
       }
@@ -50905,28 +50903,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "讀取主機檔案失敗。"
-          }
-        }
-      }
-    },
-    "Reading from %@…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ から読み取り中…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在从 %@ 读取…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在從 %@ 讀取…"
           }
         }
       }
@@ -57693,6 +57669,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示工具鍵盤"
+          }
+        }
+      }
+    },
+    "Showing %@" : {
+      "comment" : "VoiceOver label of the GitHub list's title, a menu that switches between pull requests and issues.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ を表示中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在顯示 %@"
           }
         }
       }

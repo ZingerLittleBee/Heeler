@@ -27,7 +27,7 @@ enum GitHubListRead {
     // MARK: Queries
 
     /// GitHub's search queries for a segment under a filter: one, or for
-    /// All two that never share an item, whose counts add up. GitHub's
+    /// Yours two that never share an item, whose counts add up. GitHub's
     /// advanced search, which could join two roles with `OR` in one query,
     /// is documented for issues only (`ISSUE_ADVANCED`), not for pull
     /// requests or `sort:`. `ownerIsOrganization` picks `org:` or `user:`
@@ -52,15 +52,14 @@ enum GitHubListRead {
         case nil: break
         }
         if let label = filter.label { terms.append("label:\"\(label)\"") }
-        let roles: [[String]]
-        if let person = filter.person {
-            roles = [[qualifier(for: person)]]
-        } else {
-            switch kind {
-            case .pullRequest: roles = [["author:@me"], ["review-requested:@me", "-author:@me"]]
-            case .issue: roles = [["assignee:@me"], ["author:@me", "-assignee:@me"]]
+        let roles: [[String]] =
+            switch (filter.whose, kind) {
+            case (.person(let person), _): [[qualifier(for: person)]]
+            // Only with a Repository: `whose` reads Anyone without one as Yours.
+            case (.anyone, _): [[]]
+            case (.yours, .pullRequest): [["author:@me"], ["review-requested:@me", "-author:@me"]]
+            case (.yours, .issue): [["assignee:@me"], ["author:@me", "-assignee:@me"]]
             }
-        }
         return roles.map { (terms + $0 + ["sort:updated-desc"]).joined(separator: " ") }
     }
 

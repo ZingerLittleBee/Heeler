@@ -23,15 +23,20 @@ struct GitHubItemScreen: View {
         let detail = state.detail
         let current = detail?.item ?? store.listItem(item.id, on: host) ?? item
         let viewer = detail?.viewer ?? store.state(of: host).list?.login
-        let isOffline = !store.isConnected(host) || state.failure == .offline
+        let isConnected = store.isConnected(host)
+        let isOffline = !isConnected || state.failure == .offline
+        let readFailure = GitHubSubtitle.isShown && !isOffline ? state.failure.flatMap { Self.words(for: $0) } : nil
         List {
             Section {
                 GitHubItemHeader(item: current, detail: detail, viewer: viewer)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
-            if let banner = GitHubBannerText(
-                detailFailure: state.failure, isOffline: isOffline, host: host, readAt: detail?.readAt)
+            // On iOS 26 the line under the title says it, and the page
+            // stays where it is.
+            if !GitHubSubtitle.isShown,
+                let banner = GitHubBannerText(
+                    detailFailure: state.failure, isOffline: isOffline, host: host, readAt: detail?.readAt)
             {
                 Section {
                     GitHubBanner(text: banner)
@@ -56,10 +61,12 @@ struct GitHubItemScreen: View {
         .readableColumnPage()
         .navigationTitle(Text(verbatim: "#\(current.number)"))
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(GitHubSubtitleLine(subtitle: Self.subtitle(of: state, isConnected: isConnected)))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 GitHubItemMenu(
-                    store: store, host: host, item: item, current: current, detail: detail, write: write)
+                    store: store, host: host, item: item, current: current, detail: detail,
+                    readFailure: readFailure, write: write)
             }
         }
         .modifier(GitHubSendBar(isShown: send != nil) {
@@ -86,6 +93,29 @@ struct GitHubItemScreen: View {
         let host: Host.ID
         let item: GitHubItem.ID
         let isConnected: Bool
+    }
+
+    /// The line under the number, from the first frame: the list's row
+    /// shows at once, and the detail's read starts with the screen.
+    private static func subtitle(of state: GitHubStore.DetailState, isConnected: Bool) -> GitHubSubtitle {
+        let readAt = state.detail?.readAt
+        guard isConnected else { return .status(GitHubHostStatus(kind: .offline), readAt: readAt) }
+        if state.isReading { return .reading }
+        if let failure = state.failure {
+            let status = GitHubHostStatus(failure: failure, isConnected: true)
+            return .status(status ?? GitHubHostStatus(kind: .failed(failure)), readAt: readAt)
+        }
+        return readAt.map(GitHubSubtitle.read) ?? .reading
+    }
+
+    /// gh's words after a failed read, which the "⋯" holds: the line
+    /// under the title says only that the read failed. Offline and a rate
+    /// limit have no words beyond the line's.
+    private static func words(for failure: GitHubReadFailure) -> String? {
+        switch failure {
+        case .offline, .rateLimited: nil
+        case .failed, .timedOut, .notInstalled, .notSignedIn, .unsupported: GitHubBannerText.message(for: failure)
+        }
     }
 }
 
@@ -378,6 +408,9 @@ private struct GitHubItemMenu: View {
     /// As the detail shows it now.
     let current: GitHubItem
     let detail: GitHubItemDetail?
+    /// gh's words after the detail's read failed, on iOS 26, where nothing
+    /// else on screen shows them.
+    let readFailure: String?
     let write: GitHubWriteLink
 
     @State private var isConfirmingClose = false
@@ -424,6 +457,15 @@ private struct GitHubItemMenu: View {
                             }
                         }
                         .disabled(!canWrite)
+                    }
+                    // As the list's Host menu shows a failed read: a
+                    // section's title, which wraps, over Check Again.
+                    if let readFailure {
+                        Section(readFailure) {
+                            Button("Check Again", systemImage: "arrow.clockwise") {
+                                Task { await store.reread(item, on: host) }
+                            }
+                        }
                     }
                 } label: {
                     Label("More", systemImage: "ellipsis")
