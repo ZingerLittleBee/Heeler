@@ -493,7 +493,9 @@ Close.
   second run, and the checkout read answered with git 2.47. No gh was signed
   in there: the list and a detail were parsed from a recorded response.
 - A list shows 30 items, then Show More with how many it shows of how many
-  GitHub found. Under All the count is the two searches' sum. When reading
+  GitHub found. Under Yours the count is the two searches' sum. Offline the
+  row stays, greyed and not tappable, so the rows read do not look like all
+  there is. When reading
   the next page fails, its row says why in Show More's place, with Try Again:
   the rows stay, and the title bar keeps the status of the list's own read.
   gh missing or signed out, or the Host offline, is shown as for any read.

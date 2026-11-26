@@ -375,14 +375,16 @@ struct GitHubListScreen: View {
         ForEach(shown.list.items) { item in
             row(item, context: context, host: host, isOffline: isOffline)
         }
-        // Offline there is nothing to read the next page with.
-        if shown.list.hasMore, !isOffline {
-            if let failure = store.moreFailure(kind, on: host) {
+        if shown.list.hasMore {
+            if !isOffline, let failure = store.moreFailure(kind, on: host) {
                 GitHubShowMoreFailureRow(failure: failure) { Task { await store.showMore(kind) } }
             } else {
+                // Offline there is nothing to read the next page with, but
+                // the row stays, greyed, so the rows do not look like all
+                // there is.
                 GitHubShowMoreRow(
                     shown: shown.list.items.count, total: shown.list.totalCount,
-                    isReading: store.state(of: host).readingMore.contains(kind)
+                    isReading: store.state(of: host).readingMore.contains(kind), isAvailable: !isOffline
                 ) { Task { await store.showMore(kind) } }
             }
         }
@@ -701,10 +703,12 @@ private struct GitHubNothingView: View {
 }
 
 /// After a page of rows: "Show More", and how many of GitHub's count show.
+/// Offline it cannot be tapped.
 private struct GitHubShowMoreRow: View {
     let shown: Int
     let total: Int
     let isReading: Bool
+    let isAvailable: Bool
     let showMore: () -> Void
 
     var body: some View {
@@ -713,7 +717,8 @@ private struct GitHubShowMoreRow: View {
                 Text("Show More")
                     // The iPad's sidebar draws a button's words in the
                     // primary colour.
-                    .foregroundStyle(isReading ? AnyShapeStyle(Color.secondary) : AnyShapeStyle(.tint))
+                    .foregroundStyle(
+                        isReading || !isAvailable ? AnyShapeStyle(Color.secondary) : AnyShapeStyle(.tint))
                 Spacer(minLength: 8)
                 if isReading {
                     ProgressView()
@@ -731,7 +736,7 @@ private struct GitHubShowMoreRow: View {
             }
             .contentShape(Rectangle())
         }
-        .disabled(isReading)
+        .disabled(isReading || !isAvailable)
         // The iPad's sidebar greys its tint.
         .tint(GitHubFilterBar.accent)
     }
