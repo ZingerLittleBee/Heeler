@@ -6,6 +6,11 @@ import SwiftUI
 extension ChatUnavailableReason {
     var title: String {
         switch self {
+        case .amp(.missing): String(localized: "Connect Amp Chat")
+        case .amp(.update): String(localized: "Update Amp Plugin")
+        case .amp(.reload): String(localized: "Reload the Amp Plugin")
+        case .amp(.noThread): String(localized: "Open an Amp Thread")
+        case .amp: String(localized: "Amp Chat Is Unavailable")
         case .noSession(.agy), .noConversationYet, .awaitingFirstMessage: String(localized: "No Messages Yet")
         case .noSession: String(localized: "Waiting for Conversation")
         case .unidentifiedSession: String(localized: "Conversation Not Identified")
@@ -13,8 +18,8 @@ extension ChatUnavailableReason {
         case .compressed: String(localized: "Conversation Compressed")
         case .unsupportedSession, .unsupportedFormat, .sessionStore: String(localized: "Conversation Not Readable")
         case .startScreen: String(localized: "Not in This Conversation")
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded,
-            .cannotTellSessionOnRex:
+        case .cannotTellSession, .multipleSessions, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
+            .extensionNotLoaded, .cannotTellSessionOnRex:
             String(localized: "Can't Tell the Conversation")
         case .transcriptOff: String(localized: "Transcript Saving Is Off")
         case .codexSharedDaemon:
@@ -32,6 +37,8 @@ extension ChatUnavailableReason {
 
     var explanation: String {
         switch self {
+        case .amp(let problem): problem.explanation
+        case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
             String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
         case .noSession(.codex):
@@ -76,11 +83,19 @@ extension ChatUnavailableReason {
         case .startScreen(let program):
             String(localized: "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it.")
         case .cannotTellSession(.pi):
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again.")
+            String(localized: "Install the Host Helper from this Host's details, then restart Pi.")
         case .cannotTellSession(.omp):
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Oh My Pi names it through Heeler's extension, which comes with the Host Helper. Install the Helper from this Host's details, then start the Agent again. Without it, Chat follows the conversation after its first message.")
+            String(localized: "Install the Host Helper from this Host's details and restart Oh My Pi, or send a first message in the terminal.")
         case .cannotTellSession(let program):
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
+            program.sessionEvidenceHelp
+        case .multipleSessions(.codex, _):
+            String(
+                localized: "This Codex holds multiple conversations. Exit Codex and run \("codex resume \(ChatLaunchNotice.unbrokenNoDaemon)").",
+                comment: "In Chat's place when Codex holds multiple conversations after /new: the resume command")
+        case .multipleSessions(let program, _):
+            String(
+                localized: "This \(program.chatName) holds multiple conversations. Restart it to reconnect Chat.",
+                comment: "In Chat's place when an Agent holds multiple conversations after /new: the program's name")
         case .noConversationYet(let program):
             String(
                 localized: "\(program.chatName) starts a conversation with its first message. Send one here or in the terminal, and Chat follows it.",
@@ -90,32 +105,44 @@ extension ChatUnavailableReason {
             // sentences its own way.
             switch (turnedOff, program == .omp) {
             case (true, false):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions.")
+                String(
+                    localized: "Restart \(program.chatName) without \(Self.unbrokenNoExtensions).",
+                    comment: "In Chat's place when Pi or Oh My Pi started with --no-extensions: program name, then the flag")
             case (true, true):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) started with its extensions turned off (--no-extensions), so Heeler's extension, which names the conversation, isn't running in this session. Start the Agent again without --no-extensions. Without it, Chat follows the conversation after its first message.")
+                String(
+                    localized: "Restart Oh My Pi without \(Self.unbrokenNoExtensions), or send a first message in the terminal.",
+                    comment: "In Chat's place when Oh My Pi started with --no-extensions: the flag")
             case (false, false):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+                String(
+                    localized: "Restart \(program.chatName) with extensions enabled so it loads Heeler's extension.",
+                    comment: "In Chat's place when Heeler's extension is installed but not loaded: program name")
             case (false, true):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this \(program.chatName) hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message.")
+                String(
+                    localized: "Restart Oh My Pi with extensions enabled, or send a first message in the terminal.",
+                    comment: "In Chat's place when Heeler's extension is installed for Oh My Pi but not loaded")
             }
         case .cannotTellSessionOnWindows(let program) where program == .pi || program == .omp:
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again.")
+            String(localized: "Add Heeler's extension below, then restart \(program.chatName).")
         case .cannotTellSessionOnWindows(let program):
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.sessionEvidenceHelp) Chat checks again when the Agent's status changes.")
+            program.sessionEvidenceHelp
         case .cannotReadProcessesOnWindows:
-            String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler couldn't read this Agent's process on the Host, which happens when herdr-core and the SSH session run at different elevation, or when PowerShell runs in constrained language mode.")
+            String(localized: "Heeler couldn't read this Agent's process. Run herdr-core and SSH at the same elevation.")
         case .cannotTellSessionOnRex(let program, let extensionInPlace):
             // One whole text per combination, so each language joins its
             // sentences its own way. Oh My Pi also binds without the extension.
             switch (extensionInPlace, program == .omp) {
             case (false, false):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again.")
+                String(localized: "Add Heeler's extension below, then restart \(program.chatName).")
             case (false, true):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. \(program.chatName) names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message.")
+                String(localized: "Add Heeler's extension below and restart Oh My Pi, or send a first message in the terminal.")
             case (true, false):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this \(program.chatName) hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on.")
+                String(
+                    localized: "Restart \(program.chatName) with extensions enabled so it loads Heeler's extension.",
+                    comment: "In Chat's place when Heeler's extension is installed but not loaded: program name")
             case (true, true):
-                String(localized: "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this \(program.chatName) hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message.")
+                String(
+                    localized: "Restart Oh My Pi with extensions enabled, or send a first message in the terminal.",
+                    comment: "In Chat's place when Heeler's extension is installed for Oh My Pi but not loaded")
             }
         case .transcriptOff(let variable, let coreCarriesIt):
             variable.explanation(coreCarriesIt: coreCarriesIt)
@@ -155,15 +182,29 @@ extension ChatUnavailableReason {
     }
 
     /// Guide link shown below the unavailable view's action capsules.
-    func guideURL(launchNotice: ChatLaunchNotice?) -> URL? {
-        if let notice = self.launchNotice(launchNotice) { return notice.guideURL }
-        if self == .codexSharedDaemon { return ChatLaunchNotice.codexSharedServer.guideURL }
-        return nil
+    func guideURL(
+        launchNotice: ChatLaunchNotice?,
+        localization: String = Bundle.main.preferredLocalizations.first ?? "en"
+    ) -> URL? {
+        if let notice = self.launchNotice(launchNotice) { return notice.guideURL(localization: localization) }
+        switch self {
+        case .codexSharedDaemon:
+            return ChatTroubleshootingGuide.url(for: .codexSharedServer, localization: localization)
+        case .cannotTellSession, .multipleSessions, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
+            .extensionNotLoaded, .cannotTellSessionOnRex:
+            return ChatTroubleshootingGuide.url(for: .cannotTellConversation, localization: localization)
+        default:
+            return nil
+        }
     }
+
+    /// `--no-extensions` with non-breaking hyphens for plain text.
+    private static let unbrokenNoExtensions = "\u{2011}\u{2011}no\u{2011}extensions"
 
     /// Uses ASCII hyphens with word joiners so SF Mono glyphs stay uniform
     /// without mid-flag line breaks.
     private static let inlineNoDaemon = "-\u{2060}-\u{2060}no\u{2060}-\u{2060}daemon"
+    private static let inlineNoExtensions = "-\u{2060}-\u{2060}no\u{2060}-\u{2060}extensions"
 
     /// Trimmed placeholder copy with inline monospaced commands where applicable.
     func unavailableDescription(launchNotice: ChatLaunchNotice?) -> Text {
@@ -173,13 +214,30 @@ extension ChatUnavailableReason {
                 "Exit Codex, then run \(command).",
                 comment: "In Chat's place when Codex started without --no-daemon: the resume command")
         }
-        if self == .codexSharedDaemon {
+        switch self {
+        case .codexSharedDaemon:
             let command = Self.inlineCode("codex\u{00A0}resume\u{00A0}\(Self.inlineNoDaemon)")
             return Text(
                 "Exit Codex, run \(command), and pick the conversation in Codex's list.",
                 comment: "In Chat's place on herdr-core when Codex started without --no-daemon: the resume command")
+        case .multipleSessions(.codex, _):
+            let resumeCommand = Self.inlineCode("codex\u{00A0}resume\u{00A0}\(Self.inlineNoDaemon)")
+            return Text(
+                "This Codex holds multiple conversations. Exit Codex and run \(resumeCommand).",
+                comment: "In Chat's place when Codex holds multiple conversations after /new: the resume command")
+        case .extensionNotLoaded(let program, true):
+            let flag = Self.inlineCode(Self.inlineNoExtensions)
+            if program == .omp {
+                return Text(
+                    "Restart Oh My Pi without \(flag), or send a first message in the terminal.",
+                    comment: "In Chat's place when Oh My Pi started with --no-extensions: the flag")
+            }
+            return Text(
+                "Restart \(program.chatName) without \(flag).",
+                comment: "In Chat's place when Pi or Oh My Pi started with --no-extensions: program name, then the flag")
+        default:
+            return Text(explanation(launchNotice: launchNotice))
         }
-        return Text(explanation(launchNotice: launchNotice))
     }
 
     private static func inlineCode(_ text: String) -> Text {
@@ -196,6 +254,7 @@ extension ChatUnavailableReason {
         // language joins a sentence it can't order.
         let saved = showingSavedMessages
         return switch self {
+        case .amp(let problem): problem.explanation
         case .noSession:
             String(localized: "Waiting for the Agent to report its conversation.")
         case .noConversationYet(let program):
@@ -234,8 +293,8 @@ extension ChatUnavailableReason {
         // Never over the timeline, which this reason hides.
         case .startScreen(let program):
             String(localized: "\(program.chatName) is on its home screen.")
-        case .cannotTellSession, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded,
-            .cannotTellSessionOnRex:
+        case .cannotTellSession, .multipleSessions, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
+            .extensionNotLoaded, .cannotTellSessionOnRex:
             saved
                 ? String(localized: "Chat can't tell which conversation this Agent is in now. Showing saved messages.")
                 : String(localized: "Chat can't tell which conversation this Agent is in now.")
@@ -270,9 +329,10 @@ extension ChatUnavailableReason {
     /// Whether looking again could find something the user may have fixed.
     var offersRetry: Bool {
         switch self {
+        case .amp: true
         case .noSession(.agy), .noConversationYet:
             false
-        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession,
+        case .noSession, .notFound, .mismatched, .startScreen, .cannotTellSession, .multipleSessions,
             .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows, .extensionNotLoaded, .transcriptOff,
             .codexSharedDaemon, .cannotTellSessionOnRex:
             true
@@ -554,6 +614,7 @@ extension ChatProgram {
     /// product name, the same in every language.
     var chatName: String {
         switch self {
+        case .amp: "Amp"
         case .claude: "Claude Code"
         case .codex: "Codex"
         case .pi: "Pi"
@@ -564,21 +625,50 @@ extension ChatProgram {
         }
     }
 
-    /// What Chat's "can't tell" says about this program on herdr-core, where the
-    /// evidence is what the Host shows of its process (ADR 0034).
+    /// What Chat's "can't tell" says about this program on herdr-core, tmux, and Rex,
+    /// where the evidence is what the Host shows of its process (ADR 0034).
     fileprivate var sessionEvidenceHelp: String {
         switch self {
-        case .codex:
-            String(localized: "Codex shows its conversation with the first message, so send one in the terminal. Once a message follows /new, nothing says which conversation it shows, so exit Codex, run codex resume \(ChatLaunchNotice.unbrokenNoDaemon), and pick one.")
-        case .grok:
-            String(localized: "Grok Build lists its conversation while it runs. After /new it lists both, so Chat can't tell until you start Grok Build again.")
+        case .amp: return AmpChatProblem.unidentified.explanation
+        case .codex, .grok:
+            return String(localized: "Send a first message in the terminal.")
         case .opencode:
-            String(localized: "OpenCode says which conversation it shows when Heeler starts OpenCode 2.1 or later from New Agent, or through Heeler's plugin, which takes one change to its configuration.")
+            return String(localized: "Start OpenCode 2.1 or later from New Agent, or add Heeler's plugin.")
         case .claude, .pi, .omp:
-            String(localized: "\(chatName) names it once it reaches its prompt, so finish signing in or answer any question in the terminal.")
+            return String(localized: "Finish signing in or answer any prompt in the terminal.")
         case .agy:
-            String(localized: "Antigravity CLI shows a new conversation with its first message, which Chat sends only to one started with nothing after agy, so send it in the terminal. One opened on a conversation that's already open in another terminal never shows it.")
+            return String(localized: "Send a first message in the terminal, or close the other terminal holding this conversation.")
         }
+    }
+}
+
+/// Sections of the Chat troubleshooting guide linked from unavailable screens.
+/// The guide is published in English and Simplified Chinese; every other
+/// language opens the English page.
+enum ChatTroubleshootingGuide {
+    enum Section: Equatable, Sendable {
+        case codexSharedServer
+        case cannotTellConversation
+    }
+
+    /// Each fragment is a heading of `docs/guides/chat-troubleshooting.md` or
+    /// `docs/guides/zh/chat-troubleshooting.md` as GitHub slugs it, which the
+    /// docs site keeps.
+    static func url(
+        for section: Section,
+        localization: String = Bundle.main.preferredLocalizations.first ?? "en"
+    ) -> URL? {
+        let isChinese = localization == "zh-Hans"
+        var url = URLComponents()
+        url.scheme = "https"
+        url.host = "docs.heeler.bybee.dev"
+        url.path = isChinese ? "/zh/chat-troubleshooting" : "/chat-troubleshooting"
+        url.fragment =
+            switch section {
+            case .codexSharedServer: "codex-started-without---no-daemon"
+            case .cannotTellConversation: "cant-tell-the-conversation"
+            }
+        return url.url
     }
 }
 
@@ -595,6 +685,7 @@ struct ChatUnavailableView: View {
     var reviewEdit: (() -> Void)?
     /// Opens what writes Heeler's extension, on a native Windows core Host.
     var addExtension: (() -> Void)?
+    var installAmp: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
@@ -632,11 +723,25 @@ struct ChatUnavailableView: View {
     /// Whether a settling action leads the capsule stack as the primary action.
     private var hasSettlingAction: Bool {
         chooseConversation != nil
+            || (ampInstallTitle != nil && installAmp != nil)
             || (reviewEdit != nil && reason.offersOpenCodePluginEdit)
             || (addExtension != nil && reason.offersHeelersExtension)
     }
 
+    private var ampInstallTitle: String? {
+        switch reason {
+        case .amp(.missing): String(localized: "Install Amp Plugin")
+        case .amp(.update): String(localized: "Update Amp Plugin")
+        default: nil
+        }
+    }
+
     @ViewBuilder private var capsuleActions: some View {
+        if let ampInstallTitle, let installAmp {
+            Button(ampInstallTitle, action: installAmp)
+                .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
+                .accessibilityIdentifier("chat.amp.install")
+        }
         if let chooseConversation {
             Button(action: chooseConversation) { Text(ChatCandidatePickerView.title) }
                 .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
@@ -770,8 +875,11 @@ struct ChatBanner: View {
     /// A second way out. The two go on a row of their own, each its own element.
     var secondaryActionTitle: String?
     var secondaryAction: (() -> Void)?
+    /// Hides the banner when the user acknowledges an informational warning.
+    var dismiss: (() -> Void)?
 
     private var hasSecondaryAction: Bool { secondaryActionTitle != nil && secondaryAction != nil }
+    private var hasDismiss: Bool { dismiss != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -791,6 +899,20 @@ struct ChatBanner: View {
                 if !hasSecondaryAction {
                     primaryAction
                 }
+                if let dismiss {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, -4)
+                    .padding(.vertical, -4)
+                    .accessibilityLabel("Dismiss")
+                    .accessibilityIdentifier("chat.banner.dismiss")
+                }
             }
             if hasSecondaryAction {
                 ViewThatFits(in: .horizontal) {
@@ -802,7 +924,7 @@ struct ChatBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: hasSecondaryAction ? .contain : .combine)
+        .accessibilityElement(children: hasSecondaryAction || hasDismiss ? .contain : .combine)
     }
 
     @ViewBuilder

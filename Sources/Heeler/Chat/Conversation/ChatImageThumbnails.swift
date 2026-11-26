@@ -35,10 +35,10 @@ final class ChatImageThumbnails {
             self.read = read
         }
 
-        init(files: ChatHostFiles) {
+        init(files: ChatHostFiles, kept: ChatImagePreviewReader.Kept? = nil) {
             self.init(
                 stamp: { try await ChatImagePreviewReader.stamp(path: $0, files: files) },
-                read: { try await ChatImagePreviewReader.read(path: $0, stamp: $1, files: files) })
+                read: { try await ChatImagePreviewReader.read(path: $0, stamp: $1, files: files, kept: kept) })
         }
     }
 

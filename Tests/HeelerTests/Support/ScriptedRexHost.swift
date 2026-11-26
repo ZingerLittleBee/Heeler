@@ -160,6 +160,21 @@ final actor ScriptedRexHost: RexHostConnection {
         return try await scriptedFiles().home()
     }
 
+    /// New Terminal's home directory, which the Host's files name.
+    func remoteHomeDirectory() async throws -> String {
+        log.append("browse home")
+        return try await scriptedFiles().home()
+    }
+
+    /// Browse Directory's listing: the Host's directories under `path`.
+    func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
+        log.append("browse \(path)")
+        let listing = try await scriptedFiles().listFiles(
+            RemoteFileListingRequest(directory: path, kinds: [.directory]))
+        let directories = (listing?.entries ?? []).map(\.name)
+        return RemoteDirectoryListing(directories: directories, truncated: false)
+    }
+
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         log.append("processes \(request.pids.joined(separator: ","))")
         guard let processes else { throw TransportError.hostFeatureUnavailable(feature: "unscripted processes") }

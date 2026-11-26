@@ -215,6 +215,7 @@ final class ConsoleStore {
     /// the same turn, so the store lives here rather than only on the view.
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
+    @ObservationIgnored let dismissedLaunchNotices: ChatLaunchNoticeDismissalStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
     let pluginStatuses = HeelerPluginStatusStore()
     /// Made on demand while a view reads them, so not observed: each store
@@ -248,6 +249,9 @@ final class ConsoleStore {
     /// cache: demo mode and tests build Console stores in the app's own
     /// container, and their `setHosts` would otherwise clear the real one.
     @ObservationIgnored let chatCache: any ChatTranscriptCache
+    /// Whole Host files Files and Chat's previews read, kept to open again.
+    /// A temporary one unless the app passes the real one, as `chatCache`.
+    @ObservationIgnored let hostFileCache: HostFileCache
     let cachedChats: ConsoleChatCache
     @ObservationIgnored private var chatPrefetchTasks: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var chatPrefetchActiveAgent: [Host.ID: ConsoleAgent.ID] = [:]
@@ -291,7 +295,11 @@ final class ConsoleStore {
         chatPrefetchRetryDelay: Duration = .seconds(5),
         pins: PinnedAgentsStore = PinnedAgentsStore(),
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
+        dismissedLaunchNotices: ChatLaunchNoticeDismissalStore = ChatLaunchNoticeDismissalStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
+        hostFileCache: HostFileCache = HostFileCache(
+            root: FileManager.default.temporaryDirectory.appending(
+                path: "HostFileCache-\(UUID().uuidString)", directoryHint: .isDirectory)),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
         gitHubSettings: GitHubSettings = GitHubSettings(),
@@ -348,6 +356,7 @@ final class ConsoleStore {
         self.pendingTitleRenameSleep = pendingTitleRenameSleep
         self.hostHelperBundle = hostHelperBundle
         self.chatCache = chatCache
+        self.hostFileCache = hostFileCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
         self.usageSettings = usageSettings
@@ -361,6 +370,7 @@ final class ConsoleStore {
         self.chatPrefetchRetryDelay = chatPrefetchRetryDelay
         self.pins = pins
         self.rowLayouts = rowLayouts
+        self.dismissedLaunchNotices = dismissedLaunchNotices
         self.makeSession = makeSession
         self.connectCore = connectCore
         self.connectTmux = connectTmux
@@ -436,11 +446,14 @@ final class ConsoleStore {
         // running leaves a cache no one else would delete. Chained, so the
         // cache ends on the latest catalog whatever order tasks start in.
         let hostIDs = Set(incoming.keys)
-        chatCacheRetention = Task { [previous = chatCacheRetention, chatCache] in
+        dismissedLaunchNotices.retainHosts(hostIDs)
+        chatCacheRetention = Task { [previous = chatCacheRetention, chatCache, hostFileCache] in
             await previous?.value
             await chatCache.retainHosts(hostIDs)
+            await hostFileCache.retainHosts(hostIDs)
         }
         for (id, projection) in projections where incoming[id] != projection.host {
+            dismissedLaunchNotices.removeHost(id)
             sidebarSnapshots.invalidate(id)
             pluginStatuses.invalidate(id)
             agyTitles.invalidateHost(id)
@@ -1165,14 +1178,22 @@ final class ConsoleStore {
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
+        var files = chatHostFiles(for: hostID, agentID: agent.id)
+        if program == .amp {
+            guard host.serverKind == .herdrTUI else { return nil }
+            files.amp = AmpChatConnection(pane: paneID) { [weak self] in
+                guard let live = self?.projections[hostID] as? HostConsoleProjection else { throw TransportError.cancelled }
+                return live
+            }
+        }
         var source = AgentChatSource(
             hostID: hostID, socketLocation: host.socketLocation,
-            files: chatHostFiles(for: hostID, agentID: agent.id),
+            files: files,
             agentInfo: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
             },
-            cache: chatCache, adapter: adapter,
+            cache: chatCache, adapter: adapter, fileCache: hostFileCache,
             cachedSession: { [weak self] agent in
                 guard let self else { return nil }
                 return await self.cachedChats.cachedSession(for: agent, on: host)
@@ -1196,6 +1217,9 @@ final class ConsoleStore {
                 }))
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
+        }
+        if let amp = files.amp {
+            source.sessionEvidence = { try await amp.evidence() }
         }
         if let processBound {
             // No record names a session here.
@@ -1242,7 +1266,8 @@ final class ConsoleStore {
             projections[hostID]?.agentsByPane[paneID].map { applyingAgyAnnotationTitle(to: $0).agent }
             ?? agent.agent
         let store = AgentChatStore(
-            agentID: agent.id, agent: rawAgent, program: program, source: source, timing: chatTiming, now: chatNow)
+            agentID: agent.id, agent: rawAgent, program: program, source: source,
+            dismissedLaunchNotices: dismissedLaunchNotices, timing: chatTiming, now: chatNow)
         store.hostConnectionChanged(hostStatuses[hostID] == .connected)
         if !isActive { store.suspend() }
         chatStores[agent.id] = store
@@ -1663,7 +1688,9 @@ final class ConsoleStore {
         _ paneID: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
+        let closing = terminalIDs(of: agents.filter { $0.hostID == hostID && $0.agent.paneID == paneID })
         try await projection(for: hostID).closePane(paneID)
+        forgetFiles(openedBy: closing, on: hostID)
         flushScheduledRebuild()
     }
 
@@ -1704,19 +1731,33 @@ final class ConsoleStore {
             let paneID = agent.agent.paneID
             try await projection(for: hostID).closePane(paneID)
             pins.removePin(hostID: hostID, paneID: paneID)
+            forgetFiles(openedBy: [agent.agent.terminalID], on: hostID)
             rebuild()
             return
         }
         let tabID = agent.agent.tabID
-        let pinnedPaneIDs = agents
-            .filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+        let closing = agents.filter { $0.hostID == hostID && $0.agent.tabID == tabID }
+        let pinnedPaneIDs = closing
             .map(\.agent.paneID)
             .filter { pins.isPinned(hostID: hostID, paneID: $0) }
         try await projection(for: hostID).closeTab(tabID)
         for paneID in pinnedPaneIDs {
             pins.removePin(hostID: hostID, paneID: paneID)
         }
+        forgetFiles(openedBy: terminalIDs(of: closing + [agent]), on: hostID)
         rebuild()
+    }
+
+    private func terminalIDs(of agents: [ConsoleAgent]) -> Set<String> {
+        Set(agents.map(\.agent.terminalID))
+    }
+
+    /// Deletes the Host files these Agents (by terminal id) opened that no
+    /// other Agent opened too. Only closing an Agent or removing its saved
+    /// Chat forgets: one that ends on the Host leaves its copies to age out.
+    private func forgetFiles(openedBy terminalIDs: Set<String>, on hostID: Host.ID) {
+        guard !terminalIDs.isEmpty else { return }
+        Task { [hostFileCache] in await hostFileCache.forget(openers: terminalIDs, on: hostID) }
     }
 
     /// What a Close Agent dialog opened now asks for.
@@ -1734,6 +1775,7 @@ final class ConsoleStore {
         chatStores.removeValue(forKey: agent.id)?.end()
         cachedChats.remove(paneID: agent.agent.paneID, on: host)
         pins.removePin(hostID: agent.hostID, paneID: agent.agent.paneID)
+        forgetFiles(openedBy: [agent.agent.terminalID], on: agent.hostID)
         rebuild()
         return true
     }
@@ -2481,6 +2523,17 @@ final class ConsoleStore {
             current.lazy.filter(\.isAwaitingSnapshot).map(\.host.id))
         if hostsAwaitingSnapshot != nextAwaitingSnapshot {
             hostsAwaitingSnapshot = nextAwaitingSnapshot
+        }
+        if !dismissedLaunchNotices.isEmpty {
+            for projection in current {
+                let hostID = projection.host.id
+                guard hostStatuses[hostID] == .connected,
+                    !hostsAwaitingSnapshot.contains(hostID),
+                    dismissedLaunchNotices.hasEntries(for: hostID)
+                else { continue }
+                let liveTerminalIDs = Set(projection.agentsByPane.values.map(\.agent.terminalID))
+                dismissedLaunchNotices.retainTerminals(hostID: hostID, terminalIDs: liveTerminalIDs)
+            }
         }
         let nextAwaitingForeground = Set(
             current.lazy.flatMap { projection in
@@ -3543,8 +3596,9 @@ final class ConsoleStore {
             return nil
         }
         // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056),
-        // except a Rex Host reached by a Windows named pipe (ADR 0049), whose
-        // Chat reads are not written for Windows yet.
+        // except a Rex Host reached by a Windows named pipe (ADR 0049). A Rex
+        // Host's Chat reads native Windows as a core's does, for the programs
+        // its capabilities name from the server's platform.
         let host = catalog.first(where: { $0.id == agent.hostID })
         let kind = host?.serverKind
         let platform =
@@ -3553,7 +3607,8 @@ final class ConsoleStore {
             : hostPlatforms[agent.hostID] ?? (kind == .tmux || kind == .rex ? .posix : nil)
         if let platform {
             return AgentChatAvailability.program(
-                for: agent.agent, platform: platform, isNativeWindowsCore: capabilities.isNativeWindowsCore,
+                for: agent.agent, platform: platform,
+                readsChatOnNativeWindows: capabilities.isNativeWindowsCore || kind == .rex,
                 hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,

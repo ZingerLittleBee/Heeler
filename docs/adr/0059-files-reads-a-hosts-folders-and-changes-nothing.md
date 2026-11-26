@@ -47,13 +47,32 @@ one page per folder, previews full screen.
 - **Text is read in place.** A megabyte at a time, with Show End for a longer
   file. A file with no viewer of its own is text when its start reads as
   text.
-- **Everything else is copied first, and the copy does not stay.** The
-  system's viewers and the share sheet read local files, so an image (up to
-  20 MiB, as Chat's preview), a video, a sound or a document (up to 64 MiB,
-  as an upload) is copied to the app's temporary folder, and so is any file
-  the user shares or saves. A preview's copy goes when the preview closes,
-  the rest when Files closes, and what a crash left goes the next time Files
-  opens, once it is a day old.
+- **Everything else is copied first, and the copy is kept.** The system's
+  viewers and the share sheet read local files, so an image (up to 20 MiB,
+  as Chat's preview), a video, a sound or a document (up to 64 MiB, as an
+  upload) is copied to this device, and so is any file the user shares or
+  saves. A text file read whole is kept the same way. Amended 2026-11-26:
+  each copy used to go when its preview closed, so a video closed and opened
+  again downloaded again.
+- **A copy is found by what the Host says the file is.** `HostFileCache`
+  keeps copies in `Caches/HostFiles`, by Host, path, and the size and
+  modification time the Host reports. Opening a file still asks the Host for
+  its status, and opens the copy when both match; a file written again
+  downloads again, and its copy replaces the older one of that path. A copy
+  not opened for 7 days goes, the least recently opened go past 500 MB, a
+  Host's go when the Host is removed, and Settings shows their size with
+  Clear Downloaded Files. A Host that reports no modification time keeps
+  nothing: that copy goes when its preview closes. Chat's image reads, its
+  thumbnails' included, and its video preview keep their copies in the same
+  cache. A download that never finished goes when a later run of the app
+  first prunes the cache.
+- **A copy belongs to the Agents that opened it.** Each Host's
+  `openers.json` names, by path, the terminal ids of the Agents whose Files
+  or Chat opened the copy. Closing an Agent in Heeler (its pane or its tab)
+  or removing its saved Chat takes its id away, and a copy no other Agent
+  opened goes with it. Clear Chat Cache also clears every copy. An Agent
+  that ends on the Host leaves its copies to the age and size limits, since
+  its Chat may still be saved. Amended 2026-11-26.
 - **A request that was asked is finished.** Cancelling stops Files between
   requests, never inside one. The Host's SFTP channel is shared, and a request
   dropped before the Host answers leaves its answer for the next request of
@@ -95,9 +114,12 @@ one page per folder, previews full screen.
   writes. It would poll a Host for as long as a sheet is open. Pull to
   refresh is asked for.
 - **Retrying when SFTP is refused.** That is the loop #596 describes.
-- **Keeping copies as a cache.** Reopening a file would be instant. Files a
-  user looked at once would then stay on the device with no place to manage
-  them.
+- **Removing each copy when its preview closes.** Nothing a user looked at
+  stayed on the device, but every open downloaded the file again, however
+  recently it had been shown. The cache bounds what stays by age and size,
+  by the Agents that opened it, and Settings clears it.
+- **Removing a copy with any Agent that opened it.** A file two Agents
+  opened would download again for the one still open.
 - **Fixing the dropped request in the transport.** A cancelled read could
   retire the SFTP channel, or the driver could drain the answer. That changes
   Chat's reads too and belongs to a change of its own. Files finishes its own
@@ -123,9 +145,17 @@ one page per folder, previews full screen.
   its answer to a Files request, as it can to a later Chat read. Files' check
   that a file's length holds across its pieces catches a wrong size, not a
   wrong file.
-- Copies sit in the app's temporary folder under iOS's default file
-  protection while a preview is open. A file shared or saved leaves a copy
-  wherever the user sent it, which Heeler does not manage.
+- Files a user opened stay on the device after Files closes, for up to 7
+  days since last opened and within 500 MB, and until the Agents that opened
+  them are closed or removed in Heeler. They are excluded from backup
+  and protected complete unless open: a download goes on as the device
+  locks, and a finished copy cannot be opened again until it unlocks. A file
+  shared or saved leaves a copy wherever the user sent it, which Heeler does
+  not manage.
+- SFTP reports whole seconds. A file written again within the same second
+  at the same length opens as the copy of the one before.
+- Reopening a file still costs one status request, so it does not open
+  while the Host is offline.
 - A file of an image's name over 20 MiB has no preview and can still be
   shared or saved. A file over 64 MiB can only have its path copied.
 - A path with a control character, or longer than 4,096 bytes, is listed and

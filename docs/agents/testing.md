@@ -88,8 +88,9 @@ and fails rather than skips when selected without it.
 | Suite | Gate | Needs |
 | --- | --- | --- |
 | `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
+| `AmpChatLiveTests` | `HEELER_AMP_CHAT_LAB`, path to private fixture JSON | Two disposable Amp terminals on a loopback Herdr TUI Host, using separate private threads. Installs the plugin in their isolated configuration and sends one text prompt. Reload the first terminal's plugins after installation. |
 | `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
-| `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing |
+| `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing, except `RexInventoryLiveTests.newTerminalStartsShellsTheInventoryLists`, which creates and destroys one `heeler-lab-new-terminal` session and touches no other |
 | `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests`, `RexProgramStatusLiveTests`, `RexChatTypingLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
 | `VolcengineSpeechLiveTests` | `HEELER_VOLCENGINE_LIVE_KEY`, a Volcengine API Key, and `HEELER_VOLCENGINE_LIVE_AUDIO`, a 16 kHz mono WAV path on this Mac | Doubao streaming speech recognition 2.0 on that key; each test is billed by the recording's length |
 | `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
@@ -128,7 +129,8 @@ with the message, and Heeler never removes it (ADR 0005). Attach only to
 `heeler-lab-` Agents with stand-in programs, note each `heeler.` directory
 the stand-in received, and remove exactly those afterwards. `RexStagingTests`
 covers the seam, the server-instance pin, the slots and the typing against
-`ScriptedRexHost`, with a clipboard that writes nothing. In the Simulator,
+`ScriptedRexHost`, with a clipboard that writes nothing, and a native Windows
+stage's folders and `.part` file against an in-memory SFTP. In the Simulator,
 Add Image takes a picture added with `simctl addmedia`; Paste Image reads the
 Simulator's pasteboard, which Simulator.app syncs with the Mac's clipboard, so
 use it only with an image copied inside the Simulator. Every finished upload

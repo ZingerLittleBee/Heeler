@@ -19,11 +19,12 @@ struct UsageWidgetEntry: TimelineEntry {
 struct UsageLimitsWidgetEntry: TimelineEntry {
     let date: Date
     let snapshot: UsageWidgetSnapshot?
-    /// nil picks the first Host that reported Usage Limits.
+    /// nil picks the first Host with a program to show, then the first Host
+    /// with any Usage Limits entries, then the first Host in the catalog.
     let hostID: UUID?
     /// The program small and Lock Screen sizes show, nil for the one
-    /// closest to its limit; medium and large show every program. Claude
-    /// Code shows each of its Accounts, while the Host has several.
+    /// closest to its limit. Medium and large show every program not left out.
+    /// They show all programs if every program would be left out.
     let program: String?
 }
 
@@ -285,11 +286,11 @@ struct UsageLimitsWidgetView: View {
             .widgetURL(host.flatMap { UsageWidgetLink.limitsURL(hostID: $0.id) } ?? UsageWidgetLink.usageURL(hostID: nil))
     }
 
-    /// The chosen Host, or the first one with Usage Limits.
+    /// The chosen Host, or the snapshot's default one.
     private var host: UsageWidgetSnapshot.Host? {
         guard let snapshot = entry.snapshot else { return nil }
         if let hostID = entry.hostID { return snapshot.host(hostID) }
-        return snapshot.hosts.first { !$0.limits.isEmpty } ?? snapshot.hosts.first
+        return snapshot.defaultLimitsHost
     }
 
     @ViewBuilder
@@ -313,7 +314,7 @@ struct UsageLimitsWidgetView: View {
         }
     }
 
-    /// The chosen program's entries: its own, or each Claude Code Account's.
+    /// The chosen program's entries, its own or each of its Accounts'.
     private func programEntries(_ host: UsageWidgetSnapshot.Host) -> [UsageWidgetSnapshot.Limits] {
         UsageLimitsPick.entries(host.limits, preferring: entry.program, now: now)
     }
@@ -380,17 +381,18 @@ struct UsageLimitsWidgetView: View {
 
     @ViewBuilder
     private func medium(_ host: UsageWidgetSnapshot.Host) -> some View {
-        if UsageLimitsLayout.medium(host.limits) == .lines {
+        let entries = UsageLimitsPick.visibleEntries(host.limits)
+        if UsageLimitsLayout.medium(entries) == .lines {
             VStack(alignment: .leading, spacing: 0) {
                 mediumHeader(host)
-                UsageLimitsLines(entries: host.limits, now: now)
+                UsageLimitsLines(entries: entries, now: now)
                     .padding(.top, 8)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
-            mediumColumns(host)
+            mediumColumns(host, entries: entries)
         }
     }
 
@@ -402,11 +404,13 @@ struct UsageLimitsWidgetView: View {
         }
     }
 
-    private func mediumColumns(_ host: UsageWidgetSnapshot.Host) -> some View {
+    private func mediumColumns(
+        _ host: UsageWidgetSnapshot.Host, entries: [UsageWidgetSnapshot.Limits]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             mediumHeader(host)
             HStack(alignment: .top, spacing: 12) {
-                ForEach(host.limits.prefix(2)) { limits in
+                ForEach(entries.prefix(2)) { limits in
                     VStack(alignment: .leading, spacing: 0) {
                         // Both columns are Accounts or neither, so their
                         // titles share a size.
@@ -439,17 +443,18 @@ struct UsageLimitsWidgetView: View {
 
     @ViewBuilder
     private func large(_ host: UsageWidgetSnapshot.Host) -> some View {
-        let layout = UsageLimitsLayout.large(host.limits)
-        if layout == .pairs || host.limits.count > 2 || host.limits.contains(where: { $0.account != nil }) {
+        let entries = UsageLimitsPick.visibleEntries(host.limits)
+        let layout = UsageLimitsLayout.large(entries)
+        if layout == .pairs || entries.count > 2 || entries.contains(where: { $0.account != nil }) {
             VStack(alignment: .leading, spacing: 0) {
                 largeHeader(host)
-                UsageLimitsStack(entries: host.limits, now: now, layout: layout)
+                UsageLimitsStack(entries: entries, now: now, layout: layout)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
-            largePrograms(host)
+            largePrograms(host, entries: entries)
         }
     }
 
@@ -461,10 +466,12 @@ struct UsageLimitsWidgetView: View {
         }
     }
 
-    private func largePrograms(_ host: UsageWidgetSnapshot.Host) -> some View {
+    private func largePrograms(
+        _ host: UsageWidgetSnapshot.Host, entries: [UsageWidgetSnapshot.Limits]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             largeHeader(host)
-            ForEach(Array(host.limits.prefix(3).enumerated()), id: \.element.id) { index, limits in
+            ForEach(Array(entries.prefix(3).enumerated()), id: \.element.id) { index, limits in
                 if index > 0 { Divider().padding(.top, 9) }
                 UsageProgramTitle(program: limits.program, name: limits.name, size: 15)
                     .padding(.top, 9)
@@ -632,25 +639,34 @@ enum UsageLimitsLayout: Equatable {
 
 /// Which windows a size with room for one or two shows.
 enum UsageLimitsPick {
-    /// The chosen program, or with none chosen the one whose running window
-    /// is closest to its limit, so a program with its limits off is not the
-    /// default.
+    /// The entries a size with every program shows: those not left out, or
+    /// all of them when every one is, so the widget still says why.
+    static func visibleEntries(_ limits: [UsageWidgetSnapshot.Limits]) -> [UsageWidgetSnapshot.Limits] {
+        let visible = limits.filter { $0.leftOut == nil }
+        return visible.isEmpty ? limits : visible
+    }
+
+    /// The chosen program, left out or not, or with none chosen the shown
+    /// one whose running window is closest to its limit, so a program with
+    /// its limits off is not the default.
     static func program(
         _ limits: [UsageWidgetSnapshot.Limits], preferring program: String?, now: Date
     ) -> UsageWidgetSnapshot.Limits? {
-        if let program { return limits.first { $0.program == program } ?? limits.first }
-        let reporting = limits.filter { tightest($0.windows, now: now) != nil }
+        if let program { return limits.first { $0.program == program } }
+        let visible = visibleEntries(limits)
+        let reporting = visible.filter { tightest($0.windows, now: now) != nil }
         return reporting.max {
             (tightest($0.windows, now: now)?.usedPercent ?? 0) < (tightest($1.windows, now: now)?.usedPercent ?? 0)
-        } ?? limits.first
+        } ?? visible.first
     }
 
-    /// Every entry of that program: its own, or each Claude Code Account's.
+    /// Every entry of that program: its own, or each of its Accounts'.
     static func entries(
         _ limits: [UsageWidgetSnapshot.Limits], preferring program: String?, now: Date
     ) -> [UsageWidgetSnapshot.Limits] {
         guard let chosen = self.program(limits, preferring: program, now: now)?.program else { return [] }
-        return limits.filter { $0.program == chosen }
+        let entries = limits.filter { $0.program == chosen }
+        return program == nil ? visibleEntries(entries) : entries
     }
 
     /// The one reading the circular and inline sizes hold: a program's

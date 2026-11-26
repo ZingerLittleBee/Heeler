@@ -419,8 +419,13 @@ actor HeelerSSHTransport: Transport {
     /// The Host's herdr endpoint launcher (ADR 0023); nil runs the `herdr` on
     /// the SSH PATH.
     private let herdrLauncher: HerdrLauncher?
-    /// A herdr-core Host's connection, whose Chat also reads on native Windows.
+    /// A herdr-core or Rex Host's connection, whose Chat also reads on native
+    /// Windows.
     private let readsChatFilesOnWindows: Bool
+    /// A Rex Host's connection, whose Chat reads a native Windows Host's
+    /// processes and home here, as a core's transport reads them for its own
+    /// Chat (ADR 0056).
+    private let servesRexHost: Bool
     nonisolated let channelAdmission: SSHChannelAdmission
     private let environment = SharedAsyncOperation<RemoteHostEnvironment>(cachesSuccess: true)
     private let windowsBridgeCheck = SharedAsyncOperation<Void>(cachesSuccess: true)
@@ -477,6 +482,9 @@ actor HeelerSSHTransport: Transport {
     /// avoiding repeated `mktemp` exec + `chmod` round trips across uploads
     /// when `stageDirectoryCommand` uses the default command.
     private var cachedStageParentDirectory: String?
+    /// A native Windows Rex Host's staging folder on this connection, in the
+    /// form SFTP opens, made over SFTP by the first upload (`stageOnWindows`).
+    private var cachedWindowsStageParentDirectory: String?
     /// Reusable dedicated SFTP client for attachment staging (separate from
     /// Chat's `sessionFileClient`), holding its `.ordinarySession` admission
     /// lease until retired after an idle grace window or on error/close so
@@ -748,6 +756,7 @@ actor HeelerSSHTransport: Transport {
             SSHTransportSettings.defaultNotificationConfigDirCommand
         herdrLauncher = nil
         readsChatFilesOnWindows = false
+        servesRexHost = false
         sftpRefusal = HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
@@ -770,7 +779,8 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
-        readsChatFilesOnWindows = settings.serverKind == .herdrCore
+        readsChatFilesOnWindows = settings.serverKind == .herdrCore || settings.serverKind == .rex
+        servesRexHost = settings.serverKind == .rex
         sftpRefusal = settings.sftpRefusal ?? HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
     }
@@ -1171,9 +1181,12 @@ actor HeelerSSHTransport: Transport {
     }
 
     func hostHomeDirectory() async throws -> String {
-        let home = try await hostFileEnvironment().home
+        let environment = try await hostFileEnvironment()
+        // A Rex Host's Chat reads a native Windows home over SFTP, in the form
+        // that opens there, as a core's Chat does.
+        if servesRexHost, environment.isWindows { return RemoteFilePath.windowsForSFTP(environment.home) }
         try await requirePOSIXHost(feature: String(localized: "Chat"))
-        return home
+        return environment.home
     }
 
     func agentInfo(_ target: AgentTarget) async throws -> Agent {
@@ -2389,6 +2402,16 @@ actor HeelerSSHTransport: Transport {
         _ source: StagingSource,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> String {
+        // A Rex Host's Agent on native Windows gets its attachment over SFTP
+        // alone, in the account's own temp folder (ADR 0056's update of
+        // 2026-11-25): Rex has no counterpart of herdr-core's `terminal.put`,
+        // and the POSIX parent command cannot run there.
+        if servesRexHost {
+            let isWindows = try? await hostFileEnvironment().isWindows
+            if isWindowsHost || isWindows == true {
+                return try await stageOnWindows(source, progress: progress)
+            }
+        }
         try await requirePOSIXHost(feature: String(localized: "File and image uploads"))
         guard connected, await connection.isConnected else {
             throw AttachmentStagingError.transferFailed
@@ -2485,6 +2508,82 @@ actor HeelerSSHTransport: Transport {
         } catch {
             throw Task.isCancelled
                 ? AttachmentStagingError.cancelled : AttachmentStagingError.transferFailed
+        }
+    }
+
+    /// Stages `source` on a native Windows Rex Host over SFTP alone: a
+    /// `heeler.<random>` folder made once per connection under
+    /// `%USERPROFILE%\AppData\Local\Temp`, a `stage-<uuid>` folder in it, and
+    /// the file written as `.part` and renamed, as on POSIX. Windows keeps
+    /// no POSIX mode, so the folder is private by the temp folder's own ACL
+    /// rather than by a mode Heeler checks. Returns the Windows path the
+    /// Agent reads.
+    private func stageOnWindows(
+        _ source: StagingSource,
+        progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
+    ) async throws -> String {
+        guard connected, await connection.isConnected else {
+            throw AttachmentStagingError.transferFailed
+        }
+        let home: String
+        do {
+            home = RemoteFilePath.windowsForSFTP(try await hostFileEnvironment().home)
+        } catch {
+            throw AttachmentStagingError.remoteTemporaryDirectoryFailed
+        }
+        guard home.hasPrefix("/"), RemoteFilePath.isAcceptable(home) else {
+            throw AttachmentStagingError.remoteTemporaryDirectoryFailed
+        }
+        await progress(AttachmentStageProgress(transferredBytes: 0, totalBytes: source.byteCount))
+
+        let admitted: AdmittedStagingSFTPClient
+        if let idle = takeIdleStagingSFTPClient() {
+            admitted = idle
+        } else {
+            do {
+                admitted = try await openAdmittedStagingSFTPClient()
+            } catch let error as AttachmentStagingError {
+                throw error
+            } catch is CancellationError {
+                throw AttachmentStagingError.cancelled
+            } catch SSHError.sftpUnavailable {
+                throw AttachmentStagingError.sftpUnavailable
+            } catch {
+                if Task.isCancelled { throw AttachmentStagingError.cancelled }
+                throw AttachmentStagingError.transferFailed
+            }
+        }
+        let sftp = admitted.client
+        let operationID = UUID()
+        imageStageClients[operationID] = admitted
+        let timeout = requestTimeout
+        let files = WindowsStageUpload.Files(
+            makeDirectory: { try await sftp.createDirectory(at: $0, permissions: 0o700, timeout: timeout) },
+            write: { [self] path in
+                try await streamFile(
+                    at: source.fileURL, byteCount: source.byteCount, to: path, over: sftp,
+                    enforcesPermissions: false, progress: progress)
+            },
+            size: { try await sftp.attributes(at: $0, timeout: timeout).size },
+            rename: { try await sftp.renameFileAtomically(from: $0, to: $1, timeout: timeout) },
+            remove: { [self] path in await bestEffortRemoveRemoteFile(at: path, over: sftp) })
+        var upload = WindowsStageUpload(parent: cachedWindowsStageParentDirectory)
+        do {
+            let windowsPath = try await upload.stage(
+                source.remoteFilename, byteCount: source.byteCount, home: home, files: files)
+            cachedWindowsStageParentDirectory = upload.parent
+            imageStageClients[operationID] = nil
+            returnIdleStagingSFTPClient(admitted)
+            return windowsPath
+        } catch {
+            cachedWindowsStageParentDirectory = upload.parent
+            imageStageClients[operationID] = nil
+            try? await sftp.close(timeout: .seconds(2))
+            await admitted.lease.release()
+            if Task.isCancelled || error is CancellationError { throw AttachmentStagingError.cancelled }
+            if let stagingError = error as? AttachmentStagingError { throw stagingError }
+            if error as? SSHError == .sftpUnavailable { throw AttachmentStagingError.sftpUnavailable }
+            throw AttachmentStagingError.transferFailed
         }
     }
 
@@ -2697,6 +2796,7 @@ actor HeelerSSHTransport: Transport {
         byteCount: Int64,
         to remotePath: String,
         over sftp: SSHSFTPClient,
+        enforcesPermissions: Bool = true,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws {
         let localFile: FileHandle
@@ -2712,7 +2812,9 @@ actor HeelerSSHTransport: Transport {
             permissions: 0o600,
             timeout: requestTimeout)
         do {
-            try await enforcePermissions(0o600, at: remotePath, over: sftp)
+            if enforcesPermissions {
+                try await enforcePermissions(0o600, at: remotePath, over: sftp)
+            }
 #if DEBUG
             await signalStagingPhaseForTesting(.payloadWriteReady)
 #endif
@@ -3240,6 +3342,33 @@ actor HeelerSSHTransport: Transport {
             result = try await runGitScript(script)
         }
         return try GitProbe.parseCommand(stdout: result.stdout, stderr: result.stderr, nonce: nonce)
+    }
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        try requireConnected()
+        var input = try JSONEncoder().encode(request)
+        input.append(0x0A)
+        let line = input
+        let timeout = requestTimeout
+        let data: Data
+        do {
+            data = try await channelAdmission.withChannel(.ordinaryForwarding, priority: .interactive) {
+                try await self.connection.exchangeStreamLocal(
+                    socketPath: record.socket, request: line, maximumResponseBytes: 3 << 20, timeout: timeout)
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw AmpChatProblem.unreachable }
+        return try JSONDecoder().decode(AmpChatReply.self, from: data)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        let contents = String(decoding: try AmpPluginLocation.bundledContents(), as: UTF8.self)
+        let result = try await runBoundedScript(
+            AmpPluginLocation.installScript(directory: directory, contents: contents, replacing: previous),
+            feature: String(localized: "Amp Chat"), deadline: .seconds(15), remoteSeconds: 10,
+            timeoutMarkerPrefix: "__HEELER_AMP_INSTALL_", timedOut: .hostFileTimedOut, priority: .interactive)
+        if result.exitStatus == 73 { throw AmpChatProblem.conflict }
+        guard result.exitStatus == 0 else { throw AmpChatProblem.unreachable }
     }
 
     func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
@@ -4426,8 +4555,16 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
+        let platform = try await hostPlatform()
+        // A Rex Host's Chat reads a native Windows Host's processes as a core's
+        // does: one PowerShell exec, with no argv or open files (ADR 0034).
+        if servesRexHost, platform == .nativeWindows {
+            return try await HostProcessReader.readWindows(request) { [self] command in
+                try await runWindowsProcessRead(command)
+            }
+        }
         // Windows' existing reader does not expose argv. Unknown stays hidden.
-        guard try await hostPlatform() == .posix else { return [:] }
+        guard platform == .posix else { return [:] }
         let nonce = HostProcessReader.makeNonce()
         let result = try await runBoundedScript(
             HostProcessReader.script(request, nonce: nonce), feature: String(localized: "Agent permission modes"),
@@ -4436,6 +4573,15 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             priority: .interactive)
         guard result.exitStatus == 0 else { return [:] }
         return try HostProcessReader.parse(stdout: result.stdout, nonce: nonce, request: request)
+    }
+
+    /// One bounded exec of a native Windows process read's command.
+    private func runWindowsProcessRead(_ command: String) async throws -> GitExecResult {
+        let bound = WindowsHostExec.processRead.bound
+        let result = try await withRequestDeadline(timeout: bound) {
+            try await self.runExec(command, timeout: bound, priority: .interactive)
+        }
+        return GitExecResult(stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
     }
 
     /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.

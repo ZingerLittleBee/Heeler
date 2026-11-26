@@ -188,7 +188,7 @@ struct HerdrCoreMacOSSessionBinderTests {
     @Test func codexBeforeItsFirstPromptHoldsOnlyALock() async throws {
         let rig = try await Rig("codex-before-prompt")
 
-        #expect(try await rig.binder(.codex).check(try rig.record()) == Self.cannotTell(.codex))
+        #expect(try await rig.binder(.codex).check(try rig.record()) == .unavailable(.noConversationYet(.codex)))
         #expect(await rig.files.reads.isEmpty)
     }
 
@@ -240,17 +240,23 @@ struct HerdrCoreMacOSSessionBinderTests {
     }
 
     @Test(arguments: [
-        grokRow(pidStart: 1_793_572_941_000_000), grokRow(pidStart: 1_793_572_939_999_999),
+        (grokRow(pidStart: 1_793_572_941_000_000), ChatSessionEvidence.unavailable(.cannotTellSession(.grok))),
+        (grokRow(pidStart: 1_793_572_939_999_999), .unavailable(.cannotTellSession(.grok))),
         // Seconds, or Linux's ticks, are not this form.
-        grokRow(pidStart: 1_793_572_940), grokRow(pidStart: 145585), grokRow(pid: 1858, pidStart: 1_793_572_940_135_416),
+        (grokRow(pidStart: 1_793_572_940), .unavailable(.cannotTellSession(.grok))),
+        (grokRow(pidStart: 145585), .unavailable(.cannotTellSession(.grok))),
+        (grokRow(pid: 1858, pidStart: 1_793_572_940_135_416), .unavailable(.cannotTellSession(.grok))),
         // After `/new` nothing says which the screen shows.
-        grokRow(pidStart: 1_793_572_940_135_416) + "," + grokRow(pidStart: 1_793_572_940_135_416),
+        (
+            grokRow(pidStart: 1_793_572_940_135_416) + "," + grokRow(pidStart: 1_793_572_940_135_416),
+            .unavailable(.multipleSessions(.grok))
+        ),
     ])
-    func aGrokRowOfAnythingElseBindsNothing(_ rows: String) async throws {
+    func aGrokRowOfAnythingElseBindsNothing(_ rows: String, expected: ChatSessionEvidence) async throws {
         let rig = try await Rig("grok")
         await rig.files.write("[\(rows)]", at: "\(Self.lab)/grok/grok-home/active_sessions.json")
 
-        #expect(try await rig.binder(.grok).check(try rig.record()) == Self.cannotTell(.grok))
+        #expect(try await rig.binder(.grok).check(try rig.record()) == expected)
     }
 
     // MARK: OpenCode, Pi and Oh My Pi
@@ -349,7 +355,7 @@ struct HerdrCoreMacOSSessionBinderTests {
     private static let zshAtPrompt = (pid: 1059, name: "zsh", argv: ["/bin/zsh", "-f"])
 
     /// macOS's walk says it answered, so a label's process no longer listed has left.
-    @Test(arguments: ChatProgram.allCases)
+    @Test(arguments: HostCapabilities.macOSExactCoreChatPrograms)
     func aPickWhoseProcessLeftIsDropped(_ program: ChatProgram) async throws {
         let rig = try await Rig("claude-under-zsh")
         await rig.table.remove(1066)
@@ -364,7 +370,7 @@ struct HerdrCoreMacOSSessionBinderTests {
 
     /// Apple's own shell on a SIP-on Mac, whose environment macOS withholds: the walk
     /// still says the process left.
-    @Test(arguments: ChatProgram.allCases)
+    @Test(arguments: HostCapabilities.macOSExactCoreChatPrograms)
     func aPickWhoseProcessLeftIsDroppedAtAWithheldShell(_ program: ChatProgram) async throws {
         let rig = try await Rig("claude-under-zsh")
         await rig.table.remove(1066)
@@ -378,7 +384,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         #expect(await rig.log.cleared == ["heeler.chat"])
     }
 
-    @Test(arguments: ChatProgram.allCases)
+    @Test(arguments: HostCapabilities.macOSExactCoreChatPrograms)
     func aPickStandsWhenTheWalkIsPastItsCap(_ program: ChatProgram) async throws {
         let rig = try await Rig("claude-under-zsh")
         await rig.table.goPastTheWalksCap()
@@ -417,6 +423,7 @@ struct HerdrCoreMacOSSessionBinderTests {
     private static func conversation(_ program: ChatProgram) -> String {
         switch program {
         case .opencode: openCodeID
+        case .amp: "T-0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
         case .pi, .omp: "\(lab)/s/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.jsonl"
         case .claude, .codex, .grok, .agy: "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
         }

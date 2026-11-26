@@ -12,8 +12,9 @@ switched off. The maintainer decided on 2026-11-17 that Chat is to ship in
 full with Rex support. This ADR records how a Rex Agent now opens the Agent
 detail, what its Chat reads and types, and what still stays out. Its
 [update of the same day](#update-2026-11-17-attachments) adds images and files
-in messages, and [the next day's](#update-2026-11-18-pi-and-oh-my-pi) adds Chat
-for Pi and Oh My Pi.
+in messages, [the next day's](#update-2026-11-18-pi-and-oh-my-pi) adds Chat
+for Pi and Oh My Pi, and [the update of 2026-11-25](#update-2026-11-25-native-windows)
+opens Chat for Claude Code, with attachments, on a native Windows Host.
 
 ## Settings
 
@@ -67,7 +68,11 @@ the code follows them:
   Worktrees, uploads, Host scripts and take over stay off. (Updated
   2026-11-17: uploads turn on with Chat, wherever the server has named a Linux
   or macOS kernel. Updated 2026-11-18: `rexChatPrograms` gains Pi and Oh My
-  Pi.) The kernel comes
+  Pi. Updated 2026-11-25: Chat for `rexWindowsChatPrograms`, Claude Code
+  alone, and uploads, once the server has named Windows; see
+  [Update 2026-11-25: native Windows](#update-2026-11-25-native-windows).
+  The same day, ADR 0049's update lets New Terminal start a shell.)
+  The kernel comes
   from the socket lookup or `server.version` and is kept in the Host's memory
   on this device; the Host as the catalog stores it knows none, so nothing
   reads Chat ahead for it. `ConsoleStore.chatProgram(for:)` reads a Rex Host
@@ -408,3 +413,77 @@ and shown, Stop interrupted a turn, a Send after `/new` was held once and the
 next one went to the new conversation, and the file was gone after each
 program quit. Not tried: an iPhone or iPad, a Linux Host, an Oh My Pi profile,
 and a Pi before 1.1.0.
+
+## Update 2026-11-25: native Windows
+
+ADR 0049's update of the same day reaches a Rex server on native Windows
+through Rex's stdio bridge and left Chat off there, since Chat's reads were
+written for POSIX. Chat now opens for Claude Code on such a Host, read as a
+native Windows core's Chat reads it (ADR 0034), with G1 to G7 unchanged.
+
+- **Capabilities.** A server that names Windows (`windows_x86_64`) offers
+  Chat for `HostCapabilities.rexWindowsChatPrograms`, Claude Code alone, and
+  uploads. `ConsoleStore.chatProgram(for:)` reads a Rex Host reached by a
+  pipe as native Windows, and `AgentChatAvailability` opens Chat on native
+  Windows for a Rex Host as for a core Host, for the programs the
+  capabilities name.
+- **The reads.** On a Rex connection that `remoteEnvironment` finds to be
+  native Windows, `HeelerSSHTransport.readProcesses` runs
+  `HostProcessReader.windowsCommand`, one bounded PowerShell exec at
+  interactive priority, and `hostHomeDirectory` gives `USERPROFILE` in the
+  form SFTP opens, `/C:/Users/<name>`. File reads take the held SFTP channel,
+  as a core's do on Windows. Nothing else changes: the binder is the shared
+  one, on `HerdrCoreHostSystem.windows`, so it finds Claude Code by
+  `agentOnWindows` and holds its registry entry's `procStart` to the
+  process's creation FILETIME.
+- **The terminal's variables.** Rex 0.1.0-preview.23 sets `REX_BLOCK` and
+  no `REX_SESSION`, on macOS as on Windows (rex-compatibility.md), so the
+  binder places a process by its block and takes a session id only when one
+  is set. A block id names one block on the server. On Windows the read asks
+  for `HC_SCOPE` and not tmux's variables, which native Windows never sets,
+  keeping the PowerShell command under `cmd.exe`'s 8,191 bytes.
+- **The foreground's names.** Rex names a Windows foreground by its image,
+  `claude.exe`, and a path that parts at `\`; the Windows read names it
+  `claude`. `RexConsoleProjection.foregroundNames` takes each name in that
+  form there, so the check that the pid is still the one Rex named holds.
+- **Uploads.** POSIX staging makes its folder with a `mktemp` exec, and a
+  core stages on Windows through its own `terminal.put`, which Rex has no
+  counterpart of over SSH. On a Rex connection to native Windows,
+  `HeelerSSHTransport.stageOnWindows` uses SFTP alone: it makes a
+  `heeler.<8 random>` folder once per connection under
+  `USERPROFILE\AppData\Local\Temp`, a `stage-<uuid>` folder in it, writes
+  the file as `.part` and renames it with `posix-rename@openssh.com`, which
+  Win32-OpenSSH's server offers, and hands the Composer the Windows path
+  (`C:\Users\<name>\AppData\Local\Temp\heeler.…\stage-…\image.png`,
+  `WindowsStagePath`). Windows keeps no POSIX mode, so the folder is the
+  account's by the temp folder's own ACL, and no mode is set or checked
+  there. Names are already cleaned for Windows (`FilePreparer.cleanStem`),
+  and a sent message shows such a path as a staged image or video
+  (`ChatImageLink`).
+- **Wording.** A read that finds no process on a Rex terminal says Chat
+  can't tell the conversation, not the herdr-core text about elevation and
+  constrained PowerShell.
+
+Considered and dropped: Codex, whose binding reads the rollout its process
+holds open, which nothing reads on Windows, as on a core Host; Pi and Oh My
+Pi, until Heeler's extension is checked in a Rex terminal on Windows (and it
+waits for `REX_SESSION`, which preview.23 does not set); and uploads through
+Rex's own `upload_begin`, which types the paths itself rather than handing
+them to the Composer, so it would bypass Send's checks.
+
+Evidence: `RexSessionBinderTests` binds Claude Code in a Rex terminal on
+Windows from a scripted Windows read and registry entry, refuses another
+block, another session and another image, binds with no `REX_SESSION`, and
+checks the read fits the command line for a ten-digit pid.
+`RexConsoleTests` offers Chat for Claude Code alone, and uploads, on a
+Rex Host reached by a pipe whose server names Windows; `RexStagingTests`
+builds the Windows stage paths and reads them back as staged media. Against
+the same PC over the same relay, SFTP made a `heeler.*` folder and a
+`stage-*` folder in `AppData/Local/Temp`, wrote a `.part`, renamed it and
+removed all three; the server listed `posix-rename@openssh.com`.
+On 2026-11-25, against
+Rex 0.1.0-preview.23 on Windows 11 with three Claude Code 2.1.332 Agents,
+`process` named each foreground as `claude.exe`, the Windows process read of
+each found `REX_BLOCK` matching its block and no `REX_SESSION`, its start
+matched `procStart` in the Agent's registry entry, and SFTP over the same
+relay listed its Transcript at the path the binder builds.

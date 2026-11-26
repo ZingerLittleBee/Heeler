@@ -52,13 +52,19 @@ program reports nothing to Rex reads Unknown and has no Stop and no Blocked
 Card. Where Chat is
 offered, its Agents take images and files too, staged over the Host's SSH
 connection as on the other Server Kinds. A Rex Host offers no notifications,
-Live Activities, Usage, Changes or New Agent (ADR 0056).
+Live Activities, Usage, Changes or New Agent (ADR 0056). New Terminal starts
+a shell in a new window of a Workspace's session, left in the background, and
+New Workspace a new session holding one, the only things Heeler starts on a
+Rex server; it gives the new terminal's size back at once (ADR 0049's update
+of 2026-11-25).
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
 connection. Another server instance on the socket is another server, as
-with tmux (ADR 0050). A Rex Host's terminals open from the server's own
-redraw, and their size is asked for (ADR 0051). They take input from their
+with tmux, unless it restored the last one's sessions: one that sees the same
+files and lists one of them continues the server (ADR 0050). A Rex Host's
+terminals open from the server's own redraw, and their size is asked for
+(ADR 0051). They take input from their
 first paint, one request at a time on the control connection, never sent
 twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
 its own, once per showing, and gives it back once the view stops showing it;
@@ -337,7 +343,9 @@ Changes belongs to the Checkout: it shows whatever the Host's account can
 read, never "the files this Agent made", and marks an item changed in the last
 ten minutes without saying who changed it. Viewing Files never changes the
 Host. A file opened in a viewer, shared or saved is first copied to this
-device, and the copy goes when its preview or Files closes (ADR 0059).
+device, and the copy is kept so the same version of the file opens again
+without a download, for up to 7 days since last opened, until every Agent
+that opened it is closed or its saved Chat removed (ADR 0059).
 _Avoid_: file manager, SFTP browser, downloads, Agent's files
 
 **Port Preview**:
@@ -505,9 +513,12 @@ _Avoid_: recent link, visible link, link history
 
 **Chat**:
 The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build,
-OpenCode or Antigravity CLI Agent's detail can show in its terminal's place,
-read from the Agent's Transcript. Chat holds no Attach; its Composer and draft are the
-terminal's. Send is one `agent.prompt` request, made only after a screen read
+OpenCode, Antigravity CLI or Amp Agent's detail can show in its terminal's place.
+Most programs read from the Agent's Transcript. On POSIX Herdr TUI Hosts,
+Amp Chat reads the thread selected in the foreground Amp terminal through
+Heeler's Amp plugin. Confirm its installation in Chat, then reload plugins in
+Amp. Plain text goes to that same thread through the plugin (ADR 0066). Chat holds no Attach; its Composer and draft are the
+terminal's. For transcript-backed Chat on Herdr TUI, Send is one `agent.prompt` request, made only after a screen read
 shows the program's input box empty, and refused for text the program would
 run rather than read. Its `/` menu offers the Agent's skills and `/compact`;
 for OpenCode, only `/compact`. Chat never resends: text left in the box after
@@ -526,8 +537,9 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
-On Rex, for Claude Code, Codex, Pi and Oh My Pi only, Chat binds the
-conversation as on herdr-core, from what the Host's SSH connection reads
+On Rex, for Claude Code, Codex, Pi and Oh My Pi only (on native Windows,
+Claude Code alone), Chat binds the conversation as on herdr-core, from what
+the Host's SSH connection reads
 about the foreground process Rex names, and keeps a choice on this device. A
 Pi or Oh My Pi there is bound from a file Heeler's extension keeps for its
 process, where a label holds it on herdr-core. Its Send, Stop and
@@ -618,7 +630,8 @@ signed in to on one Host, across repositories, as one list under a row of
 filters: State, Person, Repository and Label, kept for each of the two on the
 device. At their defaults it holds the open ones that involve the account:
 pull requests the user opened or whose review is asked of them, issues
-assigned to the user or opened by them. Heeler reads it by running gh over the
+assigned to the user or opened by them. With a Repository chosen, Person
+defaults to Anyone: everyone's open items there. Heeler reads it by running gh over the
 Host's connection and never holds the account's token; on a Mac whose SSH
 session cannot read the login keychain, gh runs once in the desktop session
 instead. It is read for one Host at a time, a Host and not a Server, kept on

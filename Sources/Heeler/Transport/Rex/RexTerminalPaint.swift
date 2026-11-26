@@ -221,8 +221,12 @@ struct RexTerminalPaint: Sendable {
     private var repaintPending = false
     /// Quiet repaints that output disturbed since the last exact paint.
     private var quietMisses = 0
-    /// Theme and exit notices that came before the first paint.
+    /// Exit notices that came before the first paint.
     private var held: [RexTerminalInstruction] = []
+    /// The terminal's default colors as the stream last gave them; nil
+    /// while no stream has given any. Each paint applies them after its
+    /// reset, since the redraw carries no OSC 10 to 12 colors.
+    private var theme: RexTerminalTheme?
     private var failedReads = 0
     private(set) var hasEnded = false
     private(set) var paintCount = 0
@@ -255,6 +259,10 @@ struct RexTerminalPaint: Sendable {
         repaintPending = false
         quietMisses = 0
         held = []
+        // A stream sends a theme only when its colors are not the built-in
+        // ones, so colors a last stream gave go back to the view's own
+        // unless this one gives them again.
+        if theme != nil { theme = .builtIn }
         failedReads = 0
         hasEnded = false
         return []
@@ -408,8 +416,16 @@ struct RexTerminalPaint: Sendable {
                     if isPainted { effects += requestRepaint() }
                 }
             }
-        case .theme(let theme):
-            effects += emitOrHold(.theme(theme))
+        case .theme(let next):
+            // The next paint applies it; a painted view gets it at once. A
+            // palette entry the server no longer lists goes back to Rex's
+            // built-in color, which only a redraw says, so it repaints.
+            let dropped = !(theme?.paletteIndices.subtracting(next.paletteIndices).isEmpty ?? true)
+            theme = next
+            if isPainted {
+                effects.append(.emit(.theme(next)))
+                if dropped { effects += requestRepaint() }
+            }
         case .childExited(let code):
             effects += emitOrHold(.exited(code: code))
         case .unknown:
@@ -468,6 +484,7 @@ struct RexTerminalPaint: Sendable {
 
     private mutating func paint(_ current: Attempt, exact: Bool) -> [Effect] {
         var bytes = Self.reset
+        if let theme { bytes.append(theme.sequences) }
         bytes.append(current.redraw)
         var effects: [Effect] = [.emit(.paint(bytes, exact: exact))]
         if let title = current.title { effects.append(.emit(.title(title))) }

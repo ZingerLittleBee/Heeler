@@ -3,6 +3,7 @@ import Foundation
 /// Why Chat cannot show a conversation from the Host. Each case has its own
 /// explanation; none of them is an error the user caused.
 enum ChatUnavailableReason: Equatable, Sendable {
+    case amp(AmpChatProblem)
     /// herdr has reported no session ID for the Agent. This does not establish
     /// whether the program's integration is installed.
     case noSession(ChatProgram)
@@ -35,6 +36,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// Nothing on the Host shows which conversation a herdr-core Agent is in,
     /// and Chat never guesses (ADR 0034).
     case cannotTellSession(ChatProgram)
+    /// The Agent's process holds more than one conversation (for example after
+    /// `/new` in Codex or Grok Build), so Chat can't tell which one is on
+    /// screen (ADR 0034). `offersPick` is false on Windows, which has no picker.
+    case multipleSessions(ChatProgram, offersPick: Bool = true)
     /// The same on a native Windows Host, which has no Host Helper to offer.
     case cannotTellSessionOnWindows(ChatProgram)
     /// The same for a Pi or Oh My Pi that hasn't loaded Heeler's extension, which is
@@ -64,7 +69,10 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// over saved messages, which stay in memory until the program shows
     /// the conversation again.
     var hidesConversation: Bool {
-        if case .startScreen = self { true } else { false }
+        switch self {
+        case .startScreen, .amp: true
+        default: false
+        }
     }
 
     /// Nothing exact names the conversation on a POSIX core Host, which is where a
@@ -72,6 +80,7 @@ enum ChatUnavailableReason: Equatable, Sendable {
     var leavesItToAPick: Bool {
         switch self {
         case .cannotTellSession, .extensionNotLoaded: true
+        case .multipleSessions(_, let offersPick): offersPick
         default: false
         }
     }
@@ -95,7 +104,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy: false
+        case .claude, .codex, .grok, .opencode, .agy, .amp: false
         }
     }
 
@@ -104,7 +113,7 @@ extension ChatProgram {
     var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy: false
+        case .claude, .codex, .grok, .opencode, .agy, .amp: false
         }
     }
 }
@@ -240,8 +249,7 @@ struct ChatReducerSeed: Sendable {
 
 /// How Chat reads one program's transcript.
 struct ChatTranscriptAdapter: Sendable {
-    /// Bumped when the program's normalization changes, so entries cached
-    /// by an older build are dropped instead of mixed with new ones.
+    /// Bumped when the program's normalization changes.
     var revision: Int
     /// The framing limits for this program's lines.
     var limits = TranscriptFollower.Limits()
@@ -286,6 +294,9 @@ struct ChatTranscriptAdapter: Sendable {
     /// The program's log of the prompts it submits, which names the
     /// session that took each one.
     var sendWitness: ChatSendWitness? = nil
+    /// Converts older entries when the saved document contains all the source
+    /// information required by the current revision.
+    var migrateCache: (@Sendable (ChatCacheDocument) -> ChatCacheDocument?)? = nil
 }
 
 /// One conversation's transcript on its Host: finds the file and follows
@@ -523,7 +534,7 @@ actor ChatConversationEngine {
     }
 
     /// Shows what the device kept from an earlier visit, before the Host
-    /// answers. A document from another adapter revision is discarded. One
+    /// answers. A document the current adapter cannot read is discarded. One
     /// worded in another language still shows, since a Saved Chat's
     /// messages live only here, but never joins live rows (`joinedCache`),
     /// so the next save words it anew.
@@ -541,7 +552,12 @@ actor ChatConversationEngine {
 
     func restore() async -> ChatConversationSnapshot {
         switch await cache.load(cacheKey) {
-        case .hit(let document) where document.adapterRevision == adapter.revision:
+        case .hit(let saved):
+            guard let document = saved.adapterRevision == adapter.revision ? saved : adapter.migrateCache?(saved),
+                  document.adapterRevision == adapter.revision else {
+                await cache.remove(cacheKey)
+                break
+            }
             cached = document
             update {
                 $0.transcript = Self.restoredTranscript(from: document)
@@ -550,8 +566,6 @@ actor ChatConversationEngine {
                 $0.olderAwaitsUser = document.olderAwaitsUser ?? false
                 $0.older = document.reachedStart ? .reachedStart : .available
             }
-        case .hit:
-            await cache.remove(cacheKey)
         case .miss, .unavailable:
             break
         }
@@ -1597,7 +1611,7 @@ actor ChatConversationEngine {
             case .failure(.notFound):
                 return .unavailable(.notFound(searchedAll: true))
             }
-        case .opencode:
+        case .opencode, .amp:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)
         }

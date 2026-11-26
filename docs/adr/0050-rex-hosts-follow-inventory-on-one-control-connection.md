@@ -70,7 +70,8 @@ restarted servers without showing a stale or half-read list.
   server: every detail open on the last one's terminals has left the inventory,
   as with another tmux server (ADR 0045), and none of the last one's titles,
   programs or directories is shown for the new one's terminals before they are
-  read.
+  read. (Updated 2026-11-26: an instance that restored the last one's
+  sessions continues its server, as the update below says.)
 - Leaving on purpose closes the connection with a close frame, so the server
   forgets the client at once: suspending with the app once its grace period
   ran out, and the Host removed or replaced or the Console ending. Open
@@ -78,7 +79,8 @@ restarted servers without showing a stale or half-read list.
   longer than three seconds, and only then does the SSH connection go. A
   short trip to the background keeps the connection as it is, and a
   connection that dropped is taken back by the next one.
-- Only API revision 12 is accepted (ADR 0049).
+- Only API revision 12 is accepted (ADR 0049). (Updated 2026-11-25: revisions
+  12 to 19, as ADR 0049's update of that day says.)
 - A Rex session is a Workspace, a window a Tab and a terminal block a Pane,
   named and ordered as Rex shows them. A window lists its terminals in reading
   order: its tiled layout before-then-after, then its floating layers. A
@@ -153,3 +155,73 @@ session with detached terminals once a minute, whichever holds.
   attaches the session on this connection, holds the block to one data
   stream and hands out the terminal's connection, and a Rex Pane's detail
   opens its terminal. Its input goes on this connection too (ADR 0052).)
+
+## Update 2026-11-26: a restarted server
+
+Rex 0.1.0-preview.25 restores its sessions when it starts again on the same
+state directory, after `rex server stop` and after a crash alike: the same
+session, window and block ids, under a new `instance_id`, with `server.status`
+keeping its `host_id`. Reading every new instance as another server left each
+open detail behind, removed the Host's pins and forgot its turns, seen marks,
+picks and Chat's cache on every restart, and updating the Rex app restarts the
+server.
+
+A Rex Host now has a core, as a herdr-core Host does (ADR 0031): the server
+across its instances.
+
+- The first instance Heeler meets starts a core named by its `instance_id`.
+- Another instance continues the last one's core only when its `server.status`
+  names the same non-empty `host_id` as the last one did and `session.list`
+  names at least one of the session ids the last instance listed. Only such an
+  instance is asked for its list. An instance with no `host_id` or another
+  one, or one listing none of those sessions, is another server, as before.
+- The core, its last instance, that instance's `host_id` and the sessions it
+  listed are kept in the Host's memory with the core, so the first connection
+  after a relaunch continues it too.
+- Details, pins, turns, seen marks, picks and Chat's cache keep to the core.
+  Where ADRs 0051, 0054, 0055 and 0056 say something keeps to the server
+  instance, it now keeps to the server: the instances that continue one core.
+- What ran in the terminals does not carry over. A restored terminal starts on
+  a fresh screen, so the new instance's terminals still start with none of the
+  last instance's titles, programs or directories, Chat forgets the picks a
+  send guard dropped, and a pick's foreground no longer matches a program
+  started again. Chat's typing into a terminal stays, since an open Chat holds
+  it: it reads the program started again as another process holding the
+  terminal, so nothing is typed over a screen read before the restart. An open
+  terminal reconnects and paints afresh, as after a dropped connection, and a
+  request or input pinned to the last instance fails as the connection having
+  gone, not as the server.
+
+### Why
+
+- `host_id` alone says only that two servers see the same files, which a
+  server started on the same state directory after its sessions were removed
+  does too. Rex names each session with a UUID, so a list holding one of the
+  last instance's restored it rather than met it by chance. Asking for both
+  is the narrowest rule that matches what preview.25 did.
+- Session ids rather than block ids: a restore brings back whole sessions, and
+  `session.list` is one read, made before any of the inventory's.
+
+### Evidence
+
+Against Rex 0.1.0-preview.25 (API revision 24) on macOS 27.0, 2026-11-26, on
+a server of its own with its own socket, state directory and configuration
+(recorded in `docs/agents/rex-compatibility.md`):
+
+- After `rex server stop` and after `kill -9`, the server started on the same
+  state directory listed the same session, window and block ids under a new
+  `instance_id`, with the same `host_id`.
+- A `RexHostSession` probe over the server's local socket, not committed,
+  announced the restarted server with the first instance's core after each
+  restart, and read its inventory.
+- `RexHostSessionTests`, `RexConsoleTests` and `RexTerminalAttachTests` assert
+  the rule against a fake world that keeps its ids across a restart, with and
+  without a `host_id`.
+
+### Consequences
+
+- `RexServerStatus` carries the `host_id` and the core beside the instance;
+  `isSameServer(as:)` compares cores, and checks that a connection is still
+  the one a request was made on still compare instances.
+- `RexServerLineage` is what one instance listed, kept by `RexHostSession`
+  and in `HerdrCoreHostMemory`.

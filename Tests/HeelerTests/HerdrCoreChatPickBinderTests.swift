@@ -74,7 +74,7 @@ struct HerdrCoreChatPickBinderTests {
         case .pi: "\(home)/.pi/agent/sessions"
         case .omp: "\(home)/.omp/agent/sessions"
         case .agy: "\(home)/.gemini/antigravity-cli"
-        case .opencode: nil
+        case .opencode, .amp: nil
         }
     }
 

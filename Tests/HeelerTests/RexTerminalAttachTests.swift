@@ -28,12 +28,13 @@ struct RexTerminalAttachTests {
     /// data endpoint and its tickets, one block's reads, and the attach slots
     /// data channels take.
     final class Rig: Sendable {
-        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let world: FakeRexWorld
         let endpoint: FakeRexDataEndpoint
         let reads = FakeRexTerminalReads(redraw: RexTerminalAttachTests.redraw, title: "lab")
         let admission = SSHChannelAdmission()
 
-        init(streams: Int = 3) {
+        init(streams: Int = 3, hostID: String? = nil) {
+            world = FakeRexWorld(hostID: hostID, sessions: [FakeRexWorld.studio()])
             endpoint = FakeRexDataEndpoint(nonces: (0..<streams).map { 0x1111_2222_3333_4400 + UInt64($0) })
         }
 
@@ -347,6 +348,26 @@ struct RexTerminalAttachTests {
         await store.stop()
     }
 
+    /// The terminal's own default colors reach the view as color sequences,
+    /// read only as colors (ADR 0051's update of 2026-11-25).
+    @Test func theServersColorsReachTheView() async throws {
+        let rig = Rig()
+        let session = hostSession([await rig.host([.server(await rig.server())])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        let nonce = await rig.endpoint.nonce(of: 0)
+        await rig.endpoint.send(FakeRexStream.theme(nonce: nonce))
+        let expected = Data(
+            ("\u{1B}]10;rgb:d0/d0/d0\u{1B}\\" + "\u{1B}]11;rgb:10/10/10\u{1B}\\" + "\u{1B}]112\u{1B}\\"
+                + "\u{1B}]4;1;rgb:aa/20/20\u{1B}\\").utf8)
+        try await waitUntil("the colors") { chunks.all.last == expected }
+        #expect(store.status == .live)
+        await store.stop()
+    }
+
     @Test func theProgramsExitFinishesTheTerminal() async throws {
         let rig = Rig()
         let session = hostSession([await rig.host([.server(await rig.server())])])
@@ -615,6 +636,31 @@ struct RexTerminalAttachTests {
         #expect(!pin.admits("instance-0002"))
         try await Task.sleep(for: .milliseconds(100))
         #expect(await !methods(second).contains("data.connect"))
+    }
+
+    /// A server restarted on the same files that restored the terminal's
+    /// session is the same server: the terminal reconnects and paints
+    /// afresh there, as after a dropped connection.
+    @Test func aRestoredServerPaintsTheTerminalAfresh() async throws {
+        let rig = Rig(hostID: "host-0001")
+        let first = await rig.server()
+        let second = await rig.server()
+        var fresh = FakeRexServer.Welcome()
+        fresh.clientID = "client:00000000-0000-7000-8000-000000000003"
+        let session = hostSession([await rig.host([.server(first), .server(second, welcome: fresh)])])
+        defer { Task { await session.end() } }
+        await session.resume()
+        let chunks = Chunks()
+        let store = try await openPainted(rig, session: session, chunks: chunks)
+
+        rig.reads.set(redraw: "restored")
+        rig.world.restart(as: "instance-0002")
+        await first.close(.goingAway, reason: "shutting down")
+        try await waitUntil("the new data link") { await rig.endpoint.handshakes.count == 2 }
+        await rig.begin(stream: 1)
+        try await waitUntil("the fresh paint") { chunks.all.count == 2 && store.status == .live }
+        #expect(chunks.all.last == Self.painted("restored"))
+        await store.stop()
     }
 
     /// Suspending with the app ends the terminal's link with the SSH

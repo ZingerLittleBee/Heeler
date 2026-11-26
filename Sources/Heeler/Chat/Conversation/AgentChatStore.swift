@@ -14,6 +14,9 @@ struct AgentChatSource: Sendable {
     let agentInfo: @Sendable () async throws -> Agent
     let cache: any ChatTranscriptCache
     let adapter: ChatTranscriptAdapter
+    /// Where images Chat reads whole from the Host are kept, so showing one
+    /// again does not read it again; nil keeps none.
+    var fileCache: HostFileCache? = nil
     /// Looks up only a saved binding for this exact Agent identity, waiting
     /// for the local directory to load. It never confirms a live session.
     var cachedSession: @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil }
@@ -87,6 +90,16 @@ enum ChatCandidatePreview: Equatable, Sendable {
 @MainActor
 @Observable
 final class AgentChatStore {
+    var ampConnection: AmpChatConnection? { source.files.amp }
+    private var ampBinding: AmpChatTarget?
+
+    var displayedAmpBinding: AmpChatTarget? {
+        guard isHostConnected, !conversation.isFromCache, conversation.readFailure == nil,
+            case .following(let path) = conversation.phase, let target = ampBinding,
+            let thread = target.binding.thread, path == AmpRecordSource(thread: thread).path,
+            followed?.sessionID == thread else { return nil }
+        return target
+    }
     struct Timing: Sendable {
         var activeInterval: Duration = .seconds(1)
         var idleInterval: Duration = .seconds(4)
@@ -264,9 +277,27 @@ final class AgentChatStore {
     /// terminal, read from how the program was launched. It describes the
     /// process, so it outlives a change of conversation.
     private(set) var launchNotice: ChatLaunchNotice?
+    /// A launch notice the user dismissed from the banner over the
+    /// conversation. Cleared once the notice itself goes away or the pane's
+    /// Agent changes, so a later launch on the shared server warns again.
+    private(set) var dismissedLaunchNotice: ChatLaunchNotice?
     /// Whether a read of the launch has finished, so a missing notice
     /// means none rather than not known yet.
     private(set) var hasCheckedLaunch = false
+
+    /// The launch notice to show in Chat's banner over the conversation, or
+    /// nil when none applies or the user dismissed it.
+    var visibleLaunchNotice: ChatLaunchNotice? {
+        launchNotice == dismissedLaunchNotice ? nil : launchNotice
+    }
+
+    /// Hides the current launch notice's banner until the notice clears and
+    /// returns or the pane's Agent changes.
+    func dismissLaunchNotice() {
+        guard let launchNotice else { return }
+        dismissedLaunchNotice = launchNotice
+        dismissedLaunchNotices.dismiss(launchNotice, hostID: source.hostID, terminalID: agent.terminalID)
+    }
     /// The candidate list the user asked for.
     private(set) var candidates = ChatCandidatesState.notAsked
     /// Where the user's confirmation of a candidate stands.
@@ -301,6 +332,9 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     @ObservationIgnored private let source: AgentChatSource
+    /// Where this Agent's images are kept, as `source.fileCache` allows.
+    @ObservationIgnored private let keptFiles: ChatImagePreviewReader.Kept?
+    @ObservationIgnored private let dismissedLaunchNotices: ChatLaunchNoticeDismissalStore
     /// The pane as a Blocked card types into it: on a herdr-core Host, each
     /// step only while the process read last still holds the terminal.
     var screenIO: BlockedScreenIO { source.screen }
@@ -541,6 +575,7 @@ final class AgentChatStore {
         agent: Agent,
         program: ChatProgram,
         source: AgentChatSource,
+        dismissedLaunchNotices: ChatLaunchNoticeDismissalStore = ChatLaunchNoticeDismissalStore(defaults: nil),
         timing: Timing = Timing(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -548,7 +583,14 @@ final class AgentChatStore {
         self.agent = agent
         self.program = program
         self.source = source
-        thumbnails = ChatImageThumbnails(source: .init(files: source.files))
+        self.dismissedLaunchNotices = dismissedLaunchNotices
+        self.dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
+            hostID: source.hostID, terminalID: agent.terminalID)
+        let keptFiles = source.fileCache.map {
+            ChatImagePreviewReader.Kept(cache: $0, hostID: source.hostID, opener: agent.terminalID)
+        }
+        self.keptFiles = keptFiles
+        thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: keptFiles))
         self.timing = timing
         self.now = now
         let resolution = ConversationReference.resolve(agent.agentSession)
@@ -728,12 +770,13 @@ final class AgentChatStore {
     /// thumbnails come from ``thumbnails``. A path a message names may be
     /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
+        try await ChatImagePreviewReader.read(
+            path: try await resolveHostPath(path), files: source.files, kept: keptFiles)
     }
 
-    func resolveHostPath(_ path: String) async throws -> String {
+    func resolveHostPath(_ path: String, files: ChatHostFiles? = nil) async throws -> String {
         if path.hasPrefix("/") { return path }
-        let home = path.hasPrefix("~/") ? try await source.files.home() : nil
+        let home = path.hasPrefix("~/") ? try await (files ?? source.files).home() : nil
         let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
         guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
             throw ChatImagePreviewError.invalidPath
@@ -1041,8 +1084,14 @@ final class AgentChatStore {
         let sessionChanged = next.agentSession != agent.agentSession
         let identityChanged = !sameIdentity(agent, next)
         if identityChanged {
+            let previousTerminalID = agent.terminalID
+            if previousTerminalID != next.terminalID {
+                dismissedLaunchNotices.clear(hostID: source.hostID, terminalID: previousTerminalID)
+            }
             forgetStaleSession()
             evidenceReason = nil
+            dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
+                hostID: source.hostID, terminalID: next.terminalID)
             agyScreenCheckUnavailable = false
             needsAgyScreenCheck = true
             sessionEvidenceMayHaveChanged()
@@ -1403,13 +1452,13 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
-        guard source.sessionEvidence == nil else { return false }
+        guard source.sessionEvidence == nil || (program == .amp && isVisible) else { return false }
         let interval: TimeInterval
         if engine == nil || isUnavailable || agentRefreshFailure != nil
             || consecutiveAgentRefreshLinkFailures > 0
         {
             interval = timing.sessionRecheck
-        } else if isVisible, ChatAgentActivity(agent.status) == .idle {
+        } else if isVisible, program == .amp || ChatAgentActivity(agent.status) == .idle {
             interval = timing.idleSessionRecheck
         } else {
             return false
@@ -1489,6 +1538,13 @@ final class AgentChatStore {
     /// Follows what a check of the Agent's process found, as `adoptRecord` does
     /// a herdr record.
     private func adoptEvidence(_ evidence: ChatSessionEvidence) {
+        if let amp = source.files.amp {
+            if let before = ampBinding, let after = amp.current, before != after,
+                before.binding.thread == after.binding.thread {
+                adopt(.noSession)
+            }
+            ampBinding = amp.current
+        }
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
             forgetPick()
@@ -1618,15 +1674,15 @@ final class AgentChatStore {
     }
 
     /// Due while Chat shows the conversation, after anything that may mean
-    /// the program was started again, and every session recheck while a
-    /// notice shows, so it clears once the user restarts the program, or
-    /// after a failed read.
+    /// the program was started again, and every session recheck while an
+    /// undismissed notice shows, so it clears once the user restarts the
+    /// program, or after a failed read.
     private var launchCheckIsDue: Bool {
         guard program.mayShareSessionServer, isVisible, source.processInfo != nil, !launchCheckUnavailable else {
             return false
         }
         if needsLaunchCheck { return true }
-        guard launchNotice != nil || launchCheckFailed, let lastLaunchCheck else { return false }
+        guard visibleLaunchNotice != nil || launchCheckFailed, let lastLaunchCheck else { return false }
         return now().timeIntervalSince(lastLaunchCheck) >= timing.sessionRecheck
     }
 
@@ -1645,6 +1701,7 @@ final class AgentChatStore {
             if case .hostFeatureUnavailable? = error as? TransportError {
                 launchCheckUnavailable = true
                 launchNotice = nil
+                clearDismissedLaunchNotice()
             } else {
                 launchCheckFailed = true
             }
@@ -1666,7 +1723,14 @@ final class AgentChatStore {
         guard !Task.isCancelled else { return }
         launchCheckFailed = false
         if launchNotice != notice { launchNotice = notice }
+        if dismissedLaunchNotice != notice { clearDismissedLaunchNotice() }
         hasCheckedLaunch = true
+    }
+
+    private func clearDismissedLaunchNotice() {
+        guard dismissedLaunchNotice != nil else { return }
+        dismissedLaunchNotice = nil
+        dismissedLaunchNotices.clear(hostID: source.hostID, terminalID: agent.terminalID)
     }
 
     private func sameIdentity(_ lhs: Agent, _ rhs: Agent) -> Bool {
@@ -1700,9 +1764,10 @@ final class AgentChatStore {
     private var showsAwaitingReason: Bool {
         switch conversation.phase {
         case .unavailable(.noSession), .unavailable(.startScreen), .unavailable(.cannotTellSession),
-            .unavailable(.noConversationYet), .unavailable(.cannotTellSessionOnWindows),
-            .unavailable(.cannotReadProcessesOnWindows), .unavailable(.extensionNotLoaded),
-            .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon), .unavailable(.cannotTellSessionOnRex):
+            .unavailable(.multipleSessions), .unavailable(.noConversationYet),
+            .unavailable(.cannotTellSessionOnWindows), .unavailable(.cannotReadProcessesOnWindows),
+            .unavailable(.extensionNotLoaded), .unavailable(.transcriptOff), .unavailable(.codexSharedDaemon),
+            .unavailable(.cannotTellSessionOnRex):
             true
         default: false
         }
@@ -2165,8 +2230,8 @@ final class AgentChatStore {
         guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
         else { return nil }
         switch reason {
-        case .cannotTellSession, .extensionNotLoaded, .cannotTellSessionOnWindows, .cannotReadProcessesOnWindows,
-            .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
+        case .cannotTellSession, .multipleSessions, .extensionNotLoaded, .cannotTellSessionOnWindows,
+            .cannotReadProcessesOnWindows, .transcriptOff, .codexSharedDaemon, .cannotTellSessionOnRex:
             sessionEvidenceMayHaveChanged()
             return Self.cannotTellSessionReason(program)
         default:
@@ -3250,7 +3315,7 @@ extension ChatProgram {
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
-        case .opencode: false
+        case .opencode, .amp: false
         }
     }
 
@@ -3263,7 +3328,7 @@ extension ChatProgram {
         case .pi, .omp, .grok, .opencode: true
         // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
         // checkpoint; a refused one was not observed.
-        case .claude, .codex, .agy: false
+        case .claude, .codex, .agy, .amp: false
         }
     }
 
@@ -3277,7 +3342,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode, .agy: false
+        case .claude, .codex, .opencode, .agy, .amp: false
         }
     }
 
@@ -3290,7 +3355,7 @@ extension ChatProgram {
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy: true
-        case .opencode: false
+        case .opencode, .amp: false
         }
     }
 
@@ -3303,7 +3368,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
         case .opencode: true
         }
     }
@@ -3314,7 +3379,7 @@ extension ChatProgram {
     /// needs the program's terminal title in the check.
     var confirmsSessionBeforeSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
         case .opencode: true
         }
     }
@@ -3325,7 +3390,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode, .agy: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy, .amp: false
         }
     }
 }

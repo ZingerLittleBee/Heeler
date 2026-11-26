@@ -126,7 +126,6 @@ struct RexSessionBinderTests {
         ("another block", ["REX_SESSION": Self.sessionID, "REX_BLOCK": "block:other", "HOME": Self.home]),
         ("another session", ["REX_SESSION": "session:other", "REX_BLOCK": Self.blockID, "HOME": Self.home]),
         ("no block", ["REX_SESSION": Self.sessionID, "HOME": Self.home]),
-        ("no session", ["REX_BLOCK": Self.blockID, "HOME": Self.home]),
         ("no Rex at all", ["HOME": Self.home]),
     ])
     func rejectsAProcessOutsideTheTerminal(_ label: String, _ environment: [String: String]) async throws {
@@ -423,5 +422,122 @@ struct RexSessionBinderTests {
         #expect(try await binder.check(Self.record(pid: nil, pick: pick)) == .pickUnconfirmed(.cannotTellSession(.claude)))
         #expect(try await binder.candidates(of: Self.record(pid: nil)) == .noProcess)
         #expect(await table.requests.isEmpty)
+    }
+
+    // MARK: Rex 0.1.0-preview.23 and native Windows
+
+    /// Rex 0.1.0-preview.23 sets `REX_BLOCK` and no `REX_SESSION`, on macOS
+    /// and Windows alike (rex-compatibility.md). A block id names one block
+    /// on the server, so a process with no session id still binds by it, and
+    /// one naming another session still does not.
+    @Test func aServerThatSetsNoSessionIDBindsByTheBlock() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        var environment = Self.rexEnvironment()
+        environment["REX_SESSION"] = nil
+        await table.add(.init(pid: 4000, name: "claude", start: Self.start, environment: environment))
+        await files.write(Self.registryEntry(), at: "\(Self.home)/.claude/sessions/4000.json")
+
+        let evidence = try await Self.binder(table: table, files: files).check(Self.record())
+
+        #expect(evidence == .bound(sessionID: Self.first, transcriptRoot: "\(Self.home)/.claude", directory: "/work/app"))
+    }
+
+    private static let windowsHome = "/C:/Users/dev"
+    private static let windowsStart = "134400856839440607"
+
+    /// What Rex 0.1.0-preview.23 named of a Claude Code on Windows 11: the
+    /// image, and the path it was started by.
+    private static func windowsRecord(pick: String? = nil) -> HerdrCoreTerminalRecord {
+        HerdrCoreTerminalRecord(
+            rexTerminal: RexTerminalDetails(
+                program: "claude.exe", directory: "D:\\work\\app", processID: 7240,
+                argv0: "C:\\Users\\dev\\.local\\bin\\claude.exe"),
+            paneID: RexPaneAddress(sessionID: sessionID, blockID: blockID).paneID, chatPick: pick)
+    }
+
+    private static func windowsBinder(table: ScriptedProcessTable, files: VirtualHostFiles) -> HerdrCoreSessionBinder {
+        let details = RexTerminalDetails(
+            program: "claude.exe", directory: "D:\\work\\app", processID: 7240,
+            argv0: "C:\\Users\\dev\\.local\\bin\\claude.exe")
+        return binder(
+            table: table, files: files, hostSystem: .windows,
+            scope: scope(names: RexConsoleProjection.foregroundNames(details, onWindows: true)))
+    }
+
+    /// Rex names a Windows foreground by its image and a path that parts at
+    /// `\`; a Windows process read names it in lower case without `.exe`.
+    @Test func aWindowsForegroundIsNamedAsAWindowsReadNamesIt() {
+        let details = RexTerminalDetails(
+            program: "Claude.exe", directory: "D:\\work", processID: 7240,
+            argv0: "C:\\Users\\dev\\.local\\bin\\claude.exe")
+        #expect(RexConsoleProjection.foregroundNames(details, onWindows: true) == ["claude"])
+        let bare = RexTerminalDetails(program: "claude.exe", directory: "D:\\work", processID: 7240, argv0: "claude")
+        #expect(RexConsoleProjection.foregroundNames(bare, onWindows: true) == ["claude"])
+        // A Mac or Linux name keeps its case and parts at `/` alone.
+        let posix = RexTerminalDetails(program: "Claude", directory: "/work", processID: 4000, argv0: "/opt/bin/claude")
+        #expect(RexConsoleProjection.foregroundNames(posix) == ["Claude", "claude"])
+    }
+
+    /// A Claude Code in a Rex terminal on Windows binds by its registry
+    /// entry, whose `procStart` is the process's creation FILETIME, under the
+    /// home a Windows read gives in the form SFTP opens. The read asks for no
+    /// tmux variable, which native Windows never sets, so the command stays
+    /// under `cmd.exe`'s limit.
+    @Test func bindsClaudeCodeInARexTerminalOnWindows() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.windowsHome)
+        await table.add(
+            .init(
+                pid: 7240, parent: 9540, name: "claude", start: Self.windowsStart,
+                environment: [
+                    "REX_BLOCK": Self.blockID, "REX_SERVER": "npipe:////./pipe/rex-S-1-5-21-1",
+                    "HOME": Self.windowsHome,
+                ]))
+        let entry = Data(
+            """
+            {"pid":7240,"sessionId":"\(Self.first)","cwd":"D:\\\\work\\\\app","startedAt":1795612085031,\
+            "procStart":"\(Self.windowsStart)","version":"2.1.332","kind":"interactive","entrypoint":"cli"}
+            """.utf8)
+        await files.write(entry, at: "\(Self.windowsHome)/.claude/sessions/7240.json")
+
+        let evidence = try await Self.windowsBinder(table: table, files: files).check(Self.windowsRecord())
+
+        #expect(
+            evidence
+                == .bound(
+                    sessionID: Self.first, transcriptRoot: "\(Self.windowsHome)/.claude", directory: "D:\\work\\app"))
+        let request = try #require(await table.requests.first)
+        #expect(request.pids == ["7240"])
+        #expect(Array(request.valuesOf.prefix(3)) == ["REX_SESSION", "REX_BLOCK", "HC_SCOPE"])
+        #expect(!request.valuesOf.contains("TMUX") && !request.valuesOf.contains("TMUX_PANE"))
+        // The read fits the command line for any pid Windows hands out.
+        var widest = request
+        widest.pids = ["4294967292"]
+        widest.descendantsOf = "4294967292"
+        _ = try HostProcessReader.windowsCommand(widest, nonce: HostProcessReader.makeNonce())
+    }
+
+    /// On Windows a process in another block or session is another
+    /// terminal's, and the pid Rex named read under
+    /// another image is another process by now.
+    @Test(arguments: [
+        ("another block", "claude", ["REX_BLOCK": "block:other"]),
+        ("another session", "claude", ["REX_BLOCK": Self.blockID, "REX_SESSION": "session:other"]),
+        ("another image", "node", ["REX_BLOCK": Self.blockID]),
+    ] as [(String, String, [String: String])])
+    func aWindowsProcessOutsideTheTerminalBindsNothing(
+        _ label: String, name: String, environment: [String: String]
+    ) async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.windowsHome)
+        await table.add(
+            .init(
+                pid: 7240, parent: 9540, name: name, start: Self.windowsStart,
+                environment: environment.merging(["HOME": Self.windowsHome]) { $1 }))
+
+        let evidence = try await Self.windowsBinder(table: table, files: files).check(Self.windowsRecord())
+
+        #expect(evidence == .unavailable(.cannotTellSessionOnWindows(.claude)), "\(label)")
     }
 }

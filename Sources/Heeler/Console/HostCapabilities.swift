@@ -34,6 +34,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// A core on a native Windows machine. Its Terminals start in directories of that
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
+    var offersAmpPlugin = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -63,7 +64,7 @@ struct HostCapabilities: Equatable, Sendable {
     }
 
     func offersChat(for program: ChatProgram) -> Bool {
-        chat && chatPrograms?.contains(program) != false
+        chat && (program != .amp || offersAmpPlugin) && chatPrograms?.contains(program) != false
     }
 
     func renameWorkspace(id: String) -> Bool {
@@ -93,9 +94,13 @@ struct HostCapabilities: Equatable, Sendable {
         return ShellTerminalCreationRequest(workspaceID: workspaceID, cwd: cwd)
     }
 
+    /// A Host whose directories, as it reports them, may be a native Windows
+    /// machine's: a Rex Host's, on whichever system its server runs.
+    var startsInWindowsDirectories = false
+
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore)
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: isNativeWindowsCore || startsInWindowsDirectories)
     }
 
     /// What a window may do with this Host's terminals. Windows only take
@@ -127,27 +132,33 @@ extension HostCapabilities {
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
         isLocatingCore: Bool = false
     ) {
-        // A Rex Host starts and closes no Agent, Terminal or Tab, renames
+        // A Rex Host starts a shell for New Terminal, in a new window of a
+        // session or in a new session it names (ADR 0049's update of
+        // 2026-11-25), and starts no Agent and closes nothing, renames
         // nothing, has no Worktrees, Host scripts or layout, and is never
-        // taken over (ADR 0049), so it stays out of New Agent and New
-        // Terminal. Its Terminals and Agents open and take input (ADRs 0051 to
-        // 0054). Its Agents offer Composer Send and Stop, and Chat for
-        // `rexChatPrograms` once the server has named Linux or macOS, read and
-        // typed over the Host's own connection (ADRs 0055 and 0056). Named
-        // so, it also stages images and files over SFTP for them, as a tmux
-        // Host does.
+        // taken over (ADR 0049), so it stays out of New Agent. Its Terminals
+        // and Agents open and take input (ADRs 0051 to 0054). Its Agents offer
+        // Composer Send and Stop, and Chat for `rexChatPrograms` once the
+        // server has named Linux or macOS, or for `rexWindowsChatPrograms`
+        // once it has named Windows, read and typed over the Host's own
+        // connection (ADRs 0055 and 0056). Wherever Chat opens it also stages
+        // images and files over SFTP for them: on Linux and macOS as a tmux
+        // Host does, on native Windows into the account's temp folder by SFTP
+        // alone (ADR 0056's update of 2026-11-25).
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
                 case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
+                case HerdrCoreLocator.windowsKernel: Self.rexWindowsChatPrograms
                 default: nil
                 }
             self.init(
-                startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false,
+                startsAgents: false, startsTerminals: true, renameAgent: false, renamesWorkspaces: false,
                 worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
                 tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
-                rowsReadChanges: false, terminalsShowInOneWindow: true)
+                rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
+                startsInWindowsDirectories: true)
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -199,6 +210,7 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
+            offersAmpPlugin: offered && platform == .posix,
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
@@ -251,20 +263,28 @@ extension HostCapabilities {
     /// OpenCode binds only with Heeler's plugin, so none of those is offered.
     static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp]
 
+    /// The programs a Rex Host's Chat opens for on native Windows, read as a
+    /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
+    /// from its own process and registry entry, which the owner's check
+    /// confirmed against Rex 0.1.0-preview.23 on Windows 11 (2026-11-25).
+    /// Codex reads open files, which nothing reads on Windows, and Pi and Oh
+    /// My Pi wait for a check of Heeler's extension in a Rex terminal there.
+    static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude]
+
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
     /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases)
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.amp])
 }
 
 extension Host {
     var capabilities: HostCapabilities { HostCapabilities(serverKind: serverKind) }
 
     /// For a directory the Host reported, which says its own platform: a core
-    /// Host's is a Windows path only on native Windows.
+    /// or Rex Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore)
+        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore || serverKind == .rex)
     }
 }
 

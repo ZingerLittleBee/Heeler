@@ -118,7 +118,7 @@ struct UsageLimitsWidgetProvider: AppIntentTimelineProvider {
         let now = Date.now
         let snapshot = UsageWidgetSnapshotStore().read()
         let host = configuration.host.flatMap { snapshot?.host($0.id) }
-            ?? snapshot?.hosts.first { !$0.limits.isEmpty }
+            ?? snapshot?.defaultLimitsHost
         let resets = (host?.limits ?? []).flatMap(\.windows).compactMap(\.resetsAt).filter { $0 > now }
         guard let soonest = resets.min() else {
             return Timeline(entries: [entry(configuration, snapshot: snapshot, at: now)], policy: .never)
@@ -169,7 +169,7 @@ struct UsageLimitsWidgetIntent: WidgetConfigurationIntent {
     @Parameter(title: "Host")
     var host: UsageLimitsHostEntity?
 
-    /// Small and Lock Screen sizes show one program; larger ones show both.
+    /// Small and Lock Screen sizes show one program. Larger sizes can show several.
     @Parameter(title: "Program", default: .automatic)
     var program: UsageLimitsProgram
 
@@ -238,10 +238,8 @@ struct UsageLimitsHostQuery: EntityQuery {
 
     func suggestedEntities() async throws -> [UsageLimitsHostEntity] { suggestions() }
 
-    /// The first Host that reported Usage Limits.
     func defaultResult() async -> UsageLimitsHostEntity? {
-        let hosts = UsageWidgetSnapshotStore().read()?.hosts ?? []
-        return (hosts.first { !$0.limits.isEmpty } ?? hosts.first).map {
+        UsageWidgetSnapshotStore().read()?.defaultLimitsHost.map {
             UsageLimitsHostEntity(id: $0.id, name: $0.name)
         }
     }

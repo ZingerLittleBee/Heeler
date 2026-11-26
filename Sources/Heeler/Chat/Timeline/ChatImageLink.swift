@@ -62,11 +62,17 @@ enum ChatImageLink {
     }
 
     /// Whether `path` is a temporary Host path created when Heeler stages an
-    /// image (POSIX `.../heeler.../stage-.../...` or native Windows `herdr-core`
+    /// image (POSIX `.../heeler.../stage-.../...`, a Rex Agent's on native
+    /// Windows `...\heeler...\stage-...\image...`, or native Windows `herdr-core`
     /// `...\herdr-core\...\files\<terminal>\image...`).
     static func isStagedImagePath(_ path: String) -> Bool {
         if RemoteHostPath.isWindowsAbsolute(path) {
             let parts = path.split { $0 == "\\" || $0 == "/" }.map { $0.lowercased() }
+            if let filename = parts.last, filename.hasPrefix("image"), ChatImagePath.hasImageExtension(filename),
+                hasStageHierarchy(parts.map { Substring($0) })
+            {
+                return true
+            }
             guard parts.count >= 5,
                 let filename = parts.last,
                 filename.hasPrefix("image"),
@@ -82,11 +88,17 @@ enum ChatImageLink {
     }
 
     /// Whether `path` is a temporary Host path created when Heeler stages a
-    /// video (POSIX `.../heeler.../stage-.../*.{mp4,m4v,mov}` or native
+    /// video (POSIX `.../heeler.../stage-.../*.{mp4,m4v,mov}`, a Rex Agent's on
+    /// native Windows `...\heeler...\stage-...\*.{mp4,m4v,mov}`, or native
     /// Windows `herdr-core` `...\herdr-core\...\files\<terminal>\*.{mp4,m4v,mov}`).
     static func isStagedVideoPath(_ path: String) -> Bool {
         if RemoteHostPath.isWindowsAbsolute(path) {
             let parts = path.split { $0 == "\\" || $0 == "/" }.map { $0.lowercased() }
+            if let filename = parts.last, namesVideoFile(filename),
+                hasStageHierarchy(parts.map { Substring($0) })
+            {
+                return true
+            }
             guard parts.count >= 5,
                 let filename = parts.last,
                 namesVideoFile(filename),
@@ -105,7 +117,12 @@ enum ChatImageLink {
     }
 
     private static func hasPOSIXStageHierarchy(_ path: String) -> Bool {
-        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        hasStageHierarchy(path.split(separator: "/", omittingEmptySubsequences: true))
+    }
+
+    /// `.../heeler.../stage-.../<file>`, which Heeler stages on POSIX and, for
+    /// a Rex Agent, on native Windows too.
+    private static func hasStageHierarchy(_ components: [Substring]) -> Bool {
         guard components.count >= 3 else { return false }
         let stage = components[components.count - 2]
         let parent = components[components.count - 3]
@@ -246,7 +263,8 @@ enum ChatImageLink {
         var plain = ""
         for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             if index > 0 { plain += "\n" }
-            guard let path = path(written: String(line)), let range = line.range(of: path, options: .literal) else {
+            let media = path(written: String(line))
+            guard let path = media ?? ChatFileLink.path(String(line)), let range = line.range(of: path, options: .literal) else {
                 plain += line
                 continue
             }
@@ -254,7 +272,7 @@ enum ChatImageLink {
             result.append(AttributedString(plain))
             plain = String(line[range.upperBound...])
             var piece = AttributedString(path)
-            piece[PathAttribute.self] = path
+            if media != nil { piece[PathAttribute.self] = path } else { piece[ChatFileLink.self] = path }
             result.append(piece)
         }
         result.append(AttributedString(plain))
@@ -267,7 +285,7 @@ enum ChatImageLink {
         var start = text.startIndex
         for range in pathRanges(in: text) {
             if start < range.lowerBound {
-                content.append(AttributedString(String(text[start..<range.lowerBound]), attributes: attributes))
+                ChatFileLink.append(text[start..<range.lowerBound], attributes: attributes, to: &content)
             }
             var piece = AttributedString(String(text[range]), attributes: attributes)
             piece[PathAttribute.self] = String(text[range])
@@ -275,7 +293,7 @@ enum ChatImageLink {
             start = range.upperBound
         }
         if start < text.endIndex {
-            content.append(AttributedString(String(text[start...]), attributes: attributes))
+            ChatFileLink.append(text[start...], attributes: attributes, to: &content)
         }
     }
 
@@ -528,5 +546,70 @@ enum ChatImageLink {
             return false
         }
         return true
+    }
+}
+
+/// A non-media Host file in an assistant message. Keep the mark inert in
+/// other Markdown surfaces and separate from thumbnail and image menu data.
+enum ChatFileLink: AttributedStringKey {
+    typealias Value = String
+    static let name = "HeelerChatFilePath"
+
+    static func path(_ text: String, allowsSpaces: Bool = false) -> String? {
+        let path = text.trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty, path.utf8.count <= 4096, !path.hasPrefix("-"),
+            !path.hasPrefix("~") || path.hasPrefix("~/"), !path.contains("//"),
+            !path.hasSuffix("/"), let name = path.split(separator: "/").last, name != ".", name != "..",
+            path.rangeOfCharacter(from: .controlCharacters) == nil,
+            path.rangeOfCharacter(from: CharacterSet(charactersIn: "*?\"'`<>|$\\:;=#&()[]{}")) == nil,
+            allowsSpaces || !path.contains(where: \.isWhitespace),
+            !ChatImagePath.hasMediaExtension(path)
+        else { return nil }
+        return path
+    }
+
+    static func destination(_ url: URL) -> String? {
+        if url.isFileURL {
+            return ChatImagePath.resolve(url.absoluteString, cwd: nil).flatMap { path($0, allowsSpaces: true) }
+        }
+        guard url.scheme == nil, url.host == nil, url.query == nil, url.fragment == nil,
+            let decoded = url.relativeString.removingPercentEncoding else { return nil }
+        return path(decoded, allowsSpaces: true)
+    }
+
+    /// In prose only a complete token containing a slash looks enough like a
+    /// path. Don't start matching halfway through a URL or command argument.
+    static func append(_ text: Substring, attributes: AttributeContainer, to content: inout AttributedString) {
+        var start = text.startIndex
+        if text.contains("/") {
+            let tokens = text.split { $0.isWhitespace || "\"'`()[]{}<>,，。；：、！？（）【】「」『』《》“”‘’".contains($0) }
+            for token in tokens where token.contains("/") {
+                var end = token.endIndex
+                while end > token.startIndex, ".;!?".contains(text[text.index(before: end)]) {
+                    end = text.index(before: end)
+                }
+                guard let path = path(String(text[token.startIndex..<end])) else { continue }
+                content.append(AttributedString(String(text[start..<token.startIndex]), attributes: attributes))
+                var piece = AttributedString(path, attributes: attributes)
+                piece[Self.self] = path
+                content.append(piece)
+                start = end
+            }
+        }
+        content.append(AttributedString(String(text[start...]), attributes: attributes))
+    }
+
+    static func enabling(in content: AttributedString, enabled: Bool) -> AttributedString {
+        guard enabled else { return content }
+        var result = content
+        for run in content.runs {
+            guard let path = run[Self.self] else { continue }
+            var url = URLComponents()
+            url.scheme = "heeler-chat-file"
+            url.host = "open"
+            url.queryItems = [URLQueryItem(name: "path", value: path)]
+            result[run.range].link = url.url
+        }
+        return result
     }
 }

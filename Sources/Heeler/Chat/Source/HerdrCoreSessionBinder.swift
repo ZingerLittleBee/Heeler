@@ -81,6 +81,11 @@ enum HerdrCoreHostSystem: Equatable, Sendable {
     func cannotTellSession(_ program: ChatProgram) -> ChatUnavailableReason {
         self == .windows ? .cannotTellSessionOnWindows(program) : .cannotTellSession(program)
     }
+
+    /// What Chat says when the process holds more than one conversation, in this Host's form.
+    func multipleSessions(_ program: ChatProgram) -> ChatUnavailableReason {
+        .multipleSessions(program, offersPick: self != .windows)
+    }
 }
 
 /// Binds a herdr-core Agent's Chat from what the Host shows about the Agent's own
@@ -162,6 +167,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
                 case .codex: try await checkCodex(record, tree: tree)
                 case .grok: try await checkGrokBuild(tree)
+                case .amp: .unavailable(.amp(.unidentified))
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
                 case .agy: checkAntigravity(record, tree: tree)
@@ -185,6 +191,10 @@ struct HerdrCoreSessionBinder: Sendable {
 
     var cannotTell: ChatSessionEvidence {
         .unavailable(cannotTellReason)
+    }
+
+    var multipleSessions: ChatSessionEvidence {
+        .unavailable(hostSystem.multipleSessions(program))
     }
 
     /// A Pi or Oh My Pi in a Rex terminal has its own reason, since what names
@@ -229,7 +239,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
-        case .opencode: ProcessAsk()
+        case .opencode, .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         case .agy: antigravityProcessAsk
         }
@@ -251,6 +261,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok:
             isOnWindows
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
+        case .amp: nil
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
         // A native binary that calls itself `agy`, with nothing of its own under
@@ -267,7 +278,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode: nil
+        case .opencode, .amp: nil
         case .pi, .omp: piFamilySessions(of: process)
         case .agy: antigravityRoot(of: process)
         }
@@ -404,7 +415,7 @@ struct HerdrCoreSessionBinder: Sendable {
     ) async throws -> HerdrCoreTerminalProcesses? {
         guard let rootPID = record.foreground?.pid ?? root else { return nil }
         let root = String(rootPID)
-        let nested = HerdrCoreTerminalProcesses.nestedMultiplexerVariables
+        let nested = HerdrCoreTerminalProcesses.nestedMultiplexerVariables(onWindows: isOnWindows)
         let request = HostProcessReader.Request(
             pids: [root],
             readsStart: true,
@@ -423,9 +434,13 @@ struct HerdrCoreSessionBinder: Sendable {
             // A walk that answered without it: the process is gone.
             return nil
         }
-        var outer: [String: String] = [:]
+        var outer: [String: HostProcessReader.Variable] = [:]
         for variable in nested {
-            if case .value(let value)? = facts[root]?.variables[variable] { outer[variable] = value }
+            if case .value(let value)? = facts[root]?.variables[variable] {
+                outer[variable] = .value(value)
+            } else {
+                outer[variable] = .unset
+            }
         }
         let tree = HerdrCoreTerminalProcesses(
             facts: facts, root: root, scope: .rex(sessionID: sessionID, blockID: blockID, outer: outer))
@@ -523,13 +538,22 @@ struct HerdrCoreTerminalProcesses: Sendable {
     static let scopeVariable = "HC_SCOPE"
     static let tmuxVariable = "TMUX"
     static let tmuxPaneVariable = "TMUX_PANE"
-    /// What Rex sets for every program in a terminal: its session and block
-    /// ids (Rex 0.1.0-preview.14, rex-compatibility.md).
+    /// What Rex sets for every program in a terminal: its block id, and up
+    /// to 0.1.0-preview.14 its session id. Rex 0.1.0-preview.23 sets
+    /// `REX_BLOCK` and no `REX_SESSION`, on macOS and Windows alike, and a
+    /// block id names one block on the server (rex-compatibility.md).
     static let rexSessionVariable = "REX_SESSION"
     static let rexBlockVariable = "REX_BLOCK"
     /// What a multiplexer Heeler knows sets for the programs in its own
     /// panes, so a process run in one inside a Rex terminal shows it.
     static let nestedMultiplexerVariables = [tmuxVariable, tmuxPaneVariable, scopeVariable]
+
+    /// Those a read asks for. Native Windows runs no tmux, and its process
+    /// read goes in one command line `cmd.exe` caps, so it asks for
+    /// herdr-core's alone.
+    static func nestedMultiplexerVariables(onWindows: Bool) -> [String] {
+        onWindows ? [scopeVariable] : nestedMultiplexerVariables
+    }
 
     struct TmuxEnvironment: Equatable, Sendable {
         let socketPath: String
@@ -539,10 +563,10 @@ struct HerdrCoreTerminalProcesses: Sendable {
     enum Scope: Equatable, Sendable {
         case herdrCore(String)
         case tmux(paneID: String, socketPath: String, serverPID: Int)
-        /// `outer` is what the terminal's foreground carries of
-        /// `nestedMultiplexerVariables`, which a process in the terminal
-        /// carries too.
-        case rex(sessionID: String, blockID: String, outer: [String: String])
+        /// `outer` is what the terminal's foreground carries of each of
+        /// `nestedMultiplexerVariables` the read asked for, a value or unset,
+        /// which a process in the terminal carries too.
+        case rex(sessionID: String, blockID: String, outer: [String: HostProcessReader.Variable])
     }
 
     let facts: [String: HostProcessReader.Facts]
@@ -596,12 +620,12 @@ struct HerdrCoreTerminalProcesses: Sendable {
             else { return false }
             return parsed == TmuxEnvironment(socketPath: socketPath, serverPID: serverPID)
         case .rex(let sessionID, let blockID, let outer):
-            guard variables[Self.rexSessionVariable] == .value(sessionID),
-                variables[Self.rexBlockVariable] == .value(blockID)
+            // A server that sets no session id leaves the block's to say it.
+            guard variables[Self.rexBlockVariable] == .value(blockID),
+                variables[Self.rexSessionVariable] == .value(sessionID)
+                    || variables[Self.rexSessionVariable] == .unset
             else { return false }
-            return Self.nestedMultiplexerVariables.allSatisfy { name in
-                variables[name] == (outer[name].map(HostProcessReader.Variable.value) ?? .unset)
-            }
+            return outer.allSatisfy { name, value in variables[name] == value }
         }
     }
 
@@ -613,8 +637,7 @@ struct HerdrCoreTerminalProcesses: Sendable {
         case .tmux:
             return variables[Self.tmuxVariable] == .unavailable || variables[Self.tmuxPaneVariable] == .unavailable
         case .rex:
-            return variables[Self.rexSessionVariable] == .unavailable
-                || variables[Self.rexBlockVariable] == .unavailable
+            return variables[Self.rexBlockVariable] == .unavailable
         }
     }
 

@@ -21,6 +21,54 @@ struct RexTerminalTheme: Sendable, Equatable {
     var palette: [String]
     /// `light` or `dark`, or nil to let the background decide.
     var scheme: String?
+
+    /// The server's built-in colors throughout, as a stream that sends no
+    /// theme has them.
+    static let builtIn = RexTerminalTheme(foreground: nil, background: nil, cursor: nil, palette: [], scheme: nil)
+
+    /// The escape sequences that give a terminal these default colors (ADR
+    /// 0051's update of 2026-11-25): OSC 10, 11 and 12 for the text,
+    /// background and cursor colors, or OSC 110, 111 and 112 back to the
+    /// view's own where the server keeps its built-in one, and OSC 4 for each
+    /// palette entry listed. Colors are written as `rgb:rr/gg/bb`, as Rex's
+    /// redraw writes its palette, and only from six hex digits, so nothing
+    /// else the server sent reaches the terminal.
+    var sequences: Data {
+        var text = ""
+        for (number, color) in [(10, foreground), (11, background), (12, cursor)] {
+            if let color = color.flatMap(Self.xColor) {
+                text += "\u{1B}]\(number);\(color)\u{1B}\\"
+            } else {
+                text += "\u{1B}]\(number + 100)\u{1B}\\"
+            }
+        }
+        for (index, color) in paletteEntries {
+            text += "\u{1B}]4;\(index);\(color)\u{1B}\\"
+        }
+        return Data(text.utf8)
+    }
+
+    /// The palette entries that can be read, as index and `rgb:` color.
+    var paletteEntries: [(index: Int, color: String)] {
+        palette.compactMap { entry in
+            let parts = entry.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2, let index = Int(parts[0]), (0...255).contains(index),
+                let color = Self.xColor(String(parts[1]))
+            else { return nil }
+            return (index, color)
+        }
+    }
+
+    /// The palette indices this theme sets.
+    var paletteIndices: Set<Int> { Set(paletteEntries.map(\.index)) }
+
+    /// `RRGGBB` or `#RRGGBB` as `rgb:rr/gg/bb`, or nil for anything else.
+    static func xColor(_ color: String) -> String? {
+        let hex = color.hasPrefix("#") ? color.dropFirst() : Substring(color)
+        guard hex.count == 6, hex.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
+        let digits = Array(hex.lowercased())
+        return "rgb:\(String(digits[0...1]))/\(String(digits[2...3]))/\(String(digits[4...5]))"
+    }
 }
 
 /// One of the stream's own messages.

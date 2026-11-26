@@ -2,7 +2,7 @@ import Foundation
 
 /// Why Chat may not show the conversation open in the Agent's terminal, read
 /// from how its program was launched rather than from the conversation.
-enum ChatLaunchNotice: Equatable, Sendable {
+enum ChatLaunchNotice: String, Codable, Equatable, Sendable {
     /// Codex runs on its shared background server, whose hooks carry the
     /// environment of whichever terminal started that server. herdr's
     /// integration can then report this Agent's conversation to another
@@ -26,10 +26,133 @@ enum ChatLaunchNotice: Equatable, Sendable {
 
     /// The user guide's section for the notice.
     var guideURL: URL? {
+        guideURL()
+    }
+
+    func guideURL(localization: String = Bundle.main.preferredLocalizations.first ?? "en") -> URL? {
         switch self {
         case .codexSharedServer:
-            URL(string: "https://docs.heeler.bybee.dev/chat-troubleshooting#codex-started-without---no-daemon")
+            ChatTroubleshootingGuide.url(for: .codexSharedServer, localization: localization)
         }
+    }
+}
+
+/// Remembers which live Agent terminal instances have had their launch notice
+/// banner dismissed, so the banner stays hidden across app restarts while the
+/// same terminal keeps running, and drops entries once the notice clears, the
+/// terminal disappears, or the Host is removed.
+@MainActor
+final class ChatLaunchNoticeDismissalStore {
+    struct Entry: Codable, Equatable, Sendable {
+        let hostID: Host.ID
+        let terminalID: String
+        let notice: ChatLaunchNotice
+    }
+
+    private struct Key: Hashable {
+        let hostID: Host.ID
+        let terminalID: String
+    }
+
+    static let defaultsKey = "chat.dismissed-launch-notices"
+    static let maxEntries = 64
+
+    // UserDefaults is documented thread-safe; Sendable modulo that promise.
+    private nonisolated(unsafe) let defaults: UserDefaults?
+    /// Most-recently dismissed first, capped at `maxEntries`.
+    private var entries: [Entry]
+    /// O(1) lookup by `(hostID, terminalID)`.
+    private var noticeByTerminal: [Key: ChatLaunchNotice] = [:]
+    /// Counts per Host so `hasEntries(for:)` is O(1).
+    private var countByHost: [Host.ID: Int] = [:]
+
+    init(defaults: UserDefaults? = .standard) {
+        self.defaults = defaults
+        if let defaults,
+            let data = defaults.data(forKey: Self.defaultsKey),
+            let decoded = try? JSONDecoder().decode([Entry].self, from: data)
+        {
+            self.entries = Array(decoded.prefix(Self.maxEntries))
+        } else {
+            self.entries = []
+        }
+        rebuildIndexes()
+    }
+
+    var isEmpty: Bool { entries.isEmpty }
+
+    func hasEntries(for hostID: Host.ID) -> Bool {
+        (countByHost[hostID] ?? 0) > 0
+    }
+
+    func dismissedNotice(hostID: Host.ID, terminalID: String) -> ChatLaunchNotice? {
+        noticeByTerminal[Key(hostID: hostID, terminalID: terminalID)]
+    }
+
+    func dismiss(_ notice: ChatLaunchNotice, hostID: Host.ID, terminalID: String) {
+        let key = Key(hostID: hostID, terminalID: terminalID)
+        if noticeByTerminal[key] == notice { return }
+        entries.removeAll { $0.hostID == hostID && $0.terminalID == terminalID }
+        entries.insert(Entry(hostID: hostID, terminalID: terminalID, notice: notice), at: 0)
+        if entries.count > Self.maxEntries {
+            entries.removeLast(entries.count - Self.maxEntries)
+        }
+        rebuildIndexes()
+        persist()
+    }
+
+    func clear(hostID: Host.ID, terminalID: String) {
+        guard noticeByTerminal[Key(hostID: hostID, terminalID: terminalID)] != nil else { return }
+        entries.removeAll { $0.hostID == hostID && $0.terminalID == terminalID }
+        rebuildIndexes()
+        persist()
+    }
+
+    func removeHost(_ hostID: Host.ID) {
+        guard hasEntries(for: hostID) else { return }
+        entries.removeAll { $0.hostID == hostID }
+        rebuildIndexes()
+        persist()
+    }
+
+    func retainHosts(_ hostIDs: Set<Host.ID>) {
+        guard entries.contains(where: { !hostIDs.contains($0.hostID) }) else { return }
+        entries.removeAll { !hostIDs.contains($0.hostID) }
+        rebuildIndexes()
+        persist()
+    }
+
+    func retainTerminals(hostID: Host.ID, terminalIDs: Set<String>) {
+        guard hasEntries(for: hostID),
+            entries.contains(where: { $0.hostID == hostID && !terminalIDs.contains($0.terminalID) })
+        else { return }
+        entries.removeAll { $0.hostID == hostID && !terminalIDs.contains($0.terminalID) }
+        rebuildIndexes()
+        persist()
+    }
+
+    private func rebuildIndexes() {
+        var notices: [Key: ChatLaunchNotice] = [:]
+        var counts: [Host.ID: Int] = [:]
+        for entry in entries {
+            let key = Key(hostID: entry.hostID, terminalID: entry.terminalID)
+            if notices[key] == nil {
+                notices[key] = entry.notice
+                counts[entry.hostID, default: 0] += 1
+            }
+        }
+        noticeByTerminal = notices
+        countByHost = counts
+    }
+
+    private func persist() {
+        guard let defaults else { return }
+        if entries.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        defaults.set(data, forKey: Self.defaultsKey)
     }
 }
 

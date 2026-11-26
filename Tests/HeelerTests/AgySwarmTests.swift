@@ -827,4 +827,99 @@ struct AgySwarmTests {
             Issue.record("Expected expanded long assistant entry")
         }
     }
+
+    @Test func briefAssignmentsAndRecipientsMatchLeadingAddresseesAndPreserveMentionOrder() throws {
+        let rosterJSON = """
+            {
+              "title": "Solar Weather & Launch Readiness Dashboard",
+              "members": {
+                "coordinator": { "conversation_id": "\(Self.coordinatorID)", "role": "coordinator", "wake_mode": "mentions" },
+                "frontend-builder": { "conversation_id": "\(Self.workerAID)", "role": "worker", "wake_mode": "mentions" },
+                "monitor": { "conversation_id": "\(Self.narratorID)", "role": "worker", "wake_mode": "anything" },
+                "ui-designer": { "conversation_id": "\(Self.workerBID)", "role": "worker", "wake_mode": "mentions" }
+              }
+            }
+            """
+        let roster = try #require(AgySwarmParser.parseRoster(Data(rosterJSON.utf8)))
+        let rawLines = [
+            #"{"seq":1,"agent":"coordinator","kind":"brief","text":"@ui-designer Create design-spec.md and styles.css.\n\nCOORDINATION:\n- Post to @frontend-builder when ready.\n- Once approved post \"@coordinator [done]\" and avoid @all."}"#,
+            #"{"seq":2,"agent":"coordinator","kind":"brief","text":"@frontend-builder Build index.html and app.js.\n\nCOORDINATION:\n- Wait for @ui-designer's spec and post \"@coordinator [done]\"."}"#,
+            #"{"seq":3,"agent":"coordinator","kind":"brief","text":"@monitor Watch for stalls."}"#,
+            #"{"seq":4,"agent":"ui-designer","text":"@coordinator [done] Spec finished.\n\n@frontend-builder Ready for wiring."}"#,
+            #"{"seq":5,"agent":"frontend-builder","text":"Wired to @ui-designer spec; notifying @coordinator next."}"#,
+        ].compactMap { AgySwarmParser.parseBoardLine(Self.line($0)) }
+
+        let snapshot = AgySwarmParser.buildSnapshot(
+            id: Self.coordinatorID,
+            roster: roster,
+            rawLines: rawLines,
+            transcripts: [:],
+            overview: nil,
+            isLive: true,
+            now: Self.baseDate)
+
+        let post1 = try #require(snapshot.boardPosts.first { $0.seq == 1 })
+        #expect(post1.leadingMentions == ["ui-designer"])
+        #expect(post1.mentions == ["ui-designer", "frontend-builder", "coordinator"])
+        #expect(post1.recipientSummary == "@ui-designer")
+
+        let post2 = try #require(snapshot.boardPosts.first { $0.seq == 2 })
+        #expect(post2.leadingMentions == ["frontend-builder"])
+        #expect(post2.mentions == ["frontend-builder", "ui-designer", "coordinator"])
+        #expect(post2.recipientSummary == "@frontend-builder")
+
+        let post3 = try #require(snapshot.boardPosts.first { $0.seq == 3 })
+        #expect(post3.leadingMentions == ["monitor"])
+        #expect(post3.recipientSummary == "@monitor")
+
+        // Each worker gets its own brief, never an earlier brief that merely
+        // mentions the worker in coordination prose.
+        #expect(snapshot.assignmentPost(for: "ui-designer")?.seq == 1)
+        #expect(snapshot.assignmentPost(for: "frontend-builder")?.seq == 2)
+        #expect(snapshot.assignmentPost(for: "monitor")?.seq == 3)
+
+        // Non-brief posts preserve mention order of appearance rather than
+        // alphabetical roster order.
+        let post4 = try #require(snapshot.boardPosts.first { $0.seq == 4 })
+        #expect(post4.mentions == ["coordinator", "frontend-builder"])
+        #expect(post4.recipientSummary == "@coordinator @frontend-builder")
+
+        let post5 = try #require(snapshot.boardPosts.first { $0.seq == 5 })
+        #expect(post5.mentions == ["ui-designer", "coordinator"])
+        #expect(post5.recipientSummary == "@ui-designer @coordinator")
+    }
+
+    @Test func shardedAndSharedBriefsMatchEveryLeadingWorker() throws {
+        let rosterJSON = """
+            {
+              "title": "Sharded Swarm",
+              "members": {
+                "coordinator": { "conversation_id": "\(Self.coordinatorID)", "role": "coordinator" },
+                "worker-1": { "conversation_id": "\(Self.workerAID)", "role": "worker" },
+                "worker-2": { "conversation_id": "\(Self.workerBID)", "role": "worker" },
+                "reviewer": { "conversation_id": "\(Self.narratorID)", "role": "worker" }
+              }
+            }
+            """
+        let roster = try #require(AgySwarmParser.parseRoster(Data(rosterJSON.utf8)))
+        let rawLines = [
+            #"{"seq":1,"agent":"coordinator","kind":"brief","text":"@worker Audit both slices and hand off to @reviewer."}"#,
+            #"{"seq":2,"agent":"coordinator","kind":"brief","text":"@reviewer: Review outputs from @worker-1 and @worker-2."}"#,
+        ].compactMap { AgySwarmParser.parseBoardLine(Self.line($0)) }
+
+        let snapshot = AgySwarmParser.buildSnapshot(
+            id: Self.coordinatorID,
+            roster: roster,
+            rawLines: rawLines,
+            transcripts: [:],
+            overview: nil,
+            isLive: true,
+            now: Self.baseDate)
+
+        #expect(snapshot.assignmentPost(for: "worker-1")?.seq == 1)
+        #expect(snapshot.assignmentPost(for: "worker-2")?.seq == 1)
+        #expect(snapshot.assignmentPost(for: "reviewer")?.seq == 2)
+        #expect(snapshot.boardPosts[0].recipientSummary == "@worker-1 @worker-2")
+        #expect(snapshot.boardPosts[1].recipientSummary == "@reviewer")
+    }
 }

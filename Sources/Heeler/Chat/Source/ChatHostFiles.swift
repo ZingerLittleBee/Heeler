@@ -9,6 +9,7 @@ import Foundation
 /// errors (`.hostFileTimedOut`, `.hostFileUnreadable`,
 /// `.hostStoreUnreadable`), never a redial.
 struct ChatHostFiles: Sendable {
+    var amp: AmpChatConnection?
     /// Stats a path, following symlinks; nil when it does not exist.
     let status: @Sendable (_ path: String) async throws -> RemoteFileStatus?
     /// Lists a directory's matching entries; nil when it does not exist.

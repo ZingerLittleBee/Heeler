@@ -71,7 +71,11 @@ extension HerdrCoreSessionBinder {
     /// the send guard watches as it does a pick. On Windows the read's failure has its
     /// own reason, since the fix the usual one offers there would not help.
     func evidenceWithoutProcesses(in record: HerdrCoreTerminalRecord) async -> ChatSessionEvidence {
-        let evidence = isOnWindows ? .unavailable(.cannotReadProcessesOnWindows(program)) : cannotTell
+        // A Rex terminal's read also finds nothing when its foreground moved
+        // on, which says nothing of elevation or PowerShell.
+        let evidence =
+            isOnWindows && processScope == .herdrCore
+            ? .unavailable(.cannotReadProcessesOnWindows(program)) : cannotTell
         let labels = await currentLabels() ?? record.labels
         if let value = labels[HerdrCoreSessionHint.pickLabel], await !isDroppedPick(value) {
             return unconfirmed(evidence)
@@ -91,6 +95,7 @@ extension HerdrCoreSessionBinder {
         switch program {
         case .claude, .codex, .agy: ConversationReference.canonicalUUID(hint.session)
         case .grok: ConversationReference.lowercaseUUID(hint.session)
+        case .amp: nil
         case .opencode: OpenCodeSessionID(hint.session)?.rawValue
         case .pi, .omp: hint.piSession(onWindows: isOnWindows)
         }

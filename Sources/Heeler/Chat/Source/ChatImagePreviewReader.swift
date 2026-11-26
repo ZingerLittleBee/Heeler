@@ -78,11 +78,21 @@ struct ChatImageStamp: Hashable, Sendable {
 
 /// Reads only the recorded Host file, on demand. Image bytes never join the
 /// transcript cache and reading an image never runs a command on the Host.
+/// A file read whole is kept in `HostFileCache` when one is given, and that
+/// version of it is read from there the next time.
 enum ChatImagePreviewReader {
     static let maximumBytes = 20 * 1_024 * 1_024
 
-    static func read(path: String, files: ChatHostFiles) async throws -> Data {
-        try await read(path: path, stamp: stamp(path: path, files: files), files: files)
+    /// One Host's part of the file cache, for the Agent (by terminal id)
+    /// whose Chat reads.
+    struct Kept: Sendable {
+        let cache: HostFileCache
+        let hostID: Host.ID
+        let opener: String
+    }
+
+    static func read(path: String, files: ChatHostFiles, kept: Kept? = nil) async throws -> Data {
+        try await read(path: path, stamp: stamp(path: path, files: files), files: files, kept: kept)
     }
 
     /// The file's status, checked before any of it is read.
@@ -98,10 +108,30 @@ enum ChatImagePreviewReader {
     }
 
     /// The file `stamp` describes, which fails if its length changes.
-    static func read(path: String, stamp: ChatImageStamp, files: ChatHostFiles) async throws -> Data {
+    static func read(
+        path: String, stamp: ChatImageStamp, files: ChatHostFiles, kept: Kept? = nil
+    ) async throws -> Data {
         guard RemoteFilePath.isAcceptable(path) else { throw ChatImagePreviewError.invalidPath }
         let length = stamp.size
         guard length > 0, length <= maximumBytes else { throw ChatImagePreviewError.tooLarge }
+        let key = kept.flatMap {
+            HostFileCache.Key(
+                hostID: $0.hostID, path: path, size: length, modificationTime: stamp.modificationTime)
+        }
+        if let kept, let key, let url = await kept.cache.file(for: key, openedBy: kept.opener),
+            let data = try? Data(contentsOf: url), UInt64(data.count) == length
+        {
+            return data
+        }
+        let data = try await readFromHost(path: path, length: length, files: files)
+        if let kept, let key {
+            let name = RemoteHostPath.lastComponent(of: path)
+            _ = await kept.cache.keep(data, named: name.isEmpty ? "image" : name, for: key, openedBy: kept.opener)
+        }
+        return data
+    }
+
+    private static func readFromHost(path: String, length: UInt64, files: ChatHostFiles) async throws -> Data {
         var data = Data()
         while data.count < length {
             try Task.checkCancellation()

@@ -366,6 +366,8 @@ struct RexTerminalPaintTests {
         #expect(harness.drain().dropFirst() == [Harness.painted("AB", exact: false), .title("shell"), Harness.feed("x")])
     }
 
+    /// A theme before the first paint goes into it, right after the reset,
+    /// and an exit waits for it.
     @Test func themeAndExitWaitForTheFirstPaint() {
         var harness = Harness()
         harness.resize()
@@ -376,10 +378,79 @@ struct RexTerminalPaintTests {
         harness.readQuietly("SCREEN")
         #expect(
             harness.drain() == [
-                Harness.painted("SCREEN", exact: true), .title("shell"), .theme(theme), .exited(code: 0),
+                .paint(RexTerminalPaint.reset + theme.sequences + Data("SCREEN".utf8), exact: true),
+                .title("shell"), .exited(code: 0),
             ])
         harness.message(.childExited(exitCode: nil))
         #expect(harness.drain() == [.exited(code: nil)])
+    }
+
+    /// A theme after the first paint reaches the view at once, and every
+    /// later paint applies it after its reset.
+    @Test func aThemeAfterThePaintIsAppliedAndRepainted() {
+        var harness = Harness()
+        harness.resize()
+        harness.readQuietly("SCREEN")
+        #expect(harness.drain().dropFirst() == [Harness.painted("SCREEN", exact: true), .title("shell")])
+        let theme = RexTerminalTheme(
+            foreground: "#111111", background: "#fafafa", cursor: nil, palette: ["1=#ef5350"], scheme: nil)
+        harness.message(.theme(theme))
+        #expect(harness.drain() == [.theme(theme)])
+        #expect(harness.pendingReads.isEmpty)
+        harness.resize(RexTerminalGrid(columns: 100, rows: 30, cellWidth: 9, cellHeight: 18, owner: nil))
+        harness.readQuietly("WIDER")
+        #expect(
+            harness.drain().dropFirst() == [
+                .paint(RexTerminalPaint.reset + theme.sequences + Data("WIDER".utf8), exact: true), .title("shell"),
+            ])
+    }
+
+    /// A palette entry the server stops listing has gone back to Rex's
+    /// built-in color, which only a redraw carries.
+    @Test func aPaletteEntryDroppedRepaints() {
+        var harness = Harness()
+        harness.resize()
+        harness.message(
+            .theme(RexTerminalTheme(foreground: nil, background: nil, cursor: nil, palette: ["1=ef5350"], scheme: nil)))
+        harness.readQuietly("SCREEN")
+        _ = harness.drain()
+        harness.message(.theme(.builtIn))
+        #expect(harness.drain() == [.theme(.builtIn)])
+        #expect(harness.pendingReads == [.modes])
+    }
+
+    /// A new stream sends a theme only for colors that are not built in, so
+    /// colors the last one gave are set back unless it gives them again.
+    @Test func aNewStreamSetsTheLastStreamsColorsBack() {
+        var harness = Harness()
+        harness.resize()
+        harness.message(
+            .theme(RexTerminalTheme(foreground: "#111111", background: nil, cursor: nil, palette: [], scheme: nil)))
+        harness.readQuietly("SCREEN")
+        _ = harness.drain()
+        harness.take(harness.engine.beginStream())
+        harness.resize()
+        harness.readQuietly("AGAIN")
+        #expect(
+            harness.drain().dropFirst() == [
+                .paint(RexTerminalPaint.reset + RexTerminalTheme.builtIn.sequences + Data("AGAIN".utf8), exact: true),
+                .title("shell"),
+            ])
+    }
+
+    /// The sequences carry only colors read as six hex digits, so nothing
+    /// else the server sent reaches the terminal.
+    @Test func themeSequencesCarryOnlyColors() {
+        let theme = RexTerminalTheme(
+            foreground: "#D6DEEB", background: "011627", cursor: "red\u{1B}]52;c;x",
+            palette: ["1=#ef5350", "300=#000000", "2=#12345", "x=#ffffff", "4=82aaff"], scheme: "dark")
+        let text = String(decoding: theme.sequences, as: UTF8.self)
+        #expect(
+            text == "\u{1B}]10;rgb:d6/de/eb\u{1B}\\" + "\u{1B}]11;rgb:01/16/27\u{1B}\\" + "\u{1B}]112\u{1B}\\"
+                + "\u{1B}]4;1;rgb:ef/53/50\u{1B}\\" + "\u{1B}]4;4;rgb:82/aa/ff\u{1B}\\")
+        #expect(
+            String(decoding: RexTerminalTheme.builtIn.sequences, as: UTF8.self)
+                == "\u{1B}]110\u{1B}\\\u{1B}]111\u{1B}\\\u{1B}]112\u{1B}\\")
     }
 
     // MARK: Repaints

@@ -508,7 +508,10 @@ keyed by the file's size and modification time: a file written again at the
 same path, as Agents do with screenshots, reads again. Every row naming that
 path then shows its current file, not the one the Agent saw at the time.
 Offline, a copy kept from this run still shows. Image bytes are not cached
-with transcripts. Missing, changed, unsupported or disconnected files show a
+with transcripts. Amended 2026-11-26: a file read whole, for a thumbnail or
+the sheet, is kept in Files' cache ([ADR 0059](0059-files-reads-a-hosts-folders-and-changes-nothing.md)),
+and the same version of it, by size and modification time, is read from
+there the next time, after a relaunch too. Missing, changed, unsupported or disconnected files show a
 short, retryable explanation in the thumbnail's place, and a thumbnail waiting
 for the Host loads once it connects.
 

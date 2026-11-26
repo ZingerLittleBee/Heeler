@@ -95,7 +95,7 @@ extension ChatProgram {
     /// is not necessarily the message.
     var mayRefillInputBoxAfterSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .opencode, .agy: false
+        case .claude, .codex, .pi, .omp, .opencode, .agy, .amp: false
         case .grok: true
         }
     }
@@ -109,7 +109,7 @@ extension ChatProgram {
         switch self {
         case .omp: .disabled(PiInputBoxDetector.ompWorking)
         case .opencode: .disabled(OpenCodeScreenReader.working)
-        case .claude, .codex, .pi, .grok, .agy: nil
+        case .claude, .codex, .pi, .grok, .agy, .amp: nil
         }
     }
 }

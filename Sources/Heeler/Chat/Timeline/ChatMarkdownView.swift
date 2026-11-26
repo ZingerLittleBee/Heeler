@@ -197,6 +197,7 @@ struct ChatHostLinkOpener {
 
 extension EnvironmentValues {
     @Entry var chatImageOpener: ChatImageOpener? = nil
+    @Entry var chatFileOpener: (@MainActor (String, String?) -> Void)? = nil
     @Entry var chatHostLinkOpener: ChatHostLinkOpener? = nil
     /// Whether VoiceOver reads the Markdown within one element, as a Chat
     /// message (`accessibilityElement(children: .combine)`). That element
@@ -216,10 +217,16 @@ extension View {
 
 private struct ChatMessageLinks: ViewModifier {
     let imageOpener: ChatImageOpener?
+    @Environment(\.chatFileOpener) private var fileOpener
     @Environment(\.chatHostLinkOpener) private var hostLinkOpener
 
     func body(content: Content) -> some View {
         content.environment(\.openURL, OpenURLAction { url in
+            if url.scheme == "heeler-chat-file", let fileOpener,
+                let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "path" })?.value {
+                fileOpener(path, nil)
+                return .handled
+            }
             if let reference = ChatImageLink.opening(url) {
                 imageOpener?.open(reference.path, reference.title)
                 return imageOpener == nil ? .discarded : .handled
@@ -232,6 +239,7 @@ private struct ChatMessageLinks: ViewModifier {
 }
 
 private struct ChatMarkdownBlockView: View {
+    @Environment(\.chatFileOpener) private var fileOpener
     @Environment(\.themeColors) private var themeColors
     let block: ChatMarkdownBlock
     let isMuted: Bool
@@ -287,7 +295,7 @@ private struct ChatMarkdownBlockView: View {
                 // Chat's font sets a design on the whole row, which outranks
                 // a design set nearer or carried by `Font.system(_:design:)`,
                 // but not a font made fixed-width, as inline code's is.
-                Text(ChatMarkdownView.codeText(block.content, opensImages: imageOpener != nil && block.hasImageLinks))
+                Text(ChatMarkdownView.codeText(ChatFileLink.enabling(in: block.content, enabled: fileOpener != nil), opensImages: imageOpener != nil && block.hasImageLinks))
                     .font(.footnote.monospaced())
             }
             .padding(10)
@@ -341,10 +349,10 @@ private struct ChatMarkdownBlockView: View {
     @ViewBuilder
     private func styledText(in font: Font) -> some View {
         if imageOpener != nil, block.hasImageLinks {
-            ChatMarkdownView.text(block.content, in: font, opensImages: true)
+            ChatMarkdownView.text(ChatFileLink.enabling(in: block.content, enabled: fileOpener != nil), in: font, opensImages: true)
                 .font(font)
         } else {
-            Text(block.styledContent)
+            Text(ChatFileLink.enabling(in: block.styledContent, enabled: fileOpener != nil))
                 .font(font)
         }
     }
@@ -353,6 +361,7 @@ private struct ChatMarkdownBlockView: View {
 /// A native table with stable column widths across every row. Wide tables
 /// scroll within their own bounds; ordinary two-column tables fit the phone.
 struct ChatMarkdownTableView: View {
+    @Environment(\.chatFileOpener) private var fileOpener
     @Environment(\.themeColors) private var themeColors
     let table: ChatMarkdownBlock.Table
     @ScaledMetric(relativeTo: .subheadline) private var minimumColumnWidth: CGFloat = 112
@@ -414,9 +423,9 @@ struct ChatMarkdownTableView: View {
 
     private func cellText(row: Int, column: Int) -> Text {
         if imageOpener != nil, table.hasImageLinks {
-            return ChatMarkdownView.text(table.rows[row][column], in: .subheadline, opensImages: true)
+            return ChatMarkdownView.text(ChatFileLink.enabling(in: table.rows[row][column], enabled: fileOpener != nil), in: .subheadline, opensImages: true)
         }
-        return Text(table.styledRows[row][column])
+        return Text(ChatFileLink.enabling(in: table.styledRows[row][column], enabled: fileOpener != nil))
     }
 
     private func alignment(for column: ChatMarkdownBlock.Table.Alignment) -> Alignment {

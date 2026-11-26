@@ -58,6 +58,20 @@ extension HostProcessReader {
         return command
     }
 
+    /// One read on a native Windows Host through `run`, which runs the command
+    /// as one bounded exec: a Rex Host's, whose Chat reads processes as a
+    /// core's does (ADR 0056). A command the read refuses to build throws
+    /// before anything runs; an exec that fails, or output cut short or
+    /// garbled, answers nothing, so Chat says it cannot tell.
+    static func readWindows(
+        _ request: Request, nonce: String = makeNonce(), run: @Sendable (String) async throws -> GitExecResult
+    ) async throws -> [String: Facts] {
+        let command = try windowsCommand(request, nonce: nonce)
+        let result = try await run(command)
+        guard result.exitStatus == 0 else { return [:] }
+        return (try? parseWindows(stdout: result.stdout, nonce: nonce, request: request)) ?? [:]
+    }
+
     /// As ``parse(stdout:nonce:request:)``, with each fact in the form the binder's
     /// rules already read: an image's name without `.exe` or case, and an absolute
     /// path as the form SFTP opens and `RemoteFilePath` takes.
@@ -84,7 +98,8 @@ extension HostProcessReader {
     private static let windowsHomeVariable = "USERPROFILE"
     private static let windowsBeginPlaceholder = "__HEELER_PROC_BEGIN_MARKER__"
 
-    private static func windowsProgramName(_ image: String) -> String {
+    /// An image's name as a Windows read gives it: lower case, without `.exe`.
+    static func windowsProgramName(_ image: String) -> String {
         let name = image.lowercased()
         return name.hasSuffix(".exe") ? String(name.dropLast(".exe".count)) : name
     }

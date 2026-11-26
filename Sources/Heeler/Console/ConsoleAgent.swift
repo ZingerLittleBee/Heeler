@@ -43,7 +43,7 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// not mean this is removable: the main checkout is reported with
     /// `isLinkedWorktree == false` too.
     let repositoryCheckout: RepositoryCheckout?
-    /// Set for a core Host's rows: its Terminals can start in a Windows directory.
+    /// Set for a core or Rex Host's rows: its Terminals can start in a Windows directory.
     /// A Herdr TUI Host's on Windows have no such offer.
     var startsTerminalsInWindowsDirectories = false
     /// Only the resolved directory from the latest PaneInfo, so frequent

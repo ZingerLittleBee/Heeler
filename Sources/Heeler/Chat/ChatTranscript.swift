@@ -13,6 +13,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case grok
     case opencode
     case agy
+    case amp
 
     /// Whether live, non-stale Background Work promotes an Idle or Done
     /// Agent's displayed Console and Composer status to Working (and keeps
@@ -20,7 +21,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     var promotesBackgroundWorkToWorking: Bool {
         switch self {
         case .agy, .claude: true
-        case .codex, .pi, .omp, .grok, .opencode: false
+        case .codex, .pi, .omp, .grok, .opencode, .amp: false
         }
     }
 }
@@ -739,11 +740,14 @@ struct ChatOutputReference: Equatable, Codable, Sendable {
     var path: String?
     var offset: UInt64
     var length: Int
+    /// The result to fetch when a single record holds multiple tool calls.
+    var callID: String?
 
-    init(path: String? = nil, offset: UInt64, length: Int) {
+    init(path: String? = nil, offset: UInt64, length: Int, callID: String? = nil) {
         self.path = path
         self.offset = offset
         self.length = length
+        self.callID = callID
     }
 }
 
