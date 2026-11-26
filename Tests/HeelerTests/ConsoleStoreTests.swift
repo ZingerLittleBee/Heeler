@@ -647,6 +647,108 @@ struct ConsoleStoreTests {
         #expect(await transport.sidebarLayoutReads == 1)
     }
 
+    @Test func chatPrefetchRearmsOnlyForCleanUnwrittenConversations() {
+        func snapshot(
+            _ phase: ChatConversationSnapshot.Phase,
+            readFailure: TransportError? = nil
+        ) -> ChatConversationSnapshot {
+            var snap = ChatConversationSnapshot()
+            snap.phase = phase
+            snap.readFailure = readFailure
+            return snap
+        }
+
+        #expect(ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.unavailable(.awaitingFirstMessage(.claude)))))
+        #expect(ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.unavailable(.notFound(searchedAll: true)))))
+
+        #expect(!ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.following(path: "/p.jsonl"))))
+        #expect(!ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.locating)))
+        #expect(!ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.unavailable(.noSession(.claude)))))
+        #expect(!ConsoleStore.chatPrefetchRearmsOnStatusChange(snapshot(.unavailable(.noSession(.codex)))))
+
+        for phase: ChatConversationSnapshot.Phase in [
+            .locating,
+            .following(path: "/p.jsonl"),
+            .unavailable(.awaitingFirstMessage(.claude)),
+            .unavailable(.notFound(searchedAll: true)),
+            .unavailable(.noSession(.claude)),
+        ] {
+            #expect(
+                !ConsoleStore.chatPrefetchRearmsOnStatusChange(
+                    snapshot(phase, readFailure: .hostFileTimedOut)))
+            #expect(
+                !ConsoleStore.chatPrefetchRearmsOnStatusChange(
+                    snapshot(phase, readFailure: .hostFileUnreadable(status: 4))))
+        }
+
+        let timedOut = snapshot(.locating, readFailure: .hostFileTimedOut)
+        #expect((0...4).map { ConsoleStore.chatPrefetchRetries(after: $0, snapshot: timedOut) }
+            == [true, true, true, false, false])
+    }
+
+    @Test func timedOutAndSessionlessPrefetchesStopAndDoNotStormAcrossStatusTransitions() async throws {
+        let host = Host.fixture()
+        let claudeSessionID = "e951205e-24af-4a5e-baa7-3ccbebd2de2c"
+        let claudeSession = AgentSessionInfo(
+            agent: "claude", kind: .id, source: "herdr:claude", value: claudeSessionID)
+        func makeAgents(_ status: AgentStatus, revision: Int) -> [AgentInfo] {
+            [
+                AgentInfo(
+                    agentStatus: status, focused: false, paneID: "w1:p1", revision: revision,
+                    tabID: "t1", terminalID: "term-1", workspaceID: "w1", agent: "claude",
+                    agentSession: claudeSession, cwd: "/home/dev/proj"),
+                AgentInfo(
+                    agentStatus: status, focused: false, paneID: "w1:p2", revision: revision,
+                    tabID: "t2", terminalID: "term-2", workspaceID: "w1", agent: "codex",
+                    agentSession: nil, cwd: "/home/dev/proj"),
+            ]
+        }
+        let initial = makeAgents(.idle, revision: 1)
+        let transport = ScriptedTransport(snapshot: .fixture(agents: initial))
+        let files = VirtualHostFiles()
+        await files.failNext(.home, with: TransportError.hostFileTimedOut, count: 50)
+        for info in initial {
+            await transport.scriptChat(files: files.hostFiles(), agent: Agent(info))
+        }
+
+        let store = ConsoleStore(
+            snapshotRetryDelay: .milliseconds(10),
+            chatPrefetchRetryDelay: .milliseconds(10),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions, connect: { transport },
+                    reconnectPolicy: Self.fastPolicy, keepalive: nil)
+            },
+            chatAdapter: { _ in NumberedChatReducer.adapter() })
+        defer { store.setHosts([]) }
+
+        store.setHosts([host])
+        await store.resume()
+
+        // Each agent performs the initial prefetch plus at most 3 background retries (4 each = 8 total).
+        try await waitUntil("both agents exhaust bounded initial prefetch retries") {
+            await transport.chatAgentReads.count == 8
+        }
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(await transport.chatAgentReads.count == 8)
+
+        // Rapid status churn across both the timed-out agent and the sessionless agent
+        // must NOT wipe `chatPrefetched` or re-launch background prefetches.
+        for (index, nextStatus) in [AgentStatus.working, .blocked, .idle, .working, .idle].enumerated() {
+            let snapshotsBefore = await transport.snapshotFetchCount
+            await transport.setSnapshot(.fixture(agents: makeAgents(nextStatus, revision: index + 2)))
+            _ = await transport.emit(.agentStatusChanged(paneID: "w1:p1", status: nextStatus))
+            _ = await transport.emit(.agentStatusChanged(paneID: "w1:p2", status: nextStatus))
+            try await waitUntil("status \(nextStatus) applied across both panes") {
+                let nextFetchCount = await transport.snapshotFetchCount
+                return store.agents.allSatisfy({ $0.agent.status == nextStatus })
+                    && nextFetchCount > snapshotsBefore
+            }
+        }
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(await transport.chatAgentReads.count == 8)
+    }
+
     @Test func keepaliveLatencyUpdatesDoNotTriggerConsoleRebuild() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: .fixture(agents: []))

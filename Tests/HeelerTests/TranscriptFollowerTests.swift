@@ -410,4 +410,65 @@ struct TranscriptFollowerTests {
         #expect(Self.texts(appended) == Self.expected(4..<5))
         #expect(await files.reads.count == 1)
     }
+
+    @Test func defaultLimitsReadMultiMegabyteTailIn256KiBChunks() async throws {
+        let defaultLimits = TranscriptFollower.Limits()
+        #expect(defaultLimits.readChunk == 256 << 10)
+        #expect(defaultLimits.tailWindow == 1 << 20)
+
+        let padding = String(repeating: "x", count: 72)
+        let count = 30_000
+        let payload = (0..<count).map { #"{"n":\#($0),"p":"\#(padding)"}"# + "\n" }.joined()
+        #expect(payload.utf8.count > 2 * (1 << 20))
+
+        let files = VirtualHostFiles()
+        await files.write(payload, at: Self.path)
+        var follower = TranscriptFollower(path: Self.path, limits: defaultLimits)
+        let opened = try #require(try await follower.open(files.hostFiles()))
+
+        let reads = await files.reads
+        #expect(reads.allSatisfy { $0.maxBytes <= 256 << 10 })
+        // Four 256 KiB chunks for the 1 MiB tail window plus one 4 KiB head read.
+        #expect(reads.count == 5)
+        #expect(follower.hasOlder)
+        #expect(!follower.hasUnreadRecords)
+        #expect(opened.last.map { String(decoding: $0.data, as: UTF8.self) } == #"{"n":29999,"p":"\#(padding)"}"#)
+    }
+
+    @Test func multiChunkPollFailurePreservesEarlierChunksForNextPoll() async throws {
+        var (follower, files, _) = try await Self.makeFollower(Self.lines(0..<4))
+        await files.append(Self.lines(4..<10), to: Self.path)
+        await files.clearRecords()
+
+        let base = files.hostFiles()
+        actor SecondReadFault {
+            private var count = 0
+            func next() throws {
+                count += 1
+                if count == 2 {
+                    throw TransportError.hostFileTimedOut
+                }
+            }
+        }
+        let fault = SecondReadFault()
+        let flaky = ChatHostFiles(
+            status: base.status,
+            list: base.list,
+            read: { range in
+                try await fault.next()
+                return try await base.read(range)
+            },
+            home: base.home)
+
+        await #expect(throws: TransportError.hostFileTimedOut) {
+            _ = try await follower.poll(flaky)
+        }
+
+        // No lines from the first 16-byte chunk were dropped when the second chunk timed out.
+        guard case .appended(let recovered) = try await follower.poll(base) else {
+            Issue.record("expected all appended lines after transient multi-chunk poll timeout")
+            return
+        }
+        #expect(Self.texts(recovered) == Self.expected(4..<10))
+    }
 }

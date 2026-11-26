@@ -19,8 +19,9 @@ struct TranscriptFollower: Sendable {
     struct Limits: Sendable, Equatable {
         /// How much of the file's end is read on open.
         var tailWindow = 1 << 20
-        /// The largest single read; each runs under the transport deadline.
-        var readChunk = 1 << 20
+        /// The largest single read; each runs under the transport deadline,
+        /// sized so a 64 KiB/s cellular link finishes each chunk with headroom.
+        var readChunk = 256 << 10
         /// The most one poll reads before handing lines on. A poll that
         /// finds more unread opens at the tail instead.
         var pollBudget = 2 << 20
@@ -253,25 +254,28 @@ struct TranscriptFollower: Sendable {
                 return try await reload(files)
             }
         }
+        var next = self
+        next.knownSize = reported
         var lines: [ChatLine] = []
         var remaining = limits.pollBudget
         if !initialNew.isEmpty {
-            lines.append(contentsOf: framer.append(initialNew))
-            readOffset += UInt64(initialNew.count)
+            lines.append(contentsOf: next.framer.append(initialNew))
+            next.readOffset += UInt64(initialNew.count)
             remaining -= initialNew.count
-            remember(initialNew)
-            if windowStart == nil { windowStart = framer.deliveryStart }
+            next.remember(initialNew)
+            if next.windowStart == nil { next.windowStart = next.framer.deliveryStart }
         }
         let targetEnd = max(end, reported)
-        if readOffset < targetEnd, remaining > 0 {
+        if next.readOffset < targetEnd, remaining > 0 {
             var noHead: Data? = nil
             guard
-                let more = try await readForward(
+                let more = try await next.readForward(
                     files, until: targetEnd, budget: remaining, capturingHead: &noHead)
             else { return .missing }
             lines.append(contentsOf: more)
         }
-        modificationTime = status.modificationTime
+        next.modificationTime = status.modificationTime
+        self = next
         return lines.isEmpty ? .unchanged : .appended(lines)
     }
 

@@ -471,11 +471,20 @@ enum ChatSurfacePresentation: Equatable {
             return
         }
         switch conversation.phase {
-        case .locating: self = isHostConnected ? .locating : .awaitingHost
+        case .locating:
+            if !isHostConnected {
+                self = .awaitingHost
+            } else if conversation.readFailure != nil {
+                self = .empty
+            } else {
+                self = .locating
+            }
         case .following: self = .empty
         case .unavailable(let reason):
             let mayBeNotice = reason.launchNotice(.codexSharedServer) != nil
-            self = checkingLaunch && mayBeNotice && isHostConnected ? .locating : .unavailable(reason)
+            self =
+                checkingLaunch && mayBeNotice && isHostConnected && conversation.readFailure == nil
+                ? .locating : .unavailable(reason)
         }
     }
 }

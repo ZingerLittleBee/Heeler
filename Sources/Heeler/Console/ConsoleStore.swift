@@ -437,8 +437,12 @@ final class ConsoleStore {
         for id in projections.keys where incoming[id] != projections[id]?.host {
             chatPrefetchTasks[id]?.cancel()
             chatPrefetchTasks[id] = nil
+            chatPrefetchActiveAgent[id] = nil
             chatPrefetched = chatPrefetched.filter { $0.key.hostID != id }
             chatPrefetchRetries = chatPrefetchRetries.filter { $0.key.hostID != id }
+            chatPrefetchAwaitingTurnStatus = chatPrefetchAwaitingTurnStatus.filter {
+                $0.key.hostID != id
+            }
             chatCacheValidatedGenerations[id] = nil
         }
         for (id, session) in composerSessions where incoming[id.hostID] == nil {
@@ -3755,19 +3759,19 @@ final class ConsoleStore {
                     guard !Task.isCancelled else { return }
                     let snapshot = chat.conversation
                     let latestStatus = projection.agentsByPane[agent.agent.paneID]?.agent.status ?? agent.agent.status
-                    if case .following = snapshot.phase, snapshot.readFailure == nil {
-                        chatPrefetchAwaitingTurnStatus[agent.id] = nil
-                    } else {
-                        chatPrefetchAwaitingTurnStatus[agent.id] = latestStatus
-                    }
+                    chatPrefetchAwaitingTurnStatus[agent.id] =
+                        Self.chatPrefetchRearmsOnStatusChange(snapshot) ? latestStatus : nil
                     let retries = chatPrefetchRetries[agent.id].flatMap { $0.key == key ? $0.count : nil } ?? 0
-                    chatPrefetchRetries[agent.id] =
-                        Self.chatPrefetchWaits(on: snapshot.phase) ? (key, retries + 1) : nil
-                    if !prefetched || snapshot.readFailure != nil
-                        || Self.chatPrefetchRetries(after: retries, phase: snapshot.phase)
-                    {
+                    if !prefetched {
                         chatPrefetched[agent.id] = nil
                         needsRetry = true
+                    } else {
+                        let tracksRetry = snapshot.readFailure != nil || Self.chatPrefetchWaits(on: snapshot.phase)
+                        chatPrefetchRetries[agent.id] = tracksRetry ? (key, retries + 1) : nil
+                        if Self.chatPrefetchRetries(after: retries, snapshot: snapshot) {
+                            chatPrefetched[agent.id] = nil
+                            needsRetry = true
+                        }
                     }
                 }
                 if needsRetry { try? await Task.sleep(for: chatPrefetchRetryDelay) }
@@ -3775,6 +3779,23 @@ final class ConsoleStore {
                 chatPrefetchTasks[host.id] = nil
                 reconcileChatPrefetches()
             }
+        }
+    }
+
+    /// Whether a subsequent Agent status change should re-arm a completed
+    /// background prefetch: only when the Host answered cleanly
+    /// (`readFailure == nil`) and the bound conversation is genuinely awaiting
+    /// its transcript file to be created by a turn — never on SFTP/read
+    /// timeouts or sessionless (`.noSession` / deferred `.locating`) panes.
+    nonisolated static func chatPrefetchRearmsOnStatusChange(
+        _ snapshot: ChatConversationSnapshot
+    ) -> Bool {
+        guard snapshot.readFailure == nil else { return false }
+        switch snapshot.phase {
+        case .unavailable(.awaitingFirstMessage), .unavailable(.notFound):
+            return true
+        default:
+            return false
         }
     }
 
@@ -3795,6 +3816,19 @@ final class ConsoleStore {
     /// or its Chat, which keeps looking while it shows.
     nonisolated static func chatPrefetchRetries(after retries: Int, phase: ChatConversationSnapshot.Phase) -> Bool {
         chatPrefetchWaits(on: phase) && retries < 3
+    }
+
+    /// Whether a completed prefetch pass for `snapshot` should retry in the
+    /// background after `retries` earlier attempts for the same key.
+    nonisolated static func chatPrefetchRetries(
+        after retries: Int,
+        snapshot: ChatConversationSnapshot
+    ) -> Bool {
+        if let failure = snapshot.readFailure {
+            if case .hostFeatureUnavailable = failure { return false }
+            return retries < 3
+        }
+        return chatPrefetchRetries(after: retries, phase: snapshot.phase)
     }
 
     private func chatPrefetchKey(_ agent: ConsoleAgent, generation: UInt64) -> String {

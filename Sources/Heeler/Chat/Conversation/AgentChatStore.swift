@@ -609,12 +609,17 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             // Background prefetches back off looking for a missing
             // transcript; opening Chat looks at once and backs off afresh.
-            switch conversation.phase {
-            case .locating, .unavailable(.notFound):
+            if conversation.readFailure != nil {
                 nextOpen = nil
                 failedOpens = 0
-            default:
-                break
+            } else {
+                switch conversation.phase {
+                case .locating, .unavailable(.notFound):
+                    nextOpen = nil
+                    failedOpens = 0
+                default:
+                    break
+                }
             }
         }
         viewers.insert(viewer)
@@ -856,12 +861,18 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             needsAgentRefresh = true
         }
-        switch conversation.phase {
-        case .locating, .unavailable(.notFound):
+        if conversation.readFailure != nil {
             nextOpen = nil
             failedOpens = 0
-        default:
-            break
+            timedOutReads = 0
+        } else {
+            switch conversation.phase {
+            case .locating, .unavailable(.notFound):
+                nextOpen = nil
+                failedOpens = 0
+            default:
+                break
+            }
         }
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
@@ -1473,11 +1484,13 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
+        if agentRefreshFailure != nil {
+            guard let lastAgentRefresh else { return true }
+            return now().timeIntervalSince(lastAgentRefresh) >= timing.sessionRecheck
+        }
         guard source.sessionEvidence == nil else { return false }
         let interval: TimeInterval
-        if engine == nil || isUnavailable || agentRefreshFailure != nil
-            || consecutiveAgentRefreshLinkFailures > 0
-        {
+        if engine == nil || isUnavailable || consecutiveAgentRefreshLinkFailures > 0 {
             interval = timing.sessionRecheck
         } else if isVisible, ChatAgentActivity(agent.status) == .idle {
             interval = timing.idleSessionRecheck
@@ -2349,7 +2362,8 @@ final class AgentChatStore {
 
     private func apply(_ snapshot: ChatConversationSnapshot, from origin: ChatConversationEngine) {
         // A session switch may have replaced the engine during the read.
-        guard origin === engine, snapshot.revision != appliedRevision,
+        guard origin === engine,
+            snapshot.revision != appliedRevision || snapshot.readFailure != transcriptReadFailure,
             !isAwaitingSession || snapshot.isFromCache
         else { return }
         let span = PerfTrace.begin("chat.store.apply")
