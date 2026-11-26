@@ -134,8 +134,9 @@ provides invented data and process-local settings, but its Live Activity
 coordinator has a nil device token and fresh opt-in preferences. Therefore
 `--demo-screenshots` alone is not a real ActivityKit state harness.
 [AgentActivityPresentationTests](../../Tests/HeelerTests/AgentActivityPresentationTests.swift)
-exercise widget subviews and measure the Lock Screen banner. Check system
-clipping and touch behavior in a running activity. Use these existing seams for
+check the presentation values behind the widget: which Agents get tiles, the
+footer counts and the count columns. Check the banner's size, system clipping
+and touch behavior in a running activity. Use these existing seams for
 future deterministic scenarios instead of repeating transient production
 source injections. This guide and helper add no such scenario feature.
 
