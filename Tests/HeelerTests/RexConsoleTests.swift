@@ -1162,6 +1162,30 @@ struct RexConsoleTests {
                 == RexNewTerminal.failure(.deadlineExceeded(method: RexNewTerminal.newWindowMethod)))
     }
 
+    /// The connection ends while the attach a new window waits on goes
+    /// unanswered: `session.new_window` never left, so New Terminal says
+    /// nothing was made rather than to look at the list.
+    @Test func aNewTerminalWhoseAttachGoesUnansweredSaysNothingWasMade() async throws {
+        let (console, server, _) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        await server.stopAnswering("session.attach")
+        let request = ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev")
+        let attempt = Task { try await console.createShellTerminal(request, on: rex.id) }
+        try await waitUntil("the attach") { await server.requests.contains { $0.method == "session.attach" } }
+        await server.drop()
+
+        await #expect(throws: TransportError.channelFailed(
+            detail: "Rex did not answer, so no terminal was made. Try again.")) {
+            try await attempt.value
+        }
+        #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
+    }
+
     /// A new session's label when none is given is its directory's last
     /// name, in either form of path, and nothing for a root.
     @Test func aNewSessionIsNamedForItsDirectory() {

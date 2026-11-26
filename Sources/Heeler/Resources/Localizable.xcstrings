@@ -54009,6 +54009,7 @@
     },
     "Rex Hosts" : {},
     "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
+    "Rex did not answer, so no terminal was made. Try again." : {},
     "Rex did not answer. The terminal may still have been made, so check the list before trying again." : {},
     "Rex did not finish opening the connection." : {},
     "Rex did not let this account in" : {},

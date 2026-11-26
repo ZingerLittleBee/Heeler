@@ -742,7 +742,8 @@ actor RexHostSession {
     }
 
     /// Attaches the control client to `sessionID`, as Rex asks of a client
-    /// acting on a session.
+    /// acting on a session. An attach with no answer comes before a new
+    /// window's request leaves, so it says nothing was made.
     private func attachForCreating(_ sessionID: String, on control: RexControlLink) async throws {
         do {
             try await attachSession(sessionID, on: control)
@@ -751,7 +752,7 @@ actor RexHostSession {
                 code: "session_not_found",
                 message: String(localized: "This Workspace is no longer on the Rex server."))
         } catch is RexTerminalEnding {
-            throw RexNewTerminal.failure(.linkEnded(.linkLost))
+            throw RexNewTerminal.notSent
         }
     }
 
@@ -1117,6 +1118,12 @@ enum RexNewTerminal {
 
     private static var unreadable: TransportError {
         .rexAnswerUnreadable(String(localized: "Rex made the terminal, but its answer did not name it."))
+    }
+
+    /// The attach a new window waits on had no answer, so the window's
+    /// request never left and nothing was made.
+    static var notSent: TransportError {
+        .channelFailed(detail: String(localized: "Rex did not answer, so no terminal was made. Try again."))
     }
 
     /// A request with no answer may have made its terminal, so the user is
