@@ -87,6 +87,7 @@ struct AgySwarmSnapshot: Equatable, Sendable {
         let isBrief: Bool
         let isControl: Bool
         let mentions: [String]
+        let leadingMentions: [String]
         let channelMentions: [String]
         let mentionsAll: Bool
         let isMarkedDone: Bool
@@ -110,6 +111,7 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             isBrief: Bool,
             isControl: Bool,
             mentions: [String],
+            leadingMentions: [String]? = nil,
             channelMentions: [String],
             mentionsAll: Bool,
             rawCitedSeqs: [Int]? = nil,
@@ -129,6 +131,8 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             self.isBrief = isBrief
             self.isControl = isControl
             self.mentions = mentions
+            let resolvedLeadingMentions = leadingMentions ?? mentions
+            self.leadingMentions = resolvedLeadingMentions
             self.channelMentions = channelMentions
             self.mentionsAll = mentionsAll
             self.isMarkedDone = isMarkedDone ?? (!isBrief && !isControl && Self.hasLeadingTag("[done]", in: text))
@@ -144,8 +148,10 @@ struct AgySwarmSnapshot: Equatable, Sendable {
             } else {
                 self.displayTime = Self.formatClockTime(time)
             }
+            let summaryMentions = (isBrief && !resolvedLeadingMentions.isEmpty) ? resolvedLeadingMentions : mentions
+            let summaryAll = (isBrief && !resolvedLeadingMentions.isEmpty) ? false : mentionsAll
             self.recipientSummary = Self.buildRecipientSummary(
-                agent: agent, mentions: mentions, channelMentions: channelMentions, mentionsAll: mentionsAll)
+                agent: agent, mentions: summaryMentions, channelMentions: channelMentions, mentionsAll: summaryAll)
             self.rawCitedSeqs =
                 rawCitedSeqs
                 ?? (isControl ? [] : AgySwarmParser.extractBoardTokens(in: text).citedSeqs)
@@ -160,6 +166,7 @@ struct AgySwarmSnapshot: Equatable, Sendable {
                 && lhs.agent == rhs.agent
                 && lhs.time == rhs.time
                 && lhs.mentions == rhs.mentions
+                && lhs.leadingMentions == rhs.leadingMentions
                 && lhs.channelMentions == rhs.channelMentions
                 && lhs.text == rhs.text
         }
@@ -409,6 +416,24 @@ struct AgySwarmSnapshot: Equatable, Sendable {
         boardPosts.last
     }
 
+    /// The brief assigning work to `memberName`, preferring briefs whose
+    /// leading `@mention` addressees include `memberName` so an earlier brief
+    /// for another worker that merely mentions `memberName` in its coordination
+    /// prose does not hijack this worker's assignment.
+    func assignmentPost(for memberName: String) -> BoardMessage? {
+        if let direct = boardPosts.first(where: { post in
+            post.isBrief
+                && post.leadingMentions.contains { $0.caseInsensitiveCompare(memberName) == .orderedSame }
+        }) {
+            return direct
+        }
+        return boardPosts.first { post in
+            post.isBrief
+                && post.leadingMentions.isEmpty
+                && post.mentions.contains { $0.caseInsensitiveCompare(memberName) == .orderedSame }
+        }
+    }
+
     /// Single-line live ticker shown on the second row of `ChatSwarmLiveBar`.
     var tickerText: String? {
         if let alert = systemAlerts.first {
@@ -484,7 +509,8 @@ enum AgySwarmParser {
     }
 
     struct ExtractedBoardTokens: Equatable, Sendable {
-        var mentionTokens: Set<String> = []
+        var mentionTokens: [String] = []
+        var leadingMentionTokens: [String] = []
         var channelMentions: [String] = []
         var citedSeqs: [Int] = []
     }
@@ -712,6 +738,34 @@ enum AgySwarmParser {
         }
         let reservedChannels: Set<String> = ["main", "all", "here"]
         var result = ExtractedBoardTokens()
+        var seenMentions: Set<String> = []
+        var seenLeadingMentions: Set<String> = []
+
+        var leadCursor = text.startIndex
+        while leadCursor < text.endIndex {
+            while leadCursor < text.endIndex, text[leadCursor].isWhitespace {
+                leadCursor = text.index(after: leadCursor)
+            }
+            guard leadCursor < text.endIndex, text[leadCursor] == "@" else { break }
+            let afterAt = text.index(after: leadCursor)
+            guard afterAt < text.endIndex, text[afterAt] != "#" else { break }
+            var nameEnd = afterAt
+            while nameEnd < text.endIndex, isNameCharacter(text[nameEnd]) {
+                nameEnd = text.index(after: nameEnd)
+            }
+            guard nameEnd > afterAt else { break }
+            var nextCursor = nameEnd
+            if nextCursor < text.endIndex, text[nextCursor] == ":" || text[nextCursor] == "," {
+                nextCursor = text.index(after: nextCursor)
+            }
+            guard nextCursor == text.endIndex || text[nextCursor].isWhitespace else { break }
+            let token = text[afterAt..<nameEnd].lowercased()
+            if seenLeadingMentions.insert(token).inserted {
+                result.leadingMentionTokens.append(token)
+            }
+            leadCursor = nextCursor
+        }
+
         var cursor = text.startIndex
         while let sigil = text[cursor...].firstIndex(where: { $0 == "@" || $0 == "#" }) {
             let ch = text[sigil]
@@ -746,7 +800,10 @@ enum AgySwarmParser {
                             nameEnd = text.index(after: nameEnd)
                         }
                         if nameEnd > afterAt {
-                            result.mentionTokens.insert(text[afterAt..<nameEnd].lowercased())
+                            let token = text[afterAt..<nameEnd].lowercased()
+                            if seenMentions.insert(token).inserted {
+                                result.mentionTokens.append(token)
+                            }
                             cursor = nameEnd
                             continue
                         }
@@ -782,31 +839,62 @@ enum AgySwarmParser {
     }
 
     static func resolveMentions(
-        from extracted: Set<String>, in rawText: String, rosterNames: [String]
+        from extracted: [String], in rawText: String, rosterNames: [String]
     ) -> (mentions: [String], all: Bool) {
         guard !extracted.isEmpty else { return ([], false) }
-        var fallbackLower: String?
-        let matched = rosterNames.filter { name in
+        var exactByLower: [String: String] = [:]
+        var shardedByPrefix: [String: [String]] = [:]
+        var fallbackNames: [String] = []
+        exactByLower.reserveCapacity(rosterNames.count)
+
+        for name in rosterNames {
             let lowerName = name.lowercased()
             if lowerName.allSatisfy(isNameCharacter) {
-                if extracted.contains(lowerName) { return true }
+                if exactByLower[lowerName] == nil {
+                    exactByLower[lowerName] = name
+                }
                 if let dash = lowerName.lastIndex(of: "-") {
                     let suffix = lowerName[lowerName.index(after: dash)...]
                     if !suffix.isEmpty, suffix.allSatisfy({ $0.isASCII && $0.isNumber }) {
                         let prefix = String(lowerName[..<dash])
-                        if !prefix.isEmpty, extracted.contains(prefix) { return true }
+                        if !prefix.isEmpty {
+                            shardedByPrefix[prefix, default: []].append(name)
+                        }
                     }
                 }
-                return false
+            } else {
+                fallbackNames.append(name)
             }
-            let lower = fallbackLower ?? {
-                let computed = rawText.lowercased()
-                fallbackLower = computed
-                return computed
-            }()
-            return matchesNamedToken(in: lower, token: lowerName)
         }
-        return (matched, extracted.contains("all"))
+
+        var matched: [String] = []
+        var seen: Set<String> = []
+        var mentionsAll = false
+        for token in extracted {
+            if token == "all" {
+                mentionsAll = true
+            }
+            if let exact = exactByLower[token], seen.insert(exact).inserted {
+                matched.append(exact)
+            }
+            if let group = shardedByPrefix[token] {
+                for member in group where seen.insert(member).inserted {
+                    matched.append(member)
+                }
+            }
+        }
+
+        if !fallbackNames.isEmpty, !rawText.isEmpty {
+            let lower = rawText.lowercased()
+            for name in fallbackNames where !seen.contains(name) {
+                if matchesNamedToken(in: lower, token: name.lowercased()) {
+                    seen.insert(name)
+                    matched.append(name)
+                }
+            }
+        }
+
+        return (matched, mentionsAll)
     }
 
     static func mentions(in text: String, rosterNames: [String]) -> (mentions: [String], all: Bool) {
@@ -887,7 +975,7 @@ enum AgySwarmParser {
         if raw.control != nil {
             return AgySwarmSnapshot.BoardMessage(
                 seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: raw.parsedTimestamp,
-                channel: raw.channel, isBrief: false, isControl: true, mentions: [],
+                channel: raw.channel, isBrief: false, isControl: true, mentions: [], leadingMentions: [],
                 channelMentions: [], mentionsAll: false, rawCitedSeqs: [],
                 shouldCollapseBrief: false, lineCount: 0, isLongPost: false,
                 isMarkedDone: false, isMarkedStall: false,
@@ -895,6 +983,8 @@ enum AgySwarmParser {
         }
         let parsedMentions = resolveMentions(
             from: raw.tokens.mentionTokens, in: raw.text, rosterNames: rosterNames)
+        let parsedLeading = resolveMentions(
+            from: raw.tokens.leadingMentionTokens, in: "", rosterNames: rosterNames)
         let chanMentions = raw.tokens.channelMentions.filter { activeChannelNames.contains($0) }
         var current = postCounts[raw.agent] ?? (posts: 0, lastSeq: 0)
         current.posts += 1
@@ -903,7 +993,8 @@ enum AgySwarmParser {
         return AgySwarmSnapshot.BoardMessage(
             seq: seq, agent: raw.agent, text: raw.text, time: raw.time, timestamp: raw.parsedTimestamp,
             channel: raw.channel, isBrief: raw.kind == "brief", isControl: false,
-            mentions: parsedMentions.mentions, channelMentions: chanMentions,
+            mentions: parsedMentions.mentions, leadingMentions: parsedLeading.mentions,
+            channelMentions: chanMentions,
             mentionsAll: parsedMentions.all, rawCitedSeqs: raw.tokens.citedSeqs,
             shouldCollapseBrief: raw.shouldCollapseBrief, lineCount: raw.lineCount,
             isLongPost: raw.isLongPost, isMarkedDone: raw.isMarkedDone,
