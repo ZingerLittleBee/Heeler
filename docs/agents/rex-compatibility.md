@@ -86,10 +86,12 @@ server has been observed yet.
 - New Terminal and New Workspace are the one thing Heeler starts on a Rex
   server ([ADR 0049's update of 2026-11-25](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-new-terminal)):
   `RexHostSession.createTerminal` attaches to the session and sends
-  `session.new_window` (`focus: false`), or sends `session.create`, with one
-  `com.superlogical.terminal.shell` block in `cwd`, once, and gives the new
-  block back with `session.disown_block`. See
-  [Starting a terminal](#starting-a-terminal).
+  `session.new_window` (`focus: false`), or sends `session.create` and then
+  attaches to the new session. Either asks once for one
+  `com.superlogical.terminal.shell` block in `cwd`, and the new block goes
+  back with `session.disown_block`, which Rex answers only from an attached
+  client. A new session whose attach failed keeps its block until the session
+  is next attached. See [Starting a terminal](#starting-a-terminal).
 
 ## Known limits
 

@@ -100,6 +100,9 @@ final class FakeRexWorld: Sendable {
         var sessions: [Session]
         /// Numbers the windows, blocks and sessions New Terminal makes.
         var made = 0
+        /// The sessions each control client attached with `session.attach`,
+        /// by client id: Rex tracks attachment per control stream.
+        var attached: [String: Set<String>] = [:]
     }
 
     private let state: Mutex<State>
@@ -125,7 +128,11 @@ final class FakeRexWorld: Sendable {
     /// with the same `host_id`. Its sessions stay unless `update` changes
     /// them, as a server that restored them keeps them.
     func restart(as instanceID: String) {
-        state.withLock { $0.instanceID = instanceID }
+        state.withLock {
+            $0.instanceID = instanceID
+            // A restarted server knows no client's attachments.
+            $0.attached = [:]
+        }
     }
 
     /// Answers every read the inventory makes as this world stands at the time,
@@ -165,6 +172,7 @@ final class FakeRexWorld: Sendable {
         // What an open terminal asks: its session attached, and its size.
         await server.answer("session.attach") { [self] request in
             guard let session = session(request) else { return Self.sessionNotFound }
+            state.withLock { _ = $0.attached[client ?? "", default: []].insert(session.id) }
             return .result(["session_id": .string(session.id)])
         }
         await server.answer(RexInventoryWire.terminalMethod("resize")) { [self] request in
@@ -177,8 +185,15 @@ final class FakeRexWorld: Sendable {
         await server.answer("session.own_block") { [self] request in
             claim(request) { _ in client }
         }
+        // Rex 0.1.0-preview.23 refuses a give back from a client not
+        // attached to the session.
         await server.answer("session.disown_block") { [self] request in
-            claim(request) { owner in owner == client ? nil : owner }
+            let sessionID = request.payload?["session_id"]?.stringValue ?? ""
+            guard state.withLock({ $0.attached[client ?? ""]?.contains(sessionID) == true }) else {
+                return .error(
+                    code: "conflict", message: "stream is not attached to session \(sessionID)", status: 409)
+            }
+            return claim(request) { owner in owner == client ? nil : owner }
         }
     }
 
