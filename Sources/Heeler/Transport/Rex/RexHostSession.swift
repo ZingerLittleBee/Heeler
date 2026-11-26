@@ -742,6 +742,9 @@ actor RexHostSession {
                 {
                     sizeClaims.note(.taken, at: created.address, epoch: epoch)
                     unreturnedCreatedBlocks[created.address] = epoch
+                    // Another request may have attached the session while
+                    // these waited, past its own look for blocks to give back.
+                    if attachedSessions[sessionID] == epoch { giveBackLeftSizes(inSession: sessionID, on: control) }
                     return created
                 }
             }
