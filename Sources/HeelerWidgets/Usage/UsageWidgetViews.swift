@@ -22,8 +22,8 @@ struct UsageLimitsWidgetEntry: TimelineEntry {
     /// nil picks the first Host that reported Usage Limits.
     let hostID: UUID?
     /// The program small and Lock Screen sizes show, nil for the one
-    /// closest to its limit; medium and large show every program. Claude
-    /// Code shows each of its Accounts, while the Host has several.
+    /// closest to its limit. Medium and large show every program not left out.
+    /// They show all programs if every program would be left out.
     let program: String?
 }
 
@@ -313,7 +313,7 @@ struct UsageLimitsWidgetView: View {
         }
     }
 
-    /// The chosen program's entries: its own, or each Claude Code Account's.
+    /// The chosen program's entries, its own or each of its Accounts'.
     private func programEntries(_ host: UsageWidgetSnapshot.Host) -> [UsageWidgetSnapshot.Limits] {
         UsageLimitsPick.entries(host.limits, preferring: entry.program, now: now)
     }
@@ -641,7 +641,7 @@ enum UsageLimitsPick {
     /// The entries a size with every program shows: those not left out, or
     /// all of them when every one is, so the widget still says why.
     static func visibleEntries(_ limits: [UsageWidgetSnapshot.Limits]) -> [UsageWidgetSnapshot.Limits] {
-        let visible = limits.filter { $0.excludedReason == nil }
+        let visible = limits.filter { $0.leftOut == nil }
         return visible.isEmpty ? limits : visible
     }
 
@@ -651,7 +651,7 @@ enum UsageLimitsPick {
     static func program(
         _ limits: [UsageWidgetSnapshot.Limits], preferring program: String?, now: Date
     ) -> UsageWidgetSnapshot.Limits? {
-        if let program { return limits.first { $0.program == program } ?? limits.first }
+        if let program { return limits.first { $0.program == program } }
         let visible = visibleEntries(limits)
         let reporting = visible.filter { tightest($0.windows, now: now) != nil }
         return reporting.max {

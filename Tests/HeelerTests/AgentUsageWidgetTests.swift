@@ -7,6 +7,13 @@ import Testing
 @Suite("Agent usage widgets")
 struct AgentUsageWidgetTests {
     private static let now = Date(timeIntervalSince1970: 1_793_000_000)
+    private static let programMissing = ["state": "unavailable", "reason": "programMissing"]
+    private static let missingAntigravityAccounts: [[String: Any]] = [
+        ["id": "default", "isDefault": true, "directory": "/Users/u/.gemini", "state": "ok",
+         "tokenUsage": ["state": "noData"], "usageLimits": programMissing],
+        ["id": "agy-work", "name": "work", "directory": "/Users/u/.gemini-work", "state": "ok",
+         "tokenUsage": ["state": "noData"], "usageLimits": ["state": "unavailable", "reason": "singleSignIn"]],
+    ]
     private let studio = UUID()
     private let build = UUID()
     private let pi = UUID()
@@ -260,7 +267,7 @@ struct AgentUsageWidgetTests {
                     [.init(id: "weekly", name: "Weekly", usedPercent: $0,
                         resetsAt: Self.now.addingTimeInterval(3_600), expired: false)]
                 } ?? [],
-                excludedReason: percent == nil ? .limitsOff : nil)
+                leftOut: percent == nil ? .limitsOff : nil)
         }
         let off = [limits("claude", nil), limits("codex", 7)]
         let both = [limits("claude", 12), limits("codex", 40)]
@@ -275,13 +282,23 @@ struct AgentUsageWidgetTests {
         #expect(UsageLimitsPick.program(withAgy, preferring: "agy", now: Self.now)?.program == "agy")
     }
 
-    @Test func missingAntigravityLeavesTheTwoProgramLayout() throws {
-        let limits = try widgetLimits(agy: ["state": "unavailable", "reason": "programMissing"])
+    @Test func missingAntigravityLeavesOutBothAccountsAndKeepsTheTwoProgramLayout() throws {
+        let limits = try widgetLimits(agy: Self.programMissing, accounts: ["agy": Self.missingAntigravityAccounts])
         let shown = UsageLimitsPick.visibleEntries(limits)
 
         #expect(shown.map(\.program) == ["claude", "codex"])
         #expect(UsageLimitsLayout.medium(shown) == .columns)
         #expect(UsageLimitsLayout.large(shown) == .windows)
+    }
+
+    @Test func missingClaudeCodeLeavesOutAnUnreadAccountToo() throws {
+        let limits = try widgetLimits(claude: Self.programMissing, accounts: ["claude": [
+            ["id": "default", "isDefault": true, "directory": "/Users/u/.claude", "state": "ok",
+             "tokenUsage": ["state": "noData"], "usageLimits": Self.programMissing],
+            ["id": "claude-work", "name": "work", "directory": "/Users/u/.claude-work", "state": "missing"],
+        ]])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["codex", "agy"])
     }
 
     @Test func limitsOffLeavesOutClaudeCodeUnlessSelected() throws {
@@ -296,10 +313,31 @@ struct AgentUsageWidgetTests {
     @Test func allProgramsLeftOutStillShowWhy() throws {
         let limits = try widgetLimits(
             claude: ["state": "disabled"], codex: ["state": "disabled"],
-            agy: ["state": "unavailable", "reason": "programMissing"])
+            agy: Self.programMissing, accounts: ["agy": Self.missingAntigravityAccounts])
 
-        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude", "codex", "agy"])
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.id) == ["claude", "codex", "agy.default", "agy.agy-work"])
         #expect(UsageLimitsPick.entries(limits, preferring: nil, now: Self.now).map(\.program) == ["claude"])
+    }
+
+    @Test func pinnedMissingProgramStillShowsItsMessage() throws {
+        let limits = try widgetLimits(agy: Self.programMissing)
+        let selected = UsageLimitsPick.entries(limits, preferring: "agy", now: Self.now)
+
+        #expect(selected.map(\.program) == ["agy"])
+        #expect(selected.first?.message == "Antigravity is not installed or cannot run on this Host.")
+    }
+
+    @Test func pinnedProgramAbsentFromTheReportHasNoReading() throws {
+        let limits = try widgetLimits(agy: nil)
+
+        #expect(UsageLimitsPick.program(limits, preferring: "agy", now: Self.now) == nil)
+        #expect(UsageLimitsPick.entries(limits, preferring: "agy", now: Self.now).isEmpty)
+    }
+
+    @Test func missingCodexAndDisabledAntigravityAreLeftOut() throws {
+        let limits = try widgetLimits(codex: Self.programMissing, agy: ["state": "disabled"])
+
+        #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude"])
     }
 
     @Test(arguments: [
@@ -326,7 +364,7 @@ struct AgentUsageWidgetTests {
         let snapshot = try JSONDecoder().decode(UsageWidgetSnapshot.self, from: Data(older.utf8))
         let limits = try #require(snapshot.host(studio)?.limits)
 
-        #expect(limits.allSatisfy { $0.excludedReason == nil })
+        #expect(limits.allSatisfy { $0.leftOut == nil })
         #expect(UsageLimitsPick.visibleEntries(limits).map(\.program) == ["claude", "codex"])
     }
 
@@ -492,15 +530,20 @@ struct AgentUsageWidgetTests {
     private func widgetLimits(
         claude: [String: String] = ["state": "ok"],
         codex: [String: String] = ["state": "ok"],
-        agy: [String: String] = ["state": "ok"]
+        agy: [String: String]? = ["state": "ok"],
+        accounts: [String: [[String: Any]]] = [:]
     ) throws -> [UsageWidgetSnapshot.Limits] {
         let window: [String: Any] = ["id": "fiveHour", "usedPercent": 20, "expired": false]
-        let programs = [("claude", claude), ("codex", codex), ("agy", agy)].map { program, reading -> [String: Any] in
+        let readings: [(String, [String: String]?)] = [("claude", claude), ("codex", codex), ("agy", agy)]
+        let programs = readings.compactMap { program, reading -> [String: Any]? in
+            guard let reading else { return nil }
             var limits: [String: Any] = reading
             if reading["state"] == "ok" {
                 limits["windows"] = [window]
             }
-            return ["program": program, "usageLimits": limits, "tokenUsage": ["state": "noData"]]
+            var entry: [String: Any] = ["program": program, "usageLimits": limits, "tokenUsage": ["state": "noData"]]
+            if let accounts = accounts[program] { entry["accounts"] = accounts }
+            return entry
         }
         let object: [String: Any] = [
             "version": 1, "runtime": "recorded", "generatedAt": "2026-10-26T09:00:00Z",

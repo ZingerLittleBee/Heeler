@@ -86,7 +86,7 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
             case lastSession
         }
 
-        enum Exclusion: String, Codable, Sendable {
+        enum LeftOut: String, Codable, Sendable {
             case limitsOff
             case programMissing
         }
@@ -109,7 +109,8 @@ struct UsageWidgetSnapshot: Codable, Equatable, Sendable {
         let source: Source?
         let observedAt: Date?
         let windows: [Window]
-        var excludedReason: Exclusion? = nil
+        /// Why the program is left out of the widget by default.
+        var leftOut: LeftOut?
 
         /// The program, or with an Account its report id; an older
         /// snapshot's Account by its name.

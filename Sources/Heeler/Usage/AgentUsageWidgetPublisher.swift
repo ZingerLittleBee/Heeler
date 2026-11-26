@@ -156,6 +156,14 @@ extension UsageWidgetSnapshot.Host {
 
     init(id: UUID, name: String, report: AgentUsageReport, readAt: Date) {
         let programs = report.programs ?? []
+        let leftOut = Dictionary(programs.compactMap { program -> (String, UsageWidgetSnapshot.Limits.LeftOut)? in
+            let limits = program.usageLimits
+            if limits.state == "disabled" { return (program.program, .limitsOff) }
+            if limits.state == "unavailable" && limits.reason == "programMissing" {
+                return (program.program, .programMissing)
+            }
+            return nil
+        }, uniquingKeysWith: { first, _ in first })
         self.init(
             id: id, name: name, readAt: readAt, excludedReason: nil, timeZone: report.timeZone,
             programs: programs.compactMap { program in
@@ -166,7 +174,11 @@ extension UsageWidgetSnapshot.Host {
                     last30Days: .init(totals.last30Days),
                     days: (program.tokenUsage.daily ?? []).map { .init(date: $0.date, summary: .init($0.summary)) })
             },
-            limits: AgentUsageLimitsCard.readings(for: report).compactMap(UsageWidgetSnapshot.Limits.init))
+            limits: AgentUsageLimitsCard.readings(for: report).compactMap(UsageWidgetSnapshot.Limits.init).map {
+                var limits = $0
+                limits.leftOut = leftOut[limits.program]
+                return limits
+            })
     }
 }
 
@@ -206,13 +218,6 @@ extension UsageWidgetSnapshot.Limits {
         } else {
             AgentUsageLimitsView.unavailableMessage(limits, program: program)
         }
-        let excludedReason: Exclusion? = if limits.state == "disabled" {
-            .limitsOff
-        } else if limits.state == "unavailable" && limits.reason == "programMissing" {
-            .programMissing
-        } else {
-            nil
-        }
         self.init(
             program: program, name: name, account: account, accountID: accountID, message: message,
             isLastReading: limits.state == "throttled",
@@ -223,7 +228,6 @@ extension UsageWidgetSnapshot.Limits {
                     id: window.id, name: AgentUsageLimitsView.windowName(window, program: program),
                     usedPercent: window.usedPercent, resetsAt: AgentUsageLimitsView.date(window.resetsAt),
                     expired: window.expired)
-            },
-            excludedReason: excludedReason)
+            })
     }
 }

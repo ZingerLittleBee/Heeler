@@ -169,7 +169,7 @@ struct UsageLimitsWidgetIntent: WidgetConfigurationIntent {
     @Parameter(title: "Host")
     var host: UsageLimitsHostEntity?
 
-    /// Small and Lock Screen sizes show one program; larger ones show both.
+    /// Small and Lock Screen sizes show one program. Larger sizes can show several.
     @Parameter(title: "Program", default: .automatic)
     var program: UsageLimitsProgram
 
