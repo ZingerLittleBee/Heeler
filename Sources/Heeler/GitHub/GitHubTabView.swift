@@ -372,8 +372,15 @@ struct GitHubListScreen: View {
     private func itemRows(
         _ shown: GitHubStore.Shown, context: GitHubRowContext, host: GitHubHost, isOffline: Bool
     ) -> some View {
-        ForEach(shown.list.items) { item in
+        let items = shown.list.items
+        // The next page starts reading when the row about a screen above
+        // the end comes on, so a scroll seldom meets the end.
+        let readAheadID = items.isEmpty ? nil : items[max(0, items.count - Self.readAheadRows)].id
+        ForEach(items) { item in
             row(item, context: context, host: host, isOffline: isOffline)
+                .onAppear {
+                    if item.id == readAheadID { readAhead(shown, host: host, isOffline: isOffline) }
+                }
         }
         if shown.list.hasMore {
             if !isOffline, let failure = store.moreFailure(kind, on: host) {
@@ -381,13 +388,27 @@ struct GitHubListScreen: View {
             } else {
                 // Offline there is nothing to read the next page with, but
                 // the row stays, greyed, so the rows do not look like all
-                // there is.
+                // there is. Online it reads by itself as it comes on, and
+                // stays a button for VoiceOver and Switch Control.
                 GitHubShowMoreRow(
                     shown: shown.list.items.count, total: shown.list.totalCount,
                     isReading: store.state(of: host).readingMore.contains(kind), isAvailable: !isOffline
                 ) { Task { await store.showMore(kind) } }
+                .onAppear { readAhead(shown, host: host, isOffline: isOffline) }
             }
         }
+    }
+
+    /// How far above the end the next page starts reading: about a screen
+    /// of rows on an iPhone.
+    private static let readAheadRows = 10
+
+    /// Show More without a tap, as the end of the rows comes near. A read
+    /// that failed waits for Try Again rather than running again, so a rate
+    /// limit is not asked again on every scroll.
+    private func readAhead(_ shown: GitHubStore.Shown, host: GitHubHost, isOffline: Bool) {
+        guard shown.list.hasMore, !isOffline, store.moreFailure(kind, on: host) == nil else { return }
+        Task { await store.showMore(kind) }
     }
 
     private var placeholderRows: some View {
