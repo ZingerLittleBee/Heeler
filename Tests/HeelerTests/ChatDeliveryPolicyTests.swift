@@ -56,6 +56,7 @@ struct ChatDeliveryPolicyTests {
 
     /// Each program's idle capture with an empty input box.
     private static let readyScreens: [ChatProgram: String] = [
+        .amp: "amp-01-idle",
         .claude: "claude-01-ready", .codex: "codex-00-ready", .pi: "pi-06-empty-editor-119",
         .omp: "omp-08-empty-120-after-first", .grok: "grok-01-idle-empty",
         .opencode: "opencode-02-session-empty-180", .agy: "agy-02-idle-empty-120x40",
@@ -366,7 +367,7 @@ struct ChatDeliveryPolicyTests {
         }
 
         #expect(try ending(await blocked("hello")) == [.idle, .working, .done, .unknown])
-        #expect(try ending(busy.validate("/compact")) == [.idle, .done])
+        #expect(try ending(busy.validate("/compact")) == (program == .amp ? [] : [.idle, .done]))
         #expect(try ending(await unreadable("hello")) == statuses)
         for state in [
             InputBoxState.text("draft"), .disabled("Working."), .overlay("/compact"), .dialog(title: nil),
@@ -378,7 +379,8 @@ struct ChatDeliveryPolicyTests {
                 : .inputNotReady(state.holdReason(for: program))
             #expect(try ending(refusal) == statuses)
         }
-        for refusal in [busy.validate("!ls"), busy.validate("/nope")] {
+        let refusedDrafts = program == .amp ? ["/nope"] : ["!ls", "/nope"]
+        for refusal in refusedDrafts.map(busy.validate) {
             #expect(try ending(refusal).isEmpty)
         }
     }

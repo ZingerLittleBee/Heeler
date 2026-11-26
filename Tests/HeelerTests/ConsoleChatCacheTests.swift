@@ -535,6 +535,32 @@ struct ConsoleChatCacheTests {
         }
     }
 
+    @Test func removingASavedChatDeletesTheHostFilesOnlyItOpened() async throws {
+        let host = Host(address: "offline.invalid", username: "reader")
+        let cache = VolatileChatTranscriptCache()
+        let removed = Self.agent(host: host, session: Self.sessionA)
+        let kept = Self.agent(host: host, session: Self.sessionB, terminalID: "t2", paneID: "w1:p2")
+        await cache.saveAgentDirectory([ChatCachedAgent(removed), ChatCachedAgent(kept)], for: host)
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "ConsoleHostFiles-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = HostFileCache(root: root)
+        let own = try #require(HostFileCache.Key(hostID: host.id, path: "/a.png", size: 4, modificationTime: 1))
+        let shared = try #require(HostFileCache.Key(hostID: host.id, path: "/b.png", size: 4, modificationTime: 1))
+        _ = try #require(await files.keep(Data("abcd".utf8), named: "a.png", for: own, openedBy: "t1"))
+        _ = try #require(await files.keep(Data("abcd".utf8), named: "b.png", for: shared, openedBy: "t1"))
+        _ = try #require(await files.file(for: shared, openedBy: "t2"))
+        let console = ConsoleStore(chatCache: cache, hostFileCache: files)
+        defer { console.setHosts([]) }
+        console.setHosts([host])
+        await console.cachedChats.settled()
+
+        #expect(console.removeSavedChat(removed))
+
+        try await Self.waitUntil { await files.diskUsage() == 4 }
+        #expect(await files.file(for: shared, openedBy: "t2") != nil)
+    }
+
     @Test func aSavedChatRemovedDuringRevalidationStaysRemoved() async {
         let host = Host(address: "host", username: "reader")
         let cache = VolatileChatTranscriptCache()

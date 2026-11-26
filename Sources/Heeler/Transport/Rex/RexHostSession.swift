@@ -100,9 +100,12 @@ actor RexHostSession {
     /// Which follow may publish, so a late inventory from one that stopped is
     /// dropped, and what the last one published and on which server
     /// instance, whose details the next one on the same instance starts from.
+    /// `lineage` is the last server and the sessions it listed, which say
+    /// whether the next instance restored them.
     private final class Follows: Sendable {
         let run = Mutex<UInt64>(0)
         let lastInventory = Mutex<(instanceID: String, inventory: RexInventory)?>(nil)
+        let lineage = Mutex<RexServerLineage?>(nil)
 
         func stopAll() {
             run.withLock { $0 &+= 1 }
@@ -133,6 +136,9 @@ actor RexHostSession {
     private var clientEpoch: UInt64 = 0
     /// The client epoch each session was attached in with `session.attach`.
     private var attachedSessions: [String: UInt64] = [:]
+    /// New Workspace's blocks whose session could not be attached, so their
+    /// give back waits for the session's next attach on the same client.
+    private var unreturnedCreatedBlocks: [RexPaneAddress: UInt64] = [:]
     /// The control client asked for a data channel. An SSH connection that
     /// died half-open can leave its data links open on the server, which then
     /// refuses that client another link to the same block until it notices,
@@ -374,7 +380,8 @@ actor RexHostSession {
                 let (transport, link) = try await ensureLink(for: generation)
                 let started = ContinuousClock.now
                 let status = try await link.call("server.status")
-                let server = try RexServerStatus(reading: try status.result(JSONValue.self))
+                let server = try await identify(
+                    RexServerStatus(reading: try status.result(JSONValue.self)), on: link)
                 guard activationIsCurrent(generation) else { break }
                 await settleTerminals(on: link, server: server)
                 guard activationIsCurrent(generation) else { break }
@@ -403,6 +410,49 @@ actor RexHostSession {
             let delay = retryAtOnce ? Duration.zero : reconnectPolicy.delay(beforeAttempt: attempt)
             yieldStatus(.reconnecting(attempt: attempt, delay: delay, failure: failure))
             if delay > .zero { try? await wait(delay) }
+        }
+    }
+
+    /// What this device knew of the Host's server before this session, from
+    /// an earlier run, for the first instance to continue. A session that
+    /// already followed one keeps its own.
+    nonisolated func seedLineage(_ lineage: RexServerLineage?) {
+        follows.lineage.withLock { if $0 == nil { $0 = lineage } }
+    }
+
+    /// The server `answered` is (ADR 0050). The instance the last link
+    /// reached continues its core. Another instance continues it only when
+    /// it sees the same files and lists one of the sessions the last one
+    /// listed, as a server restored from its saved sessions does; it is asked
+    /// for its list only then. Any other is another server, with a core of
+    /// its own.
+    private func identify(_ answered: RexServerStatus, on link: RexControlLink) async throws -> RexServerStatus {
+        var server = answered
+        var listed: [String] = []
+        if let last = follows.lineage.withLock({ $0 }) {
+            if last.instanceID == answered.instanceID {
+                server = answered.continuing(last.coreID)
+                listed = last.sessionIDs
+            } else if last.mayContinue(in: answered) {
+                let ids = try await listedSessionIDs(on: link)
+                if last.isContinued(byListing: ids) {
+                    server = answered.continuing(last.coreID)
+                    listed = ids
+                }
+            }
+        }
+        follows.lineage.withLock { $0 = RexServerLineage(server, sessionIDs: listed) }
+        return server
+    }
+
+    /// The ids `session.list` names. A server that refuses the list, or
+    /// answers in a way Heeler cannot read, says nothing of what it restored.
+    private func listedSessionIDs(on link: RexControlLink) async throws -> [String] {
+        do {
+            let response = try await link.call("session.list")
+            return RexInventoryWire.sessions(try response.result(JSONValue.self))?.map(\.id) ?? []
+        } catch RexControlError.server(_), RexControlError.unreadableResult(_) {
+            return []
         }
     }
 
@@ -443,6 +493,7 @@ actor RexHostSession {
         ) { [updatesContinuation, follows] inventory in
             guard follows.run.withLock({ $0 == run }) else { return }
             follows.lastInventory.withLock { $0 = (server.instanceID, inventory) }
+            follows.lineage.withLock { $0 = RexServerLineage(server, sessionIDs: inventory.sessions.map(\.id)) }
             updatesContinuation.yield(.inventory(inventory))
         }
         let ending = await follower.run()
@@ -707,13 +758,15 @@ actor RexHostSession {
     /// live control link. It never waits for a server, and a request that
     /// left is never sent again, so one with no answer may still have made
     /// its terminal. The window is not made active, and the block is given
-    /// back at once, as a size this client took is (ADR 0053): the view that
-    /// opens it takes its size as it takes any other terminal's.
+    /// back at once, as a size this client took is (ADR 0053), or, in a new
+    /// session the client could not attach, once that session is attached:
+    /// the view that opens it takes its size as it takes any other terminal's.
     func createTerminal(_ placement: RexNewTerminal.Placement, cwd: String?) async throws -> RexNewTerminal.Created {
         guard let ready = readyConnection else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         let control = ready.control
+        let epoch = clientEpoch
         let created: RexNewTerminal.Created
         do {
             switch placement {
@@ -726,9 +779,25 @@ actor RexHostSession {
                 let response = try await control.call(
                     RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd))
                 created = try RexNewTerminal.newSession(from: response.result(JSONValue.self))
-                // The session is made: without an attach its block stays
-                // this client's until the view that opens it takes it.
-                guard (try? await attachForCreating(created.address.sessionID, on: control)) != nil else {
+                // The session is made, so a failed attach never fails the
+                // request. Rex refuses a give back from a client not attached
+                // to the session, so the block of one whose attach failed is
+                // kept as a size this client took: the next attach of its
+                // session or of the block, or a link that takes the client
+                // back, gives it back. Another attach now would only add its
+                // deadline to New Workspace's wait.
+                let sessionID = created.address.sessionID
+                if (try? await attachForCreating(sessionID, on: control)) == nil {
+                    // What the old client claimed went with it.
+                    guard clientEpoch == epoch else { return created }
+                    sizeClaims.note(.taken, at: created.address, epoch: epoch)
+                    unreturnedCreatedBlocks[created.address] = epoch
+                    // Another request may have attached the session while this
+                    // one waited, past its own look for blocks to give back,
+                    // and on the link that took the client back if this one ended.
+                    if attachedSessions[sessionID] == epoch, let live = readyConnection?.control {
+                        giveBackLeftSizes(inSession: sessionID, on: live)
+                    }
                     return created
                 }
             }
@@ -758,7 +827,8 @@ actor RexHostSession {
 
     /// One read of Chat's, on the live control link while it is still the
     /// one the read was pinned to. Another server is gone for good; another
-    /// connection or client says the one it read on went.
+    /// connection or client says the one it read on went, as does another
+    /// instance of the same server.
     private func askBlock(
         _ method: String, payload: JSONValue, deadline: RexDeliveryDeadline, server: RexServerStatus,
         generation: UInt64, epoch: UInt64
@@ -766,8 +836,8 @@ actor RexHostSession {
         guard let ready = readyConnection else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
-        guard ready.server == server else { throw TransportError.rexServerGone }
-        guard ready.generation == generation, clientEpoch == epoch else {
+        guard ready.server.isSameServer(as: server) else { throw TransportError.rexServerGone }
+        guard ready.server == server, ready.generation == generation, clientEpoch == epoch else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
         let response = try await ready.control.call(method, payload: payload, waiting: deadline)
@@ -877,6 +947,7 @@ actor RexHostSession {
             clientEpoch &+= 1
             clientOpenedDataLinks = false
             sizeClaims.clear()
+            unreturnedCreatedBlocks = [:]
         }
         terminals.linkChanged(to: server, carriesOn: carriesOn)
         guard fresh else {
@@ -910,6 +981,8 @@ actor RexHostSession {
         do { try await holdBlock(address) } catch { return }
         defer { releaseBlock(address) }
         guard sizeClaims.claim(at: address, epoch: epoch) == .taken else { return }
+        // Rex answers a give back only from a client attached to the session.
+        do { try await attachSession(address.sessionID, server: server, generation: generation) } catch { return }
         let delivery = await deliverTerminalRequest(
             RexTerminalAttach.giveBackMethod, payload: RexTerminalAttach.ownershipPayload(address, take: false),
             deadline: terminalOptions.giveBackDeadline, server: server, generation: generation, epoch: epoch)
@@ -945,7 +1018,24 @@ actor RexHostSession {
         } catch {
             throw RexTerminalEnding.connectionReset
         }
-        if clientEpoch == epoch { attachedSessions[sessionID] = epoch }
+        guard clientEpoch == epoch else { return }
+        attachedSessions[sessionID] = epoch
+        giveBackLeftSizes(inSession: sessionID, on: link)
+    }
+
+    /// Each New Workspace block in `sessionID` that could not be given back
+    /// goes back once the session is attached on the live link, as a size an
+    /// ended attach left goes back, unless a view of it gave it back first.
+    private func giveBackLeftSizes(inSession sessionID: String, on link: RexControlLink) {
+        guard let ready = readyConnection, ready.control === link else { return }
+        let epoch = clientEpoch
+        let waiting = unreturnedCreatedBlocks.filter { $0.key.sessionID == sessionID && $0.value == epoch }.keys
+        for address in waiting {
+            unreturnedCreatedBlocks[address] = nil
+            Task {
+                await self.giveBackLeftSize(address, server: ready.server, generation: ready.generation, epoch: epoch)
+            }
+        }
     }
 
     /// The server refused a stream in `sessionID` for want of an attach, so

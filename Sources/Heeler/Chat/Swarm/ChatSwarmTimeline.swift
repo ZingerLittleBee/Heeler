@@ -1196,6 +1196,13 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
         releaseHoldIfBack()
     }
 
+    func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        pendingScrollTarget = nil
+        disclosureAnchor = nil
+        latch.userScrollBegan()
+        return true
+    }
+
     func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
         latch.userScrollEnded(
             isAtEnd: ChatFollowLatch.isAtEnd(
@@ -1215,6 +1222,9 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
         }
     }
 
+    /// Only tear down cells for items that left the data source. A cell that
+    /// merely scrolled outside the viewport stays in UIKit's prepared cache
+    /// and may be brought back onscreen without calling `cellForItemAt`.
     func collectionView(
         _ collectionView: UICollectionView,
         didEndDisplaying cell: UICollectionViewCell,

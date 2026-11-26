@@ -372,7 +372,12 @@ does the same, for a shell only:
   block's owner. Heeler sends `session.disown_block` for it straight away, so
   the block's size stays as ADR 0053 has it: taken by a view that shows the
   terminal and given back when it leaves, never held by a terminal nobody is
-  looking at.
+  looking at. Rex refuses that request from a client not attached to the
+  session, so New Workspace attaches to the session it made first. When that
+  attach fails, the session is made all the same and New Workspace still
+  gives its terminal: the block is kept as a size the client took, and goes
+  back on the session's next attach, as ADR 0053 has it. The attach is not
+  tried again, which would only add its deadline to the wait.
 - **Sent once.** A create that left is never sent again. One with no answer
   may still have made its terminal, so the error says to check the list
   before trying again. The new terminal lists from the server's events, as

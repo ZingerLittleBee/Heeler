@@ -86,10 +86,12 @@ server has been observed yet.
 - New Terminal and New Workspace are the one thing Heeler starts on a Rex
   server ([ADR 0049's update of 2026-11-25](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-new-terminal)):
   `RexHostSession.createTerminal` attaches to the session and sends
-  `session.new_window` (`focus: false`), or sends `session.create`, with one
-  `com.superlogical.terminal.shell` block in `cwd`, once, and gives the new
-  block back with `session.disown_block`. See
-  [Starting a terminal](#starting-a-terminal).
+  `session.new_window` (`focus: false`), or sends `session.create` and then
+  attaches to the new session. Either asks once for one
+  `com.superlogical.terminal.shell` block in `cwd`, and the new block goes
+  back with `session.disown_block`, which Rex answers only from an attached
+  client. A new session whose attach failed keeps its block until the session
+  is next attached. See [Starting a terminal](#starting-a-terminal).
 
 ## Known limits
 
@@ -102,7 +104,19 @@ in users' words.
   at any other revision, or a close before the welcome, is refused as
   `rexUnsupportedRevision`, naming the revision the server offers when it says
   ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-api-revisions-12-to-19)).
-  Only preview.14 at 12 and preview.23 at 19 have been seen.
+  Preview.14 has been seen at 12, and preview.23 and preview.25 at 19.
+  Preview.25 says revision 24 and supports 0 to 24; the eight local-socket
+  live suites passed against it on 2026-11-26 (`RexSSHLiveTests` was not
+  run).
+- **A restarted server continues only with its sessions.** Rex restores its
+  sessions with the same ids under a new `instance_id`, and resumes programs
+  that report (OSC 7577). Heeler continues the server when the new instance
+  names the last one's `host_id` and lists one of its sessions
+  ([ADR 0050](../adr/0050-rex-hosts-follow-inventory-on-one-control-connection.md#update-2026-11-26-a-restarted-server));
+  a restored terminal paints a fresh screen. A `RexHostSession` probe has
+  followed a real restart; the Console and its details have only followed
+  a fake one. See
+  [Server restart and Program Resume](#server-restart-and-program-resume).
 - **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
   check and a server started by a login service have never met a running
   Linux Rex server; `scripts/test-server-kind-detection.py` runs the
@@ -649,6 +663,43 @@ and captures are kept outside the repository.
   error (`g_reconnect`).
 - After a control connection closed with a close frame, that client's data
   link closed at once with 1001 (`g_reconnect`).
+
+### Server restart and Program Resume
+
+Rex 0.1.0-preview.25 (build 2147), API revision 24 (supports 0 to 24), macOS
+27.0, 2026-11-26, on a server of its own (`rex server run` with its own
+`--listen` socket, `--state-dir` and `--config`), through the `rex` CLI and
+the server's log, and later a `RexHostSession` probe in the Simulator.
+
+- Stopped with `rex server stop` and started on the same state directory, and
+  again after `kill -9` (logged `clean_shutdown=false`), the server restored
+  both sessions with the same session, window and block ids, under a new
+  `instance_id` each time. `server.status` kept its `host_id`, which the API
+  document says only tells whether two servers see the same files.
+- A restored terminal started on a fresh screen: what it showed before was
+  gone, and `title` answered empty until a program set one.
+- Every terminal's first process had `OSC7577_TOKEN`, 22 characters. A
+  stand-in that reported its own absolute path with OSC 7577, trusted by a
+  rule in the server's `init.lua`, came back after both restarts with a new
+  pid under `login`, then `/bin/sh -c '… (exec "$@") || :; exec "$rex_s" -l'`,
+  and `process` named it as the foreground. `block.method` with
+  `program_resume_records` lists a terminal's records with `chosen`,
+  `trusted` and the command.
+- The shell starts through `/usr/bin/login -flp <user>`, with the account's
+  login shell and home whatever the server's environment holds, so a resumed
+  program runs with the account's own configuration. For that reason no Claude
+  Code was resumed here; Rex's `SessionStart` hook from `rex skill setup`
+  (`rex __internal session-start --agent claude`) is what reports one.
+- Until then Heeler took a new `instance_id` for another server: an open
+  detail on its terminals was left behind with "This Terminal belongs to a Rex
+  server that is gone", the Host's pins were removed, and turns, seen marks
+  and Chat's cache went with the last instance. Updating the Rex app restarted
+  the owner's server once that day, so updates reach this too.
+- With ADR 0050's update of that day, a `RexHostSession` probe (not
+  committed) over this server's local socket announced the restarted server
+  with the first instance's core, after `rex server stop` and after `kill -9`
+  each followed by a start on the same state directory, and read its
+  inventory of both sessions.
 
 ### Terminal data connection
 

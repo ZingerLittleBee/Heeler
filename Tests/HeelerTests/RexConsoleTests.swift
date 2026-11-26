@@ -727,6 +727,37 @@ struct RexConsoleTests {
         #expect(!console.hasLeftCore(fresh.corePin, on: rex.id))
     }
 
+    /// A server restarted on the same files that restored the last one's
+    /// sessions is the same server: an open Agent's detail keeps to it, and
+    /// the list still marks it.
+    @Test func anOpenRexAgentKeepsToARestoredServer() async throws {
+        let world = FakeRexWorld(hostID: "host-0001", sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world, count: 2)
+        let host = ScriptedRexHost(control: servers.map { .server($0) })
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent") { console.agents.first?.agent.status == .working }
+        let agent = try #require(console.agents.first)
+        let cores = ConsoleDetailCores()
+        let session = cores.session(for: agent, console: console)
+
+        let blocked = studioRunningCodex(reporting: "blocked")
+        world.restart(as: "instance-0002")
+        world.update { $0 = [blocked] }
+        await servers[0].close(.goingAway, reason: "shutting down")
+        try await waitUntil("the restored server's inventory") { console.agents.first?.agent.status == .blocked }
+
+        #expect(!console.hasLeftCore(session.corePin, on: rex.id))
+        #expect(cores.session(for: agent, console: console) === session)
+        #expect(cores.listSelection(for: .agent(agent.id), console: console) == .agent(agent.id))
+        #expect(!cores.openAnew(.agent(agent.id), console: console))
+    }
+
     /// What a Rex Agent's detail leaves closed stays closed with the Host
     /// connected (ADR 0056): no platform probe, which Chat does without, no
     /// Host script for Skills or the agy model list, no Changes totals for
@@ -1184,6 +1215,46 @@ struct RexConsoleTests {
             try await attempt.value
         }
         #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
+    }
+
+    /// The session is made but Rex refuses the attach that follows: New
+    /// Workspace still gives the terminal it made, tries no second attach,
+    /// and sends no give back Rex would refuse from a client not attached to
+    /// the session. The block stays this client's until the session's next
+    /// attach gives it back.
+    @Test func aNewWorkspaceWhoseAttachIsRefusedGivesItsBlockBackOnTheNextAttach() async throws {
+        let (console, server, world) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        await server.stopAnswering("session.attach")
+        await server.answer("session.attach", with: .error(code: "conflict", message: "busy", status: 409))
+        let identity = try await console.createShellWorkspace(
+            NewWorkspaceSpec(directory: "/home/dev/site", label: nil), tabLabel: nil, on: rex.id)
+
+        let made = RexPaneAddress(sessionID: "session:made-2", blockID: "block:made-1")
+        #expect(identity.paneID == made.paneID)
+        let attaches = await server.requests.filter {
+            $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2"
+        }
+        #expect(attaches.count == 1)
+        #expect(await !server.requests.contains { $0.method == RexTerminalAttach.giveBackMethod })
+        #expect(world.owner(of: "block:made-1", in: "session:made-2") == FakeRexServer.Welcome().clientID)
+
+        await server.stopAnswering("session.attach")
+        await world.install(on: server)
+        _ = try await console.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: "session:made-2", cwd: "/home/dev/site"), on: rex.id)
+        try await waitUntil("the give back") {
+            await server.requests.contains {
+                $0.method == RexTerminalAttach.giveBackMethod
+                    && $0.payload == RexTerminalAttach.ownershipPayload(made, take: false)
+            }
+        }
+        #expect(world.owner(of: "block:made-1", in: "session:made-2") == nil)
     }
 
     /// A new session's label when none is given is its directory's last

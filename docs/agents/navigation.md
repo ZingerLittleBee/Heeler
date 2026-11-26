@@ -190,6 +190,7 @@ and [OpenCode's session store](../research/opencode-session-store.md) what it wa
 
 | Task | Owner | Focused coverage |
 | --- | --- | --- |
+| Amp Chat on Herdr TUI | [AmpChatConnection](../../Sources/Heeler/Chat/Amp/AmpChatConnection.swift) binds the foreground CLI, [the bundled Amp plugin](../../integrations/amp/heeler-chat.js) identifies its active thread, and [AmpRecordSource](../../Sources/Heeler/Chat/Amp/AmpRecordSource.swift) pages its messages ([ADR 0066](../adr/0066-amp-chat-follows-the-active-thread-in-its-terminal.md)) | [AmpChatTests](../../Tests/HeelerTests/AmpChatTests.swift) |
 | Finding and following a transcript | [ConversationReference](../../Sources/Heeler/Chat/Source/ConversationReference.swift) with each program's `ChatSessionNaming`; every locator searches the Default Account, then each added Account from [ChatHostFiles](../../Sources/Heeler/Chat/Source/ChatHostFiles.swift) `configRoots(for:defaultRoot:)`, skipping a refused root (`firstAnswer(across:)`), and a herdr-core Agent's own root, read from its process (ADR 0034), stands in for that list; [ClaudeTranscriptLocator](../../Sources/Heeler/Chat/Source/ClaudeTranscriptLocator.swift), [CodexTranscriptLocator](../../Sources/Heeler/Chat/Source/CodexTranscriptLocator.swift), [ChatTranscriptSource](../../Sources/Heeler/Chat/Source/ChatTranscriptSource.swift), which [TranscriptFollower](../../Sources/Heeler/Chat/Source/TranscriptFollower.swift) implements for files | [ClaudeTranscriptLocatorTests](../../Tests/HeelerTests/ClaudeTranscriptLocatorTests.swift), [CodexTranscriptLocatorTests](../../Tests/HeelerTests/CodexTranscriptLocatorTests.swift), [TranscriptFollowerTests](../../Tests/HeelerTests/TranscriptFollowerTests.swift), [ChatConversationEngineTests](../../Tests/HeelerTests/ChatConversationEngineTests.swift), [AgentChatStoreTests](../../Tests/HeelerTests/AgentChatStoreTests.swift) |
 | Binding a core or tmux Agent's conversation | [HerdrCoreSessionBinder](../../Sources/Heeler/Chat/Source/HerdrCoreSessionBinder.swift) makes one check, one `HerdrCoreTransport.readProcesses` (or `HostServices.readProcesses` on tmux) exec and at most one SFTP read, past a Codex holding several rollouts, which reads each one's first line up to `heldRolloutLimit`, and [its Programs extension](../../Sources/Heeler/Chat/Source/HerdrCoreSessionBinder+Programs.swift) holds Codex, Grok Build, OpenCode and Antigravity CLI (its held presence lock, or no conversation yet before its first prompt; the Linux and macOS core and tmux lists offer it), and [HerdrCoreSessionBinder+Pi](../../Sources/Heeler/Chat/Source/HerdrCoreSessionBinder+Pi.swift) Pi and Oh My Pi's evidence and folder rules. [+Pick](../../Sources/Heeler/Chat/Source/HerdrCoreSessionBinder+Pick.swift) applies a `heeler.chat` label on herdr-core or a `@heeler-chat` Pane option on tmux (gated to `TmuxServerInstance.id` via `TmuxConsoleProjection.applyChatPick` and `clearChatPick`) and [+Candidates](../../Sources/Heeler/Chat/Source/HerdrCoreSessionBinder+Candidates.swift) lists what the user could choose; `AgentChatStore.listCandidates`, `previewCandidate` and `confirmCandidate` drive them from [ChatCandidatePickerView](../../Sources/Heeler/Chat/Timeline/ChatCandidatePickerView.swift) through `ChatPickIO`, and `judgePickGuard` is the send guard. `HerdrCoreConsoleProjection.checkChatSession` gives it the Terminal's record and the label clear; on tmux, `TmuxConsoleProjection.checkChatSession` gives it `HerdrCoreTerminalScope.tmux` (matching `TMUX_PANE` plus the server's socket path and pid in `TMUX`), `@heeler-session` and `@heeler-chat`; `sessionEventRevision` counts the status, turn, foreground and session-label/option changes `ConsoleStore.publishChatAgents` turns into `AgentChatStore.sessionEvidenceMayHaveChanged`. `AgentChatSource.sessionEvidence` replaces the herdr record, and `coreScope` keys the cache. `HostCapabilities.chatPrograms` decides the offer, from the kernel's list: `confirmedLinuxCoreChatPrograms`, `confirmedMacOSCoreChatPrograms` or `confirmedWindowsCoreChatPrograms` | [ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-host-evidence.md), [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md), [ADR 0046](../adr/0046-tmux-program-status-comes-from-heelers-integrations.md); [HerdrCoreSessionBinderTests](../../Tests/HeelerTests/HerdrCoreSessionBinderTests.swift), [HerdrCoreProgramBinderTests](../../Tests/HeelerTests/HerdrCoreProgramBinderTests.swift) on `ChatFixtures/host-evidence`, [HerdrCoreLinuxSessionBinderTests](../../Tests/HeelerTests/HerdrCoreLinuxSessionBinderTests.swift) on `ChatFixtures/host-evidence/linux`, [HerdrCorePiSessionBinderTests](../../Tests/HeelerTests/HerdrCorePiSessionBinderTests.swift), [HerdrCoreChatTests](../../Tests/HeelerTests/HerdrCoreChatTests.swift), [HerdrCoreProgramChatTests](../../Tests/HeelerTests/HerdrCoreProgramChatTests.swift), [HerdrCorePiChatTests](../../Tests/HeelerTests/HerdrCorePiChatTests.swift), [HerdrCoreChatPickTests](../../Tests/HeelerTests/HerdrCoreChatPickTests.swift), [HerdrCoreChatPickBinderTests](../../Tests/HeelerTests/HerdrCoreChatPickBinderTests.swift), [TmuxSessionBinderTests](../../Tests/HeelerTests/TmuxSessionBinderTests.swift), [TmuxChatTests](../../Tests/HeelerTests/TmuxChatTests.swift); [lab checklist](../guides/herdr-core-testing.md) |
 | Chat on a macOS core Host | `HostCapabilities.confirmedMacOSCoreChatPrograms` says which programs open, apart from Linux's list; `macOSExactCoreChatPrograms` says which bind exactly; `HerdrCoreSessionBinder.isOnMacOS` covers Grok Build's `pid_start`, Oh My Pi's terminal name and a withheld Terminal's scope; `HostProcessReader`'s macOS reads answer the walk and arguments | [ADR 0034](../adr/0034-herdr-core-chat-binds-sessions-from-host-evidence.md), [herdr compatibility](herdr-compatibility.md); [HerdrCoreMacOSSessionBinderTests](../../Tests/HeelerTests/HerdrCoreMacOSSessionBinderTests.swift) on `host-evidence/macos` through `Support/MacOSProcessTable`, the macOS cases of [HerdrCoreProgramChatTests](../../Tests/HeelerTests/HerdrCoreProgramChatTests.swift) and [HerdrCoreChatTests](../../Tests/HeelerTests/HerdrCoreChatTests.swift), `scripts/test-host-process-reader.py` |
@@ -257,10 +258,15 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   writes from those stores, modeled in
   [UsageWidgetSnapshot](../../Sources/HeelerUsageCore/UsageWidgetSnapshot.swift)
   (shared with the extension, as are the formats in `AgentUsageStyle`);
-  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account.
+  its Usage Limits follow `readings(for:)`, one entry per Claude Code Account,
+  and the publisher marks `leftOut` the entries of a program whose limits are
+  off, or that is missing with no Account reporting windows. With no Host
+  chosen, the Usage Limits widget, its timeline and its Host picker use
+  `defaultLimitsHost`.
   [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
   draws every size, with `UsageLimitsLayout` and `UsageLimitsPick` choosing
-  each size's layout and reading, and is compiled into the app for tests;
+  each size's layout and reading and skipping left-out entries,
+  and is compiled into the app for tests;
   [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
   the timelines and configuration. Stale Hosts are re-read for the widgets
   by `ConsoleStore.refreshStaleWidgetUsage()` in the foreground and by
@@ -483,7 +489,14 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   request the Host has yet to answer.
   [HostFilePreview](../../Sources/Heeler/HostFiles/HostFilePreview.swift)
   decides how one file opens (text in place, a copy for a viewer, Share and
-  Save to Files) and removes its copy;
+  Save to Files) and hands its copy to
+  [HostFileCache](../../Sources/Heeler/HostFiles/HostFileCache.swift)
+  (`ConsoleStore.hostFileCache`, by Host, path, size and modification time;
+  pruned by age and size, forgotten with the Agents that opened it by
+  `ConsoleStore.closeAgent`, `closePane` and `removeSavedChat`, cleared with
+  Clear Chat Cache and from
+  [HostFileCacheSettingsSection](../../Sources/Heeler/Settings/HostFileCacheSettingsSection.swift)),
+  which Chat's video preview and `ChatImagePreviewReader` share;
   [HostFileKind](../../Sources/Heeler/HostFiles/HostFileKind.swift) holds the
   kinds, the text check and the size and time wording.
   [HostFilesView](../../Sources/Heeler/HostFiles/HostFilesView.swift),
@@ -491,7 +504,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   and [HostFileViewers](../../Sources/Heeler/HostFiles/HostFileViewers.swift)
   are the sheet, the preview and the system viewers
   ([ADR 0059](../adr/0059-files-reads-a-hosts-folders-and-changes-nothing.md)).
-  No focused tests yet.
+  The cache: [HostFileCacheTests](../../Tests/HeelerTests/HostFileCacheTests.swift);
+  the browser and preview have no focused tests yet.
 - **Port Preview (a Host's `localhost` pages, from a link or Ports):**
   `View.portPreview(console:hostID:directory:sendScreenshot:)` in
   [PortPreviewPresenter](../../Sources/Heeler/PortPreview/PortPreviewPresenter.swift)

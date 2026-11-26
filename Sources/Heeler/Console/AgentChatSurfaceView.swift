@@ -71,6 +71,7 @@ struct AgentChatSurfaceView: View {
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var extensionFlow: HeelersExtensionFlow?
+    @State private var ampInstall: AmpPluginInstallSheet.Request?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
@@ -81,9 +82,8 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
-    @State private var previewedVideo: HostFilePreview?
-    @State private var videoPreviewCopies = HostFileCopies()
-    @State private var videoPreviewPace = HostFilePace()
+    @State private var previewedFile: HostFilePreview?
+    @State private var previewPace = HostFilePace()
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -317,9 +317,8 @@ struct AgentChatSurfaceView: View {
                 ChatCandidatePickerView(chat: chat, corePin: session.corePin)
             }
         }
-        .fullScreenCover(item: $previewedVideo) { preview in
-            HostFilePreviewView(preview: preview)
-                .onDisappear { preview.discard() }
+        .fullScreenCover(item: $previewedFile) { preview in
+            filePreview(preview)
         }
         .sheet(item: $viewingSkill) { skill in
             SkillContentSheet(skill: skill) { [console, agent] in
@@ -379,6 +378,16 @@ struct AgentChatSurfaceView: View {
         } message: {
             Text(permissionErrorMessage ?? "")
         }
+    }
+
+    private func filePreview(_ preview: HostFilePreview) -> some View {
+        let insert: () -> Void = {
+            let path = agent.directory.map { HostFilesBrowser.reference(to: preview.path, from: $0) } ?? preview.path
+            composer.insertIntoDraft(path)
+            previewedFile = nil
+        }
+        return HostFilePreviewView(preview: preview, insertPath: showFiles == nil ? nil : insert)
+            .onDisappear { preview.discard() }
     }
 
     private var lifecycleSurface: some View {
@@ -476,6 +485,7 @@ struct AgentChatSurfaceView: View {
             chat?.skillsDidLoad(names)
         }
         .onChange(of: isHostConnected, initial: true) { _, isConnected in
+            if isConnected { previewPace.reset() }
             chat?.hostConnectionChanged(isConnected)
         }
         // The transcript records the mode as snapshots, and not every change
@@ -788,9 +798,21 @@ struct AgentChatSurfaceView: View {
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
-                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) })
+                addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
+                installAmp: {
+                    if let place = chat?.ampConnection?.location {
+                        ampInstall = .init(place: place, updating: reason == .amp(.update))
+                    }
+                })
             .sheet(item: $extensionFlow) { flow in
                 HeelersExtensionSheet(flow: flow)
+            }
+            .sheet(item: $ampInstall) { request in
+                if let connection = chat?.ampConnection {
+                    AmpPluginInstallSheet(host: agent.hostName, account: hosts.first { $0.id == agent.hostID }?.username,
+                                          place: request.place, updating: request.updating, connection: connection,
+                                          installed: { chat?.retry() })
+                }
             }
         case .disconnected:
             ContentUnavailableView(
@@ -1015,23 +1037,20 @@ struct AgentChatSurfaceView: View {
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
             },
-            previewVideo: { [weak chat] path, title in
+            previewFile: { [weak chat] path, title in
                 guard let chat else { return }
-                Task { @MainActor in
-                    let resolved = (try? await chat.resolveHostPath(path)) ?? path
-                    let name = RemoteHostPath.lastComponent(of: resolved)
-                    previewedVideo?.discard()
-                    previewedVideo = HostFilePreview(
-                        path: resolved,
-                        name: name.isEmpty ? "video.mp4" : name,
-                        displayTitle: title,
-                        size: nil,
-                        modified: nil,
-                        files: chat.hostFiles,
-                        copies: videoPreviewCopies,
-                        pace: videoPreviewPace)
-                }
+                let files = chat.hostFiles.finishingEachRequest
+                let written = path.hasPrefix("./") ? String(path.dropFirst(2)) : path
+                let name = RemoteHostPath.lastComponent(of: ChatImagePath.resolve(written, cwd: nil) ?? written)
+                composerKeyboardDismissRequest += 1
+                previewedFile?.discard()
+                previewedFile = HostFilePreview(
+                    path: path, name: name, displayTitle: title, size: nil, modified: nil,
+                    files: files, hostID: agent.hostID, openedBy: agent.agent.terminalID,
+                    cache: console.hostFileCache, pace: previewPace,
+                    resolvePath: { try await chat.resolveHostPath(written, files: files) })
             },
+            offersFiles: showFiles != nil,
             thumbnails: chat?.thumbnails,
             openHostLink: { [portPreview] link in
                 guard let portPreview, portPreview.accepts(link) else { return false }
@@ -1088,6 +1107,19 @@ struct AgentChatSurfaceView: View {
             rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        if program == .amp {
+            let connection = chat?.ampConnection
+            let displayed = chat?.displayedAmpBinding
+            policy.submitChat = { id, text in
+                guard let connection else { return .refused(.inputNotReady(AmpChatProblem.changed.explanation)) }
+                return await connection.send(id: id, text: text, target: displayed)
+            }
+            policy.verify = nil
+            let hasFiles = !composer.imageAttachments.isEmpty
+            policy.prependingPreflight { _ in
+                hasFiles ? .inputNotReady(String(localized: "Send attachments from the Amp terminal.")) : nil
+            }
+        }
         // A status-line switch types into the same input line.
         let isSwitching = { isSwitchingSetting }
         let settle = settleUnansweredSwitch
@@ -1873,8 +1905,9 @@ struct AgentChatSurfaceView: View {
 
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
-    private var stopInterrupt: AgentComposerInterrupt {
-        console.chatInterrupt(
+    private var stopInterrupt: AgentComposerInterrupt? {
+        guard program != .amp else { return nil }
+        return console.chatInterrupt(
             for: agent, program: program, keepingTo: session.corePin,
             context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
     }
@@ -2000,10 +2033,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
-            pasteImage: offers.attachments
+            addImage: offers.attachments && program != .amp ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments && program != .amp
                 ? { session.pasteClipboard() } : nil,
-            addFile: offers.attachments ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments && program != .amp ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

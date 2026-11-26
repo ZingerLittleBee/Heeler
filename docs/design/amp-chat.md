@@ -2,6 +2,12 @@
 
 Proposed for Heeler at `16d4715df`, 2026-11-26.
 
+The POSIX Herdr TUI implementation is recorded in
+[ADR 0066](../adr/0066-amp-chat-follows-the-active-thread-in-its-terminal.md).
+The installation flow, transcript and Composer were exercised on an iPhone
+simulator over SSH to macOS, Herdr TUI 0.9.5 and Amp 0.0.1795608053-gcec25c.
+Other Server Kinds remain future work. The plan below describes the starting point.
+
 An Amp Agent should open the same Chat timeline and Composer as other Agents.
 Chat should follow the thread visible in that terminal, show its history and
 tool activity, and send a text reply to that thread. The first target is an

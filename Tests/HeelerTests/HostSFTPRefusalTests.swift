@@ -73,7 +73,9 @@ struct HostSFTPRefusalTests {
         #expect(!refusal.stands)
 
         await Self.refuse(refusal)
-        let browser = HostFilesBrowser(files: files, agentDirectory: "/home/dev", isHostConnected: true)
+        let browser = HostFilesBrowser(
+            files: files, hostID: host.id, openedBy: "t1", cache: console.hostFileCache,
+            agentDirectory: "/home/dev", isHostConnected: true)
         browser.folder(at: "/home/dev").checkAgain()
         #expect(!refusal.stands)
 

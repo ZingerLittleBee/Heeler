@@ -784,6 +784,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func deliver(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         let text = messages[index].text
+        if let submit = policy.submitChat {
+            guard agentStatus != .blocked else { return deliverWhileBlocked(id, text: text, policy: policy) }
+            let outgoing = policy.outgoingText(text)
+            let outcome = await submit(id, outgoing)
+            return finishChecked(id, outgoing: outgoing, policy: policy, outcome: outcome, success: .deliveredViaPrompt)
+        }
         if let checkedSend {
             return await deliverChecked(id, text: text, policy: policy, using: checkedSend)
         }
@@ -828,6 +834,12 @@ final class AgentComposerStore: ComposerDraftOperations {
             return fail(id, message: Self.unsafeTextMessage)
         }
         let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
+        return finishChecked(id, outgoing: outgoing, policy: policy, outcome: outcome, success: .submittedViaAttach)
+    }
+
+    private func finishChecked(
+        _ id: Message.ID, outgoing: String, policy: ComposerDeliveryPolicy, outcome: CheckedSendOutcome, success: SendResult
+    ) -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
         switch outcome {
         case .submitted:
@@ -839,7 +851,7 @@ final class AgentComposerStore: ComposerDraftOperations {
                     self?.markUndelivered(id)
                 }
             }
-            return .submittedViaAttach
+            return success
         case .refused(let refusal):
             returnToDraft(id)
             return .refused(refusal)

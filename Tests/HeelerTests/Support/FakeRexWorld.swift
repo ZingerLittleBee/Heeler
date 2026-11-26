@@ -95,9 +95,14 @@ final class FakeRexWorld: Sendable {
 
     private struct State {
         var instanceID: String
+        /// What `server.status` names as `host_id`; nil answers without one.
+        var hostID: String?
         var sessions: [Session]
         /// Numbers the windows, blocks and sessions New Terminal makes.
         var made = 0
+        /// The sessions each control client attached with `session.attach`,
+        /// by client id: Rex tracks attachment per control stream.
+        var attached: [String: Set<String>] = [:]
     }
 
     private let state: Mutex<State>
@@ -105,8 +110,11 @@ final class FakeRexWorld: Sendable {
     /// without one.
     let platform: String?
 
-    init(instanceID: String = "instance-0001", sessions: [Session] = [], platform: String? = "darwin_arm64") {
-        state = Mutex(State(instanceID: instanceID, sessions: sessions))
+    init(
+        instanceID: String = "instance-0001", hostID: String? = nil, sessions: [Session] = [],
+        platform: String? = "darwin_arm64"
+    ) {
+        state = Mutex(State(instanceID: instanceID, hostID: hostID, sessions: sessions))
         self.platform = platform
     }
 
@@ -116,21 +124,31 @@ final class FakeRexWorld: Sendable {
         state.withLock { change(&$0.sessions) }
     }
 
-    /// Another server process on the same socket.
+    /// Another server process on the same socket, seeing the same files, so
+    /// with the same `host_id`. Its sessions stay unless `update` changes
+    /// them, as a server that restored them keeps them.
     func restart(as instanceID: String) {
-        state.withLock { $0.instanceID = instanceID }
+        state.withLock {
+            $0.instanceID = instanceID
+            // A restarted server knows no client's attachments.
+            $0.attached = [:]
+        }
     }
 
     /// Answers every read the inventory makes as this world stands at the time,
     /// and what an open terminal asks of `client`'s blocks.
     func install(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
         await server.answer("server.status") { [self] _ in
-            .result(["instance_id": .string(state.withLock { $0.instanceID }), "session_count": 1])
+            let (instanceID, hostID) = state.withLock { ($0.instanceID, $0.hostID) }
+            var status: [String: JSONValue] = ["instance_id": .string(instanceID), "session_count": 1]
+            if let hostID { status["host_id"] = .string(hostID) }
+            return .result(.object(status))
         }
         await server.answer("server.version") { [platform] _ in
             .result(.object(platform.map { ["platform": .string($0)] } ?? [:]))
         }
         await server.answer("session.attach_all") { [self] _ in .result(attachAll) }
+        await server.answer("session.list") { [self] _ in .result(attachAll) }
         await server.answer("session.view") { [self] request in
             guard let session = session(request) else { return Self.sessionNotFound }
             return .result(Self.view(session))
@@ -154,6 +172,7 @@ final class FakeRexWorld: Sendable {
         // What an open terminal asks: its session attached, and its size.
         await server.answer("session.attach") { [self] request in
             guard let session = session(request) else { return Self.sessionNotFound }
+            state.withLock { _ = $0.attached[client ?? "", default: []].insert(session.id) }
             return .result(["session_id": .string(session.id)])
         }
         await server.answer(RexInventoryWire.terminalMethod("resize")) { [self] request in
@@ -166,8 +185,15 @@ final class FakeRexWorld: Sendable {
         await server.answer("session.own_block") { [self] request in
             claim(request) { _ in client }
         }
+        // Rex 0.1.0-preview.23 refuses a give back from a client not
+        // attached to the session.
         await server.answer("session.disown_block") { [self] request in
-            claim(request) { owner in owner == client ? nil : owner }
+            let sessionID = request.payload?["session_id"]?.stringValue ?? ""
+            guard state.withLock({ $0.attached[client ?? ""]?.contains(sessionID) == true }) else {
+                return .error(
+                    code: "conflict", message: "stream is not attached to session \(sessionID)", status: 409)
+            }
+            return claim(request) { owner in owner == client ? nil : owner }
         }
     }
 

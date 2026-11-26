@@ -1162,8 +1162,10 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         try #require(recorded.count == 4)
-        #expect(recorded[0].hasPrefix("worktree.create "))
-        #expect(!recorded[0].contains(#""env""#))
+        #expect(
+            recorded[0]
+                == #"worktree.create {"base":"main","branch":"task/\#(token)","focus":false,"label":"task/\#(token)","workspace_id":"workspace-1"}"#
+        )
         #expect(
             recorded[1]
                 == #"tab.create {"env":{"CLAUDE_CONFIG_DIR":"/c"},"focus":false,"label":"Work","workspace_id":"workspace:\#(token)"}"#
@@ -1242,9 +1244,48 @@ struct HeelerSSHTransportBehaviorE2ETests {
 
         let recorded = try await Self.recordedRequests(from: transport, token: token)
         try #require(recorded.count == 2)
-        #expect(recorded[0].hasPrefix("worktree.create "))
+        #expect(
+            recorded[0]
+                == #"worktree.create {"base":"main","branch":"task/\#(token)","focus":false,"label":"task/\#(token)","workspace_id":"workspace-1"}"#
+        )
         #expect(recorded[1].hasPrefix("agent.start "))
         #expect(!recorded.contains { $0.hasPrefix("tab.rename ") })
+    }
+
+    /// When `branch` is omitted so herdr generates `worktree/<name>`,
+    /// `worktree.create` omits `label` too (never passing the agent's name)
+    /// and renames the new Workspace to the generated branch afterwards,
+    /// without failing the launch if that cosmetic rename is refused.
+    @Test("a worktree agent start with a generated branch names the workspace after that branch")
+    func worktreeAgentStartWithGeneratedBranchNamesWorkspaceAfterBranch() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(
+            settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+
+        let token = Self.scriptToken("renamefail")
+        let agent = try await transport.startAgentInNewWorktree(
+            AgentLaunchRequest(
+                kind: "codex",
+                name: "codex-2",
+                workspaceID: "workspace:\(token)"),
+            worktree: WorktreeSpec())
+
+        #expect(agent.paneID == "pane:\(token)")
+        let recorded = try await Self.recordedRequests(from: transport, token: token)
+        try #require(recorded.count == 3)
+        #expect(
+            recorded[0]
+                == #"worktree.create {"focus":false,"workspace_id":"workspace:\#(token)"}"#
+        )
+        #expect(
+            recorded[1]
+                == #"agent.start {"args":[],"kind":"codex","name":"codex-2","pane_id":"pane:\#(token)"}"#
+        )
+        #expect(
+            recorded[2]
+                == #"workspace.rename {"label":"task/\#(token)","workspace_id":"workspace:\#(token)"}"#
+        )
     }
 
     /// A refused `tab.rename` is cosmetic: the agent already exists, so the

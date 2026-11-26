@@ -23,8 +23,9 @@ struct ChatTimelineActions {
     /// Shown in an expanded tool row whose output was never read.
     var missingOutputText: String = String(localized: "Output is available when connected.")
     var loadImage: ChatImagePreviewController.Loader = { _ in throw ChatImagePreviewError.unavailable }
-    /// Opens a video file named in a Chat message in the video player sheet.
-    var previewVideo: (@MainActor (String, String?) -> Void)?
+    /// Files preview, also used for staged videos on Hosts without Files browsing.
+    var previewFile: (@MainActor (String, String?) -> Void)?
+    var offersFiles = false
     /// The pictures image rows show; nil without a conversation store.
     var thumbnails: ChatImageThumbnails?
     /// Opens a link that names the Host's loopback interface in a port
@@ -57,6 +58,7 @@ struct ChatRowActions {
     /// Opens an image row's file in the zoomable sheet, showing an optional
     /// display title and the thumbnail, when there is one, until the file is read.
     var previewImage: @MainActor (String, String?, UIImage?) -> Void = { _, _, _ in }
+    var previewFile: (@MainActor (String, String?) -> Void)?
     /// Opens a link to the Host's loopback interface; false when it is not one.
     var openHostLink: @MainActor (URL) -> Bool = { _ in false }
 }
@@ -471,12 +473,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             previewImage: { [weak self] path, title, thumbnail in
                 self?.previewImage(path, title: title, thumbnail: thumbnail)
             },
+            previewFile: actions.offersFiles ? actions.previewFile : nil,
             openHostLink: { [weak self] link in self?.actions.openHostLink(link) ?? false })
     }
 
     private func previewImage(_ path: String, title: String? = nil, thumbnail: UIImage?) {
         if ChatImageLink.mediaKind(for: path) == .video {
-            actions.previewVideo?(path, title)
+            actions.previewFile?(path, title)
             return
         }
         ChatImagePreviewController(
