@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Turns the current branch into Chat entries
 /// (docs/research/claude-code-transcript-format.md, "One API message across
@@ -255,24 +256,30 @@ enum ClaudeTranscriptProjection {
     /// operation that takes that text back out. Claude Code writes the
     /// delivery only when the turn can take it, which can be minutes later.
     static func waitingEnqueues(_ index: ClaudeTranscriptIndex) -> [(offset: UInt64, text: String)] {
-        let typedKeys = index.recordsByPosition.compactMap { record -> (offset: UInt64, key: String)? in
+        guard index.queueOperations.values.contains(where: { $0.operation == "enqueue" }) else {
+            return []
+        }
+        var latestTypedOffset: [String: UInt64] = [:]
+        for record in index.recordsByPosition {
             guard !record.isSidechain, record.teamName == nil,
                 let text = typedText(of: record, indexed: index.records)
-            else { return nil }
-            return (record.byteOffset, ClaudeTranscriptReducer.echoKey(text))
+            else { continue }
+            let key = ClaudeTranscriptReducer.echoKey(text)
+            latestTypedOffset[key] = max(latestTypedOffset[key] ?? 0, record.byteOffset)
         }
         let operations = index.queueOperations.values.sorted { $0.offset < $1.offset }
-        func key(_ operation: ClaudeTranscriptIndex.QueueOperation) -> String? {
-            operation.content.flatMap(promptText).map(ClaudeTranscriptReducer.echoKey)
+        var latestTakenBackOffset: [String: UInt64] = [:]
+        for operation in operations where operation.operation != "enqueue" {
+            guard let content = operation.content, let text = promptText(content) else { continue }
+            let key = ClaudeTranscriptReducer.echoKey(text)
+            latestTakenBackOffset[key] = max(latestTakenBackOffset[key] ?? 0, operation.offset)
         }
         return operations.compactMap { operation in
             guard operation.operation == "enqueue", let content = operation.content, let text = promptText(content)
             else { return nil }
             let enqueued = ClaudeTranscriptReducer.echoKey(text)
-            let isDelivered = typedKeys.contains { $0.offset > operation.offset && $0.key == enqueued }
-            let isTakenBack = operations.contains {
-                $0.offset > operation.offset && $0.operation != "enqueue" && key($0) == enqueued
-            }
+            let isDelivered = (latestTypedOffset[enqueued] ?? 0) > operation.offset
+            let isTakenBack = (latestTakenBackOffset[enqueued] ?? 0) > operation.offset
             return isDelivered || isTakenBack ? nil : (operation.offset, text)
         }
     }
@@ -319,12 +326,37 @@ enum ClaudeTranscriptProjection {
         originKind == nil || originKind == "human"
     }
 
+    private enum CachedDate: Sendable {
+        case valid(Date)
+        case invalid
+    }
+
+    private static let isoFractionalStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let isoPlainStyle = Date.ISO8601FormatStyle()
+    private static let dateCache = OSAllocatedUnfairLock<[String: CachedDate]>(initialState: [:])
+
     /// A record's `timestamp`: ISO 8601 with milliseconds, on the Host's
-    /// clock.
+    /// clock. Cached by timestamp string so repeated projections stay O(1)
+    /// while matching Foundation's `Date.ISO8601FormatStyle` bit-for-bit.
     static func date(_ timestamp: String?) -> Date? {
         guard let timestamp else { return nil }
-        return (try? Date(timestamp, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
-            ?? (try? Date(timestamp, strategy: Date.ISO8601FormatStyle()))
+        if let cached = dateCache.withLock({ $0[timestamp] }) {
+            switch cached {
+            case .valid(let date): return date
+            case .invalid: return nil
+            }
+        }
+        let parsed =
+            (try? Date(timestamp, strategy: isoFractionalStyle))
+            ?? (try? Date(timestamp, strategy: isoPlainStyle))
+        let entry: CachedDate = parsed.map(CachedDate.valid) ?? .invalid
+        dateCache.withLock { cache in
+            if cache.count >= 4_096 {
+                cache.removeAll(keepingCapacity: true)
+            }
+            cache[timestamp] = entry
+        }
+        return parsed
     }
 
     /// Claude Code's fixed opening of a compaction summary (2.1.301), which

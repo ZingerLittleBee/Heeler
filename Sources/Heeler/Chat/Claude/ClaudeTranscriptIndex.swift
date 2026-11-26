@@ -14,6 +14,9 @@ struct ClaudeTranscriptIndex: Sendable {
     /// Chain records by `uuid`. When a uuid occurs twice, the later line
     /// wins, as in the SDK reader.
     private(set) var records: [String: ClaudeRecord] = [:]
+    /// Chain records kept in ascending `byteOffset` order so `recordsByPosition`
+    /// is O(1) on every streaming projection instead of O(R log R).
+    private var orderedRecords: [ClaudeRecord] = []
     /// Queue operations by byte offset.
     private(set) var queueOperations: [UInt64: QueueOperation] = [:]
     private(set) var unknownRecordTypes: Set<String> = []
@@ -64,8 +67,12 @@ struct ClaudeTranscriptIndex: Sendable {
     }
 
     private mutating func insert(_ record: ClaudeRecord) {
-        if let existing = records[record.uuid], existing.byteOffset > record.byteOffset { return }
+        if let existing = records[record.uuid] {
+            if existing.byteOffset > record.byteOffset { return }
+            removeOrderedRecord(uuid: existing.uuid, at: existing.byteOffset)
+        }
         records[record.uuid] = record
+        insertOrderedRecord(record)
         if record.kind == .assistant, !record.isSidechain {
             lastAssistantOffset = max(lastAssistantOffset ?? 0, record.byteOffset)
             // `<synthetic>` marks a reply Claude Code wrote itself (an API error), not a model.
@@ -134,7 +141,49 @@ struct ClaudeTranscriptIndex: Sendable {
 
     /// Chain records in file order.
     var recordsByPosition: [ClaudeRecord] {
-        records.values.sorted { $0.byteOffset < $1.byteOffset }
+        orderedRecords
+    }
+
+    private mutating func insertOrderedRecord(_ record: ClaudeRecord) {
+        if let last = orderedRecords.last, last.byteOffset <= record.byteOffset {
+            orderedRecords.append(record)
+            return
+        }
+        var low = 0
+        var high = orderedRecords.count
+        while low < high {
+            let mid = (low + high) / 2
+            if orderedRecords[mid].byteOffset <= record.byteOffset {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        orderedRecords.insert(record, at: low)
+    }
+
+    private mutating func removeOrderedRecord(uuid: String, at offset: UInt64) {
+        var low = 0
+        var high = orderedRecords.count
+        while low < high {
+            let mid = (low + high) / 2
+            if orderedRecords[mid].byteOffset < offset {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        var index = low
+        while index < orderedRecords.count, orderedRecords[index].byteOffset == offset {
+            if orderedRecords[index].uuid == uuid {
+                orderedRecords.remove(at: index)
+                return
+            }
+            index += 1
+        }
+        if let fallback = orderedRecords.firstIndex(where: { $0.uuid == uuid }) {
+            orderedRecords.remove(at: fallback)
+        }
     }
 }
 

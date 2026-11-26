@@ -164,5 +164,29 @@ struct ChatRowViewTests {
         let copied = entries.map { entry in rows.first { $0.id == .entry(entry.id) }?.copyText }
         #expect(copied == ["Turn failed\n{\"message\":\"Not supported.\"}", "Turn failed\nDisconnected"])
     }
+
+    @Test func rowBuilderPrecomputesUserLinksImagesAndInlineDiffs() async {
+        let user = ChatEntry(
+            id: ChatEntryID("u1"),
+            sourceOffset: 0,
+            content: .user(ChatUserMessage(text: "See [Image #1]", imageCount: 1, imagePaths: ["/tmp/shot.png"])))
+        let hunk = ChatDiffHunk(oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["-old", "+new"])
+        let change = ChatFileChange(path: "/tmp/a.swift", kind: .updated, added: 1, removed: 1, lineCount: 2, hunks: [hunk])
+        let tool = ChatEntry(
+            id: ChatEntryID("t1"),
+            sourceOffset: 10,
+            content: .tool(
+                ChatToolActivity(
+                    kind: .fileEdit, name: "Edit", title: "a.swift", status: .succeeded,
+                    fileChanges: ChatFileChanges(files: [change]))))
+        let rows = await ChatRowBuilder().rows(for: ChatTimelineInput(entries: [user, tool], entriesRevision: 1))
+        #expect(rows[0].precomputedMarkedText != nil)
+        #expect(rows[0].precomputedMessageImages?.map(\.path) == ["/tmp/shot.png"])
+        #expect(rows[1].precomputedInlineDiffs["/tmp/a.swift"] != nil)
+
+        let sameRevA = ChatTimelineInput(entries: [user], entriesRevision: 7)
+        let sameRevB = ChatTimelineInput(entries: [user], entriesRevision: 7)
+        #expect(sameRevA == sameRevB)
+    }
 }
 

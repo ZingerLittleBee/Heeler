@@ -870,6 +870,7 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
     private lazy var collectionView = ChatSwarmCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, ItemID>?
     private var appliedGeneration: Int?
+    private var heldState: ChatSwarmListState<ItemID, Payload>?
     private var itemsByID: [ItemID: ChatSwarmListItem<ItemID, Payload>] = [:]
     private var orderedIDs: [ItemID] = []
     private var latch = ChatFollowLatch()
@@ -974,6 +975,12 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
     func apply(_ state: ChatSwarmListState<ItemID, Payload>) {
         loadViewIfNeeded()
         guard let dataSource else { return }
+
+        if appliedGeneration == state.generation, isHoldingUpdatesForUserScroll {
+            heldState = state
+            return
+        }
+        heldState = nil
 
         let oldItems = itemsByID
         let newOrdered = state.items.map(\.id)
@@ -1090,15 +1097,32 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
 
     private func captureAnchor() -> (id: ItemID, distance: CGFloat)? {
         guard !latch.isFollowing else { return nil }
+        let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
         if let disc = disclosureAnchor, let idx = layout.index(of: disc) {
-            let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
             return (disc, layout.geometry.minY(at: idx) - visibleTop)
         }
-        let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
-        guard let first = layout.geometry.anchor(visibleTop: visibleTop),
-            let id = layout.id(at: first.index)
+        let visibleBottom = collectionView.contentOffset.y + collectionView.bounds.height - collectionView.adjustedContentInset.bottom
+        guard let anchor = layout.geometry.readingAnchor(visibleTop: visibleTop, visibleBottom: visibleBottom),
+            let id = layout.id(at: anchor.index)
         else { return nil }
-        return (id, first.minY - visibleTop)
+        return (id, anchor.minY - visibleTop)
+    }
+
+    private var isHoldingUpdatesForUserScroll: Bool {
+        ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false,
+            isHeldPastStart: false,
+            sameGeneration: true,
+            isHoldingTopJump: false,
+            isUserScrolling: latch.isUserScrolling,
+            isTracking: collectionView.isTracking,
+            isDecelerating: collectionView.isDecelerating)
+    }
+
+    private func releaseHoldIfBack() {
+        guard !isHoldingUpdatesForUserScroll, let state = heldState else { return }
+        heldState = nil
+        apply(state)
     }
 
     private func restore(_ anchor: (id: ItemID, distance: CGFloat)?) {
@@ -1161,13 +1185,23 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
             isAtEnd: ChatFollowLatch.isAtEnd(
                 offset: collectionView.contentOffset.y,
                 maxOffset: collectionView.maxOffsetY))
+        releaseHoldIfBack()
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         latch.userScrollEnded(
             isAtEnd: ChatFollowLatch.isAtEnd(
                 offset: collectionView.contentOffset.y,
+                maxOffset: collectionView.maxOffsetY) && !scrollView.isTracking)
+        releaseHoldIfBack()
+    }
+
+    func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
+        latch.userScrollEnded(
+            isAtEnd: ChatFollowLatch.isAtEnd(
+                offset: collectionView.contentOffset.y,
                 maxOffset: collectionView.maxOffsetY))
+        releaseHoldIfBack()
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
@@ -1186,7 +1220,10 @@ final class ChatSwarmListController<ItemID: Hashable & Sendable, Payload: Sendab
         didEndDisplaying cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
     ) {
-        guard let hosting = cell as? ChatSwarmHostingCell<ItemID>, hosting.itemID != nil else { return }
+        guard let hosting = cell as? ChatSwarmHostingCell<ItemID>,
+            let id = hosting.itemID,
+            dataSource?.indexPath(for: id) == nil
+        else { return }
         hosting.itemID = nil
         hosting.contentConfiguration = nil
     }
@@ -1374,8 +1411,11 @@ final class ChatSwarmCollectionLayout<ItemID: Hashable & Sendable>: UICollection
         guard preferredAttributes.representedElementCategory == .cell, index < geometry.count else {
             return false
         }
-        record(preferredAttributes.size.height, at: index)
-        return abs(preferredAttributes.size.height - geometry.height(at: index)) >= 0.5
+        guard abs(preferredAttributes.size.height - geometry.height(at: index)) >= 0.5 else {
+            record(preferredAttributes.size.height, at: index)
+            return false
+        }
+        return true
     }
 
     override func invalidationContext(
@@ -1388,6 +1428,7 @@ final class ChatSwarmCollectionLayout<ItemID: Hashable & Sendable>: UICollection
         let index = preferredAttributes.indexPath.item
         guard let collectionView, index < geometry.count else { return context }
         let anchor = isFollowing() ? nil : stableAnchor(in: collectionView)
+        record(preferredAttributes.size.height, at: index)
         let delta = geometry.setHeight(preferredAttributes.size.height, at: index)
         context.contentSizeAdjustment = CGSize(width: 0, height: delta)
         let adjustment = geometry.offsetAdjustment(restoring: anchor)
@@ -1402,12 +1443,8 @@ final class ChatSwarmCollectionLayout<ItemID: Hashable & Sendable>: UICollection
             return ChatTimelineAnchor(index: index, minY: geometry.minY(at: index))
         }
         let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
-        guard let first = geometry.anchor(visibleTop: visibleTop) else { return nil }
-        let next = first.index + 1
-        if first.minY < visibleTop - 0.5, next < geometry.count {
-            return ChatTimelineAnchor(index: next, minY: geometry.minY(at: next))
-        }
-        return first
+        let visibleBottom = collectionView.contentOffset.y + collectionView.bounds.height - collectionView.adjustedContentInset.bottom
+        return geometry.readingAnchor(visibleTop: visibleTop, visibleBottom: visibleBottom)
     }
 
     private func attributes(at index: Int) -> UICollectionViewLayoutAttributes {

@@ -90,6 +90,15 @@ struct ChatRow: Identifiable, Sendable {
     /// The model's text inside an open turn fold, which reads as the
     /// process rather than the answer.
     var isMuted = false
+    /// Pre-marked `AttributedString` for user and pending bubbles, computed
+    /// off `@MainActor` in `ChatRowBuilder`.
+    var precomputedMarkedText: AttributedString? = nil
+    /// Pre-extracted image/video references, computed off `@MainActor` in
+    /// `ChatRowBuilder`.
+    var precomputedMessageImages: [ChatImageLink.Reference]? = nil
+    /// Pre-built inline file diffs (up to `ChatFileChanges.rowLimits`) keyed
+    /// by recorded file path, computed off `@MainActor` in `ChatRowBuilder`.
+    var precomputedInlineDiffs: [String: ChatFileDiff] = [:]
 
     var seed: ChatRowSeed {
         switch content {
@@ -105,23 +114,110 @@ struct ChatRow: Identifiable, Sendable {
     }
 
     /// The text the row wraps, for the layout's first guess at its height.
-    /// Nil for a row whose height does not follow its text: a tool call
+    /// Nil for a row whose height does not follow its text: a plain tool call
     /// stays a line or two whatever it ran.
     var extent: ChatRowExtent? {
         switch content {
         case .assistant(let source, let blocks):
-            ChatRowExtent(textBytes: source.utf8.count, blocks: blocks.count, chrome: topSpacing)
+            return ChatRowExtent(
+                textBytes: source.utf8.count, blocks: blocks.count, chrome: topSpacing,
+                minimumLines: Self.minimumLines(in: blocks))
         case .plan(let plan, let blocks):
             // The card's padding and its title line.
-            ChatRowExtent(textBytes: plan.text.utf8.count, blocks: blocks.count, chrome: topSpacing + 56, inset: 24)
-        case .user(let message) where message.command == nil:
-            // The bubble's padding, and the room it leaves at the leading edge.
-            ChatRowExtent(
-                textBytes: ChatImageLink.displayedByteCount(of: message.text, imagePaths: message.imagePaths),
-                blocks: 1, chrome: topSpacing + 20, inset: 76)
+            return ChatRowExtent(
+                textBytes: plan.text.utf8.count, blocks: blocks.count, chrome: topSpacing + 56, inset: 24,
+                minimumLines: Self.minimumLines(in: blocks))
+        case .user(let message):
+            let chipChrome: CGFloat =
+                (message.imageCount > 0 || !message.attachmentLabels.isEmpty || message.delivery == .queued) ? 22 : 0
+            if message.command == nil {
+                // The bubble's padding, and the room it leaves at the leading edge.
+                return ChatRowExtent(
+                    textBytes: ChatImageLink.displayedByteCount(of: message.text, imagePaths: message.imagePaths),
+                    blocks: 1, chrome: topSpacing + 20 + chipChrome, inset: 76,
+                    minimumLines: Self.explicitNewlineLines(in: message.text))
+            } else {
+                let text = message.displayText
+                return ChatRowExtent(
+                    textBytes: text.utf8.count, blocks: 1, chrome: topSpacing + 20 + chipChrome, inset: 76,
+                    minimumLines: Self.explicitNewlineLines(in: text))
+            }
+        case .pending(let echo):
+            let statusChrome: CGFloat = echo.state == .sent ? 0 : 22
+            return ChatRowExtent(
+                textBytes: echo.text.utf8.count, blocks: 1, chrome: topSpacing + 20 + statusChrome, inset: 76,
+                minimumLines: Self.explicitNewlineLines(in: echo.text))
+        case .tool(let tool):
+            if tool.subagentActivity != nil {
+                return ChatRowExtent(textBytes: 0, blocks: 1, chrome: topSpacing + 46)
+            }
+            let inlineFileRows: Int
+            if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
+                inlineFileRows = changes.soleNote != nil ? 1 : (changes.files.count + changes.notes.count)
+            } else {
+                inlineFileRows = 0
+            }
+            if tool.imagePath != nil {
+                return ChatRowExtent(
+                    textBytes: 0, blocks: 1, chrome: topSpacing + 186 + CGFloat(inlineFileRows) * 24)
+            }
+            if inlineFileRows > 0 {
+                return ChatRowExtent(textBytes: 0, blocks: 1, chrome: topSpacing + 6 + CGFloat(inlineFileRows) * 24)
+            }
+            return nil
+        case .questions(let questions) where !questions.isEmpty:
+            let bytes = questions.reduce(0) { $0 + $1.text.utf8.count + ($1.answer?.utf8.count ?? 0) }
+            return ChatRowExtent(
+                textBytes: bytes, blocks: questions.count, chrome: topSpacing + CGFloat(questions.count) * 18)
+        case .notice(let notice):
+            if let command = notice.userCommandText {
+                let detailChrome: CGFloat = (notice.detail?.isEmpty == false) ? 36 : 0
+                return ChatRowExtent(
+                    textBytes: command.utf8.count, blocks: 1, chrome: topSpacing + 20 + detailChrome, inset: 76)
+            }
+            if (notice.detail?.isEmpty == false) || !notice.questions.isEmpty {
+                let detailBytes = min(notice.detail?.utf8.count ?? 0, 360)
+                let questionBytes = notice.questions.reduce(0) { $0 + $1.text.utf8.count }
+                return ChatRowExtent(
+                    textBytes: detailBytes + questionBytes,
+                    blocks: max(1, 1 + notice.questions.count), chrome: topSpacing + 18, inset: 24)
+            }
+            return nil
+        case .divider(let divider):
+            if divider.kind == .compaction, let detail = divider.detail, !detail.isEmpty {
+                return ChatRowExtent(textBytes: min(detail.utf8.count, 220), blocks: 1, chrome: topSpacing + 20)
+            }
+            return nil
         default:
-            nil
+            return nil
         }
+    }
+
+    private static func minimumLines(in blocks: [ChatMarkdownBlock]) -> Int {
+        var sawHardStructure = false
+        var total = 0
+        for block in blocks {
+            switch block.kind {
+            case .code, .html:
+                sawHardStructure = true
+                total += 1 + block.text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+            case .table:
+                sawHardStructure = true
+                total += max(1, (block.table?.rows.count ?? 1) * 2)
+            case .thematicBreak:
+                total += 1
+            case .paragraph, .heading, .listItem:
+                let breaks = block.text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+                if breaks > 0 { sawHardStructure = true }
+                total += 1 + breaks
+            }
+        }
+        return sawHardStructure ? total : 0
+    }
+
+    private static func explicitNewlineLines(in text: String) -> Int {
+        let breaks = text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+        return breaks >= 2 ? (1 + breaks) : 0
     }
 
     /// What the timeline lays out: a row placed differently is measured
@@ -170,14 +266,41 @@ struct ChatRow: Identifiable, Sendable {
     /// The image files the row's message names by path or carried, each path
     /// once in reading order, with any numbered display title (`ChatImageLink`).
     var messageImages: [ChatImageLink.Reference] {
+        if let precomputedMessageImages { return precomputedMessageImages }
+        return Self.computeMessageImages(for: content, markedText: precomputedMarkedText)
+    }
+
+    static func computeMarkedText(for content: Content) -> AttributedString? {
+        switch content {
+        case .user(let message):
+            if let command = message.command {
+                return command.arguments.isEmpty
+                    ? AttributedString()
+                    : ChatImageLink.marking(command.arguments, imagePaths: message.imagePaths)
+            }
+            return ChatImageLink.marking(message.text, imagePaths: message.imagePaths)
+        case .pending(let echo):
+            return ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths)
+        default:
+            return nil
+        }
+    }
+
+    static func computeMessageImages(
+        for content: Content, markedText: AttributedString? = nil
+    ) -> [ChatImageLink.Reference] {
         switch content {
         case .user(let message):
             let sourceText = message.command?.arguments ?? message.text
-            let linked =
-                sourceText.isEmpty
-                ? []
-                : ChatImageLink.references(
+            let linked: [ChatImageLink.Reference]
+            if sourceText.isEmpty {
+                linked = []
+            } else if let markedText {
+                linked = ChatImageLink.references(in: markedText)
+            } else {
+                linked = ChatImageLink.references(
                     in: ChatImageLink.marking(sourceText, imagePaths: message.imagePaths))
+            }
             var seen = Set(linked.map(\.path))
             var nextImageNumber = linked.filter { $0.mediaKind == .image }.count + 1
             var nextVideoNumber = linked.filter { $0.mediaKind == .video }.count + 1
@@ -197,18 +320,46 @@ struct ChatRow: Identifiable, Sendable {
             }
             return linked + extras
         case .pending(let echo):
-            return ChatImageLink.references(
-                in: ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths))
+            let marked = markedText ?? ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths)
+            return ChatImageLink.references(in: marked)
         case .assistant(_, let blocks), .plan(_, let blocks):
-            var seen: Set<String> = []
-            return blocks.flatMap { block in
-                [block.content] + (block.table?.rows.flatMap(\.self) ?? [])
+            guard blocks.contains(where: { $0.hasImageLinks || $0.table?.hasImageLinks == true }) else {
+                return []
             }
-            .flatMap(ChatImageLink.references(in:))
-            .filter { seen.insert($0.path).inserted }
+            var seen: Set<String> = []
+            var results: [ChatImageLink.Reference] = []
+            for block in blocks {
+                if block.hasImageLinks {
+                    for ref in ChatImageLink.references(in: block.content) where seen.insert(ref.path).inserted {
+                        results.append(ref)
+                    }
+                }
+                if let table = block.table, table.hasImageLinks {
+                    for tableRow in table.rows {
+                        for cell in tableRow {
+                            for ref in ChatImageLink.references(in: cell) where seen.insert(ref.path).inserted {
+                                results.append(ref)
+                            }
+                        }
+                    }
+                }
+            }
+            return results
         default:
             return []
         }
+    }
+
+    static func computeInlineDiffs(for content: Content) -> [String: ChatFileDiff] {
+        guard case .tool(let tool) = content, let changes = tool.fileChanges, !changes.files.isEmpty else {
+            return [:]
+        }
+        var diffs: [String: ChatFileDiff] = [:]
+        diffs.reserveCapacity(changes.files.count)
+        for file in changes.files where file.lineCount > 0 && !file.hunks.isEmpty {
+            diffs[file.path] = ChatFileDiff(file.keeping(ChatFileChanges.rowLimits))
+        }
+        return diffs
     }
 
     /// The image files the row's message names by path or carried, as

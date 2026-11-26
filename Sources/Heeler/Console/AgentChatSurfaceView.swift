@@ -44,7 +44,8 @@ struct AgentChatSurfaceView: View {
     @State private var viewerID = UUID()
     /// Waits, after a disappear, for the router to say Chat left.
     @State private var stageExit: Task<Void, Never>?
-    @State private var isFollowing = true
+    @State private var floatingControls = ChatFloatingControlsState()
+    @State private var entriesMemo = ChatTimelineEntriesMemo()
     /// The banners' height over the timeline's top edge.
     @State private var bannerHeight: CGFloat = 0
     /// Where the Composer and what sits on it begin, in the global space,
@@ -56,10 +57,8 @@ struct AgentChatSurfaceView: View {
     @State private var nextMessageRequest = 0
     @State private var topJumpRequest = 0
     @State private var isHoldingTopJump = false
-    @State private var canJumpToPreviousMessage = false
     @State private var followRequest = 0
     @State private var collapseRequest = 0
-    @State private var canCollapseTrajectory = false
     @State private var collapseControlHeight: CGFloat = 0
     /// Whether this Chat has offered the Workspace terminals drawer
     /// (`edgeHandleReserve`).
@@ -419,10 +418,19 @@ struct AgentChatSurfaceView: View {
             let span = PerfTrace.begin("chat.surface.feed")
             defer { PerfTrace.end(span) }
             let transcript = chat?.conversation.transcript
-            let entries = feed.history.marking(transcript?.entries ?? [])
+            let resolved = entriesMemo.resolve(
+                generation: feed.generation,
+                revision: feed.revision,
+                history: feed.history,
+                outputs: feed.outputs,
+                rawEntries: transcript?.entries ?? [])
             activeTimeline.updateIfNeeded(
                 conversation: feed.generation,
-                input: ChatTimelineInput(entries: feed.outputs.marking(entries), pending: feed.pending, older: feed.older),
+                input: ChatTimelineInput(
+                    entries: resolved.entries,
+                    pending: feed.pending,
+                    older: feed.older,
+                    entriesRevision: resolved.entriesRevision),
                 turns: transcript?.turns ?? [], precedingTurnEnd: transcript?.precedingTurnEnd, signals: feed.signals,
                 isReady: feed.isReady)
         }
@@ -522,10 +530,12 @@ struct AgentChatSurfaceView: View {
             // out of step with the edge it measures against. The tools dock is
             // not a keyboard that moves.
             //
-            // In a body of its own: its switcher lists every Agent, and read
-            // in the surface's body each one's status change would
-            // re-evaluate the conversation with the Composer.
-            MainActorContent { composerChrome }
+            // Keyed on the Composer's own inputs, with Host telemetry and the
+            // Agent switcher isolated to their own child slots so 1-second
+            // transcript polls, scroll-state changes, and other Agents' status
+            // updates never rebuild `AgentComposerView` or re-measure the draft.
+            KeyedContent(key: composerChromeKey) { composerChrome }
+                .equatable()
                 // Its own background, so the fade rides every change of the
                 // Composer's place and height with it: the keyboard, the
                 // input's fold, the strip of work folding over it.
@@ -567,17 +577,20 @@ struct AgentChatSurfaceView: View {
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
-            AgentDetailHeader(
-                palette: themePalette,
-                isExpanded: $isBackHeaderExpanded,
-                onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
-                actions: backHeaderActions,
-                surfaceSwitch: terminalSurfaceSwitch,
-                title: AgentDetailHeaderTitle(agent),
-                statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
-                sessionSettings: sessionSettings,
-                sessionControls: sessionControls,
-                controlPlacement: headerControlPlacement)
+            KeyedContent(key: headerChromeKey) {
+                AgentDetailHeader(
+                    palette: themePalette,
+                    isExpanded: $isBackHeaderExpanded,
+                    onBack: showsBackButton && !usesVerticalToolbar ? { dismiss() } : nil,
+                    actions: backHeaderActions,
+                    surfaceSwitch: terminalSurfaceSwitch,
+                    title: AgentDetailHeaderTitle(agent),
+                    statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
+                    sessionSettings: sessionSettings,
+                    sessionControls: sessionControls,
+                    controlPlacement: headerControlPlacement)
+            }
+            .equatable()
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -631,32 +644,18 @@ struct AgentChatSurfaceView: View {
     /// Over the list's bottom edge, which keeps the floating controls' bottom
     /// band clear of rows while either shows at the end.
     private var floatingTimelineControls: some View {
-        // The buttons' hit areas reach past their circles, which already
-        // leaves a gap between them.
-        HStack(alignment: .bottom, spacing: 0) {
-            Spacer(minLength: 0)
-            ChatCollapseTrajectoryButton(
-                isVisible: presentation == .timeline && activeTimeline.state.isReady && canCollapseTrajectory
-            ) {
-                collapseRequest += 1
-            }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { collapseControlHeight = $0 }
-            ChatMessageJumpControl(
-                showsPrevious: presentation == .timeline && activeTimeline.state.isReady
-                    && (canJumpToPreviousMessage || isHoldingTopJump),
-                showsLatest: presentation == .timeline && activeTimeline.state.isReady && !isFollowing,
-                jumpPrevious: { previousMessageRequest += 1 },
-                jumpTop: { topJumpRequest += 1 },
-                jumpTopHoldingChanged: { isHoldingTopJump = $0 },
-                jumpNext: { nextMessageRequest += 1 },
-                jumpLatest: { jumpRequest += 1 })
-        }
-        // Align the jump capsule's visible right edge with the status line's
-        // trailing latency caption (`ChatTimelineMetrics.horizontalPadding`).
-        .padding(.leading, ChatTimelineMetrics.horizontalPadding)
-        .padding(.trailing, max(0, ChatTimelineMetrics.horizontalPadding - ChatMessageJumpControl.hitInset))
-        .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
-        .frame(maxWidth: .infinity)
+        ChatFloatingTimelineControlsOverlay(
+            controls: floatingControls,
+            timeline: activeTimeline,
+            showsTimeline: presentation == .timeline,
+            isHoldingTopJump: isHoldingTopJump,
+            onCollapseHeightChange: { collapseControlHeight = $0 },
+            collapse: { collapseRequest += 1 },
+            jumpPrevious: { previousMessageRequest += 1 },
+            jumpTop: { topJumpRequest += 1 },
+            jumpTopHoldingChanged: { isHoldingTopJump = $0 },
+            jumpNext: { nextMessageRequest += 1 },
+            jumpLatest: { jumpRequest += 1 })
         .onChange(of: workspaceDrawer != nil, initial: true) { _, offers in
             if offers, !hasOfferedWorkspaceDrawer { hasOfferedWorkspaceDrawer = true }
         }
@@ -1008,7 +1007,7 @@ struct AgentChatSurfaceView: View {
             loadOlder: { chat?.loadOlder() },
             canLoadOlder: { chat?.canLoadOlder ?? false },
             loadOlderAutomatically: { chat?.loadOlder(automatic: true) },
-            followingChanged: { isFollowing = $0 },
+            followingChanged: { floatingControls.isFollowing = $0 },
             firstPositionedLayout: { detailCrossfade?.contentDidAppear() },
             loadOutput: { chat?.loadOutput($0) },
             missingOutputText: missingOutputText,
@@ -1040,8 +1039,8 @@ struct AgentChatSurfaceView: View {
                 composerKeyboardDismissRequest += 1
                 return portPreview.open(link)
             },
-            collapseAvailabilityChanged: { canCollapseTrajectory = $0 },
-            previousMessageAvailabilityChanged: { canJumpToPreviousMessage = $0 })
+            collapseAvailabilityChanged: { floatingControls.canCollapseTrajectory = $0 },
+            previousMessageAvailabilityChanged: { floatingControls.canJumpToPreviousMessage = $0 })
     }
 
     /// What an expanded row whose output was never read says until it can
@@ -1177,18 +1176,101 @@ struct AgentChatSurfaceView: View {
         }
     }
 
+    private var isSessionControlsEnabled: Bool {
+        let status = agent.agent.status
+        return (status == .idle || status == .done)
+            && !isSwitchingSetting && !isComposerSending && !session.agentKeys.isRunningQueuedWork
+    }
+
+    private var headerChromeKey: HeaderChromeKey {
+        let palette = themePalette
+        return HeaderChromeKey(
+            agent: agent,
+            program: program,
+            paletteBackground: palette.background,
+            paletteForeground: palette.foreground,
+            paletteAccent: palette.accent,
+            paletteSuccess: palette.success,
+            isExpanded: isBackHeaderExpanded,
+            showsBackButton: showsBackButton,
+            usesVerticalToolbar: usesVerticalToolbar,
+            headerSharesBar: headerSharesBar,
+            backHeaderTop: backHeaderTop,
+            statusTitle: console.connectionRecoveryTitle(for: agent.hostID),
+            sessionSettings: sessionSettings,
+            isSessionControlsEnabled: isSessionControlsEnabled,
+            switchingSettingRaw: switchingSetting?.rawValue,
+            allowsBypassPermissions: session.settingOverrides.allowsBypassPermissions,
+            agyModelsCount: agyModels.count,
+            codexChoicesCount: codexModelCatalog.choices.count,
+            hasWorkspaceDrawer: workspaceDrawer != nil,
+            hasChanges: showChanges != nil,
+            hasFiles: showFiles != nil,
+            offersPorts: portPreview?.isOffered ?? false,
+            offersTitleRename: console.offersTitleRename(for: agent),
+            offersHandOff: console.offersHandOff(for: agent),
+            capabilities: console.capabilities(for: agent.hostID),
+            isSavedChat: console.isSavedChat(agent.id))
+    }
+
+    private var composerChromeKey: ComposerChromeKey {
+        let showsBlocked = showsBlockedCard
+        let blockedAllowance: CGFloat =
+            showsBlocked
+            ? max(120, (surfaceHeight - composerKeyboardLayout.contentInset) * 0.4 - backgroundWorkHeight)
+            : 0
+        return ComposerChromeKey(
+            agent: agent,
+            program: program,
+            chromeColorScheme: chromeColorScheme,
+            availableToolsHeight: composerKeyboardLayout.availableToolsHeight,
+            canBeginStaging: session.staging.canBegin,
+            canOpenTerminal: canOpenTerminal,
+            isOpeningTerminal: isOpeningTerminal,
+            hasChanges: showChanges != nil,
+            hasSkills: skills != nil,
+            commands: commands,
+            capabilities: console.capabilities(for: agent.hostID),
+            removesSavedChat: console.isSavedChat(agent.id),
+            isConfirmingClose: isConfirmingClose,
+            closeRequest: closeRequest,
+            sessionSettings: sessionSettings,
+            isSessionControlsEnabled: isSessionControlsEnabled,
+            switchingSettingRaw: switchingSetting?.rawValue,
+            allowsBypassPermissions: session.settingOverrides.allowsBypassPermissions,
+            agyModelsCount: agyModels.count,
+            codexChoicesCount: codexModelCatalog.choices.count,
+            showsBlockedCard: showsBlocked,
+            blockedAllowance: blockedAllowance,
+            keyboardPresentation: composerKeyboardPresentation,
+            focusRequest: chat?.blocked.composerFocusRequest ?? 0,
+            keyboardDismissRequest: composerKeyboardDismissRequest,
+            keyboardIsLeaving: keyboardIsLeaving)
+    }
+
     private var composerChrome: some View {
-        AgentComposerView(
+        let hostID = agent.hostID
+        return AgentComposerView(
             store: composer,
             status: agent.agent.status,
-            hostTelemetry: HostTelemetryPresentation(
-                status: console.hostStatuses[agent.hostID],
-                latency: console.hostLatencies[agent.hostID]),
+            hostTelemetry: nil,
+            hostTelemetryProvider: { [console] in
+                HostTelemetryPresentation(
+                    status: console.hostStatuses[hostID],
+                    latency: console.hostLatencies[hostID])
+            },
             changes: AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges),
             session: sessionSettings,
             sessionControls: sessionControls,
             chromeColorScheme: chromeColorScheme,
-            switcher: agentSwitcher,
+            switcher: TerminalAgentSwitcher(
+                items: [],
+                selectedID: agent.id,
+                onSelect: switchToAgent,
+                onTogglePin: { id in
+                    console.togglePin(hostID: id.hostID, paneID: id.paneID)
+                }),
+            switcherProvider: { agentSwitcher },
             keyboardHandoff: keyboardHandoff,
             keyboardHeight: composerKeyboardLayout.availableToolsHeight,
             actions: composerActions,
@@ -2154,6 +2236,148 @@ struct AgentChatSurfaceView: View {
         case .idle, .closing:
             break
         }
+    }
+}
+
+/// Scroll-driven visibility flags for the floating Jump & Collapse controls,
+/// kept in their own observable box so scrolling never invalidates
+/// `AgentChatSurfaceView.body`.
+@MainActor
+@Observable
+private final class ChatFloatingControlsState {
+    var isFollowing = true
+    var canJumpToPreviousMessage = false
+    var canCollapseTrajectory = false
+}
+
+/// Memoizes marked `ChatEntry` overlays (`BlockedHistory` + `ChatToolOutputs`)
+/// across `timelineFeed` updates so signal-only or pending-echo-only ticks skip
+/// O(N) entry marking and O(N) `ChatTimelineInput` equality on `@MainActor`.
+@MainActor
+private final class ChatTimelineEntriesMemo {
+    private struct Key: Equatable {
+        var generation: Int
+        var revision: Int
+        var history: BlockedHistory
+        var outputs: ChatToolOutputs
+    }
+
+    private var lastKey: Key?
+    private var lastEntries: [ChatEntry] = []
+    private var entriesRevision = 0
+
+    func resolve(
+        generation: Int,
+        revision: Int,
+        history: BlockedHistory,
+        outputs: ChatToolOutputs,
+        rawEntries: [ChatEntry]
+    ) -> (entries: [ChatEntry], entriesRevision: Int) {
+        let key = Key(generation: generation, revision: revision, history: history, outputs: outputs)
+        if lastKey == key, lastEntries.count == rawEntries.count {
+            return (lastEntries, entriesRevision)
+        }
+        entriesRevision &+= 1
+        let marked = outputs.marking(history.marking(rawEntries))
+        lastKey = key
+        lastEntries = marked
+        return (marked, entriesRevision)
+    }
+}
+
+private struct HeaderChromeKey: Equatable, Sendable {
+    var agent: ConsoleAgent
+    var program: ChatProgram
+    var paletteBackground: Color
+    var paletteForeground: Color
+    var paletteAccent: Color
+    var paletteSuccess: Color
+    var isExpanded: Bool
+    var showsBackButton: Bool
+    var usesVerticalToolbar: Bool
+    var headerSharesBar: Bool
+    var backHeaderTop: CGFloat
+    var statusTitle: String?
+    var sessionSettings: AgentSessionSettings?
+    var isSessionControlsEnabled: Bool
+    var switchingSettingRaw: Int?
+    var allowsBypassPermissions: Bool
+    var agyModelsCount: Int
+    var codexChoicesCount: Int
+    var hasWorkspaceDrawer: Bool
+    var hasChanges: Bool
+    var hasFiles: Bool
+    var offersPorts: Bool
+    var offersTitleRename: Bool
+    var offersHandOff: Bool
+    var capabilities: HostCapabilities
+    var isSavedChat: Bool
+}
+
+private struct ComposerChromeKey: Equatable, Sendable {
+    var agent: ConsoleAgent
+    var program: ChatProgram
+    var chromeColorScheme: ColorScheme
+    var availableToolsHeight: CGFloat
+    var canBeginStaging: Bool
+    var canOpenTerminal: Bool
+    var isOpeningTerminal: Bool
+    var hasChanges: Bool
+    var hasSkills: Bool
+    var commands: [ChatCommand]
+    var capabilities: HostCapabilities
+    var removesSavedChat: Bool
+    var isConfirmingClose: Bool
+    var closeRequest: AgentCloseRequest
+    var sessionSettings: AgentSessionSettings?
+    var isSessionControlsEnabled: Bool
+    var switchingSettingRaw: Int?
+    var allowsBypassPermissions: Bool
+    var agyModelsCount: Int
+    var codexChoicesCount: Int
+    var showsBlockedCard: Bool
+    var blockedAllowance: CGFloat
+    var keyboardPresentation: AgentComposerKeyboardPresentation
+    var focusRequest: Int
+    var keyboardDismissRequest: Int
+    var keyboardIsLeaving: Bool
+}
+
+private struct ChatFloatingTimelineControlsOverlay: View {
+    let controls: ChatFloatingControlsState
+    let timeline: ChatTimelineModel
+    let showsTimeline: Bool
+    let isHoldingTopJump: Bool
+    let onCollapseHeightChange: (CGFloat) -> Void
+    let collapse: () -> Void
+    let jumpPrevious: () -> Void
+    let jumpTop: () -> Void
+    let jumpTopHoldingChanged: (Bool) -> Void
+    let jumpNext: () -> Void
+    let jumpLatest: () -> Void
+
+    var body: some View {
+        let isReady = timeline.state.isReady
+        HStack(alignment: .bottom, spacing: 0) {
+            Spacer(minLength: 0)
+            ChatCollapseTrajectoryButton(
+                isVisible: showsTimeline && isReady && controls.canCollapseTrajectory,
+                action: collapse)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onCollapseHeightChange($0) }
+            ChatMessageJumpControl(
+                showsPrevious: showsTimeline && isReady
+                    && (controls.canJumpToPreviousMessage || isHoldingTopJump),
+                showsLatest: showsTimeline && isReady && !controls.isFollowing,
+                jumpPrevious: jumpPrevious,
+                jumpTop: jumpTop,
+                jumpTopHoldingChanged: jumpTopHoldingChanged,
+                jumpNext: jumpNext,
+                jumpLatest: jumpLatest)
+        }
+        .padding(.leading, ChatTimelineMetrics.horizontalPadding)
+        .padding(.trailing, max(0, ChatTimelineMetrics.horizontalPadding - ChatMessageJumpControl.hitInset))
+        .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
+        .frame(maxWidth: .infinity)
     }
 }
 

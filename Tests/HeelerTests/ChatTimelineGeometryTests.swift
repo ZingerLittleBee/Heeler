@@ -356,6 +356,78 @@ struct ChatTimelineGeometryTests {
             content: .tool(ChatToolActivity(kind: .command, name: "Bash", title: "ls", status: .succeeded)),
             revision: 1, topSpacing: 8)
         #expect(tool.extent == nil)
+
+        // Code blocks count explicit lines rather than wrapping short lines together.
+        let codeSource = (1...30).map { "let x\($0) = \($0)" }.joined(separator: "\n")
+        let fenced = "```swift\n\(codeSource)\n```"
+        let codeRow = ChatRow(
+            id: .entry(ChatEntryID("code")),
+            content: .assistant(source: fenced, blocks: ChatMarkdown.blocks(from: fenced)),
+            revision: 1, topSpacing: 8)
+        let codeHeight = codeRow.extent?.height(textWidth: 358, metrics: .standard) ?? 0
+        #expect(codeHeight >= 30 * 22)
+
+        // Image, subagent, and inline file-change tools carry non-nil extents instead of the 28pt tool seed.
+        let imageTool = ChatRow(
+            id: .entry(ChatEntryID("img")),
+            content: .tool(
+                ChatToolActivity(
+                    kind: .fileRead, name: "Read", title: "shot.png", status: .succeeded, imagePath: "/tmp/shot.png")),
+            revision: 1, topSpacing: 8)
+        #expect((imageTool.extent?.height(textWidth: 358, metrics: .standard) ?? 0) > 190)
+
+        let subagentTool = ChatRow(
+            id: .entry(ChatEntryID("sub")),
+            content: .tool(
+                ChatToolActivity(
+                    kind: .agent, name: "SubAgent", title: "worker", status: .succeeded,
+                    subagentActivity: ChatSubagentActivity(agentPath: "/a/worker", events: ["started"]))),
+            revision: 1, topSpacing: 8)
+        #expect((subagentTool.extent?.height(textWidth: 358, metrics: .standard) ?? 0) >= 68)
+    }
+
+    @Test("Reading anchor and controller candidates stay unified on the first unclipped row across passes")
+    func readingAnchorUnificationAndPassInvariance() {
+        let ids: [ChatRowID] = (0..<8).map { .entry(ChatEntryID("r\($0)")) }
+        var geometry = ChatTimelineGeometry(
+            heights: [100, 100, 100, 72, 120, 100, 100, 100], visibleHeight: 380)
+        var visibleTop: CGFloat = 330
+        var visibleBottom: CGFloat = 710
+
+        // Row 3 starts at 300 (< 330 - 0.5, clipped at top) and ends at 372; row 4 starts at 372 (< 710).
+        let candidates = geometry.orderedAnchorCandidates(
+            visibleTop: visibleTop, visibleBottom: visibleBottom, skipping: .olderHistory
+        ) { ids[$0] }
+        let layoutAnchor = geometry.readingAnchor(visibleTop: visibleTop, visibleBottom: visibleBottom)
+        #expect(layoutAnchor == ChatTimelineAnchor(index: 4, minY: 372))
+        #expect(candidates.first?.0 == ids[4])
+        #expect(candidates.first?.1 == 42)
+        #expect(candidates.last?.0 == ids[3])
+
+        // Pass 1 self-sizing: clipped row 3 grows by +28.67pt; row 4's screen offset stays at +42pt.
+        _ = geometry.setHeight(100.67, at: 3)
+        let delta1 = geometry.offsetAdjustment(restoring: layoutAnchor)
+        visibleTop += delta1
+        visibleBottom += delta1
+        #expect(abs((geometry.minY(at: 4) - visibleTop) - 42) < 1e-9)
+
+        // Pass 2 self-sizing: row 2 above clipped row 3 also grows; readingAnchor still picks row 4 (no flip).
+        let pass2Anchor = geometry.readingAnchor(visibleTop: visibleTop, visibleBottom: visibleBottom)
+        #expect(pass2Anchor?.index == 4)
+        _ = geometry.setHeight(160, at: 2)
+        let delta2 = geometry.offsetAdjustment(restoring: pass2Anchor)
+        visibleTop += delta2
+        visibleBottom += delta2
+        #expect(abs((geometry.minY(at: 4) - visibleTop) - 42) < 1e-9)
+
+        // When the clipped row spans past visibleBottom, both fall back to that clipped row.
+        let tall = ChatTimelineGeometry(heights: [100, 600, 100], visibleHeight: 380)
+        let tallAnchor = tall.readingAnchor(visibleTop: 150, visibleBottom: 530)
+        let tallCandidates = tall.orderedAnchorCandidates(
+            visibleTop: 150, visibleBottom: 530, skipping: .olderHistory
+        ) { ids[$0] }
+        #expect(tallAnchor?.index == 1)
+        #expect(tallCandidates.map(\.0) == [ids[1]])
     }
 }
 

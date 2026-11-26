@@ -97,6 +97,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     private let layout = ChatTimelineLayout()
+    private let projectionCache = ChatTimelineProjection.Cache()
     private lazy var collectionView = ChatCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, ChatRowID>?
     private var applied: ChatTimelineState?
@@ -305,6 +306,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         layout.isFollowing = { [weak self] in self?.latch.isFollowing ?? true }
         layout.disclosureAnchor = { [weak self] in self?.disclosureAnchor }
         layout.isPastEnd = { [weak self] in self?.isHeldPastEnd ?? false }
+        layout.visibleBottomOverride = { [weak self] _ in self?.visibleBottom ?? 0 }
         layout.onMeasure = { [weak self] id, height in
             guard let self, let generation = self.applied?.generation else { return }
             self.timelineModel?.recordMeasuredHeight(height, for: id, generation: generation)
@@ -404,8 +406,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         // Applying rows clamps an offset past the end to the new end, which
         // the drag or bounce then undoes on its next frame. Past the start
         // it puts the reader's row back at the start itself, which ends the
-        // bounce there and then.
-        if isHeldPastEnd || isHeldPastStart {
+        // bounce there and then. Within bounds, a live drag or momentum
+        // deceleration holds updates of the same conversation so `restore`
+        // never overwrites UIKit's active pan base or momentum target.
+        if ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: isHeldPastEnd,
+            isHeldPastStart: isHeldPastStart,
+            sameGeneration: applied?.generation == state.generation,
+            isHoldingTopJump: isHoldingTopJump,
+            isUserScrolling: latch.isUserScrolling,
+            isTracking: collectionView.isTracking,
+            isDecelerating: collectionView.isDecelerating)
+        {
             heldState = state
             return
         }
@@ -422,6 +434,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         allRows = Dictionary(state.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         guard let previous, previous.generation == state.generation else {
+            projectionCache.removeAll()
             expanded = []
             expandedFiles = [:]
             disclosures = [:]
@@ -469,6 +482,10 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             isTopJumpAnimating = false
             collectionView.setContentOffset(collectionView.contentOffset, animated: false)
         }
+        let previousOpenLiveGroups: [ChatEntryID] = openHeaders.compactMap { header in
+            if case .liveGroup(let id) = header { return id }
+            return nil
+        }
         expanded.formIntersection(allRows.keys)
         expandedFiles = expandedFiles.filter { allRows[$0.key] != nil }
         disclosures = disclosures.filter { allRows[$0.key] != nil }
@@ -478,12 +495,16 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
             case .liveTurn, .entry, .pending, .olderHistory: false
             }
         }
-        var snapshot = projectedSnapshot()
+        let previousShownIDs = dataSource.snapshot().itemIdentifiers
+        var snapshot = projectedSnapshotPreservingReader(
+            anchor: anchor,
+            oldRows: oldRows,
+            previousOpenLiveGroups: previousOpenLiveGroups)
         let changed = PerfTrace.span("chat.apply.changed") { changedRows(since: oldRows, in: snapshot) }
         PerfTrace.count("chat.apply.changed-rows", changed.count)
         // The layout still holds the shown rows' last heights.
         let heightsBefore = rowHeights(changed)
-        snapshot.reconfigureItems(changed)
+        let sameStructure = snapshot.itemIdentifiers == previousShownIDs
         // A row expanded while it ran may have output now, and one a fold
         // gave back may never have read it. The request waits for this
         // update to finish, since it changes what the list is built from.
@@ -493,28 +514,45 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
                 for id in wanting { self?.requestOutput(id) }
             }
         }
-        UIView.performWithoutAnimation {
-            // The layout holds the reader's row while the rows change, so
-            // the rows built are the ones that will show.
-            layout.updateAnchor = updateAnchor(anchor, in: snapshot)
-            isUpdatingRows = true
-            PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
-            isUpdatingRows = false
-            layout.updateAnchor = nil
-            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
-            restore(anchor)
-            // Going back to the reader's row can show rows above it that
-            // nobody measured yet. One that measures off its guess moves
-            // everything under it, so the row goes back once they have.
-            PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
-            restore(anchor)
-            if reserveJumpControlRoom(), latch.isFollowing, !isJumpAnimating {
-                PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
-                pinToEnd()
+        if !sameStructure || !changed.isEmpty {
+            if sameStructure {
+                var reconfigured = dataSource.snapshot()
+                reconfigured.reconfigureItems(changed)
+                snapshot = reconfigured
+            } else {
+                snapshot.reconfigureItems(changed)
             }
-            if scrolledWhileUpdatingRows {
-                scrolledWhileUpdatingRows = false
-                scrollViewDidScroll(collectionView)
+            let changesOnlyBelowViewport =
+                sameStructure && !latch.isFollowing
+                && changed.allSatisfy { id in
+                    guard let index = layout.index(of: id) else { return false }
+                    return layout.geometry.minY(at: index) >= visibleBottom
+                }
+            UIView.performWithoutAnimation {
+                // The layout holds the reader's row while the rows change, so
+                // the rows built are the ones that will show.
+                layout.updateAnchor = updateAnchor(anchor, in: snapshot)
+                isUpdatingRows = true
+                PerfTrace.span("chat.apply.diff") { dataSource.apply(snapshot, animatingDifferences: false) }
+                isUpdatingRows = false
+                layout.updateAnchor = nil
+                PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                restore(anchor)
+                // Going back to the reader's row can show rows above it that
+                // nobody measured yet. One that measures off its guess moves
+                // everything under it, so the row goes back once they have.
+                if !changesOnlyBelowViewport {
+                    PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                    restore(anchor)
+                }
+                if reserveJumpControlRoom(), latch.isFollowing, !isJumpAnimating {
+                    PerfTrace.span("chat.apply.layout") { collectionView.layoutIfNeeded() }
+                    pinToEnd()
+                }
+                if scrolledWhileUpdatingRows {
+                    scrolledWhileUpdatingRows = false
+                    scrollViewDidScroll(collectionView)
+                }
             }
         }
         redrawResizedRows(changed, heightsBefore: heightsBefore)
@@ -604,6 +642,37 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
     }
 
+    /// Folds the applied rows as the open headers say, while keeping a live
+    /// turn or live tool group open when the reader is actively reading inside
+    /// it (`!latch.isFollowing`) as it settles.
+    private func projectedSnapshotPreservingReader(
+        anchor: ScrollAnchor,
+        oldRows: [ChatRowID: ChatRow],
+        previousOpenLiveGroups: [ChatEntryID]
+    ) -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
+        let span = PerfTrace.begin("chat.apply.project")
+        defer { PerfTrace.end(span) }
+        var anchoredIDs: [ChatRowID] = []
+        if case .rows(let rows) = anchor {
+            anchoredIDs.append(contentsOf: rows.map(\.0))
+        }
+        if let disc = disclosureAnchor {
+            anchoredIDs.append(disc)
+        }
+        let output = ChatTimelineProjection.projectPreservingReader(
+            applied?.rows ?? [],
+            turns: applied?.turns ?? [],
+            precedingTurnEnd: applied?.precedingTurnEnd,
+            signals: applied?.signals ?? ChatTurnSignals(),
+            open: &openHeaders,
+            isFollowing: latch.isFollowing,
+            anchoredIDs: anchoredIDs,
+            previouslyShown: Set(oldRows.keys),
+            previousOpenLiveGroups: previousOpenLiveGroups,
+            cache: projectionCache)
+        return applyProjectionOutput(output)
+    }
+
     /// Folds the applied rows as the open headers say, and makes the
     /// result what the list shows.
     private func projectedSnapshot() -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
@@ -611,7 +680,13 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         defer { PerfTrace.end(span) }
         let output = ChatTimelineProjection.project(
             applied?.rows ?? [], turns: applied?.turns ?? [], precedingTurnEnd: applied?.precedingTurnEnd,
-            signals: applied?.signals ?? ChatTurnSignals(), open: openHeaders)
+            signals: applied?.signals ?? ChatTurnSignals(), open: openHeaders, cache: projectionCache)
+        return applyProjectionOutput(output)
+    }
+
+    private func applyProjectionOutput(
+        _ output: ChatTimelineProjection.Output
+    ) -> NSDiffableDataSourceSnapshot<Int, ChatRowID> {
         rowsByID = Dictionary(output.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         owners = output.owners
         trajectories = output.trajectories
@@ -664,9 +739,12 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let wasAtTop = collectionView.contentOffset.y <= collectionView.minOffsetY + 0.5
         collectionView.contentInset.top = top
         collectionView.verticalScrollIndicatorInsets.top = height
-        if wasAtTop, !latch.isFollowing {
+        if wasAtTop, !latch.isFollowing, !latch.isUserScrolling,
+            !collectionView.isTracking, !collectionView.isDecelerating
+        {
             collectionView.contentOffset.y = collectionView.minOffsetY
         }
+        invalidateShortContentLayoutIfNeeded()
         collectionView.setNeedsLayout()
     }
 
@@ -712,7 +790,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard bottomObstruction != height else { return }
         bottomObstruction = height
         guard chromeChanged, chromeHandover == nil, collectionView.window != nil,
-            !collectionView.isTracking
+            !collectionView.isTracking, !collectionView.isDecelerating, !latch.isUserScrolling
         else {
             settleBottomObstruction()
             return
@@ -729,12 +807,18 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
 
     private func settleBottomObstruction() {
         applyBottomInset()
-        // A short list's blank space above its rows follows the room. A longer
-        // list has none, and this runs on each frame of the keyboard's motion.
-        if collectionView.contentSize.height < collectionView.bounds.height {
+        invalidateShortContentLayoutIfNeeded()
+        collectionView.setNeedsLayout()
+    }
+
+    /// A short list's blank space above its rows (`topPadding`) follows the
+    /// unobstructed height; a longer list has none, so invalidating every
+    /// layout attribute on an inset change mid-scroll only stalls the frame.
+    private func invalidateShortContentLayoutIfNeeded() {
+        let nextVisible = ChatTimelineLayout.visibleHeight(of: collectionView)
+        if layout.geometry.topPadding > 0 || layout.geometry.contentHeight < nextVisible {
             layout.invalidateLayout()
         }
-        collectionView.setNeedsLayout()
     }
 
     /// Keeps `height` at the bottom clear of rows while Collapse Steps
@@ -780,9 +864,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard collapseControlReserve != reserve else { return }
         collapseControlReserve = reserve
         applyBottomInset()
-        if reserve > 0 { wantsEndClearOfCollapseControl = true }
-        // A short list's blank space above its rows follows the room.
-        layout.invalidateLayout()
+        invalidateShortContentLayoutIfNeeded()
         collectionView.setNeedsLayout()
     }
 
@@ -792,7 +874,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         guard jumpControlReserve != reserve else { return false }
         jumpControlReserve = reserve
         applyBottomInset()
-        layout.invalidateLayout()
+        invalidateShortContentLayoutIfNeeded()
         collectionView.setNeedsLayout()
         return true
     }
@@ -801,7 +883,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         collectionView.contentInset.bottom = Self.contentInsets.bottom + bottomObstruction + bottomControlReserve
         collectionView.verticalScrollIndicatorInsets.bottom = bottomObstruction
         // Room given back leaves no blank space past the end at rest.
-        if !collectionView.isTracking, !collectionView.isDecelerating,
+        if !collectionView.isTracking, !collectionView.isDecelerating, !latch.isUserScrolling,
             collectionView.contentOffset.y > collectionView.maxOffsetY
         {
             collectionView.contentOffset.y = collectionView.maxOffsetY
@@ -842,12 +924,14 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         disclosureAnchor = nil
         latch.reset()
         noteFollowing()
+        flushHeldStateForCommand()
         collectionView.setNeedsLayout()
     }
 
     /// The first open turn actually on screen, rather than the most
     /// recently expanded turn elsewhere in the conversation.
     private var collapseTarget: (trajectory: ChatTimelineProjection.Trajectory, row: ChatRowID)? {
+        guard !openHeaders.isEmpty || !expanded.isEmpty || !expandedFiles.isEmpty else { return nil }
         // Making room for the button moves only a list at its end up, by as
         // far as it rests past the end without that room. Measured from no
         // later than that end, the window is the same with or without the
@@ -856,8 +940,11 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         let view = collectionView
         let unreservedEnd = unreservedMaxOffsetY
         let top = min(view.contentOffset.y, unreservedEnd) + view.adjustedContentInset.top
+        var checkedScopes: Set<Int> = []
         for index in layout.geometry.indices(from: top, to: visibleBottom) {
-            guard let id = layout.id(at: index), let scope = trajectoryByRow[id] else { continue }
+            guard let id = layout.id(at: index), let scope = trajectoryByRow[id],
+                checkedScopes.insert(scope).inserted
+            else { continue }
             let trajectory = trajectories[scope]
             // A folded turn ending at the top edge leaves the open turn
             // under it in view.
@@ -1288,11 +1375,11 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         }
         if latch.isFollowing { return .end }
         let visibleTop = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
-        let range = layout.geometry.indices(from: visibleTop, to: visibleBottom)
-        let rows = range.compactMap { index -> (ChatRowID, CGFloat)? in
-            guard let id = layout.id(at: index) else { return nil }
-            return (id, layout.geometry.minY(at: index) - visibleTop)
-        }
+        let rows = layout.geometry.orderedAnchorCandidates(
+            visibleTop: visibleTop,
+            visibleBottom: visibleBottom,
+            skipping: .olderHistory
+        ) { layout.id(at: $0) }
         return rows.contains(where: { $0.0 != .olderHistory }) ? .rows(rows) : .end
     }
 
@@ -1438,6 +1525,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     }
 
     private func beginDisclosure(_ id: ChatRowID) -> ScrollAnchor {
+        flushHeldStateForCommand()
         let anchor = ScrollAnchor.rows([(id, rowTop(id))])
         disclosureAnchor = id
         activeMessageJumpTarget = nil
@@ -1540,14 +1628,39 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
         latch.isUserScrolling && collectionView.contentOffset.y < collectionView.minOffsetY - 0.5
     }
 
-    /// Catches up on what the list held while it was past its start or end.
+    /// True while a user drag or momentum deceleration is in progress within
+    /// bounds (unless holding `↑` to load earlier history).
+    private var isHoldingUpdatesForUserScroll: Bool {
+        ChatFollowLatch.shouldHoldUpdate(
+            isHeldPastEnd: false,
+            isHeldPastStart: false,
+            sameGeneration: true,
+            isHoldingTopJump: isHoldingTopJump,
+            isUserScrolling: latch.isUserScrolling,
+            isTracking: collectionView.isTracking,
+            isDecelerating: collectionView.isDecelerating)
+    }
+
+    /// Catches up on what the list held while it was past its start or end,
+    /// or while the user was actively dragging or coasting.
     private func releaseHoldIfBack() {
         guard !isHeldPastEnd, !isHeldPastStart else { return }
         layout.applyHeldHeights()
+        guard !isHoldingUpdatesForUserScroll else { return }
         if let state = heldState {
             heldState = nil
             apply(state)
         }
+    }
+
+    private func flushHeldStateForCommand() {
+        guard !isHeldPastEnd, !isHeldPastStart else { return }
+        layout.applyHeldHeights()
+        guard !collectionView.isTracking, !collectionView.isDecelerating,
+            let state = heldState
+        else { return }
+        heldState = nil
+        apply(state)
     }
 
     /// Reported on the next turn: the change often happens inside a
@@ -1652,6 +1765,7 @@ final class ChatTimelineController: UIViewController, UICollectionViewDelegate {
     func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
         latch.userScrollEnded(isAtEnd: disclosureAnchor == nil && isAtEnd)
         noteFollowing()
+        releaseHoldIfBack()
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {

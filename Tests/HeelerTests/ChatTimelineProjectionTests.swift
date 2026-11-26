@@ -670,4 +670,90 @@ struct ChatTimelineProjectionTests {
         #expect(before.rows.first { $0.id == .group(ChatEntryID("c2")) }?.revision
             == after.rows.first { $0.id == .group(ChatEntryID("c2")) }?.revision)
     }
+
+    @Test func settledSegmentCacheMatchesFreshProjectionAcrossStreamingAndDisclosures() {
+        let cache = ChatTimelineProjection.Cache()
+        let turn1 = [Self.user("u1"), Self.tool("c1"), Self.tool("c2"), Self.text("a1")]
+        let turn2Base = [Self.user("u2"), Self.tool("c3"), Self.tool("c4", status: .running)]
+        let turns = [Self.turn("u1"), Self.turn("u2", ended: false)]
+
+        let cached1 = ChatTimelineProjection.project(
+            turn1 + turn2Base, turns: turns, signals: Self.working, open: [], cache: cache)
+        let fresh1 = Self.project(turn1 + turn2Base, turns: turns, signals: Self.working, open: [])
+        #expect(Self.ids(cached1) == Self.ids(fresh1))
+        #expect(cached1.owners == fresh1.owners)
+
+        // Stream an answer into turn 2; turn 1 hits the settled cache.
+        let turn2Next = turn2Base + [Self.text("a2")]
+        let cached2 = ChatTimelineProjection.project(
+            turn1 + turn2Next, turns: turns, signals: Self.working, open: [], cache: cache)
+        let fresh2 = Self.project(turn1 + turn2Next, turns: turns, signals: Self.working, open: [])
+        #expect(Self.ids(cached2) == Self.ids(fresh2))
+        #expect(cached2.owners == fresh2.owners)
+
+        // Opening turn 1 invalidates only its cache key and matches fresh projection.
+        let openSet: Set<ChatRowID> = [.turn(ChatEntryID("a1"))]
+        let cachedOpen = ChatTimelineProjection.project(
+            turn1 + turn2Next, turns: turns, signals: Self.working, open: openSet, cache: cache)
+        let freshOpen = Self.project(turn1 + turn2Next, turns: turns, signals: Self.working, open: openSet)
+        #expect(Self.ids(cachedOpen) == Self.ids(freshOpen))
+        #expect(cachedOpen.owners == freshOpen.owners)
+    }
+
+    @Test func settlingTurnAndLiveGroupPreserveReaderOpenStateWhenNotFollowing() {
+        let runningRows = [
+            Self.user("u1"), Self.text("n1"), Self.tool("c1"), Self.tool("c2"), Self.tool("c3", status: .running),
+        ]
+        let runningTurn = [Self.turn("u1", ended: false)]
+        let runningOutput = Self.project(runningRows, turns: runningTurn, signals: Self.working)
+        let previouslyShown = Set(runningOutput.rows.map(\.id))
+        #expect(Self.ids(runningOutput) == ["u1", "[working]", "n1", "[live group c1]", "c3"])
+
+        let settledRows = [
+            Self.user("u1"), Self.text("n1"), Self.tool("c1"), Self.tool("c2"), Self.tool("c3"), Self.text("a1"),
+        ]
+        let settledTurn = [Self.turn("u1")]
+
+        // Reader scrolled up viewing `n1` (`!isFollowing`): `.turn(a1)` stays open and `n1` stays shown.
+        var openNotFollowing: Set<ChatRowID> = []
+        let preserved = ChatTimelineProjection.projectPreservingReader(
+            settledRows, turns: settledTurn, signals: Self.idle, open: &openNotFollowing,
+            isFollowing: false, anchoredIDs: [Self.entry("n1")],
+            previouslyShown: previouslyShown, previousOpenLiveGroups: [])
+        #expect(openNotFollowing.contains(.turn(ChatEntryID("a1"))))
+        #expect(preserved.rows.contains { $0.id == Self.entry("n1") })
+
+        // Reader viewing standalone trailing tool `c3` (`!isFollowing`): both `.turn(a1)` and `.group(c3)` open.
+        var openOnTrailingTool: Set<ChatRowID> = []
+        let preservedTool = ChatTimelineProjection.projectPreservingReader(
+            settledRows, turns: settledTurn, signals: Self.idle, open: &openOnTrailingTool,
+            isFollowing: false, anchoredIDs: [Self.entry("c3")],
+            previouslyShown: previouslyShown, previousOpenLiveGroups: [])
+        #expect(openOnTrailingTool.contains(.turn(ChatEntryID("a1"))))
+        #expect(openOnTrailingTool.contains(.group(ChatEntryID("c3"))))
+        #expect(preservedTool.rows.contains { $0.id == Self.entry("c3") })
+
+        // Reader opened `.liveGroup(c1)` while running, then narration `n2` followed: migrates to `.group(c3)`.
+        let midTurnNarrated = [
+            Self.user("u1"), Self.text("n1"), Self.tool("c1"), Self.tool("c2"), Self.tool("c3"), Self.text("n2"),
+        ]
+        var openLiveGroup: Set<ChatRowID> = [.liveGroup(ChatEntryID("c1"))]
+        let migrated = ChatTimelineProjection.projectPreservingReader(
+            midTurnNarrated, turns: runningTurn, signals: Self.working, open: &openLiveGroup,
+            isFollowing: false, anchoredIDs: [Self.entry("c1")],
+            previouslyShown: previouslyShown.union([Self.entry("c1"), Self.entry("c2")]),
+            previousOpenLiveGroups: [ChatEntryID("c1")])
+        #expect(!openLiveGroup.contains(.liveGroup(ChatEntryID("c1"))))
+        #expect(openLiveGroup.contains(.group(ChatEntryID("c3"))))
+        #expect(migrated.rows.contains { $0.id == Self.entry("c1") })
+
+        // Following at the bottom (`isFollowing == true`): settling turn folds closed as designed.
+        var openFollowing: Set<ChatRowID> = []
+        let folded = ChatTimelineProjection.projectPreservingReader(
+            settledRows, turns: settledTurn, signals: Self.idle, open: &openFollowing,
+            isFollowing: true, anchoredIDs: [],
+            previouslyShown: previouslyShown, previousOpenLiveGroups: [])
+        #expect(openFollowing.isEmpty)
+        #expect(Self.ids(folded) == ["u1", "[turn a1]", "a1"])
+    }
 }

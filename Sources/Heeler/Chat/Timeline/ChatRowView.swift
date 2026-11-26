@@ -67,7 +67,7 @@ struct ChatRowView: View {
     private var content: some View {
         switch row.content {
         case .user(let message):
-            ChatUserBubble(message: message)
+            ChatUserBubble(message: message, precomputedMarked: row.precomputedMarkedText)
         case .assistant(_, let blocks):
             ChatMarkdownView(blocks: blocks, isMuted: row.isMuted)
         case .reasoning(let reasoning):
@@ -79,7 +79,9 @@ struct ChatRowView: View {
                 let actions = actions
                 ChatToolRow(
                     tool: tool, isExpanded: isExpanded, expandedFiles: expandedFiles,
-                    missingOutputText: actions.missingOutputText, toggle: { actions.toggle(row.id) },
+                    missingOutputText: actions.missingOutputText,
+                    precomputedDiffs: row.precomputedInlineDiffs,
+                    toggle: { actions.toggle(row.id) },
                     files: fileActions, textActions: row.hasInnerControls ? textActions : nil,
                     thumbnails: actions.thumbnails,
                     previewImage: { path, image in actions.previewImage(path, nil, image) })
@@ -93,7 +95,7 @@ struct ChatRowView: View {
         case .divider(let divider):
             ChatDividerRow(divider: divider)
         case .pending(let echo):
-            ChatPendingBubble(echo: echo)
+            ChatPendingBubble(echo: echo, precomputedMarked: row.precomputedMarkedText)
         case .olderHistory(let older):
             ChatOlderHistoryRow(older: older, pull: actions.olderPull?.phase ?? .idle, loadOlder: actions.loadOlder)
         case .turnHeader(let header):
@@ -129,13 +131,23 @@ private struct ChatRowAccessibility: ViewModifier {
 
     func body(content: Content) -> some View {
         if let text = row.copyText, !row.hasInnerControls {
-            content
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier(identifier)
-                .accessibilityAction(named: "Copy") { actions.copy(text) }
-                .accessibilityAction(named: "Select Text") { actions.selectText(text) }
-                .accessibilityActions { imageActions }
-                .environment(\.chatMarkdownReadsAsOne, true)
+            let images = row.messageImages
+            if images.isEmpty {
+                content
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(identifier)
+                    .accessibilityAction(named: "Copy") { actions.copy(text) }
+                    .accessibilityAction(named: "Select Text") { actions.selectText(text) }
+                    .environment(\.chatMarkdownReadsAsOne, true)
+            } else {
+                content
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(identifier)
+                    .accessibilityAction(named: "Copy") { actions.copy(text) }
+                    .accessibilityAction(named: "Select Text") { actions.selectText(text) }
+                    .accessibilityActions { imageActions(images) }
+                    .environment(\.chatMarkdownReadsAsOne, true)
+            }
         } else {
             content
                 .accessibilityElement(children: .contain)
@@ -144,9 +156,9 @@ private struct ChatRowAccessibility: ViewModifier {
     }
 
     /// One action per image the message names, as its links open.
-    private var imageActions: some View {
+    private func imageActions(_ images: [ChatImageLink.Reference]) -> some View {
         let opener = imageOpener
-        return ForEach(row.messageImages, id: \.path) { @Sendable image in
+        return ForEach(images, id: \.path) { @Sendable image in
             let name = image.title ?? RemoteHostPath.lastComponent(of: image.path)
             Button("Preview \(name)") { @MainActor in
                 opener?.open(image.path, image.title)
@@ -187,10 +199,11 @@ private struct ChatBubble<Content: View>: View {
 
 private struct ChatUserBubble: View {
     let message: ChatUserMessage
+    var precomputedMarked: AttributedString? = nil
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
-        let marked = markedContent
+        let marked = precomputedMarked ?? markedContent
         ChatBubble {
             VStack(alignment: .trailing, spacing: 6) {
                 if let command = message.command {
@@ -285,13 +298,15 @@ private struct ChatAttachmentChips: View {
 
 private struct ChatPendingBubble: View {
     let echo: ChatPendingEcho
+    var precomputedMarked: AttributedString? = nil
     @Environment(\.chatImageOpener) private var imageOpener
 
     var body: some View {
+        let marked = precomputedMarked ?? ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths)
         VStack(alignment: .trailing, spacing: 4) {
             ChatBubble {
                 ChatMarkdownView.text(
-                    ChatImageLink.marking(echo.text, stagedImagePaths: echo.stagedImagePaths),
+                    marked,
                     in: .body, opensImages: imageOpener != nil)
                     .font(.body)
                     .chatMessageLinks(opener: imageOpener)
@@ -718,6 +733,7 @@ private struct ChatToolRow: View {
     let isExpanded: Bool
     let expandedFiles: Set<String>
     let missingOutputText: String
+    var precomputedDiffs: [String: ChatFileDiff] = [:]
     let toggle: () -> Void
     let files: ChatFileActions
     /// Set when the row's own controls keep VoiceOver from reading it as
@@ -727,10 +743,12 @@ private struct ChatToolRow: View {
     let previewImage: @MainActor (String, UIImage?) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var titleIsTruncated = false
 
     private var needsTitleTruncationProbe: Bool {
-        !tool.hasExpandableDetails && !tool.title.contains(where: \.isNewline)
+        guard !tool.hasExpandableDetails, !tool.title.contains(where: \.isNewline) else { return false }
+        return dynamicTypeSize.isAccessibilitySize || tool.title.count >= 24
     }
 
     private var canExpand: Bool {
@@ -786,9 +804,12 @@ private struct ChatToolRow: View {
             if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
                 ChatFileChangesList(
                     changes: changes, expandedFiles: expandedFiles, read: tool.outputRead,
-                    missingOutputText: fileMissingOutputText, actions: files)
+                    missingOutputText: fileMissingOutputText, precomputedDiffs: precomputedDiffs, actions: files)
                     .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
+        }
+        .onChange(of: tool.title) { _, _ in
+            if titleIsTruncated { titleIsTruncated = false }
         }
     }
 
@@ -802,6 +823,7 @@ private struct ChatToolRow: View {
             base.modifier(
                 ChatTextTruncationProbe(
                     text: tool.title, font: .subheadline, isCode: titleIsCode, lineLimit: 1,
+                    trailingAllowance: titleIsTruncated ? 16 : 0,
                     isTruncated: $titleIsTruncated))
         } else {
             base
@@ -877,7 +899,7 @@ private struct ChatToolRow: View {
                         if file.lineCount > 0 {
                             ChatInlineFileDiff(
                                 file: file, read: tool.outputRead, missingOutputText: fileMissingOutputText,
-                                actions: files)
+                                precomputedDiff: precomputedDiffs[file.path], actions: files)
                         } else {
                             Text("No lines changed.")
                                 .font(.caption)
