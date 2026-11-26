@@ -226,6 +226,34 @@ struct AgentActivityPresentationTests {
         #expect(lettered.letter == "MB")
     }
 
+    @Test func compactShrinksLargeCountsToTheSideLimit() {
+        let layout = compact(.init(working: 1, blocked: 100, done: 100), width: 430)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit < 15)
+        #expect(layout.sideWidth <= 58)
+        #expect(abs(layout.sideWidth - 58) < 0.001)
+        #expect(layout.leading == [.count("blocked", 100), .count("done", 100)])
+        #expect(layout.trailing == [.count("working", 1)])
+    }
+
+    @Test func compactShrinksALongHostLetterToTheSideLimit() {
+        let layout = compact(.init(working: 1, blocked: 0, done: 0), letter: "100.101", width: 393)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit < 15)
+        #expect(layout.sideWidth <= 47)
+        #expect(abs(layout.sideWidth - 47) < 0.001)
+        #expect(layout.leading == [.count("working", 1)])
+        #expect(layout.letter == "100.101")
+    }
+
+    @Test func compactUsesTheMinimumUnitWhenTheCountsCannotFit() {
+        let layout = compact(.init(working: Int.max, blocked: 0, done: 0), width: 393)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit == 9)
+        #expect(layout.leading == [.symbol("working")])
+        #expect(layout.trailing == [.count("working", Int.max)])
+    }
+
     @Test func compactSidesShareTheWiderSidesWidth() {
         let level = Compact.Level.full
         let one = compact(.init(working: 2, blocked: 0, done: 0))

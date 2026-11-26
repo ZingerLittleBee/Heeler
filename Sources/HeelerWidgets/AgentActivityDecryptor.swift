@@ -179,7 +179,8 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
     }
 
     /// One size unit sets the symbols, the numbers and the Host letter, so a
-    /// step down shrinks them together.
+    /// step down shrinks them together. When even numbers only don't fit, a
+    /// last numbers-only level shrinks the unit to fit, down to 9 pt.
     struct Level: Equatable, Sendable {
         let unit: CGFloat
         let showsSymbols: Bool
@@ -246,10 +247,20 @@ struct AgentActivityIslandCompact: Equatable, Sendable {
             }
         }
         let limit = Self.sideLimit(screenWidth: screenWidth)
-        let level = [Level.full, .small, .numbersOnly].first {
-            Self.width(leading: leading, trailing: trailing, letter: letter, at: $0, text: .drawing)
-                <= limit
-        } ?? .numbersOnly
+        func drawingWidth(at level: Level) -> CGFloat {
+            Self.width(leading: leading, trailing: trailing, letter: letter, at: level, text: .drawing)
+        }
+        let level: Level
+        if let fittingLevel = [Level.full, .small, .numbersOnly].first(where: { drawingWidth(at: $0) <= limit }) {
+            level = fittingLevel
+        } else {
+            let minimumUnit: CGFloat = 9
+            var unit = max(minimumUnit, limit * Level.numbersOnly.unit / drawingWidth(at: .numbersOnly))
+            while unit > minimumUnit && drawingWidth(at: Level(unit: unit, showsSymbols: false)) > limit {
+                unit = unit.nextDown
+            }
+            level = Level(unit: unit, showsSymbols: false)
+        }
         if !level.showsSymbols {
             leading = leading.map(\.numberOnly)
             trailing = trailing.map(\.numberOnly)
