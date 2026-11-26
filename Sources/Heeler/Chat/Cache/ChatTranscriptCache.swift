@@ -45,10 +45,11 @@ struct ChatCacheKey: Hashable, Codable, Sendable {
         "tmux:\(TmuxSocketName.normalized(socketName)):\(instanceID)"
     }
 
-    /// A Rex Host is one server, so its instance alone keeps its entries apart
-    /// from another run's.
-    static func rexScope(instanceID: String) -> String {
-        "rex:\(instanceID)"
+    /// A Rex Host is one server, so its core alone keeps its entries apart
+    /// from another server's; a restarted server that restored its sessions
+    /// keeps its core, and its entries (ADR 0050).
+    static func rexScope(coreID: String) -> String {
+        "rex:\(coreID)"
     }
 
     /// The document's file name: a digest, so no session name, path or id

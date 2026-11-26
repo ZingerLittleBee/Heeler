@@ -1,9 +1,19 @@
 import Foundation
 
-/// The Rex server a control link reached. Another instance is another server
-/// process: what was known of the last one is void (ADR 0050).
+/// The Rex server a control link reached: the process that answered, and the
+/// server Heeler follows through it. Another instance is another server, and
+/// what was known of the last one is void, unless it restored the last one's
+/// sessions, as a restarted server does: then it continues the last one's
+/// core (ADR 0050).
 struct RexServerStatus: Sendable, Equatable {
+    /// The server process that answered, new with each start.
     let instanceID: String
+    /// Rex's word for the files the server sees, the same for two servers
+    /// that share them and nil when it gives none. It means nothing else.
+    let hostID: String?
+    /// The server whose terminals these are: an instance's own id, or the
+    /// core of the last instance when this one restored its sessions.
+    private(set) var coreID: String
 
     /// Reads `server.status`'s result. Throws `TransportError` when it names
     /// no instance.
@@ -12,10 +22,58 @@ struct RexServerStatus: Sendable, Equatable {
             throw TransportError.rexAnswerUnreadable(String(localized: "Rex's status named no server instance."))
         }
         self.instanceID = instanceID
+        hostID = result["host_id"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        coreID = instanceID
     }
 
-    init(instanceID: String) {
+    init(instanceID: String, hostID: String? = nil, coreID: String? = nil) {
         self.instanceID = instanceID
+        self.hostID = hostID
+        self.coreID = coreID ?? instanceID
+    }
+
+    /// This instance, as the continuation of `core`.
+    func continuing(_ core: String) -> RexServerStatus {
+        var status = self
+        status.coreID = core
+        return status
+    }
+
+    /// Whether this status names the server `other` names, whichever
+    /// instance of it answered.
+    func isSameServer(as other: RexServerStatus) -> Bool {
+        coreID == other.coreID
+    }
+}
+
+/// What this device knows of the last Rex server a Host answered with: its
+/// core, the instance and files it last ran as, and the sessions it last
+/// listed. A later instance that sees the same files and lists one of those
+/// sessions restored them, and continues the core (ADR 0050).
+struct RexServerLineage: Codable, Equatable, Sendable {
+    var coreID: String
+    var instanceID: String
+    var hostID: String?
+    var sessionIDs: [String]
+
+    init(_ server: RexServerStatus, sessionIDs: [String] = []) {
+        coreID = server.coreID
+        instanceID = server.instanceID
+        hostID = server.hostID
+        self.sessionIDs = sessionIDs
+    }
+
+    /// Whether `answered`, another instance than the last, may have restored
+    /// the last one's sessions, so that its list says which: only one that
+    /// sees the same files can, and only a known session can say so.
+    func mayContinue(in answered: RexServerStatus) -> Bool {
+        guard let hostID, answered.hostID == hostID, !sessionIDs.isEmpty else { return false }
+        return true
+    }
+
+    /// Whether a list of `listed` session ids holds one of the last ones.
+    func isContinued(byListing listed: [String]) -> Bool {
+        !Set(listed).isDisjoint(with: sessionIDs)
     }
 }
 

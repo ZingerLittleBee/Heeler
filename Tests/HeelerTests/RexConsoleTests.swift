@@ -727,6 +727,37 @@ struct RexConsoleTests {
         #expect(!console.hasLeftCore(fresh.corePin, on: rex.id))
     }
 
+    /// A server restarted on the same files that restored the last one's
+    /// sessions is the same server: an open Agent's detail keeps to it, and
+    /// the list still marks it.
+    @Test func anOpenRexAgentKeepsToARestoredServer() async throws {
+        let world = FakeRexWorld(hostID: "host-0001", sessions: [studioRunningCodex(reporting: "working")])
+        let servers = await served(world, count: 2)
+        let host = ScriptedRexHost(control: servers.map { .server($0) })
+        let console = store(rexConnect: { socket, previous in
+            try await RexSSHTransport.connect(over: host, socket: socket, resuming: previous, options: .testing)
+        })
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the Agent") { console.agents.first?.agent.status == .working }
+        let agent = try #require(console.agents.first)
+        let cores = ConsoleDetailCores()
+        let session = cores.session(for: agent, console: console)
+
+        let blocked = studioRunningCodex(reporting: "blocked")
+        world.restart(as: "instance-0002")
+        world.update { $0 = [blocked] }
+        await servers[0].close(.goingAway, reason: "shutting down")
+        try await waitUntil("the restored server's inventory") { console.agents.first?.agent.status == .blocked }
+
+        #expect(!console.hasLeftCore(session.corePin, on: rex.id))
+        #expect(cores.session(for: agent, console: console) === session)
+        #expect(cores.listSelection(for: .agent(agent.id), console: console) == .agent(agent.id))
+        #expect(!cores.openAnew(.agent(agent.id), console: console))
+    }
+
     /// What a Rex Agent's detail leaves closed stays closed with the Host
     /// connected (ADR 0056): no platform probe, which Chat does without, no
     /// Host script for Skills or the agy model list, no Changes totals for
