@@ -317,11 +317,11 @@ struct TerminalListProjection {
         for shell in shells where !ordered.contains(where: { $0.id == shell.workspaceID }) {
             ordered.append((shell.workspaceID, nil))
         }
-        // A card with no shell holds New Terminal alone, so where the Host
-        // never starts terminals it has nothing to show or offer, as a Rex
-        // session whose terminals all run Agents (ADR 0054). Read from the
-        // Host's kind rather than its connection, so a herdr-core card keeps
-        // its place while the core is still being located.
+        // A card with no shell holds New Terminal alone, as a Rex session's
+        // does when its terminals all run Agents (ADR 0054), so where the Host
+        // never starts terminals it would have nothing to show or offer. Read
+        // from the Host's kind rather than its connection, so a herdr-core
+        // card keeps its place while the core is still being located.
         let offersNewTerminal = host.capabilities.startsTerminals
         return ordered.compactMap { id, workspace in
             let all = shellsByWorkspace[id] ?? []

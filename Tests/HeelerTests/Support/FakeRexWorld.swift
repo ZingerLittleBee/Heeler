@@ -96,6 +96,8 @@ final class FakeRexWorld: Sendable {
     private struct State {
         var instanceID: String
         var sessions: [Session]
+        /// Numbers the windows, blocks and sessions New Terminal makes.
+        var made = 0
     }
 
     private let state: Mutex<State>
@@ -167,6 +169,63 @@ final class FakeRexWorld: Sendable {
         await server.answer("session.disown_block") { [self] request in
             claim(request) { owner in owner == client ? nil : owner }
         }
+    }
+
+    /// What New Terminal asks, as Rex 0.1.0-preview.23 answered it at API
+    /// revision 12: a window, kept in the background, holding one new shell
+    /// in `cwd` or the home directory, in a session or a new one. The new
+    /// block is `client`'s, as the creator's is. Neither pushes the events
+    /// that follow it, which a test pushes as the server would.
+    func installNewTerminal(on server: FakeRexServer, client: String? = FakeRexServer.Welcome().clientID) async {
+        await server.answer(RexNewTerminal.newWindowMethod) { [self] request in
+            guard let sessionID = request.payload?["session_id"]?.stringValue else { return Self.sessionNotFound }
+            let cwd = request.payload?["layout"]?["block"]?["options"]?["cwd"]?.stringValue
+            let made = state.withLock { state -> (window: Window, revision: Int)? in
+                guard let index = state.sessions.firstIndex(where: { $0.id == sessionID }) else { return nil }
+                let window = Self.newWindow(&state.made, cwd: cwd, owner: client)
+                state.sessions[index].windows.append(window)
+                state.sessions[index].revision += 1
+                return (window, state.sessions[index].revision)
+            }
+            guard let made else { return Self.sessionNotFound }
+            return .result(Self.madeWindow(made.window, revision: made.revision))
+        }
+        await server.answer(RexNewTerminal.newSessionMethod) { [self] request in
+            guard case .array(let windows)? = request.payload?["initial_windows"], let first = windows.first else {
+                return .error(code: "bad_request", message: "no window", status: 400)
+            }
+            let cwd = first["layout"]?["block"]?["options"]?["cwd"]?.stringValue
+            let label = request.payload?["label"]?.stringValue ?? "quiet-meadow"
+            let session = state.withLock { state -> Session in
+                let window = Self.newWindow(&state.made, cwd: cwd, owner: client)
+                state.made += 1
+                let session = Session(
+                    id: "session:made-\(state.made)", label: label, activeWindowID: window.id, windows: [window])
+                state.sessions.append(session)
+                return session
+            }
+            return .result([
+                "session_id": .string(session.id),
+                "initial_windows": .array([Self.madeWindow(session.windows[0], revision: 1)]),
+            ])
+        }
+    }
+
+    private static func newWindow(_ made: inout Int, cwd: String?, owner: String?) -> Window {
+        made += 1
+        var block = Block("block:made-\(made)")
+        block.directory = cwd ?? "/home/dev"
+        block.owner = owner
+        let id = "window:made-\(made)"
+        return Window(id: id, label: "Window \(made)", layers: [Layer(layout: .block(block.id), blocks: [block])])
+    }
+
+    private static func madeWindow(_ window: Window, revision: Int) -> JSONValue {
+        .object([
+            "window_id": .string(window.id),
+            "block_ids": .array(window.layers.flatMap(\.blocks).map { .string($0.id) }),
+            "revision": .number(Double(revision)),
+        ])
     }
 
     /// Sets the owner of each block a take or give back names, and answers

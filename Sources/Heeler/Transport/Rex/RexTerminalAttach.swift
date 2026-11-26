@@ -436,10 +436,12 @@ actor RexTerminalAttach {
                 return bytes
             case .feed(let bytes):
                 if !bytes.isEmpty { return bytes }
-            case .title, .theme:
-                // The title follows the inventory's title, and Heeler keeps
-                // its own colors.
+            case .title:
+                // The title follows the inventory's title.
                 continue
+            case .theme(let theme):
+                // The terminal's own default colors, as the server has them.
+                return theme.sequences
             case .exited:
                 await end(.finished)
             case .restarting:

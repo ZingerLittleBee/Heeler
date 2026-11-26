@@ -31,6 +31,14 @@ Amended 2026-11-25 (see [Update 2026-11-25](#update-2026-11-25-native-windows)):
 a native Windows Host is asked for Rex's named pipe, and each channel to it is
 an exec of Rex's own stdio bridge.
 
+Amended 2026-11-25 (see [Update 2026-11-25: New Terminal](#update-2026-11-25-new-terminal)):
+New Terminal starts a shell in a new window of a Workspace's session, or in
+a new session, on the control connection.
+
+Amended 2026-11-25 (see [Update 2026-11-25: API revisions 12 to 19](#update-2026-11-25-api-revisions-12-to-19)):
+the hello offers revision 19 with a floor of 12, and a welcome at any
+revision in that range is accepted.
+
 Amended by [ADR 0047](0047-a-host-is-one-machine-and-lists-its-servers.md), as
 [Update 2026-11-16: a Server of its Host](#update-2026-11-16-a-server-of-its-host)
 says: a Rex server is a Server of its Host, listed by the look that adds or
@@ -114,8 +122,9 @@ detail.
   revision. (Amended by ADR 0054: a terminal running a known agent program is
   an Agent with its Agent Status. Amended by ADR 0056: that Agent opens the
   Agent detail, with Chat for Claude Code and Codex, Composer Send and Stop,
-  and, since 2026-11-17, uploads of the images and files its messages carry;
-  the rest of this list stands.)
+  and, since 2026-11-17, uploads of the images and files its messages carry.
+  Amended 2026-11-25: New Terminal starts a shell, see the update below; the
+  rest of this list stands.)
 
 ## Why
 
@@ -340,3 +349,83 @@ hello at revision 12 with `api_revision` 12, and answered `session.list`. With
 no server at the address, the bridge printed `no Rex server is running at
 \\.\pipe\rex-<SID>, and autostart is disabled` and exited 1. Listing the
 pipe namespace found the running server's pipe in about 0.35 s per exec.
+
+## Update 2026-11-25: New Terminal
+
+A Rex Host listed its terminals but started none, so a terminal for a new
+command meant going to the machine first. Rex's own clients start one with a
+request on the control connection, which Heeler already holds. Heeler now
+does the same, for a shell only:
+
+- **New Terminal is a new window.** New Terminal, and New Terminal Here on a
+  Workspace's card, send `session.new_window` for the Workspace's session,
+  with one block of Rex's shell flavor, `com.superlogical.terminal.shell`,
+  whose `cwd` option is the directory New Terminal resolved, as on every
+  other Server Kind. `focus` is false, so the window Rex's own app shows
+  stays active. Rex answers only a client attached to the session, so the
+  control client sends `session.attach` first, as an open terminal does.
+- **New Workspace is a new session.** New Workspace sends `session.create`
+  with one such window, labeled with the name the user gave, else with the
+  directory's last name, as the other kinds name a new Workspace. A tab name
+  has nowhere to go and is not asked for.
+- **The block is given back at once.** Rex makes the creating client the new
+  block's owner. Heeler sends `session.disown_block` for it straight away, so
+  the block's size stays as ADR 0053 has it: taken by a view that shows the
+  terminal and given back when it leaves, never held by a terminal nobody is
+  looking at.
+- **Sent once.** A create that left is never sent again. One with no answer
+  may still have made its terminal, so the error says to check the list
+  before trying again. The new terminal lists from the server's events, as
+  any other does, and opens like a new terminal on the other kinds.
+- **The home directory and Browse Directory** come from the probe and SFTP
+  listing every Host's New Terminal uses, on the same SSH connection, which on
+  native Windows reads `USERPROFILE`. A Rex Host's reported directories may be
+  a Windows machine's, so a Windows path starts a terminal there too.
+
+New Agent, Rename and Close stay unoffered: each is a request Rex has, but
+each needs its own decision on what Heeler may change on a server it does not
+own. Starting a shell is the smallest such change, and the one Rex's
+`--autostart=false` promise does not cover: it starts a program in a running
+server, never a server.
+
+Evidence: against Rex 0.1.0-preview.23 on macOS (2026-11-25), a client that
+said hello at API revision 12 was refused `session.new_window` with `409
+conflict` (`stream is not attached to session ...`) until it sent
+`session.attach`. After it, the call answered `window_id` and `block_ids`,
+the session's active window stayed as it was, and the events that followed
+were `block_created`, `block_owner_changed` to the creating client with
+reason `create`, `window_created` and `session_view_changed`. The shell's
+foreground reported the `cwd` asked (`/private/tmp` for `/tmp`).
+`session.create` with `initial_windows` answered `session_id` and each
+window's `window_id` and `block_ids` without an attach.
+
+## Update 2026-11-25: API revisions 12 to 19
+
+Heeler said hello at revision 12 alone, and Rex 0.1.0-preview.23 speaks 0 to
+19. Heeler now offers 19 with a floor of 12 (`api_revision` 19,
+`api_min_revision` 12), accepts a welcome at any revision from 12 to 19, and
+keeps the revision agreed on with the control link. Rex picks the newest
+revision both sides speak, so an older Rex such as 0.1.0-preview.14 still
+welcomes the hello at 12, and a server whose oldest revision is newer than
+19 closes with a policy code before welcoming, read as unsupported as
+before.
+
+Nothing Heeler sends or reads differs between 12 and 19, so no behavior is
+gated on the revision: when a later change uses something newer than 12, it
+checks the agreed revision first.
+
+Evidence: against Rex 0.1.0-preview.23 on macOS (2026-11-25), the same probe
+said hello at 12 and at 19 and made the same requests in a session of its
+own: `server.status`, `server.version`, `session.list`, `session.attach_all`,
+`session.create`, `session.attach`, `session.view`, `session.list_blocks`,
+`session.new_window`, `session.own_block` and `session.disown_block`, the
+terminal's `title`, `process`, `program_status`, `size`, `modes`, `format`,
+`resize` and `write`, `block.event` with a paste and a focus, an unknown
+method, a malformed request and `data.connect`. Every answer, every event
+and the terminal data connection's handshake and first snapshot had the same
+shape at both revisions. A hello of 19 with floor 12, or 25 with floor 12,
+was welcomed at 19, one of 12 at 12, and one of 25 with floor 20 was closed
+with 1008 (`no common API revision: server speaks 0 to 19, client needs 20 to
+25; update the server`). Over the Windows stdio bridge to Rex
+0.1.0-preview.23 on Windows 11, a hello of 19 with floor 12 was welcomed at
+19 and `session.list` answered.

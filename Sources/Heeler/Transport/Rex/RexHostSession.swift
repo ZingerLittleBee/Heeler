@@ -702,6 +702,60 @@ actor RexHostSession {
             })
     }
 
+    /// New Terminal's write (ADR 0049's update of 2026-11-25): a shell block
+    /// in a new window of `placement`'s session, or in a new session, on the
+    /// live control link. It never waits for a server, and a request that
+    /// left is never sent again, so one with no answer may still have made
+    /// its terminal. The window is not made active, and the block is given
+    /// back at once, as a size this client took is (ADR 0053): the view that
+    /// opens it takes its size as it takes any other terminal's.
+    func createTerminal(_ placement: RexNewTerminal.Placement, cwd: String?) async throws -> RexNewTerminal.Created {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        let control = ready.control
+        let created: RexNewTerminal.Created
+        do {
+            switch placement {
+            case .window(let sessionID):
+                try await attachForCreating(sessionID, on: control)
+                let response = try await control.call(
+                    RexNewTerminal.newWindowMethod, payload: RexNewTerminal.newWindowPayload(in: sessionID, cwd: cwd))
+                created = try RexNewTerminal.newWindow(in: sessionID, from: response.result(JSONValue.self))
+            case .session(let label):
+                let response = try await control.call(
+                    RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd))
+                created = try RexNewTerminal.newSession(from: response.result(JSONValue.self))
+                // The session is made: without an attach its block stays
+                // this client's until the view that opens it takes it.
+                guard (try? await attachForCreating(created.address.sessionID, on: control)) != nil else {
+                    return created
+                }
+            }
+        } catch let error as RexControlError {
+            throw RexNewTerminal.failure(error)
+        }
+        _ = await control.deliver(
+            RexTerminalAttach.giveBackMethod, payload: RexTerminalAttach.ownershipPayload(created.address, take: false),
+            deadline: terminalOptions.giveBackDeadline)
+        return created
+    }
+
+    /// Attaches the control client to `sessionID`, as Rex asks of a client
+    /// acting on a session. An attach with no answer comes before a new
+    /// window's request leaves, so it says nothing was made.
+    private func attachForCreating(_ sessionID: String, on control: RexControlLink) async throws {
+        do {
+            try await attachSession(sessionID, on: control)
+        } catch RexTerminalEnding.finished {
+            throw TransportError.rexRejected(
+                code: "session_not_found",
+                message: String(localized: "This Workspace is no longer on the Rex server."))
+        } catch is RexTerminalEnding {
+            throw RexNewTerminal.notSent
+        }
+    }
+
     /// One read of Chat's, on the live control link while it is still the
     /// one the read was pinned to. Another server is gone for good; another
     /// connection or client says the one it read on went.
@@ -989,5 +1043,99 @@ actor RexHostSession {
         if case DeviceKeyStoreError.storedKeyCorrupt = error { return .deviceKeyCorrupt }
         if case RSAKeyStoreError.storedKeyCorrupt = error { return .rsaKeyCorrupt }
         return .channelFailed(detail: String(describing: error))
+    }
+}
+
+/// New Terminal on a Rex Host (ADR 0049's update of 2026-11-25): what it asks
+/// of the server at API revision 12, and what it reads of the answer. One
+/// shell block, of the flavor Rex's own New Terminal makes, starts in `cwd`,
+/// or where Rex starts one when there is none (the account's home); Rex
+/// starts it in the home directory too when `cwd` is not one it can enter.
+enum RexNewTerminal {
+    /// Where the terminal goes: a new window of a session, which stays in the
+    /// background, or a new session, labeled or named by Rex.
+    enum Placement: Sendable, Equatable {
+        case window(sessionID: String)
+        case session(label: String?)
+    }
+
+    /// A new session's label when none was given: its directory's last
+    /// name, in a POSIX or a Windows path, cut to the 128 characters Rex
+    /// takes. Nil for a root, which Rex then names.
+    static func sessionLabel(for directory: String) -> String? {
+        let name = directory.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init)
+        guard let name, !name.isEmpty, !name.hasSuffix(":") else { return nil }
+        return String(name.prefix(128))
+    }
+
+    static let newWindowMethod = "session.new_window"
+    static let newSessionMethod = "session.create"
+    static let shellFlavor = "com.superlogical.terminal.shell"
+
+    static func newWindowPayload(in sessionID: String, cwd: String?) -> JSONValue {
+        .object(["session_id": .string(sessionID), "focus": .bool(false), "layout": layout(cwd: cwd)])
+    }
+
+    static func newSessionPayload(label: String?, cwd: String?) -> JSONValue {
+        var payload: [String: JSONValue] = ["initial_windows": .array([.object(["layout": layout(cwd: cwd)])])]
+        if let label { payload["label"] = .string(String(label.prefix(128))) }
+        return .object(payload)
+    }
+
+    private static func layout(cwd: String?) -> JSONValue {
+        var block: [String: JSONValue] = ["flavor": .string(shellFlavor)]
+        if let cwd { block["options"] = .object(["cwd": .string(cwd)]) }
+        return .object(["block": .object(block)])
+    }
+
+    /// The terminal made: its block, and the window that holds it.
+    struct Created: Sendable, Equatable {
+        let address: RexPaneAddress
+        let windowID: String
+    }
+
+    /// The new window and its block from `session.new_window`'s answer.
+    static func newWindow(in sessionID: String, from result: JSONValue) throws -> Created {
+        guard let made = window(result) else { throw unreadable }
+        return Created(address: RexPaneAddress(sessionID: sessionID, blockID: made.blockID), windowID: made.windowID)
+    }
+
+    /// The new session, its window and its block from `session.create`'s answer.
+    static func newSession(from result: JSONValue) throws -> Created {
+        guard let sessionID = result["session_id"]?.stringValue, !sessionID.isEmpty,
+            case .array(let windows)? = result["initial_windows"], let first = windows.first,
+            let made = window(first)
+        else { throw unreadable }
+        return Created(address: RexPaneAddress(sessionID: sessionID, blockID: made.blockID), windowID: made.windowID)
+    }
+
+    private static func window(_ value: JSONValue) -> (windowID: String, blockID: String)? {
+        guard let windowID = value["window_id"]?.stringValue, !windowID.isEmpty,
+            case .array(let blocks)? = value["block_ids"], let blockID = blocks.first?.stringValue, !blockID.isEmpty
+        else { return nil }
+        return (windowID, blockID)
+    }
+
+    private static var unreadable: TransportError {
+        .rexAnswerUnreadable(String(localized: "Rex made the terminal, but its answer did not name it."))
+    }
+
+    /// The attach a new window waits on had no answer, so the window's
+    /// request never left and nothing was made.
+    static var notSent: TransportError {
+        .channelFailed(detail: String(localized: "Rex did not answer, so no terminal was made. Try again."))
+    }
+
+    /// A request with no answer may have made its terminal, so the user is
+    /// told to look before asking again; a refusal says what Rex said.
+    static func failure(_ error: RexControlError) -> TransportError {
+        switch error {
+        case .deadlineExceeded, .linkEnded:
+            .channelFailed(
+                detail: String(
+                    localized: "Rex did not answer. The terminal may still have been made, so check the list before trying again."))
+        default:
+            TransportError(rexControl: error)
+        }
     }
 }

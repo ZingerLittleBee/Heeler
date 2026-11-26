@@ -169,8 +169,8 @@ struct TerminalListView: View {
         .selectionDisabled()
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
-            // A Rex Host never offers New Terminal, so its last shell closes
-            // the card.
+            // Where the Host cannot start a terminal now, its last shell
+            // closes the card.
             let endsInNewTerminal = console.capabilities(for: workspace.id.hostID).startsTerminals
             ForEach(Array(terminals.enumerated()), id: \.element.id) { @Sendable index, terminal in
                 MainActorContent {

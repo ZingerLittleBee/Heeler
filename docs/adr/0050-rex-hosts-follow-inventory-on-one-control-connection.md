@@ -78,7 +78,8 @@ restarted servers without showing a stale or half-read list.
   longer than three seconds, and only then does the SSH connection go. A
   short trip to the background keeps the connection as it is, and a
   connection that dropped is taken back by the next one.
-- Only API revision 12 is accepted (ADR 0049).
+- Only API revision 12 is accepted (ADR 0049). (Updated 2026-11-25: revisions
+  12 to 19, as ADR 0049's update of that day says.)
 - A Rex session is a Workspace, a window a Tab and a terminal block a Pane,
   named and ordered as Rex shows them. A window lists its terminals in reading
   order: its tiled layout before-then-after, then its floating layers. A

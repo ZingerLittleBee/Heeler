@@ -22,25 +22,38 @@ struct RexConsoleTests {
             rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
     }
 
-    /// A Rex Host starts, closes and renames nothing and runs nothing on the
-    /// machine for Changes or Skills (ADRs 0049 and 0056). Its Agents offer
-    /// Composer Send and Stop, and Chat for Claude Code and Codex and uploads
-    /// once the server has named a Linux or macOS kernel, whatever a
+    /// A Rex Host starts a shell for New Terminal, in a Workspace or a new
+    /// one it names (ADR 0049's update of 2026-11-25), in a POSIX or a
+    /// Windows directory, and starts no Agent, closes and renames nothing
+    /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
+    /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
+    /// Codex, Pi and Oh My Pi and uploads once the server has named a Linux
+    /// or macOS kernel, and Chat for Claude Code alone and uploads once it
+    /// has named Windows, whatever a
     /// platform probe would say, since none runs. A terminal shows in one
     /// window at a time, so a row offers no window of its own and the windows
     /// take turns, as with a Herdr TUI Host's channel.
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
-        let opensChat = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        let programs: Set<ChatProgram> =
+            isPOSIX ? [.claude, .codex, .pi, .omp] : kernel == HerdrCoreLocator.windowsKernel ? [.claude] : []
+        let opensChat = !programs.isEmpty
         for isLocatingCore in [false, true] {
             let offers = HostCapabilities(
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore)
 
             #expect(!offers.startsAgents)
-            #expect(!offers.startsTerminals)
+            #expect(offers.startsTerminals)
+            #expect(offers.startsIn("/home/dev/app"))
+            #expect(offers.startsIn(#"C:\Users\dev\app"#))
+            #expect(!offers.startsIn("app"))
+            #expect(
+                offers.newTerminalRequest(workspaceID: "session:studio", cwd: "/home/dev")
+                    == ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev"))
             #expect(!offers.renameAgent)
             #expect(!offers.renamesWorkspaces)
-            #expect(!offers.namesNewWorkspaces)
+            #expect(offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
             #expect(offers.uploads == opensChat)
             #expect(!offers.tabNames)
@@ -54,10 +67,9 @@ struct RexConsoleTests {
             #expect(offers.composerSend)
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
-            #expect(offers.chatPrograms == (opensChat ? [.claude, .codex, .pi, .omp] : []))
+            #expect(offers.chatPrograms == programs)
             for program in ChatProgram.allCases {
-                #expect(
-                    offers.offersChat(for: program) == (opensChat && [.claude, .codex, .pi, .omp].contains(program)))
+                #expect(offers.offersChat(for: program) == programs.contains(program))
             }
             #expect(offers.terminalsShowInOneWindow)
             #expect(
@@ -753,6 +765,34 @@ struct RexConsoleTests {
         #expect(!logged.contains("windows"))
     }
 
+    /// A Rex Host reached by a Windows named pipe offers Chat once its server
+    /// has named Windows, for Claude Code alone, read as a native Windows
+    /// core's Chat reads it; a Codex there opens on its terminal, and
+    /// attachments are staged over SFTP (ADR 0056).
+    @Test(arguments: [("claude.exe", ChatProgram?.some(.claude)), ("codex.exe", nil)])
+    func aWindowsRexHostOffersChatForClaudeCodeAlone(program: String, chat: ChatProgram?) async throws {
+        var studio = FakeRexWorld.studio()
+        var block = FakeRexWorld.Block.running("block:left", program: program)
+        block.directory = "D:\\work\\app"
+        block.processID = 7240
+        studio.windows[0].layers[0].blocks[2] = block
+        let console = store(servers: await served(FakeRexWorld(sessions: [studio], platform: "windows_x86_64")))
+        defer { console.setHosts([]) }
+        let windows = Host(
+            name: "Rex", address: "pc.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: "npipe:////./pipe/rex-S-1-5-21-1001"))
+        console.setHosts([windows])
+        await console.resume()
+        try await waitUntil("the Agent, with Chat") {
+            !console.agents.isEmpty && console.capabilities(for: windows.id).chat
+        }
+        let agent = try #require(console.agents.first)
+
+        #expect(console.capabilities(for: windows.id).chatPrograms == [.claude])
+        #expect(console.capabilities(for: windows.id).uploads)
+        #expect(console.chatProgram(for: agent) == chat)
+    }
+
     /// Stop and the Blocked card follow the Agent Status (ADR 0056). A Rex
     /// Agent whose program reported nothing reads Unknown: the Composer
     /// offers Send there, never Stop, and a card reads no screen for Claude
@@ -977,6 +1017,188 @@ struct RexConsoleTests {
         let corner = try #require(ConsoleHostIssueCornerPresentation(issues: tile))
         #expect(corner.expandedTitle == "m3")
         #expect(corner.action == .openHost(try #require(tile.first).serverID))
+    }
+
+    // MARK: New Terminal (ADR 0049's update of 2026-11-25)
+
+    /// A connected Rex Host and a scripted server that makes terminals.
+    private func newTerminalRig() async -> (console: ConsoleStore, server: FakeRexServer, world: FakeRexWorld) {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let server = await served(world)[0]
+        await world.installNewTerminal(on: server)
+        return (store(servers: [server]), server, world)
+    }
+
+    /// New Terminal makes one shell in a new window of the Workspace's
+    /// session, in the directory asked, left in the background, after
+    /// attaching to the session as Rex asks. It gives the new block back at
+    /// once, so the view that opens it takes its size as it takes any
+    /// terminal's (ADR 0053), and the terminal lists, to open, once the
+    /// server's events say it is there.
+    @Test func newTerminalMakesAShellInTheWorkspacesSession() async throws {
+        let (console, server, world) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+        #expect(console.capabilities(for: rex.id).startsTerminals)
+
+        let identity = try await console.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev/app/src"), on: rex.id)
+        let made = RexPaneAddress(sessionID: "session:studio", blockID: "block:made-1")
+        #expect(identity == ShellTerminalIdentity(paneID: made.paneID, tabID: "window:made-1", terminalID: made.paneID))
+
+        let requests = await server.requests
+        let methods = requests.map(\.method)
+        let attach = try #require(methods.firstIndex(of: "session.attach"))
+        let create = try #require(methods.firstIndex(of: RexNewTerminal.newWindowMethod))
+        let giveBack = try #require(methods.firstIndex(of: RexTerminalAttach.giveBackMethod))
+        #expect(attach < create && create < giveBack)
+        #expect(
+            requests[create].payload
+                == .object([
+                    "session_id": "session:studio", "focus": .bool(false),
+                    "layout": [
+                        "block": ["flavor": "com.superlogical.terminal.shell", "options": ["cwd": "/home/dev/app/src"]]
+                    ],
+                ]))
+        #expect(requests[giveBack].payload == RexTerminalAttach.ownershipPayload(made, take: false))
+        #expect(world.owner(of: "block:made-1") == nil)
+        #expect(methods.filter { $0 == RexNewTerminal.newWindowMethod }.count == 1)
+
+        await server.push("block_created", ["block_id": "block:made-1"], session: "session:studio")
+        await server.push(
+            "window_created", ["window_id": "window:made-1", "label": "Window 1"], session: "session:studio")
+        let terminal = try #require(await console.waitForTerminal(identity, on: rex.id))
+        #expect(terminal.paneID == made.paneID)
+        #expect(terminal.cwd == "/home/dev/app/src")
+        #expect(terminal.workspaceLabel == "studio")
+        #expect(console.terminals.count == 6)
+    }
+
+    /// New Workspace makes a new session holding one shell in the directory
+    /// asked, labeled with the name given, else the directory's name; a tab
+    /// name has nowhere to go. It lists once the server announces it.
+    @Test func newWorkspaceMakesASessionNamedForItsDirectory() async throws {
+        let (console, server, _) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+        #expect(console.capabilities(for: rex.id).namesNewWorkspaces)
+
+        let identity = try await console.createShellWorkspace(
+            NewWorkspaceSpec(directory: "/home/dev/site", label: nil), tabLabel: "build", on: rex.id)
+        let made = RexPaneAddress(sessionID: "session:made-2", blockID: "block:made-1")
+        #expect(identity == ShellTerminalIdentity(paneID: made.paneID, tabID: "window:made-1", terminalID: made.paneID))
+        let requests = await server.requests
+        let create = try #require(requests.first { $0.method == RexNewTerminal.newSessionMethod })
+        #expect(
+            create.payload
+                == .object([
+                    "label": "site",
+                    "initial_windows": [
+                        [
+                            "layout": [
+                                "block": ["flavor": "com.superlogical.terminal.shell", "options": ["cwd": "/home/dev/site"]]
+                            ]
+                        ]
+                    ],
+                ]))
+        #expect(requests.contains { $0.method == "session.attach" && $0.payload?["session_id"] == "session:made-2" })
+        #expect(
+            requests.contains {
+                $0.method == RexTerminalAttach.giveBackMethod
+                    && $0.payload == RexTerminalAttach.ownershipPayload(made, take: false)
+            })
+
+        await server.push("session_created", ["session": ["session_id": "session:made-2", "label": "site"]])
+        let terminal = try #require(await console.waitForTerminal(identity, on: rex.id))
+        #expect(terminal.workspaceLabel == "site")
+
+        _ = try await console.createShellWorkspace(
+            NewWorkspaceSpec(directory: #"C:\Users\dev\site"#, label: "Docs"), tabLabel: nil, on: rex.id)
+        let named = await server.requests.last(where: { $0.method == RexNewTerminal.newSessionMethod })
+        #expect(named?.payload?["label"] == "Docs")
+    }
+
+    /// A refusal reads as Rex's own words and is never asked again; a request
+    /// with no answer may still have made its terminal, so the user is told
+    /// to look before asking again.
+    @Test func aNewTerminalRexRefusedOrLeftUnansweredSaysSo() async throws {
+        let (console, server, _) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        await server.stopAnswering(RexNewTerminal.newWindowMethod)
+        await server.answer(
+            RexNewTerminal.newWindowMethod,
+            with: .error(code: "conflict", message: "too many windows in the session", status: 409))
+        let request = ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev")
+        let refusal = TransportError.rexRejected(code: "conflict", message: "too many windows in the session")
+        await #expect(throws: refusal) {
+            try await console.createShellTerminal(request, on: rex.id)
+        }
+        #expect(await server.requests.filter { $0.method == RexNewTerminal.newWindowMethod }.count == 1)
+
+        await #expect(throws: TransportError.rexRejected(
+            code: "session_not_found", message: "This Workspace is no longer on the Rex server.")) {
+            try await console.createShellTerminal(
+                ShellTerminalCreationRequest(workspaceID: "session:gone", cwd: "/home/dev"), on: rex.id)
+        }
+        #expect(await server.requests.filter { $0.method == RexNewTerminal.newWindowMethod }.count == 1)
+
+        #expect(
+            RexNewTerminal.failure(.deadlineExceeded(method: RexNewTerminal.newWindowMethod))
+                == .channelFailed(
+                    detail: "Rex did not answer. The terminal may still have been made, so check the list before trying again."))
+        #expect(
+            RexNewTerminal.failure(.linkEnded(.linkLost))
+                == RexNewTerminal.failure(.deadlineExceeded(method: RexNewTerminal.newWindowMethod)))
+    }
+
+    /// The connection ends while the attach a new window waits on goes
+    /// unanswered: `session.new_window` never left, so New Terminal says
+    /// nothing was made rather than to look at the list.
+    @Test func aNewTerminalWhoseAttachGoesUnansweredSaysNothingWasMade() async throws {
+        let (console, server, _) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        await server.stopAnswering("session.attach")
+        let request = ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev")
+        let attempt = Task { try await console.createShellTerminal(request, on: rex.id) }
+        try await waitUntil("the attach") { await server.requests.contains { $0.method == "session.attach" } }
+        await server.drop()
+
+        await #expect(throws: TransportError.channelFailed(
+            detail: "Rex did not answer, so no terminal was made. Try again.")) {
+            try await attempt.value
+        }
+        #expect(await server.requests.allSatisfy { $0.method != RexNewTerminal.newWindowMethod })
+    }
+
+    /// A new session's label when none is given is its directory's last
+    /// name, in either form of path, and nothing for a root.
+    @Test func aNewSessionIsNamedForItsDirectory() {
+        #expect(RexNewTerminal.sessionLabel(for: "/home/dev/site") == "site")
+        #expect(RexNewTerminal.sessionLabel(for: "/home/dev/site/") == "site")
+        #expect(RexNewTerminal.sessionLabel(for: #"C:\Users\dev\site"#) == "site")
+        #expect(RexNewTerminal.sessionLabel(for: "/") == nil)
+        #expect(RexNewTerminal.sessionLabel(for: #"C:\"#) == nil)
+        #expect(RexNewTerminal.sessionLabel(for: "/" + String(repeating: "a", count: 200))?.count == 128)
+        #expect(RexNewTerminal.newSessionPayload(label: nil, cwd: nil)["label"] == nil)
+        #expect(
+            RexNewTerminal.newWindowPayload(in: "session:a", cwd: nil)["layout"]
+                == ["block": ["flavor": "com.superlogical.terminal.shell"]])
     }
 }
 

@@ -16,14 +16,14 @@ struct RexControlWireTests {
 
     // MARK: Hello
 
-    @Test func aHelloSaysWhoThisClientIsAndAsksForRevision12Only() throws {
+    @Test func aHelloSaysWhoThisClientIsAndAsksForRevisions12To19() throws {
         let identity = RexClientIdentity(name: "Heeler", version: "1.2.3", label: "Heeler")
         let (text, carriesToken) = RexHello(identity: identity, reconnectToken: nil).encoded()
         let hello = try json(text)
 
         #expect(!carriesToken)
         #expect(hello["type"] == .string("hello"))
-        #expect(hello["api_revision"] == .number(12))
+        #expect(hello["api_revision"] == .number(19))
         #expect(hello["api_min_revision"] == .number(12))
         #expect(hello["reconnect_token"] == nil)
         #expect(

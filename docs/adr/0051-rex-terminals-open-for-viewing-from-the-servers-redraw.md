@@ -53,7 +53,8 @@ terminal for viewing; ADR 0052 adds its input.
   uses the alternate screen, none of the primary screen or scrollback behind
   it; that history is painted again once the program leaves the alternate
   screen. With autowrap off, soft wraps are not joined. The title follows the
-  inventory's `title_changed` events (ADR 0050), and the colors stay Heeler's.
+  inventory's `title_changed` events (ADR 0050), and the colors stay Heeler's
+  (until the update of 2026-11-25 below).
 - **Query answers are dropped.** Rex answers a program's queries (device
   attributes, cursor and status reports, mode reports, colors) itself, so the
   answers Heeler's own Ghostty writes back must never reach the program.
@@ -184,3 +185,44 @@ captures, live tests and fakes, recorded with their sources in
   device has it.
 - A first paint costs the snapshot and the redraw, each about the size of the
   scrollback; on a slow link a long history takes seconds to appear.
+
+## Update 2026-11-25: the terminal's own colors
+
+A Rex terminal now wears its own default colors, as the server has them,
+instead of the Heeler theme. The data stream already says them: a `theme`
+message right after the first resize when they are not Rex's built-in ones,
+and again whenever a client changes them with `set_theme` (an empty one
+when they go back to the built-in ones). Heeler read and dropped it; now
+`RexTerminalPaint` keeps the latest and writes it after each paint's reset,
+and a theme after the paint reaches the view at once, as OSC 10, 11 and 12
+for the text, background and cursor colors, OSC 110 to 112 back to the
+view's own for a color the server keeps built in, and OSC 4 for each listed
+palette entry. Colors are written only from six hex digits, so nothing else
+in the message reaches the terminal. A palette entry the server stops
+listing has gone back to Rex's built-in color, which only the redraw says
+(its OSC 4 palette), so that repaints; a new stream sets the last stream's
+colors back, since it sends a theme only for colors that are not built in.
+
+Left as they were, because neither API revision 12 nor 19 (Rex
+0.1.0-preview.23's `help.all`) offers a way:
+
+- **Cursor shape.** No `format` extra, mode or stream message carries
+  DECSCUSR; only the undecoded snapshot may. It stays Heeler's until the
+  program sets it again.
+- **History behind the alternate screen.** `format` (`vt`, `text` and
+  `html`) reads only the screen shown: on the alternate screen it carried
+  none of the primary screen or scrollback. Heeler still paints it again
+  once the program leaves the alternate screen.
+- **A grid wider than the view.** ADR 0053's limit stands: a view scaled to
+  or scrolled across another device's grid is a change to the terminal view
+  every Server Kind shares (ADR 0045 has it for tmux too), and Fit to Screen
+  already gives the terminal this screen's size.
+
+Evidence: on Rex 0.1.0-preview.23 on macOS, 2026-11-25, from a client that
+said hello at revision 12, on a lab session: after `set_theme` the stream
+carried `{"type":"theme","foreground":"#111111","background":"#fafafa"}`,
+and after an empty `set_theme` `{"type":"theme"}`; the `vt` redraw with every
+extra carried the whole palette as OSC 4 (entry 1 as set by the theme) and
+no OSC 10, 11 or 12, nor the `CSI 5 SP q` the shell had sent; on the
+alternate screen, `modes` said `alternate` and the redraw held none of the
+40 history lines printed before it.
