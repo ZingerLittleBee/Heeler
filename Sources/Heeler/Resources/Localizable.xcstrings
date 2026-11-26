@@ -16240,6 +16240,28 @@
         }
       }
     },
+    "Clear Downloaded Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みのファイルを消去"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除已下载的文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除已下載的檔案"
+          }
+        }
+      }
+    },
     "Clear Filter" : {
       "localizations" : {
         "ja" : {
@@ -16280,6 +16302,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除篩選條件"
+          }
+        }
+      }
+    },
+    "Clear downloaded files?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みのファイルを消去しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要清除已下载的文件吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要清除已下載的檔案嗎？"
           }
         }
       }
@@ -23294,6 +23338,28 @@
         }
       }
     },
+    "Downloaded Files" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みのファイル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下载的文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下載的檔案"
+          }
+        }
+      }
+    },
     "Downloading Speech Model…" : {
       "localizations" : {
         "ja" : {
@@ -26346,6 +26412,28 @@
         }
       }
     },
+    "Files and Chat download a file from its Host again the next time you open it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次回開くときに、「ファイル」とチャットはホストからファイルを再びダウンロードします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下次打开时，“文件”和对话会重新从主机下载文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下次打開時，「檔案」和對話會重新從主機下載檔案。"
+          }
+        }
+      }
+    },
     "Files can't open this path." : {
       "localizations" : {
         "ja" : {
@@ -26430,6 +26518,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機連線後，「檔案」會讀取此資料夾。"
+          }
+        }
+      }
+    },
+    "Files you open from a Host, in Files or from Chat, stay on this device for up to 7 days, within 500 MB, so they open again without downloading. A file changed on the Host downloads again. Removing a Host deletes the copies kept from it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「ファイル」やチャットから開いたホストのファイルは、500 MB の範囲内で最大 7 日間このデバイスに留まり、次回はダウンロードせずに開きます。ホスト上で変更されたファイルは再びダウンロードします。ホストを削除すると、そこから保存したコピーも削除されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“文件”或对话中打开的主机文件会在此设备上保留最多 7 天，上限为 500 MB，再次打开时无需重新下载。主机上已更改的文件会重新下载。移除主机会一并删除从它保存的副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「檔案」或對話中打開的主機檔案，最多會保留在這部裝置上 7 天，且不超過 500 MB，再次打開時不必重新下載。主機上已變更的檔案會重新下載。移除主機會一併刪除從它保存的副本。"
           }
         }
       }
@@ -46263,24 +46373,24 @@
         }
       }
     },
-    "Opens when the download finishes. The copy is removed when you close the preview." : {
+    "Opens when the download finishes. The copy stays on this device for up to 7 days, so it opens again without downloading." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードが終わると開きます。プレビューを閉じるとコピーは削除されます。"
+            "value" : "ダウンロードが終わると開きます。コピーはこのデバイスに最大 7 日間留まり、次回はダウンロードせずに開きます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载完成后打开。关闭预览时会移除该副本。"
+            "value" : "下载完成后打开。副本会在此设备上保留最多 7 天，再次打开时无需重新下载。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下載完成後打開。關閉預覽時會移除這份副本。"
+            "value" : "下載完成後打開。這份副本最多會保留在這部裝置上 7 天，再次打開時不必重新下載。"
           }
         }
       }
@@ -48359,24 +48469,24 @@
         }
       }
     },
-    "Plays when the download finishes. The copy is removed when you close the preview." : {
+    "Plays when the download finishes. The copy stays on this device for up to 7 days, so it opens again without downloading." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードが終わると再生します。プレビューを閉じるとコピーは削除されます。"
+            "value" : "ダウンロードが終わると再生します。コピーはこのデバイスに最大 7 日間留まり、次回はダウンロードせずに開きます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载完成后播放。关闭预览时会移除该副本。"
+            "value" : "下载完成后播放。副本会在此设备上保留最多 7 天，再次打开时无需重新下载。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下載完成後播放。關閉預覽時會移除這份副本。"
+            "value" : "下載完成後播放。這份副本最多會保留在這部裝置上 7 天，再次打開時不必重新下載。"
           }
         }
       }

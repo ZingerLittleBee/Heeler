@@ -253,8 +253,8 @@ final class HostFolder {
 }
 
 /// Files, open over an Agent: a read-only look at one Host's folders, from
-/// the Agent's directory. It lives as long as its sheet does, and the copies
-/// its previews made on this device go with it.
+/// the Agent's directory. It lives as long as its sheet does; the copies its
+/// previews made stay in `HostFileCache`.
 @MainActor
 @Observable
 final class HostFilesBrowser: Identifiable {
@@ -279,16 +279,21 @@ final class HostFilesBrowser: Identifiable {
     @ObservationIgnored let files: ChatHostFiles
     @ObservationIgnored private var folders: [String: HostFolder] = [:]
     @ObservationIgnored private var followTask: Task<Void, Never>?
-    @ObservationIgnored private let copies: HostFileCopies
+    @ObservationIgnored private let hostID: Host.ID
+    @ObservationIgnored private let cache: HostFileCache
     /// How much of a file one request asks for, as this Host's link taught.
     @ObservationIgnored private let pace = HostFilePace()
 
-    init(files: ChatHostFiles, agentDirectory: String, isHostConnected: Bool) {
+    init(
+        files: ChatHostFiles, hostID: Host.ID, cache: HostFileCache, agentDirectory: String,
+        isHostConnected: Bool
+    ) {
         self.files = files.finishingEachRequest
+        self.hostID = hostID
+        self.cache = cache
         self.isHostConnected = isHostConnected
         self.agentDirectory = Self.normalized(agentDirectory)
         path = Self.routes(to: agentDirectory)
-        copies = HostFileCopies()
     }
 
     var currentDirectory: String {
@@ -320,12 +325,10 @@ final class HostFilesBrowser: Identifiable {
         preview = nil
     }
 
-    /// Files closed. Nothing it copied stays on this device, whether or not
-    /// a preview was still open.
+    /// Files closed, whether or not a preview was still open.
     func close() {
         followTask?.cancel()
         closePreview()
-        copies.removeAll()
     }
 
     /// The Host's connection went, or came back. When it returns the folder
@@ -436,8 +439,8 @@ final class HostFilesBrowser: Identifiable {
     private func show(_ path: String, name: String, size: UInt64?, modified: Date?) {
         preview?.discard()
         preview = HostFilePreview(
-            path: path, name: name, size: size, modified: modified, files: files, copies: copies,
-            pace: pace)
+            path: path, name: name, size: size, modified: modified, files: files, hostID: hostID,
+            cache: cache, pace: pace)
     }
 
     private func follow(_ entry: HostFileEntry) {
@@ -509,57 +512,5 @@ extension ChatHostFiles {
         let value = try await Task { try await request() }.value
         try Task.checkCancellation()
         return value
-    }
-}
-
-/// The copies of Host files one open Files keeps on this device while its
-/// previews show them. Each preview's copy goes when the preview closes, and
-/// the rest when Files does.
-final class HostFileCopies: Sendable {
-    private let root: URL
-
-    init() {
-        let base = Self.base
-        root = base.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        Self.removeLeftovers(in: base)
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: root)
-    }
-
-    /// Every copy at once, when Files closes: its owner can outlive the
-    /// sheet, so this does not wait for `deinit`.
-    func removeAll() {
-        let root = root
-        Task.detached { try? FileManager.default.removeItem(at: root) }
-    }
-
-    /// A new, empty folder for one file's copy.
-    func makeFolder() throws -> URL {
-        let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder
-    }
-
-    private static var base: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("HostFiles", isDirectory: true)
-    }
-
-    /// Copies a Files that never closed left behind, as after a crash.
-    /// Another window's Files may be open now, so only old ones go.
-    private static func removeLeftovers(in base: URL) {
-        let manager = FileManager.default
-        guard
-            let folders = try? manager.contentsOfDirectory(
-                at: base, includingPropertiesForKeys: [.creationDateKey])
-        else { return }
-        let cutoff = Date(timeIntervalSinceNow: -24 * 3_600)
-        for folder in folders {
-            let created = (try? folder.resourceValues(forKeys: [.creationDateKey]))?.creationDate
-            if let created, created < cutoff {
-                try? manager.removeItem(at: folder)
-            }
-        }
     }
 }

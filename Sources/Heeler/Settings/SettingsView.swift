@@ -270,6 +270,7 @@ struct SettingsView: View {
             }
 
             ChatCacheSettingsSection(cache: console.chatCache)
+            HostFileCacheSettingsSection(cache: console.hostFileCache)
 
             Section {
                 ForEach(Self.aboutRows) { @Sendable row in

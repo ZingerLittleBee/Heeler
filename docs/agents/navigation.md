@@ -483,7 +483,12 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   request the Host has yet to answer.
   [HostFilePreview](../../Sources/Heeler/HostFiles/HostFilePreview.swift)
   decides how one file opens (text in place, a copy for a viewer, Share and
-  Save to Files) and removes its copy;
+  Save to Files) and hands its copy to
+  [HostFileCache](../../Sources/Heeler/HostFiles/HostFileCache.swift)
+  (`ConsoleStore.hostFileCache`, by Host, path, size and modification time;
+  pruned by age and size, cleared from
+  [HostFileCacheSettingsSection](../../Sources/Heeler/Settings/HostFileCacheSettingsSection.swift)),
+  which Chat's video preview and `ChatImagePreviewReader` share;
   [HostFileKind](../../Sources/Heeler/HostFiles/HostFileKind.swift) holds the
   kinds, the text check and the size and time wording.
   [HostFilesView](../../Sources/Heeler/HostFiles/HostFilesView.swift),
@@ -491,7 +496,8 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   and [HostFileViewers](../../Sources/Heeler/HostFiles/HostFileViewers.swift)
   are the sheet, the preview and the system viewers
   ([ADR 0059](../adr/0059-files-reads-a-hosts-folders-and-changes-nothing.md)).
-  No focused tests yet.
+  The cache: [HostFileCacheTests](../../Tests/HeelerTests/HostFileCacheTests.swift);
+  the browser and preview have no focused tests yet.
 - **Port Preview (a Host's `localhost` pages, from a link or Ports):**
   `View.portPreview(console:hostID:directory:sendScreenshot:)` in
   [PortPreviewPresenter](../../Sources/Heeler/PortPreview/PortPreviewPresenter.swift)

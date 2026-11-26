@@ -36,7 +36,7 @@ struct ChatCacheSettingsModelTests {
         let document = Self.document()
         await cache.save(document)
         #expect(await cache.load(document.key) == .hit(document))
-        let model = ChatCacheSettingsModel(cache: cache)
+        let model = CacheSettingsModel(cache: cache)
 
         #expect(model.state == .measuring)
         #expect(!model.canClear)
@@ -58,7 +58,7 @@ struct ChatCacheSettingsModelTests {
     }
 
     @Test func anEmptyCacheCannotBeCleared() async {
-        let model = ChatCacheSettingsModel(cache: VolatileChatTranscriptCache())
+        let model = CacheSettingsModel(cache: VolatileChatTranscriptCache())
 
         await model.refresh()
 

@@ -14,6 +14,9 @@ struct AgentChatSource: Sendable {
     let agentInfo: @Sendable () async throws -> Agent
     let cache: any ChatTranscriptCache
     let adapter: ChatTranscriptAdapter
+    /// Where images Chat reads whole from the Host are kept, so showing one
+    /// again does not read it again; nil keeps none.
+    var fileCache: HostFileCache? = nil
     /// Looks up only a saved binding for this exact Agent identity, waiting
     /// for the local directory to load. It never confirms a live session.
     var cachedSession: @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil }
@@ -39,6 +42,11 @@ struct AgentChatSource: Sendable {
     /// Notifies listeners when a Chat becomes visible so in-flight background
     /// prefetches of other Agents on the same Host can yield the SFTP channel.
     var onDidBecomeVisible: (@MainActor @Sendable () -> Void)? = nil
+
+    /// This Host's part of `fileCache`.
+    var keptFiles: ChatImagePreviewReader.Kept? {
+        fileCache.map { ChatImagePreviewReader.Kept(cache: $0, hostID: hostID) }
+    }
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -571,7 +579,7 @@ final class AgentChatStore {
         self.dismissedLaunchNotices = dismissedLaunchNotices
         self.dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
             hostID: source.hostID, terminalID: agent.terminalID)
-        thumbnails = ChatImageThumbnails(source: .init(files: source.files))
+        thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: source.keptFiles))
         self.timing = timing
         self.now = now
         let resolution = ConversationReference.resolve(agent.agentSession)
@@ -751,7 +759,8 @@ final class AgentChatStore {
     /// thumbnails come from ``thumbnails``. A path a message names may be
     /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
+        try await ChatImagePreviewReader.read(
+            path: try await resolveHostPath(path), files: source.files, kept: source.keptFiles)
     }
 
     func resolveHostPath(_ path: String, files: ChatHostFiles? = nil) async throws -> String {

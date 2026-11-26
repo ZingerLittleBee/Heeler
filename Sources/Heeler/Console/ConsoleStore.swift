@@ -249,6 +249,9 @@ final class ConsoleStore {
     /// cache: demo mode and tests build Console stores in the app's own
     /// container, and their `setHosts` would otherwise clear the real one.
     @ObservationIgnored let chatCache: any ChatTranscriptCache
+    /// Whole Host files Files and Chat's previews read, kept to open again.
+    /// A temporary one unless the app passes the real one, as `chatCache`.
+    @ObservationIgnored let hostFileCache: HostFileCache
     let cachedChats: ConsoleChatCache
     @ObservationIgnored private var chatPrefetchTasks: [Host.ID: Task<Void, Never>] = [:]
     @ObservationIgnored private var chatPrefetchActiveAgent: [Host.ID: ConsoleAgent.ID] = [:]
@@ -294,6 +297,9 @@ final class ConsoleStore {
         rowLayouts: AgentRowLayoutStore = AgentRowLayoutStore(),
         dismissedLaunchNotices: ChatLaunchNoticeDismissalStore = ChatLaunchNoticeDismissalStore(),
         chatCache: any ChatTranscriptCache = VolatileChatTranscriptCache(),
+        hostFileCache: HostFileCache = HostFileCache(
+            root: FileManager.default.temporaryDirectory.appending(
+                path: "HostFileCache-\(UUID().uuidString)", directoryHint: .isDirectory)),
         usageWidgets: AgentUsageWidgetPublisher? = nil,
         usageSettings: AgentUsageSettings = AgentUsageSettings(),
         gitHubSettings: GitHubSettings = GitHubSettings(),
@@ -350,6 +356,7 @@ final class ConsoleStore {
         self.pendingTitleRenameSleep = pendingTitleRenameSleep
         self.hostHelperBundle = hostHelperBundle
         self.chatCache = chatCache
+        self.hostFileCache = hostFileCache
         cachedChats = ConsoleChatCache(cache: chatCache)
         self.usageWidgets = usageWidgets
         self.usageSettings = usageSettings
@@ -440,9 +447,10 @@ final class ConsoleStore {
         // cache ends on the latest catalog whatever order tasks start in.
         let hostIDs = Set(incoming.keys)
         dismissedLaunchNotices.retainHosts(hostIDs)
-        chatCacheRetention = Task { [previous = chatCacheRetention, chatCache] in
+        chatCacheRetention = Task { [previous = chatCacheRetention, chatCache, hostFileCache] in
             await previous?.value
             await chatCache.retainHosts(hostIDs)
+            await hostFileCache.retainHosts(hostIDs)
         }
         for (id, projection) in projections where incoming[id] != projection.host {
             dismissedLaunchNotices.removeHost(id)
@@ -1177,7 +1185,7 @@ final class ConsoleStore {
                 guard let self else { throw TransportError.cancelled }
                 return try await self.liveChatAgentInfo(hostID: hostID, paneID: paneID)
             },
-            cache: chatCache, adapter: adapter,
+            cache: chatCache, adapter: adapter, fileCache: hostFileCache,
             cachedSession: { [weak self] agent in
                 guard let self else { return nil }
                 return await self.cachedChats.cachedSession(for: agent, on: host)

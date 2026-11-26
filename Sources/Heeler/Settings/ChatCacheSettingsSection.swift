@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// How much Chat keeps on this device, and the way to drop it.
+/// How much a cache keeps on this device, and the way to drop it.
 @MainActor
 @Observable
-final class ChatCacheSettingsModel {
+final class CacheSettingsModel {
     enum State: Equatable {
         case measuring
         case measured(Int64)
@@ -11,9 +11,9 @@ final class ChatCacheSettingsModel {
     }
 
     private(set) var state: State = .measuring
-    @ObservationIgnored private let cache: any ChatTranscriptCache
+    @ObservationIgnored private let cache: any DeviceCache
 
-    init(cache: any ChatTranscriptCache) {
+    init(cache: any DeviceCache) {
         self.cache = cache
     }
 
@@ -38,11 +38,11 @@ final class ChatCacheSettingsModel {
 /// Settings' Chat section: the cache size and Clear. Chat's font, text
 /// size and Fold Finished Turns are under Appearance.
 struct ChatCacheSettingsSection: View {
-    @State private var model: ChatCacheSettingsModel
+    @State private var model: CacheSettingsModel
     @State private var confirmsClear = false
 
     init(cache: any ChatTranscriptCache) {
-        _model = State(initialValue: ChatCacheSettingsModel(cache: cache))
+        _model = State(initialValue: CacheSettingsModel(cache: cache))
     }
 
     var body: some View {
