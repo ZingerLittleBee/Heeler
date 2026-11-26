@@ -59,7 +59,7 @@ final class RexChatTyping: CheckedChatTyping {
 
     private let address: RexPaneAddress
     private weak var projection: RexConsoleProjection?
-    /// The server instance this terminal belongs to.
+    /// The server this terminal belongs to.
     private let corePin: TerminalCorePin
     /// What held the foreground as the last screen read began.
     private var screenHolder: RexAgentHolder?

@@ -13,7 +13,8 @@ enum RexTerminalSignal: Sendable, Equatable {
     /// The connection the terminal opened on is gone, or its control client
     /// was replaced by one with no attachments: a new attach starts afresh.
     case connectionReset
-    /// Another server instance answers on the socket.
+    /// Another server answers on the socket, not one that restored the last
+    /// one's sessions.
     case serverChanged
 }
 
@@ -138,9 +139,12 @@ final class RexTerminalHub: Sendable {
         for waiter in idle { waiter.resume() }
     }
 
-    /// The sessions open terminals on `server` belong to.
+    /// The sessions open terminals on `server` belong to, whichever of its
+    /// instances they opened on.
     func openSessions(on server: RexServerStatus) -> Set<String> {
-        state.withLock { Set($0.subscribers.values.filter { $0.server == server }.map(\.address.sessionID)) }
+        state.withLock {
+            Set($0.subscribers.values.filter { $0.server.isSameServer(as: server) }.map(\.address.sessionID))
+        }
     }
 
     var openTerminalCount: Int { state.withLock { $0.subscribers.count } }
@@ -172,10 +176,12 @@ final class RexTerminalHub: Sendable {
 
     /// A new control link answered for `server`. A terminal on another server
     /// hears so; the others carry on only on a link that resumed their client
-    /// on their connection.
+    /// on their connection, and one on an earlier instance of the same
+    /// server opens again, as on a new client.
     func linkChanged(to server: RexServerStatus, carriesOn: Bool) {
         signal { subscriber in
-            if subscriber.server != server { return .serverChanged }
+            if !subscriber.server.isSameServer(as: server) { return .serverChanged }
+            if subscriber.server != server { return .connectionReset }
             return carriesOn ? nil : .connectionReset
         }
     }

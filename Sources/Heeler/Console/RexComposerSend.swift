@@ -31,7 +31,7 @@ final class RexComposerSend: CheckedComposerSend {
 
     private let address: RexPaneAddress
     private let projection: @MainActor () -> RexConsoleProjection?
-    /// The server instance this Composer's Agent runs on.
+    /// The server this Composer's Agent runs on.
     private let corePin: TerminalCorePin
     private let clock: BlockedCardClock
     private var lastSend: Task<Outcome, Never>?

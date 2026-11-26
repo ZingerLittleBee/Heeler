@@ -3,9 +3,11 @@ import Observation
 
 /// One Host file open in Files. Text is read in place, a megabyte at a time;
 /// anything else is copied to this device first, because the system's
-/// viewers and the share sheet read local files. The copy is removed when
-/// the preview closes. Either way the file comes in pieces sized to the
-/// link (`HostFilePace`).
+/// viewers and the share sheet read local files. A whole copy stays in
+/// `HostFileCache`, so the same version of the file opens again from it
+/// without a download; one the cache cannot keep is removed when the preview
+/// closes. Either way the file comes in pieces sized to the link
+/// (`HostFilePace`).
 @MainActor
 @Observable
 final class HostFilePreview: Identifiable {
@@ -57,7 +59,10 @@ final class HostFilePreview: Identifiable {
         let export: Export
     }
 
-    let path: String
+    private(set) var path: String
+    /// Chat resolves the written path on open, so home lookup failures use
+    /// the same failure view and retry action as the file read itself.
+    @ObservationIgnored private var resolvePath: (() async throws -> String)?
     let name: String
     /// Optional short display title (such as `Video #1` when opened from a Chat
     /// staged video link) shown in the navigation bar while keeping `name` for
@@ -75,28 +80,53 @@ final class HostFilePreview: Identifiable {
     /// Markdown shows laid out until its source is asked for.
     var showsMarkdownSource = false
 
+    /// The whole file on this device.
+    private enum Copy {
+        /// The cache's, which stays when the preview closes.
+        case kept(URL)
+        /// One the cache did not take, which goes when the preview closes.
+        case own(URL)
+
+        var url: URL {
+            switch self {
+            case .kept(let url), .own(let url): url
+            }
+        }
+    }
+
     @ObservationIgnored private let files: ChatHostFiles
-    @ObservationIgnored private let copies: HostFileCopies
+    @ObservationIgnored private let hostID: Host.ID
+    /// The terminal id of the Agent this preview opened from, which keeps
+    /// the copy until that Agent is closed or removed.
+    @ObservationIgnored private let opener: String
+    @ObservationIgnored private let cache: HostFileCache
     @ObservationIgnored private let pace: HostFilePace
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var exportTask: Task<Void, Never>?
     /// The whole file on this device, once something needed it.
-    @ObservationIgnored private var copy: URL?
-    @ObservationIgnored private var folder: URL?
+    @ObservationIgnored private var copy: Copy?
+    /// What the Host last said the file is, which finds its kept copy; nil
+    /// before it said, or when it gave no modification time.
+    @ObservationIgnored private var key: HostFileCache.Key?
     /// A whole text file's bytes, which make its copy without a second read.
     @ObservationIgnored private var wholeText: Data?
+    @ObservationIgnored private var isDiscarded = false
 
     init(
         path: String, name: String, displayTitle: String? = nil, size: UInt64?, modified: Date?,
-        files: ChatHostFiles, copies: HostFileCopies, pace: HostFilePace
+        files: ChatHostFiles, hostID: Host.ID, openedBy opener: String, cache: HostFileCache,
+        pace: HostFilePace, resolvePath: (() async throws -> String)? = nil
     ) {
         self.path = path
+        self.resolvePath = resolvePath
         self.name = name
         self.displayTitle = displayTitle
         self.size = size
         self.modified = modified
         self.files = files
-        self.copies = copies
+        self.hostID = hostID
+        self.opener = opener
+        self.cache = cache
         self.pace = pace
         kind = HostFileKind(name: name)
     }
@@ -145,8 +175,8 @@ final class HostFilePreview: Identifiable {
 
     func export(_ export: Export) {
         guard canExport, exportTask == nil, let size else { return }
-        if let copy {
-            presentedExport = PresentedExport(url: copy, export: export)
+        if let url = copyOnDevice() {
+            presentedExport = PresentedExport(url: url, export: export)
             return
         }
         exportTask = Task { [weak self] in
@@ -158,7 +188,7 @@ final class HostFilePreview: Identifiable {
             do {
                 let url: URL
                 if let wholeText = self.wholeText {
-                    url = try self.write(wholeText)
+                    url = try await self.write(wholeText)
                 } else {
                     self.exportProgress = (0, size)
                     url = try await self.copyFile(size: size) { [weak self] received in
@@ -178,22 +208,43 @@ final class HostFilePreview: Identifiable {
         exportTask?.cancel()
     }
 
-    /// The preview closed: nothing it read stays on this device.
+    /// The preview closed: the cache keeps its copy, and nothing else it
+    /// read stays on this device.
     func discard() {
+        isDiscarded = true
         task?.cancel()
         exportTask?.cancel()
+        dropCopy()
+    }
+
+    private func dropCopy() {
+        if case .own(let url) = copy {
+            Task { [cache] in await cache.discard(url) }
+        }
         copy = nil
         wholeText = nil
-        if let folder {
-            self.folder = nil
-            Task.detached { try? FileManager.default.removeItem(at: folder) }
-        }
+    }
+
+    /// The copy while it is still on this device. The cache can let a kept
+    /// one go while the preview is open (for a newer version of the file,
+    /// its size limit, or Clear), and then the file is copied again.
+    private func copyOnDevice() -> URL? {
+        guard let copy else { return nil }
+        if FileManager.default.fileExists(atPath: copy.url.path) { return copy.url }
+        self.copy = nil
+        return nil
     }
 
     // MARK: Reading
 
     private func load() async {
         do {
+            if let resolvePath {
+                let resolved = try await resolvePath()
+                try Task.checkCancellation()
+                path = resolved
+                self.resolvePath = nil
+            }
             guard RemoteFilePath.isAcceptable(path) else {
                 phase = .failed(String(localized: "Files can't open this path."))
                 return
@@ -212,6 +263,17 @@ final class HostFilePreview: Identifiable {
             }
             self.size = size
             modified = status.modificationTime.map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? modified
+            let key = HostFileCache.Key(
+                hostID: hostID, path: path, size: size, modificationTime: status.modificationTime)
+            if key != self.key {
+                // The Host's file is no longer the one any copy was made from.
+                dropCopy()
+                self.key = key
+            }
+            if copy == nil, let key, let kept = await cache.file(for: key, openedBy: opener) {
+                copy = .kept(kept)
+            }
+            guard !Task.isCancelled else { return }
             if size == 0, kind != .markdown, kind != .other {
                 // Nothing for a viewer to open.
                 phase = .noPreview
@@ -247,8 +309,10 @@ final class HostFilePreview: Identifiable {
             return
         }
         let isWhole = window == size
-        if isWhole { wholeText = start }
+        if isWhole, copy == nil { wholeText = start }
         phase = .text(await Self.document(from: start, portion: isWhole ? .whole : .start, kind: kind))
+        // Kept, so the file opens from this device next time.
+        if let wholeText, key != nil { _ = try? await write(wholeText) }
     }
 
     private func readText(_ portion: TextPortion, size: UInt64) async throws -> TextDocument {
@@ -275,13 +339,19 @@ final class HostFilePreview: Identifiable {
         }.value
     }
 
-    /// `count` bytes from `offset`, a piece at a time, for as long as
+    /// `count` bytes from `offset`, from the copy on this device when there
+    /// is one, otherwise a piece at a time from the Host for as long as
     /// `isWanted` takes what has come. Past the first piece the page shows
     /// how far the read is.
     private func read(
         from offset: UInt64, count: UInt64, size: UInt64,
         while isWanted: (Data) -> Bool = { _ in true }
     ) async throws -> Data {
+        if let copy {
+            if let data = await Self.read(copy.url, from: offset, count: count) { return data }
+            // The copy went, as when the cache made room: the Host has it.
+            dropCopy()
+        }
         var data = Data()
         while UInt64(data.count) < count, data.isEmpty || isWanted(data) {
             try Task.checkCancellation()
@@ -296,9 +366,21 @@ final class HostFilePreview: Identifiable {
         return data
     }
 
+    private nonisolated static func read(_ url: URL, from offset: UInt64, count: UInt64) async -> Data? {
+        await Task.detached {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            guard (try? handle.seek(toOffset: offset)) != nil,
+                let data = try? handle.read(upToCount: Int(count)), UInt64(data.count) == count
+            else { return nil }
+            return data
+        }.value
+    }
+
     // MARK: Copying
 
     private func copyForViewing(size: UInt64) async throws -> URL {
+        if let url = copyOnDevice() { return url }
         phase = .copying(received: 0, total: size)
         return try await copyFile(size: size) { [weak self] received in
             guard let self, self.isCopying else { return }
@@ -309,32 +391,45 @@ final class HostFilePreview: Identifiable {
     private func copyFile(
         size: UInt64, progress: @escaping @MainActor @Sendable (UInt64) -> Void
     ) async throws -> URL {
-        if let copy { return copy }
-        let destination = try destination()
+        if let url = copyOnDevice() { return url }
+        // The copy keeps the file's name, which is what a share shows.
+        let download = try await cache.newDownload(named: name)
         do {
             try await HostFileCopy.run(
-                path: path, size: size, files: files, pace: pace, to: destination, progress: progress)
+                path: path, size: size, files: files, pace: pace, to: download, progress: progress)
         } catch {
-            try? FileManager.default.removeItem(at: destination)
+            await cache.discard(download)
             throw error
         }
-        copy = destination
-        return destination
+        return try await adopt(download)
     }
 
-    private func write(_ data: Data) throws -> URL {
-        if let copy { return copy }
-        let destination = try destination()
-        try data.write(to: destination)
-        copy = destination
-        return destination
+    private func write(_ data: Data) async throws -> URL {
+        if let url = copyOnDevice() { return url }
+        let download = try await cache.newDownload(named: name)
+        do {
+            try data.write(to: download, options: .completeFileProtectionUnlessOpen)
+        } catch {
+            await cache.discard(download)
+            throw error
+        }
+        return try await adopt(download)
     }
 
-    /// The copy keeps the file's name, which is what a share shows.
-    private func destination() throws -> URL {
-        let folder = try self.folder ?? copies.makeFolder()
-        self.folder = folder
-        return folder.appendingPathComponent(name, isDirectory: false)
+    /// A finished copy goes to the cache when the Host said what finds it
+    /// again, and is otherwise this preview's own.
+    private func adopt(_ download: URL) async throws -> URL {
+        if let key, let kept = await cache.keep(download, for: key, openedBy: opener) {
+            copy = .kept(kept)
+            return kept
+        }
+        guard !isDiscarded else {
+            // Closed while the copy was finishing: it has no one to show it.
+            await cache.discard(download)
+            throw CancellationError()
+        }
+        copy = .own(download)
+        return download
     }
 
     private func fail(_ error: any Error) {
@@ -471,7 +566,11 @@ enum HostFileCopy {
         path: String, size: UInt64, files: ChatHostFiles, pace: HostFilePace, to destination: URL,
         progress: @escaping @MainActor @Sendable (UInt64) -> Void
     ) async throws {
-        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+        guard
+            FileManager.default.createFile(
+                atPath: destination.path, contents: nil,
+                attributes: [.protectionKey: FileProtectionType.completeUnlessOpen])
+        else {
             throw CocoaError(.fileWriteUnknown)
         }
         let handle = try FileHandle(forWritingTo: destination)

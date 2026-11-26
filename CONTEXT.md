@@ -61,8 +61,10 @@ Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
 connection. Another server instance on the socket is another server, as
-with tmux (ADR 0050). A Rex Host's terminals open from the server's own
-redraw, and their size is asked for (ADR 0051). They take input from their
+with tmux, unless it restored the last one's sessions: one that sees the same
+files and lists one of them continues the server (ADR 0050). A Rex Host's
+terminals open from the server's own redraw, and their size is asked for
+(ADR 0051). They take input from their
 first paint, one request at a time on the control connection, never sent
 twice (ADR 0052). A terminal Heeler shows takes its size for this screen on
 its own, once per showing, and gives it back once the view stops showing it;
@@ -341,7 +343,9 @@ Changes belongs to the Checkout: it shows whatever the Host's account can
 read, never "the files this Agent made", and marks an item changed in the last
 ten minutes without saying who changed it. Viewing Files never changes the
 Host. A file opened in a viewer, shared or saved is first copied to this
-device, and the copy goes when its preview or Files closes (ADR 0059).
+device, and the copy is kept so the same version of the file opens again
+without a download, for up to 7 days since last opened, until every Agent
+that opened it is closed or its saved Chat removed (ADR 0059).
 _Avoid_: file manager, SFTP browser, downloads, Agent's files
 
 **Port Preview**:

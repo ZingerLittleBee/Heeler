@@ -40,6 +40,24 @@ struct ChatImagePreviewReaderTests {
         }
     }
 
+    @Test func aFileReadWholeIsReadFromTheDeviceUntilItChanges() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "ChatImageKeptTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let kept = ChatImagePreviewReader.Kept(cache: HostFileCache(root: root), hostID: UUID(), opener: "t1")
+        let bytes = Data(repeating: 7, count: 300_000)
+        let fixture = ImageFileFixture(data: bytes, modificationTime: 100)
+
+        #expect(try await ChatImagePreviewReader.read(path: "/tmp/picture.png", files: fixture.files, kept: kept) == bytes)
+        #expect(await fixture.reads.count == 2)
+        #expect(try await ChatImagePreviewReader.read(path: "/tmp/picture.png", files: fixture.files, kept: kept) == bytes)
+        #expect(await fixture.reads.count == 2)
+
+        await fixture.rewrite(modificationTime: 101)
+        #expect(try await ChatImagePreviewReader.read(path: "/tmp/picture.png", files: fixture.files, kept: kept) == bytes)
+        #expect(await fixture.reads.count == 4)
+    }
+
     @Test func cancelledPreviewDoesNotRead() async {
         let fixture = ImageFileFixture(data: Data([1]))
         let task = Task {
@@ -482,9 +500,16 @@ private actor ImageFileFixture {
     enum Issue: Sendable { case missing, tooLarge, changed, truncated }
     let data: Data
     let issue: Issue?
+    private var modificationTime: UInt32?
     private(set) var reads: [RemoteFileRange] = []
 
-    init(data: Data, issue: Issue? = nil) { self.data = data; self.issue = issue }
+    init(data: Data, issue: Issue? = nil, modificationTime: UInt32? = nil) {
+        self.data = data
+        self.issue = issue
+        self.modificationTime = modificationTime
+    }
+
+    func rewrite(modificationTime: UInt32) { self.modificationTime = modificationTime }
 
     nonisolated var files: ChatHostFiles {
         ChatHostFiles(
@@ -494,7 +519,9 @@ private actor ImageFileFixture {
 
     func status() -> RemoteFileStatus? {
         if issue == .missing { return nil }
-        return .init(kind: .regular, size: issue == .tooLarge ? 30_000_000 : UInt64(data.count))
+        return .init(
+            kind: .regular, size: issue == .tooLarge ? 30_000_000 : UInt64(data.count),
+            modificationTime: modificationTime)
     }
 
     func read(_ range: RemoteFileRange) -> RemoteFileSlice {

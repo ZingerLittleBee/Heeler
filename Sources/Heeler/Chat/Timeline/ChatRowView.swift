@@ -51,6 +51,7 @@ struct ChatRowView: View {
             .chatContentColumn()
             .modifier(ChatRowAccessibility(row: row, actions: actions))
             .environment(\.chatImageOpener, imageOpener)
+            .environment(\.chatFileOpener, actions.previewFile)
             .environment(\.chatHostLinkOpener, ChatHostLinkOpener(open: actions.openHostLink))
     }
 
