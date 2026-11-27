@@ -458,6 +458,8 @@ final class AgentChatStore {
         }
     }
 
+    var hasActivePinnedTurn: Bool { program.pinsComposerToSession && activeRecordedTurn != nil }
+
     private var activeRecordedTurn: ChatEntryID? {
         guard case .following = conversation.phase, !conversation.isFromCache, !conversation.hasUnreadRecords,
               conversation.readFailure == nil, let last = conversation.transcript.turns.last,

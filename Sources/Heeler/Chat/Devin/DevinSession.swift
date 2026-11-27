@@ -128,6 +128,7 @@ struct DevinSessionPage: Decodable, Sendable {
         var questions: [Question]?
         var shell_id, agent_id, task, title: String?
         var is_background: Bool?
+        var timeout: Int?
     }
 }
 

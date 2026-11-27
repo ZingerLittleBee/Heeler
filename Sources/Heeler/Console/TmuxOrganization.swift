@@ -76,13 +76,12 @@ enum TmuxOrganization {
                     cwd: pane.path, foregroundCwd: directory, label: nil, terminalTitle: nil,
                     terminalTitleStripped: nil, title: pane.command.isEmpty ? nil : pane.command))
             if let kind {
-                // A pane's title changes on its own and is not listed, so the
-                // Agent reads as its program.
+                let name = pane.namedProgram == kind ? pane.managementName : nil
                 agents.append(
                     AgentInfo(
                         agentStatus: status, focused: false, paneID: pane.paneID, revision: 0,
                         tabID: pane.windowID, terminalID: pane.paneID, workspaceID: pane.sessionID,
-                        agent: kind, cwd: pane.path, foregroundCwd: directory, name: nil, terminalTitle: nil,
+                        agent: kind, cwd: pane.path, foregroundCwd: directory, name: name, terminalTitle: nil,
                         terminalTitleStripped: AgentNotificationIdentity.kindLabel(kind), tokens: [:]))
             }
         }

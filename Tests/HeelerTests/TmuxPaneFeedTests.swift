@@ -227,12 +227,12 @@ struct TmuxPaneFeedTests {
         #expect(feed.receive(.replied(tag: check[0].tag, reply())) == [.end(.paneGone)])
     }
 
-    /// The Pane went to another window, or the window left this session.
+    /// The Pane remains on the same server in a different user window.
     @Test func aPaneThisSessionNoLongerHoldsEndsTheAttach() {
         var feed = feed()
         _ = answer(sent(feed.start()), into: &feed)
         let check = sent(feed.receive(.notification(.sessionsChanged)))
-        #expect(feed.receive(.replied(tag: check[0].tag, reply(["$1 @5 0"]))) == [.end(.sessionLeft)])
+        #expect(feed.receive(.replied(tag: check[0].tag, reply(["$1 @5 0"]))) == [.end(.moved)])
     }
 
     @Test func movingTheClientToAnotherSessionEndsTheAttach() {

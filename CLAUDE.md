@@ -70,7 +70,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
 
 - Build, test, device install, and TestFlight work uses `make`. CI builds the
   committed `Heeler.xcodeproj`; regenerate and commit it when source membership or
-  `project.yml` change. Verification must name its candidate and executed tests.
+  `project.yml` change.
 - Generated wire types use
   `python3 scripts/generate-wire-types.py --schema scripts/herdr-schema.json`.
   The flag-less command queries local herdr. Shared vectors in

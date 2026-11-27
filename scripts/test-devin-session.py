@@ -177,7 +177,9 @@ class DevinSessionRead(unittest.TestCase):
         recent = self.page()["rows"]
         replay = [e["row"] for e in self.page(limit=1)["rows"][0]["earlierWork"]]
         for rows in (recent, replay):
-            self.assertEqual([c["id"] for c in rows[0]["calls"] if c.get("requestsAutomaticShell")], ["launch123abc", "launch456def"])
+            launches = [c for c in rows[0]["calls"] if c.get("requestsAutomaticShell")]
+            self.assertEqual([(c["id"], c["arguments"].get("timeout")) for c in launches],
+                             [("launch123abc", 0), ("launch456def", 0)])
             by_call = {r["resultFor"]: r for r in rows if r["role"] == "tool"}
             self.assertTrue(all(r.get("isExecutionResult") for r in by_call.values()))
             self.assertEqual(by_call["lookup456def"]["shellExit"], dict(code=17, outputLength=9000))

@@ -69,7 +69,7 @@ On Linux when no tmux server is running, choosing **New Workspace** in **New Age
 Heeler maps your tmux layout directly into the Console without changing your existing options or key bindings:
 
 - **Workspaces, Tabs, and Panes:** Each tmux session is a Workspace, each window is a Tab, and each pane is a Pane, in tmux's order. A window linked into more than one session appears once.
-- **Agents and Terminals:** Panes running Claude Code, Codex, Grok Build, OpenCode, Pi, or Oh My Pi appear in **Agents**. Shells and other programs appear in **Terminals**.
+- **Agents and Terminals:** Heeler lists recognized foreground harnesses in **Agents**, including Droid and Devin. Shells and other programs appear in **Terminals**.
 
 | Status | What it means |
 | --- | --- |
@@ -88,6 +88,9 @@ When Grok Build shows **Unknown**, tap **Unknown**, then **Turn On Grok Build's 
 - **New Terminal:** Opens a new window running your login shell in the chosen Workspace.
 - **New Workspace:** Creates a new tmux session with the name you type, or tmux's numbered default when left blank.
 - **Rename Workspace:** In an Agent's or Terminal's **More** menu, tap **Rename Workspace** to rename the tmux session.
+- **Move to Workspace:** Choose an existing Workspace or **New Workspace** from the Pane menu. In a split window, the selected Pane becomes a detached window in the destination. The other panes stay in the original window, including its other session links. A window containing just this Pane moves with it. If another user session also holds that single-pane window, Heeler leaves its links intact and explains the conflict.
+- **Rename Agent:** Set or clear the management name shown in the Console. Heeler associates it with the foreground Agent process. The program can continue updating its terminal title and its conversation title independently.
+- **Rename Tab:** Set the window name from the Pane menu. All links to that window show its new name. tmux turns off automatic naming for an explicitly named window. Leave **Tab Name** blank when creating a window to use the Host's naming policy.
 - **Worktrees:** Turn on **Start in a new worktree** in **New Agent** and enter a **Branch** to check out `~/.heeler/worktrees/<repository>/<branch>` in its own tmux session. To remove it, tap **More > Worktree Details > Remove Worktree**; Heeler closes that worktree session's panes first, then removes the checkout.
 
 ## Working with an Agent
@@ -142,7 +145,9 @@ In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and
 | Grok Build | Binds while Grok Build lists one conversation; after `/new`, restart or use **Choose a Conversation**. |
 | Pi | Binds when started from **New Agent** or with the [Host Helper](#host-helper); otherwise use **Choose a Conversation**. |
 | Oh My Pi | Binds with the [Host Helper](#host-helper), or after its first message opens its session file; otherwise use **Choose a Conversation**. |
-| OpenCode | Off for tmux Hosts. Offers the terminal only. |
+| Antigravity CLI | Chat follows a verified local Agent session. |
+| Devin | Chat follows the local session held by the foreground CLI. Use the Terminal when a first-trust screen cannot be matched to its directory. |
+| OpenCode, Amp | Open the Terminal. Native Chat requires proof of the conversation currently displayed by this Pane. |
 
 When Chat cannot prove which conversation a Pane is showing, it displays **Can't Tell the Conversation** with **Check Again** and **Choose a Conversation**. Picking a conversation and tapping **Use This Conversation** remembers that choice for the Pane until the Agent or tmux server ends.
 
@@ -163,7 +168,7 @@ Open the Host in **Hosts**, tap its **tmux** Server, tap **Host Helper**, review
 - **macOS and Linux with tmux 3.3 or newer:** Native Windows is not supported, and tmux servers are chosen by `-L` socket name rather than a custom `-S` socket path.
 - **tmux older than 3.5:** **Shift-Return** never reaches the Agent; use **Control-J** (or **Option-Return** outside Pi).
 - **Desktop terminal shrinking under `window-size largest`:** tmux sends no notice when another terminal resizes on its own, so under `window-size largest` a desktop terminal that shrinks without detaching or changing windows is re-capped on the next window or client change rather than right away, and if reading client sizes fails Heeler leaves the window size alone.
-- **No Templates, Take Over, or Agent/Tab rename:** herdr-core Templates, Take Over, pane zoom, and renaming Agents or Tabs from Heeler are not offered; programs set their own pane titles, and Tab names follow tmux window names.
+- **Concurrent viewers:** Open the same Pane on the desktop and in Heeler. Both can type. Templates and pane zoom are unavailable.
 - **OpenCode Chat is off:** OpenCode Agents offer the live terminal only, and OpenCode status inside tmux comes from source review rather than a live run.
 - **Pi and Oh My Pi extensions:** They report **Idle**, **Working**, **Done**, and **Error**, not **Blocked**, and starting Pi via `npx` does not load the extension.
 - **Panes already redirecting output:** If you already redirect a pane's output in tmux, Heeler leaves it alone and Codex, Grok Build, or OpenCode in that pane stays **Unknown**.

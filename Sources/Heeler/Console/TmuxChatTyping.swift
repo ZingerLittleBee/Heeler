@@ -148,6 +148,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     var blockedScreen: BlockedScreenIO {
         var screen = BlockedScreenIO.unavailable
+        screen.checksTrustWithStaleWorkingReport = true
         screen.readScreen = { [weak self] in
             guard let self else { throw TransportError.cancelled }
             return try await self.readScreen()

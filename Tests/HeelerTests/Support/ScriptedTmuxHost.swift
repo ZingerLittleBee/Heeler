@@ -2046,6 +2046,19 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    /// A named Agent captures tmux's launch receipt before it records the name.
+    static func namedLaunchLine(in body: String) -> String? {
+        let prefix = "made=$("
+        let suffix = #") || exit "$?""#
+        guard let line = body.split(separator: "\n").first(where: { $0.hasPrefix(prefix) && $0.hasSuffix(suffix) }) else { return nil }
+        return String(line.dropFirst(prefix.count).dropLast(suffix.count))
+    }
+
+    static func launchLine(in body: String) -> String? {
+        namedLaunchLine(in: body)
+            ?? body.split(separator: "\n").first { $0.hasPrefix("exec ") }.map(String.init)
+    }
+
     /// One `TmuxLaunch` script against the server named in it. With `-N` and no
     /// server, tmux exits. Without `-N`, only `new-session` starts one. The
     /// login wrapper is undone first, the way the probe's answer reads its body.
@@ -2057,8 +2070,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let captureSuffix = ") || exit \"$?\""
         let commandLine: String
         let filtersEnvironmentOnHost: Bool
-        if let execLine = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }) {
-            commandLine = String(execLine)
+        if let launch = Self.launchLine(in: body) {
+            commandLine = launch
             filtersEnvironmentOnHost = false
         } else if let capturedLine = body.split(separator: "\n").first(where: {
             $0.hasPrefix(capturePrefix) && $0.hasSuffix(captureSuffix)
@@ -2456,7 +2469,7 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
 
     /// The script tmux runs. A Linux start stores it in `__heeler_tmux_start`
     /// as one single-quoted word, with each quote written `'\\''`.
-    private static func commandBody(_ script: String) -> String {
+    static func commandBody(_ script: String) -> String {
         let marker = "__heeler_tmux_start="
         guard let start = script.range(of: marker) else { return script }
         var index = start.upperBound

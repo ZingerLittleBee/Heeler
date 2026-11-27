@@ -182,8 +182,13 @@ final class TmuxComposerSend: CheckedComposerSend {
                 if Self.isBlocked(sample.pane, kind: held.kind) {
                     return .refused(.notSubmitted(Self.becameBlocked))
                 }
+                // Droid and Devin reread the process-bound session and the exact
+                // pasted editor. Bound the age of that evidence at Return. A
+                // harness without this receipt still uses the age of the paste.
+                let submitCheckStart = verifying == nil ? pasteStart : clock.now()
                 if let refusal = await verifying?.refusal(staged: text) { return .refused(refusal) }
-                guard clock.now() - pasteStart < Self.submitWindow else {
+                guard projection.admits(corePin) else { return .refused(.notSubmitted(Self.programEnded)) }
+                guard clock.now() - submitCheckStart < Self.submitWindow else {
                     return .refused(.notSubmitted(Self.windowPassed))
                 }
                 switch await tmuxSend.sendKey("Enter", clock.sleep) {

@@ -4,11 +4,24 @@ import Testing
 
 @testable import Heeler
 
-/// Select one configured backend when a private fixture provides just that server.
-/// The complete matrix runs when the variable is absent.
-func liveChatBackends(_ kinds: [ServerKind]) -> [ServerKind] {
-    guard let name = ProcessInfo.processInfo.environment["HEELER_CHAT_LAB_BACKEND"] else { return kinds }
-    return kinds.filter { $0.rawValue == name }
+/// Select one backend when a private fixture only contains that backend's Panes.
+enum LiveChatLabSelection {
+    private static var selectedName: String? {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["HEELER_LIVE_CHAT_BACKEND"] ?? environment["HEELER_CHAT_LAB_BACKEND"]
+    }
+
+    static func backend(for fixture: ServerKind? = nil) throws -> ServerKind {
+        guard let name = selectedName else { return fixture ?? .herdrTUI }
+        let selected = try #require(ServerKind(rawValue: name), "Unknown live Chat backend: \(name)")
+        if let fixture { try #require(fixture == selected, "The lab fixture belongs to a different backend.") }
+        return selected
+    }
+
+    static func cases(_ defaults: [ServerKind]) -> [ServerKind] {
+        guard let name = selectedName else { return defaults }
+        return defaults.filter { $0.rawValue == name }
+    }
 }
 
 /// A loopback SSH fixture, pinned to its host key and private server addresses.

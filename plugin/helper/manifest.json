@@ -231,7 +231,7 @@
     },
     {
       "path": "tmux/pipe-reader.js",
-      "sha256": "b81a00bfed7c141c455e9125864737cbf17ced0c0af8eb1a0a7bea933b27ea7f"
+      "sha256": "345747041f0c781267daca46b665d3bcca488b3fa482a34c89098aa71e85315d"
     },
     {
       "path": "tmux/quoted-format.js",

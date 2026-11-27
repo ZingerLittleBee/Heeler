@@ -1828,8 +1828,13 @@ final class ConsoleStore {
     /// and answers the id it has there, carrying its pin along. The
     /// projection's resync brings the row to its new Workspace.
     func movePane(
-        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination
+        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination,
+        keepingTo instance: String? = nil, from workspace: String? = nil
     ) async throws -> String {
+        if let instance, hostCores[hostID] != instance { throw leftCoreError(on: hostID) }
+        if instance != nil, let workspace, terminals.first(where: { $0.hostID == hostID && $0.paneID == paneID })?.workspaceID != workspace {
+            throw TransportError.malformedResponse(String(localized: "The Pane has left this Workspace."))
+        }
         let movedPaneID = try await projection(for: hostID).movePane(paneID, to: destination)
         pins.movePin(hostID: hostID, from: paneID, to: movedPaneID)
         rebuild()
@@ -2447,19 +2452,20 @@ final class ConsoleStore {
         let rex = projections[agent.hostID] as? RexConsoleProjection
         let block = rex?.renameBlockAction(for: agent.agent.paneID)
         return RenameStore(subject: .agent(detectedKind: agent.agent.kind), currentValue: agent.agent.name ?? "") { name in
-            guard !self.hasLeftCore(pin, on: agent.hostID) else { throw self.leftCoreError(on: agent.hostID) }
             if let rex {
+                guard !self.hasLeftCore(pin, on: agent.hostID) else { throw self.leftCoreError(on: agent.hostID) }
                 guard self.projections[agent.hostID] === rex, let block else { throw TransportError.rexServerGone }
                 try await block(name)
             } else {
-                try await self.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
+                try await self.renameAgent(agent.agent.paneID, name: name, on: agent.hostID, keepingTo: pin)
             }
         }
     }
 
     func renameAgent(
-        _ paneID: String, name: String?, on hostID: Host.ID
+        _ paneID: String, name: String?, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameAgent(paneID, name: name)
         flushScheduledRebuild()
     }
@@ -2469,6 +2475,14 @@ final class ConsoleStore {
     ) async throws {
         guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
+        flushScheduledRebuild()
+    }
+
+    func renameTab(
+        _ tabID: String, label: String, on hostID: Host.ID, keepingTo instance: String?
+    ) async throws {
+        guard let instance, hostCores[hostID] == instance else { throw leftCoreError(on: hostID) }
+        try await projection(for: hostID).renameTab(tabID, label: label)
         flushScheduledRebuild()
     }
 

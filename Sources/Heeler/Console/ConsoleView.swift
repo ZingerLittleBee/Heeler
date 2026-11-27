@@ -128,6 +128,7 @@ struct ConsoleView: View {
     /// The New Agent sheet while it is up. An item rather than a flag, so
     /// the sheet reads the origin it was opened with.
     @State private var startAgentRequest: StartAgentRequest?
+    @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var handOffRequest: HandOffRequest?
     @State private var connectionDetailRequest: ConnectionDetailRequest?
@@ -338,6 +339,7 @@ struct ConsoleView: View {
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
+        .modifier(TabRenameSheetPresenter(request: $tabRename, console: console))
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 followMovedAgent(request, to: paneID)
@@ -2787,9 +2789,15 @@ struct ConsoleView: View {
                         handOffRequest = HandOffRequest(source: currentAgent(agent))
                     }
                 }
+                if console.capabilities(for: agent.hostID).renamesExistingTabs, !isSaved {
+                    Button("Rename Tab", systemImage: "pencil") {
+                        tabRename = TabRenameRequest(hostID: agent.hostID, tabID: agent.agent.tabID,
+                                                     label: agent.tabLabel ?? "", instance: console.hostCores[agent.hostID])
+                    }
+                }
                 if offers.moves, !isSaved {
                     Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
-                        movePaneRequest = MovePaneRequest(agent: currentAgent(agent))
+                        movePaneRequest = MovePaneRequest(agent: currentAgent(agent), instance: console.hostCores[agent.hostID])
                     }
                 }
                 if offers.copiesPaneID, !isSaved {

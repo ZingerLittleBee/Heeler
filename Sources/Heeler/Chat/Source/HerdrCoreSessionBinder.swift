@@ -142,6 +142,7 @@ struct HerdrCoreSessionBinder: Sendable {
     static let windowsRuntimes: Set<String> = ["node", "bun"]
     static let homeVariable = "HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
+    private static let factoryHomeOverride = "FACTORY_HOME_OVERRIDE"
     /// Past this no registry entry was ever this long, so it is not one.
     private static let entryLimit = 64 * 1024
 
@@ -246,7 +247,12 @@ struct HerdrCoreSessionBinder: Sendable {
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
         case .devin: ProcessAsk(arguments: DevinSession.arguments, readsOpenFiles: true)
-        case .droid: ProcessAsk(values: [Self.homeVariable])
+        case .droid:
+            if case .tmux = processScope {
+                ProcessAsk(values: [Self.homeVariable, Self.factoryHomeOverride])
+            } else {
+                ProcessAsk(values: [Self.homeVariable])
+            }
         case .opencode, .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         case .agy: antigravityProcessAsk
@@ -337,7 +343,15 @@ struct HerdrCoreSessionBinder: Sendable {
               let folder = DroidTranscriptLocator.reportedFolder(file: file, sessionID: id)
         else { return cannotTell }
         if let foregroundDroid {
-            guard let active = try await foregroundDroid(pid, start, home, directory),
+            // The hook installs its PID hint under HOME. Factory may separately
+            // keep its own lifecycle log and transcripts in an override home.
+            var factoryHome = home
+            if case .tmux = processScope, case .value(let override)? = process.variables[Self.factoryHomeOverride],
+               !override.isEmpty {
+                guard RemoteFilePath.isAcceptable(override) else { return cannotTell }
+                factoryHome = override
+            }
+            guard let active = try await foregroundDroid(pid, start, factoryHome, directory),
                   active.session == id, active.file == file else { return cannotTell }
         }
         return .bound(sessionID: id, transcriptRoot: folder, directory: nil)

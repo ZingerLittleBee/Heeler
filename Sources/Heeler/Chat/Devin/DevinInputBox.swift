@@ -19,10 +19,11 @@ enum DevinInputBox {
             guard line.isBlank || line.text.hasPrefix("  ") else { return nil }
             rows.append(line.isBlank ? "" : String(line.text.dropFirst(2)))
         }
+        // Devin draws its placeholder in its theme's grey, rgb(124,124,124)
+        // dark and rgb(107,107,107) light (3000.15.14), and a draft in the
+        // terminal's default color, so any color or dim marks the hint.
         let ink = lines[upper + 1].runs.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty && $0.endColumn > 2 }
-        let hint = !ink.isEmpty && ink.allSatisfy {
-            $0.style.isDim || $0.style.foreground == .rgb(124, 124, 124) || $0.style.foreground == .indexed(244)
-        }
+        let hint = !ink.isEmpty && ink.allSatisfy { $0.style.isDim || $0.style.foreground != nil }
         return (rows, lines[lower].trimmedText.count - 2, hint)
     }
 
@@ -85,7 +86,8 @@ enum DevinInputBox {
     }
 
     static func stop(_ context: ChatStopContext) -> ChatStopVerdict {
-        guard context.activity == .working, read(context.screen) == .disabled(working),
+        guard context.activity != .blocked, context.activity == .working || context.hasVerifiedTurn,
+              read(context.screen) == .disabled(working),
               context.screen.rows.suffix(12).map(\.trimmedText).joined(separator: " ").contains("(esc twice to interrupt)")
         else { return .refuse(String(localized: "Open the Devin terminal to check the current turn before interrupting it.")) }
         return .press

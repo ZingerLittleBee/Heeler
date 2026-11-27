@@ -5,8 +5,9 @@ import Testing
 
 /// Antigravity CLI's dialogs, read from agy 1.5.3 captures at 190, 120, 62
 /// and 40 columns, from captures of agy under `NO_COLOR` at 93 and 92
-/// columns (`nocolor`, herdr 0.9.5), and from synthetic screens laid out
-/// the way agy draws, for states no capture shows.
+/// columns (`nocolor`, herdr 0.9.5), from agy 1.5.18 under its `tokyo
+/// night` color scheme at 93 columns (#863), and from synthetic screens
+/// laid out the way agy draws, for states no capture shows.
 @Suite("Antigravity CLI dialog parser")
 struct AgyDialogParserTests {
     private static func dialog(_ stem: String) throws -> BlockedDialog {
@@ -82,6 +83,7 @@ struct AgyDialogParserTests {
         "agy-166-ask-question-multiselect-q1-of-2-writein-typed-120x40": .agyQuestion,
         "agy-167-ask-question-q2-after-multiselect-writein-120x40": .agyQuestion,
         "agy-200-perm-run-command-under-exited-agy-62x46": .agyCommand,
+        "agy-204-tokyo-night-trust-prompt-93x13": .agyWorkspaceTrust,
     ]
 
     @Test(arguments: ScreenFixture.agy)
@@ -451,7 +453,8 @@ struct AgyDialogParserTests {
 
     /// A declined call leaves its dialog's title in the scrollback, bold
     /// blue over `⎿  User declined the tool call`. The parser reads the
-    /// live dialog under it, framed from its own bold yellow title.
+    /// live dialog under it, framed from its own bold yellow title and the
+    /// rule under it.
     @Test(arguments: [
         ("agy-69-working-draft-entered-then-perm-dialog-62x41", 25),
         ("agy-113-ask-question-multiselect-q1-of-2-62x41", 29),
@@ -462,12 +465,13 @@ struct AgyDialogParserTests {
         let dialog = try Self.dialog(stem)
         #expect(dialog.rows.lowerBound == liveTitle)
 
-        // With the live title blue too, no title frames a dialog: the
-        // declined one above is not read as one.
-        let live = "\(SGR.bold)\u{1B}[38;5;3m\(dialog.kind == .agyCommand ? "Command" : "Question")"
-        try #require(text.components(separatedBy: live).count == 2)
-        let blue = text.replacingOccurrences(of: live, with: live.replacingOccurrences(of: "38;5;3m", with: "38;5;4m"))
-        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(blue))
+        // With the live title's rule gone, no title frames a dialog: no
+        // rule follows the declined one above.
+        let live = "\(SGR.bold)\u{1B}[38;5;3m\(dialog.kind == .agyCommand ? "Command" : "Question")\(SGR.reset)\r\n"
+        let rule = "\(SGR.reset)\u{1B}[38;5;8m" + String(repeating: "─", count: 62) + SGR.reset
+        try #require(text.components(separatedBy: live + rule).count == 2)
+        let ruleless = text.replacingOccurrences(of: live + rule, with: live)
+        let result = AgyDialogParser.parse(ANSIScreenDecoder.decode(ruleless))
         #expect(result.dialog == nil)
         #expect(result.excerpt?.reason == "Heeler can't find the top of Antigravity CLI's dialog.")
     }
@@ -657,11 +661,14 @@ struct AgyDialogParserTests {
     /// A title and its rule share one palette, and without colors the
     /// rule spans the screen: a bold title over a past prompt's short
     /// plain rule, a yellow title over a plain rule and a bold title
-    /// without color over a grey rule frame nothing.
+    /// without color over a grey rule frame nothing. A title in any color
+    /// frames the dialog, as tokyo night's 24-bit one does (#863).
     @Test func aTitleNeedsARuleOfItsPalette() {
         let yellow = "\(SGR.reset)\(SGR.bold)\u{1B}[38;5;3mCommand\(SGR.reset)"
+        let tokyo = "\(SGR.reset)\(SGR.bold)\(SGR.fg(224, 175, 104))Command\(SGR.reset)"
         let plain = "\(SGR.reset)\(SGR.bold)Command\(SGR.reset)"
         let grey = "\(SGR.reset)\u{1B}[38;5;8m" + String(repeating: "─", count: 62) + SGR.reset
+        let tokyoRule = "\(SGR.reset)\(SGR.fg(65, 72, 104))" + String(repeating: "─", count: 62) + SGR.reset
         func command(_ title: String, _ rule: String) -> DialogParseResult {
             AgyDialogParser.parse(
                 ScreenFixture.synthetic([
@@ -674,13 +681,46 @@ struct AgyDialogParserTests {
 
         #expect(command(plain, String(repeating: "─", count: 62)).dialog?.kind == .agyCommand)
         #expect(command(yellow, grey).dialog?.kind == .agyCommand)
+        #expect(command(tokyo, tokyoRule).dialog?.kind == .agyCommand)
+        #expect(command(yellow, tokyoRule).dialog?.kind == .agyCommand)
         let short = String(repeating: "─", count: 59)
         let wide = String(repeating: "─", count: 62)
-        for (title, rule) in [(plain, short), (yellow, wide), (plain, grey)] {
+        for (title, rule) in [(plain, short), (yellow, wide), (plain, grey), (tokyo, wide)] {
             let result = command(title, rule)
             #expect(result.dialog == nil)
             #expect(result.excerpt?.reason == "Heeler can't find the top of Antigravity CLI's dialog.")
         }
+    }
+
+    // MARK: Color schemes
+
+    /// agy-204: the trust prompt under tokyo night, its title bold in a
+    /// 24-bit orange, reads as agy-00 does.
+    @Test func readsTheTrustPromptInAnotherColorScheme() throws {
+        let dialog = try Self.dialog("agy-204-tokyo-night-trust-prompt-93x13")
+        let colored = try Self.dialog("agy-00-trust-prompt-191x49")
+
+        #expect(dialog.title == colored.title)
+        #expect(dialog.subject.workspacePath == "/Users/developer/heeler-probe/untrusted")
+        #expect(Array(dialog.body.dropFirst()) == Array(colored.body.dropFirst()))
+        #expect(dialog.options == colored.options)
+        #expect(dialog.focus == colored.focus)
+        #expect(dialog.rows.lowerBound == 0)
+    }
+
+    /// Every capture in agy's default colors parses alike redrawn in
+    /// 24-bit ones with nothing dim, as another color scheme draws it.
+    @Test(arguments: ScreenFixture.agy.filter { !["nocolor", "plain", "tokyo-night"].contains(where: $0.contains) })
+    func aCaptureParsesAlikeInAnotherColorScheme(_ stem: String) throws {
+        let screen = try ScreenFixture.screen(stem)
+
+        let result = AgyDialogParser.parse(ScreenFixture.recolored(screen))
+        let expected = AgyDialogParser.parse(screen)
+
+        #expect(result.dialog == expected.dialog)
+        #expect(result.excerpt?.reason == expected.excerpt?.reason)
+        #expect(result.excerpt?.fingerprint == expected.excerpt?.fingerprint)
+        #expect((result == .none) == (expected == .none))
     }
 
     // MARK: Unknown

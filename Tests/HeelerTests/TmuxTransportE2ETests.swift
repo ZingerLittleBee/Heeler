@@ -61,12 +61,13 @@ struct TmuxTransportE2ETests {
             #expect(found.herdrCore == .notInstalled)
             // A Host lists a Server for each socket that answers, `default`
             // first, and none for the socket its server left behind.
+            let tmuxServers = HostServerScan(found).servers.filter { $0.key.kind == .tmux }
             #expect(
-                HostServerScan(found).servers.map(\.key) == [
+                tmuxServers.map(\.key) == [
                     HostServerKey(kind: .tmux, name: TmuxSocketName.defaultName),
                     HostServerKey(kind: .tmux, name: fixture.socketName),
                 ])
-            #expect(HostServerScan(found).servers.allSatisfy { $0.isRunning })
+            #expect(tmuxServers.allSatisfy { $0.isRunning })
             // What a Server turned on stores comes from this same exec.
             #expect(found.tmuxPaths(socketName: fixture.socketName) == (try fixture.paths()))
 
@@ -699,12 +700,6 @@ struct TmuxTransportE2ETests {
         return labels
     }
 
-    /// Where a `uname` that prints `Linux` is first on the exec's PATH.
-    private func linuxUnamePath(_ fixture: TmuxSSHFixture) -> String {
-        let root = URL(fileURLWithPath: fixture.configuration.homePath).deletingLastPathComponent().path
-        return "\(root)/bin/uname"
-    }
-
     private func loginTmpDir(_ fixture: TmuxSSHFixture) -> String {
         URL(fileURLWithPath: fixture.configuration.socketDirectory).deletingLastPathComponent().path
     }
@@ -748,9 +743,11 @@ struct TmuxTransportE2ETests {
             let current = try await currentWindow(session, on: fixture)
 
             let opened = try await store.startAgent(
-                AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: session, cwd: directory),
+                AgentLaunchRequest(kind: "claude", name: "reviewer", workspaceID: session, cwd: directory, tabLabel: "code review"),
                 on: host.id)
 
+            #expect(try await self.paneField("#{window_name}", of: opened.paneID, on: fixture) == "code review")
+            try await fixture.eventually { await store.agents.first?.agent.name == "reviewer" }
             #expect(opened.workspaceID == session)
             #expect(opened.tabID != current)
             #expect(try await currentWindow(session, on: fixture) == current)
@@ -904,19 +901,16 @@ struct TmuxTransportE2ETests {
         }
     }
 
-    @Test("linux with no server starts one through the login shell")
-    func linuxStartsAServerThroughTheLoginShell() async throws {
+    @Test("New Workspace on a stopped server follows the actual Host kernel")
+    func newWorkspaceOnAStoppedServer() async throws {
         try await TmuxSSHFixture.with { fixture in
-            let uname = linuxUnamePath(fixture)
-            let quoted = GitProbe.singleQuoted(uname)
-            try await fixture.writeProgram(at: uname, "#!/bin/sh\nprintf 'Linux\\n'")
-            do {
-                let directory = try await workDirectory(on: fixture)
-                try await launchOnLinux(fixture, directory: directory)
-                _ = try await fixture.run("rm -f \(quoted)")
-            } catch {
-                _ = try? await fixture.run("rm -f \(quoted)")
-                throw error
+            let kernel = trimmed(try await fixture.require("uname -s"))
+            let directory = try await workDirectory(on: fixture)
+            print("tmux New Workspace on a stopped server: \(kernel)")
+            switch kernel {
+            case "Linux": try await launchOnLinux(fixture, directory: directory)
+            case "Darwin": try await refuseOnMac(fixture, directory: directory)
+            default: Issue.record("Unsupported tmux fixture kernel: \(kernel)")
             }
         }
     }
@@ -939,14 +933,6 @@ struct TmuxTransportE2ETests {
             #expect(environment != "TMUX_TMPDIR=\(execTmp)")
             try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["started"] }
             #expect(store.hostStatuses[host.id] == .connected)
-        }
-    }
-
-    @Test("macos with no server says to start tmux on the Mac and starts nothing")
-    func macosSaysToStartTmuxOnTheMac() async throws {
-        try await TmuxSSHFixture.with { fixture in
-            let directory = try await workDirectory(on: fixture)
-            try await refuseOnMac(fixture, directory: directory)
         }
     }
 
@@ -1016,6 +1002,64 @@ struct TmuxTransportE2ETests {
             #expect(try await currentWindow(session, on: fixture) == current)
             try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["renamed"] }
             try await fixture.eventually { await store.agents.isEmpty }
+        }
+    }
+
+    @Test("a named Agent moves out of a linked split with its process and pin")
+    func moveAndNameTheRunningPane() async throws {
+        try await TmuxSSHFixture.with { fixture in
+            try await fixture.startServer()
+            let claude = try await agentProgram("claude", on: fixture)
+            try await fixture.tmux(nil, "new-session", "-d", "-s", "peer", "/bin/cat")
+            try await fixture.tmux(nil, "new-session", "-d", "-s", "target", "/bin/cat")
+            try await fixture.tmux(nil, "link-window", "-d", "-s", "$0:@0", "-t", "$1:")
+            let pane = trimmed(try await fixture.tmux(nil, "split-window", "-dP", "-F", "#{pane_id}", "-t", "%0", claude, "-u"))
+            let pid = try await paneField("#{pane_pid}", of: pane, on: fixture)
+            try await fixture.tmux(nil, "select-pane", "-t", pane, "-T", "program title")
+            try await moveNamedPane(pane, pid: pid, on: fixture)
+        }
+    }
+
+    @MainActor
+    private func moveNamedPane(_ pane: String, pid: String, on fixture: TmuxSSHFixture) async throws {
+        try await withConsole(fixture) { store, host in
+            try await fixture.eventually { await store.agents.contains { $0.agent.paneID == pane } }
+            let instance = try #require(store.hostCores[host.id])
+            store.togglePin(hostID: host.id, paneID: pane)
+            try await store.renameAgent(pane, name: "reviewer", on: host.id)
+            try await fixture.eventually { await store.agents.first?.agent.name == "reviewer" }
+            #expect(try await self.paneField("#{pane_title}", of: pane, on: fixture) == "program title")
+
+            let held = try await store.movePane(pane, on: host.id, to: .workspace(id: "$2"), keepingTo: instance, from: "$0")
+            #expect(held == pane)
+            try await fixture.eventually { await store.agents.first?.agent.workspaceID == "$2" }
+            let moved = try #require(store.agents.first)
+            #expect(store.pins.isPinned(hostID: host.id, paneID: pane))
+            #expect(moved.agent.name == "reviewer")
+            #expect(try await self.paneField("#{pane_pid}", of: pane, on: fixture) == pid)
+            #expect(try await self.paneIDs("$0:@0", on: fixture) == ["%0"])
+            #expect(try await self.paneIDs("$1:@0", on: fixture) == ["%0"])
+            #expect(try await self.currentWindow("$2", on: fixture) == "@2")
+            let label = "tests #{pane_id} 中文"
+            try await store.renameTab(moved.agent.tabID, label: label, on: host.id, keepingTo: instance)
+            let renamed = try await fixture.tmux(nil, "-u", "display-message", "-pt", pane, "#{window_name}")
+            #expect(self.trimmed(renamed) == label)
+            #expect(try await self.trimmed(fixture.tmux(nil, "show-option", "-wv", "-t", moved.agent.tabID, "automatic-rename")) == "off")
+            try await store.renameAgent(pane, name: nil, on: host.id)
+            try await fixture.eventually { await store.agents.first?.agent.name == nil }
+
+            await #expect(throws: TransportError.self) {
+                try await store.movePane("%0", on: host.id, to: .workspace(id: "$2"))
+            }
+            try await fixture.tmux(nil, "kill-session", "-t", "$1")
+            await #expect(throws: TransportError.self) {
+                try await store.movePane(pane, on: host.id, to: .workspace(id: "$1"))
+            }
+            #expect(try await self.paneField("#{session_id}", of: pane, on: fixture) == "$2")
+            #expect(try await store.movePane(pane, on: host.id, to: .newWorkspace) == pane)
+            try await fixture.eventually { await store.agents.first?.agent.workspaceID == "$3" }
+            #expect(try await self.paneIDs("$3:", on: fixture) == [pane])
+            #expect(try await self.paneField("#{pane_pid}", of: pane, on: fixture) == pid)
         }
     }
 

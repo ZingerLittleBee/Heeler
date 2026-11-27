@@ -43,6 +43,9 @@ struct TmuxInventory: Equatable, Sendable {
         var attachMark = ""
         var worktree = ""
         var chatPick = ""
+        /// Present only while the named foreground process still owns the tty.
+        var namedProgram: String?
+        var managementName: String?
         /// The arguments of the process leading the pane's foreground process
         /// group, as last read: the loop reads them again only when `command` or
         /// the program `status` names changed. Nil when they could not be read.

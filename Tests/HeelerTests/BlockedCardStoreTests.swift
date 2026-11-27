@@ -8,6 +8,29 @@ import Testing
 @MainActor
 @Suite("Blocked card store", .timeLimit(.minutes(1)))
 struct BlockedCardStoreTests {
+    @Test func tmuxChecksFirstTrustAgainstTheForegroundAfterAWorkingReport() async throws {
+        let screen = try ScreenFixture.screen("droid-trust")
+        let path = try #require(DroidDialog.parse(screen).dialog?.subject.workspacePath)
+        for directory in [path, "/another/project"] {
+            var io = BlockedScreenIO.unavailable
+            io.checksTrustWithStaleWorkingReport = true
+            io.readScreen = { screen }
+            io.droidTarget = {
+                DroidDialogTarget(scope: "server/%0", pid: "41", start: "birth",
+                                  directory: directory, sessionID: nil, transcriptFolder: nil)
+            }
+            let store = BlockedCardStore(program: .droid, io: io)
+            store.update(activity: .working)
+            store.update(awaitingSession: true)
+            await store.refresh()
+            if case .card(let card) = store.content {
+                #expect(directory == path && card.dialog.kind == .droidWorkspaceTrust)
+            } else {
+                #expect(directory != path)
+            }
+        }
+    }
+
     @Test func aBlockedAgentsDialogShowsAsACardWithItsRequest() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
         let store = Self.store(.claude, pane: pane)

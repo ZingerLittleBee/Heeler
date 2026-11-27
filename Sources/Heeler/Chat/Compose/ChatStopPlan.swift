@@ -6,6 +6,8 @@ import Foundation
 struct ChatStopContext: Sendable {
     var screen: ANSIScreen
     var activity: ChatAgentActivity
+    /// The same unfinished transcript turn was just read on its bound Pane.
+    var hasVerifiedTurn = false
 }
 
 typealias ChatStopVerification = @MainActor () async -> Bool

@@ -63,6 +63,19 @@ struct TmuxLaunchTests {
         """
     }
 
+    /// The named launch captures the server and owner before recording its option.
+    /// Pin the creation argv independently of the name's process checks.
+    private func namedLaunch(_ command: TmuxLaunch.Command) throws -> String {
+        let body = text(command)
+        let launch = try #require(ScriptedTmuxHost.namedLaunchLine(in: body))
+        #expect(body.contains(#"t='/opt/homebrew/bin/tmux'"#))
+        #expect(body.contains(#"s='/tmp/heeler-t693/sock'"#))
+        #expect(body.contains(#"#{==:#{pid}:#{start_time}:#{pane_pid},$instance:$owner}"#))
+        #expect(body.contains(#"@heeler-agent-name $owner:$birth:"#))
+        #expect(body.contains(#"printf '%s\n' "$receipt""#))
+        return launch
+    }
+
     // MARK: New Agent
 
     @Test func anAgentOpensADetachedWindowAndReplacesTheShell() throws {
@@ -72,10 +85,8 @@ struct TmuxLaunchTests {
                 workspaceID: "$0", cwd: "/work"),
             on: server())
 
-        let expected = script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc"
-        )
-        #expect(text(command) == expected)
+        let expected = "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc"
+        #expect(try namedLaunch(command) == expected)
         #expect(!command.throughLoginShell)
     }
 
@@ -84,10 +95,8 @@ struct TmuxLaunchTests {
             AgentLaunchRequest(kind: "claude", name: "claude", workspaceID: "$0", cwd: "/work"),
             on: server())
 
-        let normalized = text(command).replacing(Self.uuid, with: "UUID")
-        let expected = script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --session-id UUID"
-        )
+        let normalized = try namedLaunch(command).replacing(Self.uuid, with: "UUID")
+        let expected = "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --session-id UUID"
         #expect(normalized == expected)
         #expect(text(command).matches(of: Self.uuid).count == 1)
     }
@@ -96,36 +105,28 @@ struct TmuxLaunchTests {
         let command = try TmuxLaunch.agentWindow(
             AgentLaunchRequest(kind: "codex", name: "codex", workspaceID: "$0", cwd: "/work"),
             on: server())
-        #expect(text(command) == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' codex --no-daemon"
-        ))
+        #expect(try namedLaunch(command) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' codex --no-daemon")
     }
 
     @Test func grokBlanksTheMultiplexerVariables() throws {
         let command = try TmuxLaunch.agentWindow(
             AgentLaunchRequest(kind: "grok", name: "grok", workspaceID: "$0", cwd: "/work"),
             on: server())
-        let normalized = text(command).replacing(Self.uuid, with: "UUID")
-        #expect(normalized == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'STY=' -e 'TMUX=' -e 'ZELLIJ=' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' grok -s UUID"
-        ))
+        let normalized = try namedLaunch(command).replacing(Self.uuid, with: "UUID")
+        #expect(normalized == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'STY=' -e 'TMUX=' -e 'ZELLIJ=' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' grok -s UUID")
     }
 
     @Test func openCodeNamesASessionOnlyFromRelease2_1() throws {
         let unnamed = try TmuxLaunch.agentWindow(
             AgentLaunchRequest(kind: "opencode", name: "opencode", workspaceID: "$0", cwd: "/work"),
             on: server())
-        #expect(text(unnamed) == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' opencode"
-        ))
+        #expect(try namedLaunch(unnamed) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' opencode")
 
         let named = try TmuxLaunch.agentWindow(
             AgentLaunchRequest(kind: "opencode", name: "opencode", workspaceID: "$0", cwd: "/work"),
             on: server(openCodeVersion: "opencode v2.2.2"))
-        let normalized = text(named).replacing(Self.openCodeID, with: "SES")
-        #expect(normalized == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' opencode -s SES"
-        ))
+        let normalized = try namedLaunch(named).replacing(Self.openCodeID, with: "SES")
+        #expect(normalized == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' opencode -s SES")
         #expect(text(named).matches(of: Self.openCodeID).count == 1)
 
         let continued = try TmuxLaunch.agentWindow(
@@ -144,9 +145,7 @@ struct TmuxLaunchTests {
                 workspaceID: "$0", cwd: "/work",
                 environment: ["FOO": "bar baz", "CLAUDE_CODE_CHILD_SESSION": "keep"]),
             on: server())
-        #expect(text(command) == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=keep' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -e 'FOO=bar baz' -P -F '\(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc"
-        ))
+        #expect(try namedLaunch(command) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=keep' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -e 'FOO=bar baz' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc")
     }
 
     @Test func aFishShellReplacesItselfWithTheAgent() throws {
@@ -155,18 +154,16 @@ struct TmuxLaunchTests {
                 kind: "claude", name: "claude", arguments: ["--resume", "abc"],
                 workspaceID: "$0", cwd: "/work"),
             on: server(shell: "/usr/local/bin/fish"))
-        #expect(text(command) == script(
-            "exec \"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '\(Self.paneFormat)' -- '/usr/local/bin/fish' -ic 'exec $argv[2..]' fish claude --resume abc"
-        ))
+        #expect(try namedLaunch(command) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/usr/local/bin/fish' -ic 'exec $argv[2..]' fish claude --resume abc")
     }
 
     // MARK: Heeler's Claude Code hooks (ADR 0046)
 
     private static let hookSettings = "/Users/dev/Library/Application Support/heeler/claude-code/hooks.json"
 
-    /// The program after `--`, as tmux parses the exec line's words.
+    /// The program after `--`, as tmux parses the launch arguments.
     private func program(_ command: TmuxLaunch.Command) throws -> [String] {
-        let line = try #require(text(command).split(separator: "\n").first { $0.hasPrefix("exec ") })
+        let line = try #require(ScriptedTmuxHost.launchLine(in: text(command)))
         let words = ScriptedTmuxHost.words(of: String(line))
         let separator = try #require(words.firstIndex(of: "--"))
         return Array(words[(separator + 1)...])
@@ -252,9 +249,7 @@ struct TmuxLaunchTests {
                 kind: "claude", name: "claude", arguments: ["--resume", "abc"], cwd: "/ignored"),
             workspace: NewWorkspaceSpec(directory: "/work", label: "work"),
             on: server())
-        #expect(text(command) == script(
-            "exec \"$t\" -N -S \"$s\" new-session -d -E -s work -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '\(Self.sessionFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc"
-        ))
+        #expect(try namedLaunch(command) == "\"$t\" -N -S \"$s\" new-session -d -E -s work -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.sessionFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc")
     }
 
     @Test func linuxStartsAServerThroughTheLoginShell() throws {
@@ -278,14 +273,11 @@ struct TmuxLaunchTests {
             workspace: NewWorkspaceSpec(directory: "/work", label: "work"),
             on: server(kernel: "Linux", running: false))
         #expect(command.throughLoginShell)
-        #expect(text(command) == #"""
-        __heeler_tmux_start='t='\''/opt/homebrew/bin/tmux'\''
-        s='\''/tmp/heeler-t693/sock'\''
-        exec "$t" -S "$s" new-session -d -s work -c '\''/work'\'' -e '\''CLAUDE_CODE_CHILD_SESSION='\'' -e '\''CLAUDE_CODE_SKIP_PROMPT_HISTORY='\'' -P -F '\''#{pane_id} #{window_id} #{session_id} #{q:session_name} .'\'' -- '\''/bin/zsh'\'' -ic '\''exec "$@"'\'' '\''/bin/zsh'\'' claude --resume abc'
-        export __heeler_tmux_start
-        "$SHELL" -lic 'exec /bin/sh -c "$__heeler_tmux_start"'
-
-        """#)
+        let body = ScriptedTmuxHost.commandBody(text(command))
+        let launch = try #require(ScriptedTmuxHost.namedLaunchLine(in: body))
+        #expect(launch == #""$t" -S "$s" new-session -d -s work -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -P -F '#{pid}:#{start_time} #{pane_pid} #{pane_id} #{window_id} #{session_id} #{q:session_name} .' -- '/bin/zsh' -ic 'exec "$@"' '/bin/zsh' claude --resume abc"#)
+        #expect(body.contains(#""$t" -N -S "$s" if-shell"#))
+        #expect(text(command).contains(#""$SHELL" -lic 'exec /bin/sh -c "$__heeler_tmux_start"'"#))
     }
 
     @Test func macOSWithNoServerDoesNotStartOne() {

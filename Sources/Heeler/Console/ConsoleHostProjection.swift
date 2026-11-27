@@ -126,6 +126,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// The Agents some Agent detail on this device shows now.
     func setShownAgents(_ paneIDs: Set<String>)
     func renameAgent(_ paneID: String, name: String?) async throws
+    func renameTab(_ tabID: String, label: String) async throws
     func renameWorkspace(_ workspaceID: String, label: String) async throws
 
     // MARK: One Agent
@@ -309,6 +310,10 @@ extension ConsoleHostProjection {
     }
 
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String { asked }
+
+    func renameTab(_ tabID: String, label: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Rename Tab"))
+    }
 
     func startTemplate(_ request: TemplateLaunchRequest) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Templates"))

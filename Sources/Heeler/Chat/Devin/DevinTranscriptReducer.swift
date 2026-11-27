@@ -38,7 +38,7 @@ struct DevinTranscriptReducer: ChatTranscriptReducer {
         var slots: [String: Int] = [:]
         var pending: [String: ChatPendingRequest] = [:]
         var seen: Set<String> = []
-        var background = DevinBackgroundWork()
+        var background = DevinBackgroundWork(requiresShellLookup: context.requiresIndependentInputSession)
         var workRows = rows
         for row in rows.values {
             for earlier in row.earlierWork ?? [] where workRows[earlier.offset] == nil {

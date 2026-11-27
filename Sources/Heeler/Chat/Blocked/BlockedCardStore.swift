@@ -27,6 +27,8 @@ struct BlockedScreenIO: Sendable {
     var hostName: String? = nil
     var herdrReportsDroidSession = false
     var holdsDialogsWhileUnknown = false
+    /// A tmux Pane may retain the preceding process's Working report at first trust.
+    var checksTrustWithStaleWorkingReport = false
     var readScreen: @Sendable () async throws -> ANSIScreen
     var sendKeys: @Sendable ([String]) async throws -> Void
     var paste: @Sendable (String) async throws -> Void
@@ -481,11 +483,16 @@ final class BlockedCardStore {
         (program == .agy || program.pinsComposerToSession) && activity == .unknown && awaitingSession
     }
 
+    private var readsWorkingTrust: Bool {
+        io.checksTrustWithStaleWorkingReport && program.pinsComposerToSession
+            && activity == .working && awaitingSession && pendingRequests.isEmpty
+    }
+
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
         let canReadPending = activity != .unknown || (program == .devin && !io.holdsDialogsWhileUnknown)
         return (program.pinsComposerToSession && !pendingRequests.isEmpty && canReadPending) || activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
-            || readsIdleOnce
+            || readsWorkingTrust || readsIdleOnce
     }
 
     /// Puts the reading sign in the Composer's place as an Antigravity CLI
@@ -1513,7 +1520,7 @@ final class BlockedCardStore {
             }
             if [.devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind) { droidStartupGuidance = nil }
         }
-        guard readsIdleTrust || readsUnknownTrust else { return observation }
+        guard readsIdleTrust || readsUnknownTrust || readsWorkingTrust else { return observation }
         switch observation.result.dialog?.kind {
         case .codexWorkspaceTrust, .agyWorkspaceTrust, .devinWorkspaceTrust, .droidWorkspaceTrust: return observation
         default: return observation.withoutDialog

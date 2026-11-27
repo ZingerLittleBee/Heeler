@@ -35,7 +35,7 @@ struct DroidBackendChatLiveTests {
         return source
     }
 
-    @Test(arguments: liveChatBackends([ServerKind.herdrCore, .tmux, .rex]))
+    @Test(arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
@@ -117,7 +117,7 @@ struct DroidBackendChatLiveTests {
     /// The external driver replaces only this dedicated server. Both the old
     /// and the new Droid must show their own live Create call for the same file.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"] != nil),
-          arguments: liveChatBackends([ServerKind.herdrTUI, .herdrCore, .tmux, .rex]))
+          arguments: LiveChatLabSelection.cases([.herdrTUI, .herdrCore, .tmux, .rex]))
     func staleCardAndDraftCannotWriteToAReplacementServer(_ kind: ServerKind) async throws {
         let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"]))
         let directory = root.appendingPathComponent(kind.rawValue)
@@ -352,7 +352,7 @@ struct DroidBackendChatLiveTests {
         print("Droid evidence \(projection.host.serverKind) stopped red, blue completed, late child reported once")
     }
 
-    @Test(arguments: liveChatBackends([ServerKind.herdrCore, .tmux, .rex]))
+    @Test(arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
     func keepsExistingSettingsWhenRegisteringTheHookOrLaunchingDroid(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))

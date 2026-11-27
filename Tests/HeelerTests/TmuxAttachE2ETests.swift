@@ -260,8 +260,8 @@ extension TmuxTransportE2ETests {
     /// that asked for modifyOtherKeys 2. A key with no legacy encoding arrives
     /// only while `#{pane_key_mode}` reads an extended mode, and otherwise not
     /// at all. A key the view can send in other forms (`alternates`) is typed
-    /// in each, and each reads as the desktop terminal's key. A tmux the
-    /// measurements did not cover is held to 3.7b's reads.
+    /// in each, and each reads as the desktop terminal's key. On 3.3 the
+    /// pane key mode is empty as on 3.3a. Later unmeasured releases use 3.7b's reads.
     @Test("keys typed into an Attach reach the Pane's program as a desktop terminal's do")
     func keysTypedIntoAnAttachReachTheProgramAsMeasured() async throws {
         let vector = try TmuxInputVectorFile.load()
@@ -269,7 +269,8 @@ extension TmuxTransportE2ETests {
             try await fixture.startServer()
             let version = try await fixture.tmux(nil, "-V").trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: "tmux ", with: "")
-            let measured = vector.runs.contains { $0.version == version } ? version : "3.7b"
+            let reference = version == "3.3" ? "3.3a" : version
+            let measured = vector.runs.contains { $0.version == reference } ? reference : "3.7b"
             let transport = try await fixture.connectTmux(storedPaths: try fixture.paths())
             do {
                 for (extendedKeys, program) in [("off", "legacy"), ("on", "mok2")] {

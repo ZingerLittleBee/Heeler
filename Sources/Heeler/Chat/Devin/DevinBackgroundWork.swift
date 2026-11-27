@@ -3,6 +3,7 @@ import Foundation
 /// Only the result of an acknowledged launch associates a shell or child
 /// with its parent call. A main turn ending says nothing about either.
 struct DevinBackgroundWork {
+    private let requiresShellLookup: Bool
     private var calls: [String: (DevinSessionPage.Call, UInt64, Date?)] = [:]
     private var shells: [String: Int] = [:]
     private var children: [String: Int] = [:]
@@ -10,6 +11,10 @@ struct DevinBackgroundWork {
     private var readsRequested: Set<String> = []
     private var automaticLaunches: [String: (item: ChatBackgroundWorkItem, acknowledgement: UInt64)] = [:]
     private(set) var items: [ChatBackgroundWorkItem] = []
+
+    init(requiresShellLookup: Bool) {
+        self.requiresShellLookup = requiresShellLookup
+    }
 
     mutating func observe(_ row: DevinSessionPage.Row, at offset: UInt64, date: Date?) {
         if row.role == "assistant" {
@@ -32,8 +37,7 @@ struct DevinBackgroundWork {
                     items.append(item)
                 }
             case "exec":
-                if let shell = args.shell_id, !shell.isEmpty, let command = args.command, row.success != false, !row.truncated,
-                   row.text.hasSuffix("Command running in background with ID: " + shell + ". Run get_output with timeout if you need to wait.") {
+                if let command = args.command, let shell = acknowledgedShell(call, result: row) {
                     automaticLaunches[shell] = nil
                     if let previous = shells[shell], items[previous].state == .running { ambiguousShells.insert(shell) }
                     var item = ChatBackgroundWorkItem(id: id, kind: .command, title: command,
@@ -88,6 +92,19 @@ struct DevinBackgroundWork {
                 finish(index, .completed, output: report, at: offset, date: nil)
             }
         }
+    }
+
+    private func acknowledgedShell(_ call: DevinSessionPage.Call, result: DevinSessionPage.Row) -> String? {
+        guard !result.truncated, result.success != false else { return nil }
+        if let id = call.arguments.shell_id {
+            let receipt = "Command running in background with ID: " + id + ". Run get_output with timeout if you need to wait."
+            return !id.isEmpty && result.text.hasSuffix(receipt) ? id : nil
+        }
+        // Devin assigns the ID when exec requests an immediate background return.
+        guard !requiresShellLookup, call.complete, call.arguments.timeout == 0, result.success == true,
+              let receipt = result.text.wholeMatch(of: /Command running in background with ID: ([0-9a-f]{6})/)
+        else { return nil }
+        return String(receipt.1)
     }
 
     private mutating func finish(_ index: Int, _ state: ChatBackgroundWorkItem.State, output: String, at offset: UInt64, date: Date?) {
