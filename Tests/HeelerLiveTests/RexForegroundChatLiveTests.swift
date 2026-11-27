@@ -1078,6 +1078,17 @@ struct RexAntigravityChatLiveTests {
         #expect(composer.draft.isEmpty)
         #expect(!(await originalCheck()))
         _ = try await request(a, "write", ["args": .object(["data": .string("\u{4}")])])
+        let exitRequests = try await link.blockRequests(at: a.address, readDeadline: .sharedLinkRead)
+        try await wait("the native exit prompt or its replacement shell") {
+            let foreground = RexInventoryWire.process(try await request(a, "process"))
+            if foreground.program == "bash" { return true }
+            guard foreground.program == "agy", foreground.processID == a.pid else { return false }
+            let screen = try await RexChatScreen.read(on: exitRequests).screen
+            let requestsExit = screen.rows.map(\.text).joined(separator: " ").lowercased().contains("press ctrl+d again to exit")
+            guard requestsExit else { return false }
+            _ = try await request(a, "write", ["args": .object(["data": .string("\u{4}")])])
+            return true
+        }
         try await wait("the original block returns to its own shell") {
             let f = RexInventoryWire.process(try await request(a, "process"))
             return f.program == "bash" && f.processID != a.pid
