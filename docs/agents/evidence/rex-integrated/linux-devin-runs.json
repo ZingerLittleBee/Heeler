@@ -1,0 +1,406 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "platform": "Debian 12.15 arm64, real Rex 0.1.0-preview.25 and native signed Devin 3000.15.14",
+  "device": "iPhone Simulator; normal Chat and Composer stores through SSH",
+  "appDebugDylibSHA256": "f9b75bc7ebb9dd66953db74a611f80c6f52df5daf1d583e4f4203d9de99d9287",
+  "testExecutableSHA256": "a67b62e33ec16b1a8bf955e6743bdb7b59e54cd93336fb23d34529b4668fc3a8",
+  "firstPass": [
+    {
+      "case": "plan",
+      "passed": false,
+      "durationSeconds": 76.781,
+      "xcresult": "official-linux-devin-86f260495-plan-1795791050.xcresult",
+      "hostEvidence": {
+        "ownsSameOfficialSession": true,
+        "columns": 80,
+        "rows": 24,
+        "sizeOwnerPresent": false,
+        "foregroundProcessGroup": true,
+        "cwdMatches": true,
+        "rootReports": [
+          {
+            "state": "blocked",
+            "samePID": true
+          }
+        ],
+        "headingVisible": true,
+        "threeChoices": true,
+        "visiblePlanFile": false,
+        "screenBodyExactlyEqualsOfficialPlan": true,
+        "officialCallName": "exit_plan_mode",
+        "officialSingleCallAtNode": true,
+        "officialCallFields": [
+          "arguments",
+          "id",
+          "index",
+          "kind",
+          "name"
+        ],
+        "officialArgumentFields": [
+          "plan"
+        ],
+        "hasOfficialCallID": true,
+        "officialPlanSHA256": "bd2f73d270838b8a75a9cbed17e62f8d2e570b6517d51011630b7ddd17bd0d00",
+        "visibleOfficialCallID": false,
+        "writePlanCallCount": 0,
+        "responseToExit": 0,
+        "feedbackUserRows": 0,
+        "projectNoteExists": false,
+        "observation": "Direct, unfiled exit_plan_mode from the signed native CLI on Debian. The grid and active request showed the same complete two lines. The chooser exposed neither a plan file nor the opaque official call ID."
+      }
+    },
+    {
+      "case": "stop",
+      "passed": false,
+      "durationSeconds": 17.181,
+      "xcresult": "official-linux-devin-86f260495-stop-1795791178.xcresult",
+      "hostEvidence": {
+        "distinctNoncesOnScreen": 2,
+        "firstSubmittedUserRows": [
+          1864
+        ],
+        "firstActualInterruptRows": [
+          1865
+        ],
+        "secondPromptInInputBox": true,
+        "secondSubmittedUserRows": [],
+        "rootStatus": "idle",
+        "sameOwner": true,
+        "exactTestDurationSeconds": 17.181,
+        "refusal": "The Host answered too slowly to submit safely."
+      }
+    },
+    {
+      "case": "bg",
+      "passed": true,
+      "durationSeconds": 12.386,
+      "xcresult": "official-linux-devin-86f260495-bg-1795791256.xcresult",
+      "hostEvidence": {
+        "source": "Read-only official evidence on the isolated Debian Host",
+        "shellCount": 2,
+        "independentOutputMarkers": 2,
+        "verifiedExitCodes": [
+          0,
+          0
+        ],
+        "fixtureScope": "Two earlier signed native background shells. This exact app reopens both over SSH twice. This case has no child."
+      }
+    },
+    {
+      "case": "cards",
+      "passed": false,
+      "durationSeconds": 39.754,
+      "xcresult": "official-linux-devin-86f260495-cards-1795791346.xcresult",
+      "hostEvidence": {
+        "backend": "rex",
+        "source": "Official read-only database belonging to the dedicated Debian foreground.",
+        "slugHash": "cfe5827882fd",
+        "approvalTag": "61ff83ff93b3",
+        "approvedFileExactOrTerminated": true,
+        "staleFileAbsent": true,
+        "historicalSessions": [
+          {
+            "slugHash": "cfe5827882fd",
+            "isOriginal": true,
+            "userMentionsPeer": 0,
+            "exactPeerReplies": 0
+          }
+        ],
+        "parkedDraftUserRows": [],
+        "questionAnswers": []
+      }
+    },
+    {
+      "case": "phone",
+      "passed": false,
+      "durationSeconds": 48.722,
+      "xcresult": "official-linux-devin-86f260495-phone-1795791449.xcresult",
+      "hostEvidence": {
+        "officialEnteredJobRequests": 1,
+        "confirmedJobs": {
+          "success": {
+            "exitCode": 0,
+            "independentMarkedOutput": true,
+            "retainedToolContentCharacters": 46
+          }
+        },
+        "uniqueActualLaunches": 1,
+        "officialBackgroundChildAck": false,
+        "officialParentResponse": false,
+        "officialChildCompletion": false,
+        "editorContainsSuccessCommand": false,
+        "editorContainsFailureCommand": true,
+        "editorContainsChildRequest": false,
+        "durationSeconds": 48.722,
+        "exit": "The source refused the next submission after the two-second window; no retry was sent to the retained editor."
+      }
+    },
+    {
+      "case": "normal",
+      "passed": true,
+      "durationSeconds": 21.946,
+      "xcresult": "official-linux-devin-86f260495-normal-1795791625.xcresult",
+      "hostEvidence": {
+        "source": "Read-only official evidence on the isolated Debian Host",
+        "multilineUserRows": [
+          1990
+        ],
+        "exactReturnedMarkerRows": [
+          1992
+        ],
+        "mentionsAcrossOtherSameDirectorySessions": 0,
+        "numberOfOtherSessions": 0,
+        "includesCJK": true,
+        "preservedInnerNewlinesAndIndent": true,
+        "slugHash": "05e574a9aab6"
+      }
+    }
+  ],
+  "firstPassCounts": {
+    "selected": 6,
+    "passed": 2,
+    "failed": 4,
+    "skipped": 0
+  },
+  "unfiledTerminalFallback": {
+    "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+    "platform": "iPhone 17e Simulator and a native signed Debian Devin over Rex",
+    "readOnly": true,
+    "chatControls": [
+      "Open in Terminal",
+      "Show Agent Terminal",
+      "Waiting for Input"
+    ],
+    "sameBlockSameForegroundPIDAndOfficialSession": true,
+    "terminalAnswerSubmitted": false,
+    "terminalKeysSent": 0,
+    "observations": {
+      "before": {
+        "at": "2026-11-27T23:06:08.352+08:00",
+        "columns": 80,
+        "rows": 24,
+        "headingVisible": true,
+        "threeChoices": true,
+        "sizeOwnerPresent": false,
+        "rootReports": [
+          {
+            "state": "blocked",
+            "samePID": true
+          }
+        ],
+        "visiblePlanFile": false,
+        "writePlanCallCount": 0,
+        "responseToExit": 0,
+        "feedbackUserRows": 0
+      },
+      "terminal": {
+        "at": "2026-11-27T23:08:55.767+08:00",
+        "columns": 60,
+        "rows": 40,
+        "headingVisible": true,
+        "threeChoices": false,
+        "sizeOwnerPresent": true,
+        "rootReports": [],
+        "visiblePlanFile": false,
+        "writePlanCallCount": 0,
+        "responseToExit": 0,
+        "feedbackUserRows": 0
+      },
+      "wide": {
+        "at": "2026-11-27T23:09:02.727+08:00",
+        "columns": 117,
+        "rows": 12,
+        "headingVisible": true,
+        "threeChoices": true,
+        "sizeOwnerPresent": true,
+        "rootReports": [],
+        "visiblePlanFile": false,
+        "writePlanCallCount": 0,
+        "responseToExit": 0,
+        "feedbackUserRows": 0
+      },
+      "left": {
+        "at": "2026-11-27T23:09:17.434+08:00",
+        "columns": 60,
+        "rows": 40,
+        "headingVisible": true,
+        "threeChoices": false,
+        "sizeOwnerPresent": false,
+        "rootReports": [],
+        "visiblePlanFile": false,
+        "writePlanCallCount": 0,
+        "responseToExit": 0,
+        "feedbackUserRows": 0
+      }
+    },
+    "imageSHA256": {
+      "chat": "fdf0d853d15f78e7d399481ede592f4bb1a9ab2d5c52577ad8320b8c61e6be02",
+      "wide": "2d4f58a668ede35f1e61919748a0f3a9e401d71c2770f059f8e7df6c3696f33f"
+    }
+  },
+  "filedIndependentLiveChooser": {
+    "signedNativeForegroundPID": 514498,
+    "columns": 80,
+    "rows": 24,
+    "terminalSizeOwned": false,
+    "rootStatus": [
+      {
+        "state": "blocked",
+        "samePID": true
+      }
+    ],
+    "threeVisibleOptions": true,
+    "screenHasPlanFile": true,
+    "officialExitRow": 2120,
+    "officialSHA256": "5d54b9571c2f622cda34ca4b81b60de62c0a77c912f366ce598737f37f069f82",
+    "officialPriorWritePlanRows": [
+      2118
+    ],
+    "sourceLabel": "Independent saved 80-column signed session on an dedicated private Rex server, primed by asking the real model to save its next plan.",
+    "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1"
+  },
+  "freshAttempts": [
+    {
+      "case": "plan",
+      "counts": {
+        "totalTestCount": 1,
+        "passedTests": 1,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "bundle": "official-linux-devin-fresh-86f260495-plan-1795793256.xcresult",
+      "hostEvidence": {
+        "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+        "backend": "rex",
+        "source": "Official read-only database belonging to the dedicated Debian foreground.",
+        "slugHash": "ab4d61cf630a",
+        "planCalls": 1,
+        "feedbackUsers": 1,
+        "feedbackReplies": 1,
+        "ordinaryMessageRows": 0,
+        "noteAbsent": true
+      }
+    },
+    {
+      "case": "stop",
+      "counts": {
+        "totalTestCount": 1,
+        "passedTests": 1,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "bundle": "official-linux-devin-fresh-86f260495-stop-1795793547.xcresult",
+      "hostEvidence": {
+        "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+        "backend": "rex",
+        "source": "Official read-only database belonging to the dedicated Debian foreground.",
+        "slugHash": "1e3e71eedab8",
+        "enteredRequests": [
+          2267,
+          2270
+        ],
+        "distinctNonceCount": 2,
+        "userInterruptRows": [
+          2269,
+          2272
+        ]
+      }
+    },
+    {
+      "case": "phone",
+      "counts": {
+        "totalTestCount": 1,
+        "passedTests": 1,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "bundle": "official-linux-devin-fresh-86f260495-phone-1795793633.xcresult",
+      "hostEvidence": {
+        "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+        "backend": "rex",
+        "platform": "Debian 12.15",
+        "distinctMobileRequests": 3,
+        "jobs": {
+          "success": {
+            "shellID": "0d1cb7",
+            "launchCallID": "call_960acb3baf4ca936#146d7fbda2dd4766b423e86cb352be8d",
+            "lookupCallID": "call_8613808ab3f74441#8d04e5f2ac0d4384bbb74d4d8a16a810",
+            "exitCode": 0,
+            "retainedToolContentCharacters": 46,
+            "independentMarkedOutput": true
+          },
+          "failure": {
+            "shellID": "151292",
+            "launchCallID": "call_9ed3a502ada639ad#d7ec13c2ab8c4374b77be2dd07fe8161",
+            "lookupCallID": "call_8fa81aca572bb477#c69af2ca1ca244c28d41adc38ed9389a",
+            "exitCode": 17,
+            "retainedToolContentCharacters": 2232,
+            "independentMarkedOutput": true,
+            "originalSubprocessBytes": 12323,
+            "originalSubprocessSHA256": "a6f6ad228e37965690371892c2189a31bba39688c5014ece5ec033f4dc458594"
+          }
+        },
+        "child": {
+          "agentID": "de7e6cf1",
+          "launchCallID": "call_bc2730707055d165#409ac45b529041019d43337baebcfeb7",
+          "acknowledgementDatabaseRow": 2330,
+          "parentFinalDatabaseRow": 2340,
+          "matchingChildRelayDatabaseRow": 2346,
+          "independentReleaseWitness": true
+        },
+        "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+      }
+    },
+    {
+      "case": "cards",
+      "counts": {
+        "totalTestCount": 1,
+        "passedTests": 1,
+        "failedTests": 0,
+        "skippedTests": 0
+      },
+      "bundle": "official-linux-devin-fresh-86f260495-cards-1795793796.xcresult",
+      "hostEvidence": {
+        "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+        "backend": "rex",
+        "source": "Official read-only database belonging to the dedicated Debian foreground.",
+        "slugHash": "8515a8f4f7be",
+        "approvalTag": "b8bec7fe1187",
+        "approvedFileExactOrTerminated": true,
+        "staleFileAbsent": true,
+        "historicalSessions": [
+          {
+            "slugHash": "8515a8f4f7be",
+            "isOriginal": true,
+            "userMentionsPeer": 0,
+            "exactPeerReplies": 0
+          },
+          {
+            "slugHash": "0a299432ea50",
+            "isOriginal": false,
+            "userMentionsPeer": 1,
+            "exactPeerReplies": 1
+          }
+        ],
+        "parkedDraftUserRows": [],
+        "questionAnswers": [
+          {
+            "Which color?": {
+              "selected": [
+                "Red"
+              ],
+              "skipped": false
+            },
+            "Which size?": {
+              "selected": [
+                "Other"
+              ],
+              "custom_text": "Medium",
+              "skipped": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

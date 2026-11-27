@@ -1,0 +1,26 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "program": "amp",
+  "currentOfficialRoles": {
+    "user": 1,
+    "assistant": 1,
+    "exactUser": 1,
+    "exactAssistant": 1,
+    "seedRoles": [
+      1,
+      1
+    ]
+  },
+  "peerOfficialRoles": {
+    "user": 0,
+    "assistant": 0,
+    "exactUser": 0,
+    "exactAssistant": 0,
+    "seedRoles": [
+      1,
+      1
+    ]
+  },
+  "peerMessagesUnchanged": true,
+  "exactUserBodySHA256": "b2c8d50ca9b75dad4b8f3ad66a3cf97b3b14fdc5f7cfeb9eac784bb76f85b03f"
+}

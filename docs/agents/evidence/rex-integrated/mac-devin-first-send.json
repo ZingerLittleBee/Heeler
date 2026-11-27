@@ -1,0 +1,12 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "selectedPrivateBlockMatches": true,
+  "screenContainsHeldMarker": true,
+  "source": "Production screenshot-free Rex block capture and official session-scoped ACP database",
+  "markerSHA256": "462aef4387cd2d80acfdaee5ae04d0528092c52528971b9bacd64535ac5270f1",
+  "officialRoles": {
+    "user": 0,
+    "assistant": 0
+  },
+  "evidence": "After the app returned notSubmitted, the original draft remained in the genuine CLI input"
+}

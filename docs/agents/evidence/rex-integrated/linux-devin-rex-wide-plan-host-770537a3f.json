@@ -1,0 +1,11 @@
+{
+  "candidate": "770537a3fe4682ddad9a5d110e6235a0d3009246",
+  "backend": "rex",
+  "source": "Official read-only database belonging to the dedicated Debian foreground.",
+  "slugHash": "543eebdf3fa9",
+  "planCalls": 1,
+  "feedbackUsers": 1,
+  "feedbackReplies": 1,
+  "ordinaryMessageRows": 0,
+  "noteAbsent": true
+}

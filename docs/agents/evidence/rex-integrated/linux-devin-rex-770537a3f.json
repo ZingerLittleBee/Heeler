@@ -1,0 +1,53 @@
+[
+  {
+    "candidate": "770537a3fe4682ddad9a5d110e6235a0d3009246",
+    "debugDylibSHA256": "41b9ca665207cd89219c82f546ed2aafafedcbbbee1458a0190ab8a29607cf5b",
+    "testExecutableSHA256": "100184ee7bc695e603a8ad47f6f560cb1b7cc2cb043ff03bdf9e36bf894b5318",
+    "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+    "environment": "signed native Debian 12 Devin 3000.15.14 over the actual Rex Server",
+    "result": "preintegration-linux-devin-770537a3f-plan-1795788557.xcresult",
+    "case": "plan",
+    "selector": "HeelerLiveTests/DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()",
+    "exit": 65,
+    "counts": {
+      "totalTestCount": 1,
+      "passedTests": 0,
+      "failedTests": 1,
+      "skippedTests": 0
+    }
+  },
+  {
+    "candidate": "770537a3fe4682ddad9a5d110e6235a0d3009246",
+    "debugDylibSHA256": "41b9ca665207cd89219c82f546ed2aafafedcbbbee1458a0190ab8a29607cf5b",
+    "testExecutableSHA256": "100184ee7bc695e603a8ad47f6f560cb1b7cc2cb043ff03bdf9e36bf894b5318",
+    "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+    "environment": "signed native Debian 12 Devin 3000.15.14 over the actual Rex Server",
+    "result": "preintegration-linux-devin-770537a3f-stop-1795788666.xcresult",
+    "case": "stop",
+    "selector": "HeelerLiveTests/DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()",
+    "exit": 0,
+    "counts": {
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    }
+  },
+  {
+    "candidate": "770537a3fe4682ddad9a5d110e6235a0d3009246",
+    "debugDylibSHA256": "41b9ca665207cd89219c82f546ed2aafafedcbbbee1458a0190ab8a29607cf5b",
+    "testExecutableSHA256": "100184ee7bc695e603a8ad47f6f560cb1b7cc2cb043ff03bdf9e36bf894b5318",
+    "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+    "environment": "signed native Debian 12 Devin 3000.15.14 over the actual Rex Server",
+    "result": "preintegration-wide-linux-devin-770537a3f-plan-1795789052.xcresult",
+    "case": "plan",
+    "selector": "HeelerLiveTests/DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()",
+    "exit": 0,
+    "counts": {
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    }
+  }
+]

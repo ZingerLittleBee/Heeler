@@ -1,0 +1,12 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "selectedPrivateBlockShowsFirstPhoneRequest": true,
+  "officialFirstMessageRoles": {
+    "user": 0,
+    "assistant": 0
+  },
+  "officialToolCalls": 0,
+  "childStillPending": true,
+  "releaseWasPublished": false,
+  "source": "Fresh signed official ACP writer, its own Rex input, and the independent child gate"
+}

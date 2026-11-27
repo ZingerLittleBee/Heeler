@@ -1,0 +1,133 @@
+{
+  "host": "Debian 12.15 arm64",
+  "program": "Factory Droid 1.21.1",
+  "source": "Official foreground log, PID birth and per-thread direct children",
+  "measurements": [
+    {
+      "against": "heeler-lab-droid-integrated",
+      "kind": "correct",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": true,
+      "process": 404884,
+      "oldMilliseconds": [
+        732.4,
+        831.5,
+        597.8,
+        454.5
+      ],
+      "newMilliseconds": [
+        20.9,
+        28.9,
+        18.7,
+        23.5
+      ]
+    },
+    {
+      "against": "heeler-lab-droid-integrated",
+      "kind": "changed-birth",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": false,
+      "process": 404884,
+      "oldMilliseconds": [
+        20.7,
+        25.4,
+        26.9,
+        29.1
+      ],
+      "newMilliseconds": [
+        22.6,
+        25.3,
+        24.7,
+        32.6
+      ]
+    },
+    {
+      "against": "heeler-lab-droid-integrated",
+      "kind": "correct",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": true,
+      "process": 360231,
+      "oldMilliseconds": [
+        665.3,
+        517.4,
+        487.5,
+        866.5
+      ],
+      "newMilliseconds": [
+        24.2,
+        24.1,
+        23.6,
+        45.3
+      ]
+    },
+    {
+      "against": "heeler-lab-droid-integrated",
+      "kind": "changed-birth",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": false,
+      "process": 360231,
+      "oldMilliseconds": [
+        34.9,
+        33.0,
+        36.4,
+        31.6
+      ],
+      "newMilliseconds": [
+        32.1,
+        32.7,
+        31.0,
+        35.4
+      ]
+    },
+    {
+      "against": "heeler-lab-droid-candidate",
+      "kind": "correct",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": false,
+      "process": 378774,
+      "oldMilliseconds": [
+        287.0,
+        266.4,
+        284.9,
+        451.7
+      ],
+      "newMilliseconds": [
+        20.2,
+        18.9,
+        35.8,
+        23.4
+      ]
+    },
+    {
+      "against": "heeler-lab-droid-candidate",
+      "kind": "changed-birth",
+      "priorAndCandidateAgree": true,
+      "officialConversationPresent": false,
+      "process": 378774,
+      "oldMilliseconds": [
+        21.0,
+        20.1,
+        19.6,
+        21.0
+      ],
+      "newMilliseconds": [
+        20.6,
+        22.6,
+        22.8,
+        19.6
+      ]
+    }
+  ],
+  "commit": "c17ccd19b4614fd0901ac59da38faad6aa529070",
+  "newScriptSHA256": "6a921205abb4346089c33a2c70921bd8ee8f53f971f4073cb3657b3dd50c7efd",
+  "priorScriptSHA256": "bdd85154607a48a096c305ad0ff71369a16444b764df43679200bb2fd8e392d7",
+  "medianBoundMilliseconds": {
+    "oldMilliseconds": 631.55,
+    "newMilliseconds": 23.85
+  },
+  "scenarios": [
+    "Two real signed Droid foregounds with different UUIDs",
+    "One untrusted foreground without a UUID",
+    "Stale PID births for each of the three"
+  ]
+}

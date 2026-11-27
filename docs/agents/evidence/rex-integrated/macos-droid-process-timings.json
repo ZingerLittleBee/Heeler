@@ -1,0 +1,128 @@
+{
+  "candidateParent": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "host": "macOS 27.0.1 arm64",
+  "program": "Factory Droid 1.21.1",
+  "observer": "The same official activity log, typed foreground job and process birth were read on each pass. Both endpoints were checked independently. Alternating order, under concurrent test load.",
+  "cases": [
+    {
+      "fixture": "droid-rex-hydrogen.json",
+      "identity": "foreground",
+      "allOutputsEqual": true,
+      "officialSessionMatched": true,
+      "milliseconds": {
+        "prior": [
+          1119.1,
+          1016.3,
+          1110.2,
+          1413.5
+        ],
+        "directChildren": [
+          582.9,
+          243.0,
+          875.2,
+          795.3
+        ]
+      }
+    },
+    {
+      "fixture": "droid-rex-hydrogen.json",
+      "identity": "changed-start",
+      "allOutputsEqual": true,
+      "officialSessionMatched": false,
+      "milliseconds": {
+        "prior": [
+          387.0,
+          284.3,
+          225.9,
+          590.1
+        ],
+        "directChildren": [
+          363.8,
+          338.8,
+          160.5,
+          478.3
+        ]
+      }
+    },
+    {
+      "fixture": "droid-rex-basic.json",
+      "identity": "foreground",
+      "allOutputsEqual": true,
+      "officialSessionMatched": true,
+      "milliseconds": {
+        "prior": [
+          1085.8,
+          805.9,
+          1153.0,
+          867.7
+        ],
+        "directChildren": [
+          682.1,
+          851.8,
+          408.8,
+          246.0
+        ]
+      }
+    },
+    {
+      "fixture": "droid-rex-basic.json",
+      "identity": "changed-start",
+      "allOutputsEqual": true,
+      "officialSessionMatched": false,
+      "milliseconds": {
+        "prior": [
+          216.1,
+          520.6,
+          300.7,
+          222.3
+        ],
+        "directChildren": [
+          328.0,
+          659.4,
+          211.5,
+          133.5
+        ]
+      }
+    },
+    {
+      "fixture": "droid-rex.json",
+      "identity": "foreground",
+      "allOutputsEqual": true,
+      "officialSessionMatched": true,
+      "milliseconds": {
+        "prior": [
+          875.0,
+          897.7,
+          1537.9,
+          1295.6
+        ],
+        "directChildren": [
+          742.6,
+          521.8,
+          700.8,
+          420.6
+        ]
+      }
+    },
+    {
+      "fixture": "droid-rex.json",
+      "identity": "changed-start",
+      "allOutputsEqual": true,
+      "officialSessionMatched": false,
+      "milliseconds": {
+        "prior": [
+          459.3,
+          459.6,
+          997.9,
+          152.8
+        ],
+        "directChildren": [
+          364.1,
+          497.9,
+          375.0,
+          318.9
+        ]
+      }
+    }
+  ]
+}

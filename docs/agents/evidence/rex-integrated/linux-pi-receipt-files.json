@@ -1,0 +1,15 @@
+{
+  "files": [
+    {
+      "file": "reply___.txt",
+      "size": 24,
+      "sha256": "b7fc524c574fe4cd522bea7f83cbe0378fd921f848c983094139b9007f988559"
+    },
+    {
+      "file": "heeler-lab-046C17B4-4827-4FFB-9882-AF8852FDD116.png",
+      "size": 67,
+      "sha256": "d44c0303173ecdb8ba72a7ab688f020583b31865537e2f9ab57e56aeec687807"
+    }
+  ],
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1"
+}

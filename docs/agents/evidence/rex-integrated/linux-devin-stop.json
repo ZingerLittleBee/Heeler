@@ -1,0 +1,15 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "backend": "rex",
+  "source": "Official read-only database belonging to the dedicated Debian foreground.",
+  "slugHash": "1e3e71eedab8",
+  "enteredRequests": [
+    2267,
+    2270
+  ],
+  "distinctNonceCount": 2,
+  "userInterruptRows": [
+    2269,
+    2272
+  ]
+}

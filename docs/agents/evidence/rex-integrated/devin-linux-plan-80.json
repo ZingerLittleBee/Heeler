@@ -1,0 +1,64 @@
+{
+  "evidenceScope": "Pre-integration test on the isolated fix commit. The integrated app is validated independently.",
+  "candidate": "0c87775222d8c54a376b7d56d4328dc778a0925b",
+  "host": "Debian 12.15, signed native Devin CLI 3000.15.14, Rex 0.1.0-preview.25",
+  "selector": "HeelerLiveTests/DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()",
+  "appDebugDylibSHA256": "e17899e8f9afc9b82877468299dc077145278a78ba8b0a403e30c56265231674",
+  "testExecutableSHA256": "0bd444a3a80cfe9e7a766f5f3c5e70f5579fee08b53b9cd4001db4208f8eeeb1",
+  "supplementalTestOverlaySHA256": "9b95970c728dafa7a53ba6a54c34530a468b8ca6819e3e82047f548aca13db80",
+  "counts": {
+    "totalTestCount": 1,
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0
+  },
+  "testDurationSeconds": 19.25,
+  "driver": "The real Chat and Composer stores sent a bounded two-step plan from the Simulator, inspected the shipping grid and source match, chose No, sent feedback, and kept the ordinary draft. The evidence image is a rendered native card. The run used a supplemental test driver on this source commit.",
+  "preFix": {
+    "candidate": "770537a3fe4682ddad9a5d110e6235a0d3009246",
+    "columns": 80,
+    "rows": 24,
+    "observed": "The official plan split inside a styled absolute path. The Agent said Blocked, the complete raw plan survived, and the native card timed out after 72.019 seconds. The same stock selector completed a fresh independent 120-column plan in 16.811 seconds."
+  },
+  "freshSource": {
+    "hostState": "blocked",
+    "sameInteractivePidAsOwner": true,
+    "sameDirectACPWriter": true,
+    "columns": 80,
+    "rows": 24,
+    "planCalls": 1,
+    "matchingFullPlanSHA256": "0557322d404c09cde51676c1ac941722c30964a2dd617b47716b8c482034379d",
+    "sameOfficialAndVisiblePlanFile": true,
+    "sourceToolSequence": [
+      "write_plan",
+      "typed successful file create",
+      "exit_plan_mode"
+    ],
+    "physicalSplit": [
+      "p-rex-",
+      "held-fresh"
+    ],
+    "markedBoundaryIndices": [
+      0
+    ],
+    "allOptionsVisible": true,
+    "options": 3
+  },
+  "afterFeedback": {
+    "planCalls": 1,
+    "feedbackUserRows": 1,
+    "exactAssistantReplyRows": 1,
+    "ordinaryDraftPreserved": true,
+    "ordinaryDraftSubmittedRows": 0,
+    "workspaceNoteAbsent": true
+  },
+  "olderPendingRequest": {
+    "elapsedMinutesApproximate": 34,
+    "observed": "The original pending dialog kept its foreground and writer. Its Rex root record disappeared. The app showed Unknown, withheld the card and sent no feedback.",
+    "rootRecords": 0,
+    "sameInteractiveForeground": true,
+    "sameDirectACPWriter": true
+  },
+  "imageSHA256": "6947dc6390ec77b201b51b7787650f829fc105028a57543837b35b16f824fb11",
+  "positiveBundle": "linux-devin-fresh80-plan-0c8777522.xcresult"
+}

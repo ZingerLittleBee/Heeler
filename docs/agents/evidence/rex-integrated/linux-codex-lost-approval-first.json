@@ -1,0 +1,23 @@
+{
+  "wire": {
+    "targetWrites": 0,
+    "peerWrites": 0,
+    "successfulTargetResponses": 0,
+    "droppedResponses": 0
+  },
+  "official": {
+    "targetCalls": 1,
+    "targetResults": 0,
+    "peerContainsCall": false,
+    "peerContainsMarker": false
+  },
+  "expectedFileMatches": false,
+  "callIdSHA256": "99e2cd1dd4a8b64aac3070e38ee70b2e17dc4cf4041742a3a32f3f1cb2033305",
+  "targetSHA256": "84f07b84696fb1cf946981aef461ff078d21fcb354881773f2b8763ef4e05c66",
+  "peerSHA256": "e84aa681051625250d8ccaf9d6908bb60081fdfc26a2a5d23ef9ab4fb9d799fc",
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "program": "codex",
+  "host": "Debian 12.15 arm64; Rex preview.25, revision 19",
+  "bundle": "linux-native-86f2604950d6/codex-dropped-approval.xcresult",
+  "observation": "The first observer rejected the incoming key encoding before it could forward the answer. Its counters count forwarded writes. The Rex foreground remained at the original Codex call."
+}

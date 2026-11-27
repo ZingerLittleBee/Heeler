@@ -1,0 +1,35 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "backend": "rex",
+  "platform": "Debian 12.15",
+  "distinctMobileRequests": 3,
+  "jobs": {
+    "success": {
+      "shellID": "0d1cb7",
+      "exitCode": 0,
+      "retainedToolContentCharacters": 46,
+      "independentMarkedOutput": true,
+      "launchCallIDSHA256": "9b5ccf5d3f256775d07f021e2204c1d9bfaaa064670646a7676008984d006e68",
+      "lookupCallIDSHA256": "ae9be799c61bcdd852ef295dac3eba8fbff74ad4ded8733f386769f979454821"
+    },
+    "failure": {
+      "shellID": "151292",
+      "exitCode": 17,
+      "retainedToolContentCharacters": 2232,
+      "independentMarkedOutput": true,
+      "originalSubprocessBytes": 12323,
+      "originalSubprocessSHA256": "a6f6ad228e37965690371892c2189a31bba39688c5014ece5ec033f4dc458594",
+      "launchCallIDSHA256": "18298c864d0c6e8c92d28fc35bb5cd845772e3372f1cabd81ded90d650b7af0f",
+      "lookupCallIDSHA256": "e1fad77cfb6086954fecbcb43003f0c6f932e9b3cafdf88e3a50b4bf56c701c0"
+    }
+  },
+  "child": {
+    "agentID": "de7e6cf1",
+    "acknowledgementDatabaseRow": 2330,
+    "parentFinalDatabaseRow": 2340,
+    "matchingChildRelayDatabaseRow": 2346,
+    "independentReleaseWitness": true,
+    "launchCallIDSHA256": "d1714b362e41fc41a8329e7a512ffedbc58e79e3462f3d6d13046b6c0313f749"
+  },
+  "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+}
