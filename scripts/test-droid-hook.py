@@ -97,5 +97,44 @@ class DroidHookTests(unittest.TestCase):
         self.assertEqual(self.status(socket), "state=error:app=droid:turn=1:blocked=1")
 
 
+class DroidForegroundTests(unittest.TestCase):
+    def test_only_one_direct_rpc_child_in_the_same_foreground_can_own_the_session(self):
+        spec = importlib.util.spec_from_file_location("droid_foreground", HOOK.with_name("foreground-session.py"))
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary)
+            def process(pid, parent, group, foreground, tty, name, argv):
+                folder = tree / str(pid)
+                folder.mkdir()
+                (folder / "stat").write_text(f"{pid} ({name}) S {parent} {group} 1 {tty} {foreground} 0")
+                (folder / "cmdline").write_bytes(b"\0".join(argv) + b"\0")
+            rpc = [b"/test/droid", b"exec", b"--input-format", b"stream-jsonrpc", b"--output-format", b"stream-jsonrpc"]
+            process(10, 1, 10, 10, 5, "droid", [b"droid"])
+            process(20, 10, 10, 10, 5, "droid", rpc)
+            process(21, 10, 21, 10, 5, "droid", rpc)
+            process(22, 10, 10, 10, 6, "droid", rpc)
+            process(23, 10, 10, 10, 5, "droid", rpc + [b"other"])
+            process(24, 10, 10, 10, 5, "unrelated ) job", rpc)
+            process(25, 10, 10, 10, 5, "droid", rpc)
+            main = tree / "10/task/10/children"
+            worker = tree / "10/task/11/children"
+            for path in (main, worker):
+                path.parent.mkdir(parents=True)
+            main.write_text("21 22 23 24")
+            worker.write_text("20")
+            def path(*parts):
+                return tree.joinpath(*parts[1:]) if parts[0] == "/proc" else Path(*parts)
+            with patch.object(probe.sys, "platform", "linux"), patch.object(probe.pathlib, "Path", path):
+                self.assertEqual(probe.controller("10"), "20")
+                main.write_text("21 22 23 24 25")
+                self.assertIsNone(probe.controller("10"))
+                main.write_text("21 22 23 24")
+                worker.write_text("")
+                self.assertEqual(probe.controller("10"), "10")
+                (tree / "10/stat").write_text("10 (droid) S 1 10 1 5 42 0")
+                self.assertIsNone(probe.controller("10"))
+
+
 if __name__ == "__main__":
     unittest.main()
