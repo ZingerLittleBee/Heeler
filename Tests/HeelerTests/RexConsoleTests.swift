@@ -22,23 +22,16 @@ struct RexConsoleTests {
             rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
     }
 
-    /// A Rex Host starts a shell for New Terminal, in a Workspace or a new
-    /// one it names (ADR 0049's update of 2026-11-25), in a POSIX or a
-    /// Windows directory, and starts no Agent, closes and renames nothing
-    /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
-    /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
-    /// Codex, Pi, Oh My Pi and Droid and uploads once the server has named a Linux
-    /// or macOS kernel, and Chat for Claude Code alone and uploads once it
-    /// has named Windows, whatever a
-    /// platform probe would say, since none runs. A terminal shows in one
-    /// window at a time, so a row offers no window of its own and the windows
-    /// take turns, as with a Herdr TUI Host's channel.
+    /// The negotiated Rex kernel and its shell schema determine what this Host
+    /// offers. Native Windows has its own program set. New Terminal works before
+    /// Rex reports a kernel and opens on one client window at a time.
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.macOSKernel, HerdrCoreLocator.linuxKernel: [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.linuxKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.macOSKernel: [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }
@@ -47,6 +40,7 @@ struct RexConsoleTests {
             let offers = HostCapabilities(
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore, rexAcceptsCommand: true)
 
+            #expect(offers.requiresBoundAntigravity == (kernel == HerdrCoreLocator.linuxKernel))
             #expect(offers.startsAgents == isPOSIX)
             #expect(offers.startsTerminals)
             #expect(offers.startsIn("/home/dev/app"))
