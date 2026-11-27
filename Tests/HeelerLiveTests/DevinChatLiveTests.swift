@@ -142,6 +142,7 @@ struct DevinChatLiveTests {
 
             let draft = "PARKED_" + tag
             live.composer.replaceDraft(with: draft)
+            live.chat.draftDidChange(to: draft)
             try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
             try await live.desktop("/clear")
             let limit = ContinuousClock.now + .seconds(15)
@@ -154,17 +155,15 @@ struct DevinChatLiveTests {
             let other = try #require(next)
             try #require(other != session)
             guard case .refused = await live.composer.send(policy: live.policy) else { Issue.record("The parked draft left the original session"); return }
-            try await live.wait { live.chat.droidSessionID == other }
+            try await live.bindVerifiedSession(other)
             try #require(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
-            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             #expect(live.composer.draft.isEmpty)
             let peerMarker = "PEER_" + tag
             try await live.send("Reply with exactly " + peerMarker + ". Do not use tools.")
             try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) } }
             try await live.desktop("/resume " + session)
-            try await live.wait { live.chat.droidSessionID == session }
-            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
-            #expect(live.composer.draft == draft)
+            try await live.bindVerifiedSession(session)
+            try #require(live.composer.draft == draft)
 
             // Change the terminal from an independent SSH connection while the
             // mobile projection is offline, then exercise the old Send button.
@@ -186,18 +185,17 @@ struct DevinChatLiveTests {
                   ContinuousClock.now < moved { try await Task.sleep(for: .milliseconds(180)) }
             try #require(try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID == other)
             await live.projection.resume()
-            guard case .refused = await live.composer.send(policy: live.policy) else {
-                Issue.record("The offline draft reached the replacement session"); return
+            let afterReconnect = await live.composer.send(policy: live.policy)
+            guard case .refused = afterReconnect else {
+                Issue.record("Unexpected result for the parked draft after reconnect: \(afterReconnect)"); return
             }
             live.chat.resume()
-            try await live.wait { live.chat.droidSessionID == other }
-            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
+            try await live.bindVerifiedSession(other)
             #expect(live.composer.draft.isEmpty)
             #expect(live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) })
             #expect(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
             try await live.desktop("/resume " + session)
-            try await live.wait { live.chat.droidSessionID == session }
-            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
+            try await live.bindVerifiedSession(session)
             #expect(live.composer.draft == draft)
         }
     }
@@ -441,6 +439,15 @@ struct DevinChatLiveTests {
         let projection: any ConsoleHostProjection
         let pane: String
         let io: BlockedScreenIO
+
+        func bindVerifiedSession(_ session: String) async throws {
+            try await wait {
+                guard chat.droidSessionID == session, chat.displayedDroidTarget?.sessionID == session,
+                      let owner = chat.composerSessionID else { return false }
+                composer.bindDroidDraft(to: owner, program: .devin)
+                return composer.droidDraftMatches(owner)
+            }
+        }
 
         func send(_ text: String) async throws {
             try await wait { try await DevinInputBox.read(io.readScreen()).isSendable }
