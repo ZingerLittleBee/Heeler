@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Finds the transcript's request behind a dialog on screen. The screen
@@ -25,11 +26,7 @@ enum BlockedRequestMatch {
         switch dialog.kind {
         case .devinWorkspaceTrust, .droidWorkspaceTrust: return false
         case .devinPlan:
-            // Devin renders inline code with padding and wraps the plan at word boundaries.
-            let visible = dialog.body.joined(separator: " ").split(whereSeparator: \.isWhitespace)
-            let rendered = request.summary.replacing(/`([^`\n]+)`/) { " " + $0.1 + " " }
-            let submitted = rendered.split(whereSeparator: \.isWhitespace)
-            return request.toolName == "exit_plan_mode" && !visible.isEmpty && submitted == visible
+            return matchesDevinPlan(request, dialog)
         case .devinQuestion:
             guard request.toolName == "ask_user_question" else { return false }
             return request.questions.filter { question in
@@ -118,6 +115,33 @@ enum BlockedRequestMatch {
             .agyWorkspaceTrust:
             return false
         }
+    }
+
+    private static func matchesDevinPlan(_ request: ChatPendingRequest, _ dialog: BlockedDialog) -> Bool {
+        guard request.toolName == "exit_plan_mode" else { return false }
+        if let file = request.confirmedPlanFile {
+            let digest = SHA256.hash(data: Data(request.summary.utf8)).map { String(format: "%02x", $0) }.joined()
+            guard file.path == dialog.subject.planFilePath, digest == file.sha256 else { return false }
+        }
+        let rendered = request.summary.replacing(/`([^`\n]+)`/) { " " + $0.1 + " " }
+        let words = rendered.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty, let wraps = dialog.subject.devinPlanCodeWraps else { return false }
+        if wraps.isEmpty { return words == dialog.body.joined(separator: " ").split(whereSeparator: \.isWhitespace) }
+
+        // At the right edge Devin can drop a space even inside inline code.
+        // Its file creation and the visible plan ID independently identify the content.
+        guard request.confirmedPlanFile != nil else { return false }
+        var remaining = words.joined(separator: " ")[...]
+        for (index, row) in dialog.body.enumerated() {
+            if index > 0 {
+                if remaining.first == " " { remaining = remaining.dropFirst() }
+                else if !wraps.contains(index - 1) { return false }
+            }
+            let line = row.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            guard !line.isEmpty, remaining.hasPrefix(line) else { return false }
+            remaining = remaining.dropFirst(line.count)
+        }
+        return remaining.isEmpty
     }
 
     /// Before a subagent starts, Grok Build's card asks `Allow

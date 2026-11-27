@@ -112,6 +112,7 @@ struct DevinSessionPage: Decodable, Sendable {
         var id, name: String
         var arguments: Arguments
         var complete: Bool
+        var confirmedPlanFile: ChatPendingRequest.ConfirmedPlanFile?
         var requestsAutomaticShell: Bool?
     }
 

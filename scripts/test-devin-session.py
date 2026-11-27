@@ -2,6 +2,7 @@
 """Exercise Devin's bounded read-only store query with independent session graphs."""
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -66,6 +67,32 @@ class DevinSessionRead(unittest.TestCase):
         events = tail["earlierWork"]
         self.assertEqual([(e["offset"], e["row"]["id"], e["row"]["text"]) for e in events], [(0, "a-1", "")])
         self.assertEqual([c["id"] for c in events[0]["row"]["calls"]], ["first"])
+
+    def test_active_plan_file_needs_the_matching_parent_write_result_and_exact_document(self):
+        plan = "1. Write `a b`."
+        path = "/home/test/.devin/plans/plan-0123456789abcdef.md"
+        write = {"id": "save", "name": "write_plan", "arguments": {"title": "Test", "summary": "One step", "plan": plan}}
+        exit_plan = {"id": "exit", "name": "exit_plan_mode", "arguments": {"plan": plan}}
+        operation = {"operation": "create", "file_path": path, "contents": "# Test\n\nOne step\n\n" + plan + "\n"}
+        meta = {"extensions": {"chisel/tool_result_meta": {"kind": "edit", "success": True},
+                               "chisel/file_operations": [operation]}}
+        self.put(1, None, "assistant", "", calls=[write])
+        self.put(2, 1, "tool", "File created successfully at: " + path, result_for="save", meta=meta)
+        self.put(3, 2, "assistant", "", calls=[exit_plan])
+        def receipt():
+            return self.page(offset=2, limit=1)["rows"][0]["calls"][0].get("confirmedPlanFile")
+        self.assertEqual(receipt(), {"path": "~/.devin/plans/plan-0123456789abcdef.md",
+                                     "sha256": hashlib.sha256(plan.encode()).hexdigest()})
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_call_id','different') WHERE node_id=2")
+        self.assertIsNone(receipt())
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_call_id','save') WHERE node_id=2")
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_calls[0].arguments.plan',?) WHERE node_id=3",
+                        (plan.replace("a b", "ab"),))
+        self.assertIsNone(receipt())
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_calls[0].arguments.plan',?) WHERE node_id=3", (plan,))
+        self.db.execute("""UPDATE message_nodes SET chat_message=json_set(chat_message,
+                        '$.metadata.extensions."chisel/file_operations"[0].contents','replaced') WHERE node_id=2""")
+        self.assertIsNone(receipt())
 
     def test_open_tool_is_unique_and_has_all_its_approval_arguments(self):
         self.put(3, None, "user", "run it", meta={"is_user_input": True})

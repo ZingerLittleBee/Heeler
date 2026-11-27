@@ -32,6 +32,53 @@ def message_chunk(message, part):
     return body[start:start + 65536]
 
 
+def confirmed_plan_file(db, session, node, call):
+    """Bind the active exit request to the exact file its immediately preceding write created."""
+    if call["name"] != "exit_plan_mode" or not call["complete"]:
+        return None
+    plan = call["arguments"].get("plan")
+    if not isinstance(plan, str) or not plan:
+        return None
+    parents = db.execute("""
+        SELECT w.chat_message, t.chat_message FROM message_nodes e
+        JOIN message_nodes t ON t.session_id=e.session_id AND t.node_id=e.parent_node_id
+        JOIN message_nodes w ON w.session_id=t.session_id AND w.node_id=t.parent_node_id
+        WHERE e.session_id=? AND e.node_id=? AND w.node_id<t.node_id AND t.node_id<e.node_id
+          AND length(CAST(w.chat_message AS BLOB))<=131072 AND length(CAST(t.chat_message AS BLOB))<=131072
+    """, (session, node)).fetchone()
+    if not parents:
+        return None
+    writer, result = map(json.loads, parents)
+    calls = writer.get("tool_calls") or []
+    if (writer.get("role") != "assistant" or not isinstance(calls, list) or len(calls) != 1
+            or not isinstance(calls[0], dict) or result.get("role") != "tool"):
+        return None
+    write = calls[0]
+    args = write.get("arguments") or {}
+    if (write.get("name") != "write_plan" or not isinstance(write.get("id"), str) or not write["id"]
+            or write["id"] != result.get("tool_call_id") or not isinstance(args, dict)
+            or set(args) != {"title", "summary", "plan"} or args["plan"] != plan
+            or not isinstance(args["title"], str) or not isinstance(args["summary"], str)):
+        return None
+    extra = (result.get("metadata") or {}).get("extensions") or {}
+    status = extra.get("chisel/tool_result_meta") or {}
+    operations = extra.get("chisel/file_operations") or []
+    if (not isinstance(status, dict) or status.get("kind") != "edit" or status.get("success") is not True
+            or not isinstance(operations, list) or len(operations) != 1 or not isinstance(operations[0], dict)):
+        return None
+    operation = operations[0]
+    path = operation.get("file_path")
+    document = "# " + args["title"] + "\n\n" + args["summary"] + "\n\n" + plan + "\n"
+    if (operation.get("operation") != "create" or operation.get("contents") != document
+            or not isinstance(path, str) or result.get("content") != "File created successfully at: " + path):
+        return None
+    name = pathlib.PurePosixPath(path)
+    if (not name.is_absolute() or path.startswith("//") or str(name) != path or ".." in name.parts
+            or name.parts[-3:-1] != (".devin", "plans") or not re.fullmatch(r"plan-[0-9a-f]{16}\.md", name.name)):
+        return None
+    return dict(path="~/.devin/plans/" + name.name, sha256=hashlib.sha256(plan.encode()).hexdigest())
+
+
 def row(message, limit):
     role = message["role"]
     meta = message.get("metadata") or {}
@@ -187,7 +234,13 @@ def read(db, request):
         message = json.loads(raw)
         if part is not None:
             return dict(offset=start, total=len(ids), rows=[], textChunk=message_chunk(message, part))
-        result.append(row(message, text_limit))
+        item = row(message, text_limit)
+        if node == head and item["role"] == "assistant" and len(item["calls"]) == 1:
+            call = item["calls"][0]
+            plan_file = confirmed_plan_file(db, session, node, call)
+            if plan_file:
+                call["confirmedPlanFile"] = plan_file
+        result.append(item)
     if result and offset is None and start and request.get("earlierWork"):
         result[0]["earlierWork"] = earlier_work(db, session, ids[:start])
     if result and start + len(result) == len(ids):

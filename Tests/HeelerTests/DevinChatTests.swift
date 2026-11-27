@@ -104,6 +104,35 @@ struct DevinChatTests {
         #expect(BlockedRequestMatch.request(for: dialog, in: [other]) == nil)
     }
 
+    @Test func planSplitInsideCodeNeedsTheMatchingFileAndItsOriginalBytes() throws {
+        let capture = try ScreenFixture.screen("devin-rex-plan-80")
+        let screen = ANSIScreen(rows: capture.rows, reportedColumns: 80)
+        let dialog = try #require(DevinDialog.parse(screen).dialog)
+        #expect(dialog.subject.devinPlanCodeWraps == [0])
+        let plan = """
+            1. Create `note.txt` in `/home/heelerlab/heeler-lab-devin/heeler-lab-p-rex-plan`.
+            2. Write `Test note.` into the file and verify it exists.
+            """
+        var request = ChatPendingRequest(entryID: .init("call"), callID: "exit", kind: .other,
+                                         toolName: "exit_plan_mode", summary: plan)
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request]) == nil)
+        request.confirmedPlanFile = .init(path: "~/.devin/plans/plan-ad5bbb8c83efef87.md",
+                                          sha256: "69d527882213ebce42b3c40b162d04b27ffdc67f34eb3a1daf41b0565b4c2591")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request]) == request)
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request, request]) == nil)
+        let unknownWidth = try #require(DevinDialog.parse(capture).dialog)
+        #expect(BlockedRequestMatch.request(for: unknownWidth, in: [request]) == nil)
+        var changed = request
+        changed.summary = plan.replacingOccurrences(of: "rex-plan", with: "rex- plan")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+        changed = request
+        changed.summary = plan.replacingOccurrences(of: "Test note.", with: "Testnote.")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+        changed = request
+        changed.confirmedPlanFile?.path = "~/.devin/plans/plan-0000000000000000.md"
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+    }
+
     @Test func refusesMenusDesktopDraftsAndChangedPastes() throws {
         #expect(DevinInputBox.read(try ScreenFixture.screen("devin-idle")).isSendable)
         for screen in ["devin-menu", "devin-write", "devin-trust", "devin-ask", "devin-paste"] {

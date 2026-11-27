@@ -1020,6 +1020,10 @@ struct ChatDivider: Equatable, Codable, Sendable {
 /// dialog on screen against these to show the full content; the screen
 /// always decides the options.
 struct ChatPendingRequest: Equatable, Sendable {
+    struct ConfirmedPlanFile: Codable, Equatable, Sendable {
+        var path: String
+        var sha256: String
+    }
     var entryID: ChatEntryID
     var callID: String?
     var kind: ChatToolActivity.Kind
@@ -1030,6 +1034,7 @@ struct ChatPendingRequest: Equatable, Sendable {
     var detail: String?
     var questions: [ChatQuestion]
     var planFilePath: String?
+    var confirmedPlanFile: ConfirmedPlanFile?
     /// The change a file call would make, for a card whose dialog the
     /// screen cuts short: Antigravity CLI's edit and write calls.
     var fileChanges: ChatFileChanges?

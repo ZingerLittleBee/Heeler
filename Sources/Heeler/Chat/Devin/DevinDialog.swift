@@ -19,7 +19,7 @@ enum DevinDialog {
             let visible = lines[..<footerStart].indices.filter { !lines[$0].isEmpty }
             guard let last = visible.last else { return .none }
             if label(lines[last]) == "2 No, exit" { dialog = trust(lines, visible, end) }
-            else if label(lines[last]).hasPrefix("3 No") { dialog = proposal(lines, visible, end) }
+            else if label(lines[last]).hasPrefix("3 No") { dialog = proposal(lines, visible, end, screen) }
             else { dialog = permission(lines, visible, end, scoped: footer == scopeFooter) }
         } else if footer.hasPrefix("↑↓ select · ↵ confirm · "), footer.contains("? help me out"),
                   footer.hasSuffix("esc cancel") || footer.hasSuffix("esc clear") {
@@ -112,10 +112,11 @@ enum DevinDialog {
         return make(.devinPermission, title, [scope] + body, options, header...end, subject)
     }
 
-    private static func proposal(_ lines: [String], _ visible: [Int], _ end: Int) -> BlockedDialog? {
+    private static func proposal(_ lines: [String], _ visible: [Int], _ end: Int, _ screen: ANSIScreen) -> BlockedDialog? {
         guard let header = visible.last(where: { ["● Starting implementation", "⏺ Starting implementation"].contains(lines[$0]) }),
               let file = visible.last(where: { lines[$0].hasPrefix("└ Plan file: ") }), header < file else { return nil }
-        let text = visible.filter { $0 > header && $0 < file }.map { line in
+        let bodyRows = visible.filter { $0 > header && $0 < file }
+        let text = bodyRows.map { line in
             lines[line].hasPrefix("│") ? String(lines[line].dropFirst()).trimmingCharacters(in: .whitespaces) : lines[line]
         }
         let labels = ["Yes, switch to accept edits mode", "Yes, switch to bypass mode", "No"]
@@ -129,8 +130,22 @@ enum DevinDialog {
             choices.append(.init(ordinal: i + 1, number: i + 1, label: labels[i],
                                  role: i < 2 ? .approveModeSwitch : .decline, isFocused: lines[position].hasPrefix("❭ ")))
         }
-        return make(.devinPlan, "Starting implementation", text, choices, header...end,
-                    .init(planFilePath: String(lines[file].dropFirst("└ Plan file: ".count))))
+        var subject = DialogSubject(planFilePath: String(lines[file].dropFirst("└ Plan file: ".count)))
+        for (index, pair) in zip(bodyRows, bodyRows.dropFirst()).enumerated() {
+            guard pair.1 == pair.0 + 1, let edge = screen.rows[pair.0].runs.last,
+                  edge.style.background != nil, edge.style.foreground != nil,
+                  edge.text.last?.isWhitespace == false else { continue }
+            let runs = screen.rows[pair.1].runs
+            guard let code = runs.firstIndex(where: { $0.style.background != nil }),
+                  runs[code].style == edge.style, runs[code].text.first?.isWhitespace == false,
+                  runs[..<code].map(\.text).joined().trimmingCharacters(in: .whitespaces) == "│" else { continue }
+            guard edge.endColumn == screen.reportedColumns else {
+                subject.devinPlanCodeWraps = nil
+                break
+            }
+            subject.devinPlanCodeWraps?.insert(index)
+        }
+        return make(.devinPlan, "Starting implementation", text, choices, header...end, subject)
     }
 
     private static func question(_ lines: [String], footerStart: Int, end: Int) -> BlockedDialog? {
