@@ -264,7 +264,7 @@ enum ChatImageLink {
         for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             if index > 0 { plain += "\n" }
             let media = path(written: String(line))
-            guard let path = media ?? ChatFileLink.path(String(line)), let range = line.range(of: path, options: .literal) else {
+            guard let path = media ?? ChatFileLink.written(String(line)), let range = line.range(of: path, options: .literal) else {
                 plain += line
                 continue
             }
@@ -567,6 +567,24 @@ enum ChatFileLink: AttributedStringKey {
         else { return nil }
         return path
     }
+
+    static func written(_ text: String) -> String? {
+        guard let path = path(text) else { return nil }
+        if path.contains("/") || extensionlessNames.contains(path) { return path }
+        guard let dot = path.lastIndex(of: "."), dot != path.startIndex else { return nil }
+        let pathExtension = path[path.index(after: dot)...]
+        guard pathExtension.first?.isLetter == true,
+            pathExtension.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber) })
+        else { return nil }
+        return path
+    }
+
+    private static let extensionlessNames: Set<String> = [
+        "Makefile", "GNUmakefile", "makefile", "Dockerfile", "Containerfile", "Gemfile", "Podfile", "Brewfile",
+        "Procfile", "Rakefile", "Justfile", "justfile", "Vagrantfile", "Jenkinsfile", "LICENSE", "README", "NOTICE",
+        "COPYING", "AUTHORS", "CODEOWNERS", ".gitignore", ".gitattributes", ".gitmodules", ".env", ".editorconfig",
+        ".dockerignore", ".npmrc", ".nvmrc", ".zshrc", ".bashrc", ".profile",
+    ]
 
     static func destination(_ url: URL) -> String? {
         if url.isFileURL {
