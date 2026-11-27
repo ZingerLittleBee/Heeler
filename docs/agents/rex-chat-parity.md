@@ -87,3 +87,20 @@ The two current macOS clients each ran `exec` twice with `timeout: 0` and no sup
 - **Send and stale controls.** The Rex control link serializes each block's writes. A fresh screen check precedes typing. Droid and Devin additionally pin the draft to the displayed session and verify the staged payload before Enter. Their approval and Stop checks have separate call and turn identities. A lost acknowledgement carries an unknown outcome. [Typing](../../Sources/Heeler/Console/RexChatTyping.swift), [delivery](../../Sources/Heeler/Chat/Compose/ChatDeliveryPolicy.swift), [Devin acceptance](devin-chat-validation.md), [Droid acceptance](droid-chat-validation.md).
 - **Stop and background jobs.** An Unknown Rex status provides a terminal route for approvals and Stop. An active foreground turn, an independently running command and a child agent can all end separately. Droid's targeted command control verifies the PID and complete command. Devin reads the recorded shell or child identity and leaves job management to its terminal. The current Pi suite does not exercise background job control. [Stop guards](../../Sources/Heeler/Chat/Compose/ChatStopPlan.swift), [background results](devin-chat-validation.md#what-the-cli-showed), [Droid scenarios](droid-chat-validation.md#macos).
 - **Attachments.** Chat stages the file over the Host's SSH connection and types its path with the message. An upload or an image accepted by the Terminal Composer alone leaves the native Chat delivery row open. The Pi suite and the gated-harness terminal checks leave open upload cancellation, file recovery or remote attachment removal. [Staging and delivery](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md#update-2026-11-17-attachments), [staging tests](../../Tests/HeelerTests/RexStagingTests.swift).
+
+### Lost Enter response after a successful upload
+
+Use a fresh, independently seeded same-directory Pi pair with the foreground
+fixture described above. On the SSH Host start the private Unix socket proxy:
+
+    python3 scripts/fixtures/rex-lost-receipt.py --fixture /private/tmp/heeler-lab-pi/pi-run.json --output /private/tmp/heeler-lab-pi/receipt
+
+Copy the resulting private fixture to the Simulator machine if necessary.
+Set `HEELER_REX_RECEIPT_LAB` to its path and run
+`HeelerLiveTests/RexLostReceiptLiveTests` with the HeelerLiveTests scheme.
+The proxy forwards the marked paste and Enter to that one block. Once Rex
+answers Enter successfully, it closes only that control connection before
+the answer reaches Heeler. Its public evidence file records the paste,
+Enter and dropped-response counts. The private fixture contains an SSH
+credential. The test checks Edit Draft, both staged attachments, the actual
+Pi conversation, the unaffected peer and both desktop size owners.

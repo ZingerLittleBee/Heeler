@@ -17,6 +17,7 @@ struct RexForegroundChatLiveTests {
         let directory, firstFile, peerSession, peerBlock, peerFile: String
         let firstID, peerID: String?
         let nativeControls, nativePermissions: Bool?
+        let receiptFaultBlock: String?
 
         func connect() async throws -> RexSSHTransport {
             let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: seed)))
@@ -31,14 +32,21 @@ struct RexForegroundChatLiveTests {
     }
 
     @Test func sameDirectoryPeersKeepTheirConversationsAndDesktopSize() async throws {
-        let path = try #require(ProcessInfo.processInfo.environment["HEELER_REX_FOREGROUND_CHAT_LAB"])
+        try await run(fixtureKey: "HEELER_REX_FOREGROUND_CHAT_LAB", loseReceipt: false)
+    }
+
+    fileprivate func run(fixtureKey: String, loseReceipt: Bool) async throws {
+        let path = try #require(ProcessInfo.processInfo.environment[fixtureKey])
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         try #require([ChatProgram.pi, .omp, .grok, .claude, .codex].contains(fixture.program))
         let isDisposable = fixture.directory.split(separator: "/").contains { $0.hasPrefix("heeler-lab-") }
         try #require(isDisposable && fixture.firstFile != fixture.peerFile && fixture.rexBlock != fixture.peerBlock)
+        if loseReceipt {
+            try #require(fixture.program == .pi && fixture.receiptFaultBlock == fixture.rexBlock)
+        }
         let observer = try await fixture.connect()
         do {
-            try await check(fixture, desktop: observer.control)
+            try await check(fixture, desktop: observer.control, loseReceipt: loseReceipt)
             await observer.close()
         } catch {
             await observer.close()
@@ -46,7 +54,7 @@ struct RexForegroundChatLiveTests {
         }
     }
 
-    private func check(_ fixture: Fixture, desktop: RexControlLink) async throws {
+    private func check(_ fixture: Fixture, desktop: RexControlLink, loseReceipt: Bool) async throws {
         let first = RexPaneAddress(sessionID: fixture.rexSession, blockID: fixture.rexBlock)
         let peer = RexPaneAddress(sessionID: fixture.peerSession, blockID: fixture.peerBlock)
         _ = try await desktop.call("session.attach_all", payload: JSONValue.object(["event_scope": .string("all")]))
@@ -137,6 +145,12 @@ struct RexForegroundChatLiveTests {
             conversation: { chat.conversationGeneration })
             policy.sessionWrite = chat.composerWriteCheck(for: composer)
             return policy
+        }
+        if loseReceipt {
+            try await checkLostReceipt(fixture, projection: projection, chat: chat, composer: composer, policy: policy)
+            let finalSize = try await size(first), peerFinalSize = try await size(peer)
+            #expect(finalSize == before && peerFinalSize == peerBefore)
+            return
         }
         let marker = "REX_LAB_SEND_" + UUID().uuidString.prefix(8)
         let prompt = "Reply only with this marker. Do not use tools.\n\n    " + marker
@@ -413,6 +427,48 @@ struct RexForegroundChatLiveTests {
 }
 
 private extension RexForegroundChatLiveTests {
+    private func checkLostReceipt(_ fixture: Fixture, projection: RexConsoleProjection, chat: AgentChatStore,
+                          composer: AgentComposerStore, policy: ComposerDeliveryPolicy) async throws {
+        let marker = "REX_LAB_RECEIPT_" + UUID().uuidString.prefix(8)
+        let files = projection.chatHostFiles()
+        let pane = RexPaneAddress(sessionID: fixture.rexSession, blockID: fixture.rexBlock).paneID
+        let image = try await stageDraftImage(projection: projection, pane: pane, composer: composer)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("heeler-lab-" + marker)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let local = directory.appendingPathComponent("reply 文件.txt")
+        let bytes = Data(marker.utf8)
+        try bytes.write(to: local)
+        let file = PreparedFile(fileURL: local, fileExtension: "txt", byteCount: Int64(bytes.count), pickedName: local.lastPathComponent)
+        let stage = projection.fileStager(beside: pane, keepingTo: .init(joined: projection.inventoryCore))
+        let staged = try await stage(file, .init { _ in })
+
+        composer.replaceDraft(with: "请只回复标记。\n\n    " + marker)
+        composer.insertPathIntoDraft(staged.path)
+        let draft = composer.draft
+        chat.draftDidChange(to: draft)
+        let result = await composer.send(policy: policy)
+        try #require(result == .outcomeUnknown)
+        let pending = try #require(composer.messages.first)
+        #expect(pending.state == .outcomeUnknown && pending.stagedImagePaths == [image])
+        #expect(await composer.retry(pending.id, policy: policy) == .ignored)
+        composer.withdrawToDraft(pending.id)
+        #expect(composer.draft == draft && composer.readyImagePaths == [image])
+        try await wait(for: "fresh inventory and the one recorded prompt after the lost Enter response") {
+            if projection.status != .connected { await projection.revalidate(); return false }
+            await chat.step()
+            let replies = chat.conversation.transcript.entries.filter { $0.content == .assistant(.init(text: marker)) }
+            return chat.conversation.transcript.recordedPrompts.filter { $0.text.contains(marker) }.count == 1
+                && replies.count == 1
+        }
+        let copy = try await files.read(path: staged.path, from: 0, to: UInt64(bytes.count), chunk: 4096)
+        #expect(copy == bytes)
+        let length = try #require(try await files.status(fixture.peerFile)?.size)
+        try #require(length > 0 && length <= 1 << 20)
+        let peer = try #require(try await files.read(path: fixture.peerFile, from: 0, to: length, chunk: 64 << 10))
+        #expect(peer.range(of: bytes) == nil)
+    }
+
     func stageDraftImage(projection: RexConsoleProjection, pane: String, composer: AgentComposerStore) async throws -> String {
         let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP4DwABAQEAsTj2FAAAAABJRU5ErkJggg=="))
         let local = FileManager.default.temporaryDirectory.appendingPathComponent("heeler-lab-\(UUID()).png")
@@ -636,5 +692,13 @@ private extension RexForegroundChatLiveTests {
             }
         }
         return (staged.path, stop)
+    }
+}
+
+@MainActor
+@Suite("Rex Chat with a lost Enter response", .timeLimit(.minutes(2)))
+struct RexLostReceiptLiveTests {
+    @Test func editDraftRecoversTheUploadedFilesAfterRexAcceptedEnter() async throws {
+        try await RexForegroundChatLiveTests().run(fixtureKey: "HEELER_REX_RECEIPT_LAB", loseReceipt: true)
     }
 }
