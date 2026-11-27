@@ -21,6 +21,7 @@ const PIPE_PROGRAMS = new Set([
 ]);
 const PIPE_OPTION = "@heeler-pipe";
 const PIPED_OPTION = "@heeler-piped";
+const WORKER_START_MS = 2000;
 const WORKER_PATH = fileURLToPath(new URL("./pipe-pane-worker.js", import.meta.url));
 
 function programKeyFor(pane) {
@@ -73,7 +74,7 @@ async function attachPipe(
   target,
   { paths, serverPid, paneID, currentKey, socket, log, resolveWorkerPath },
 ) {
-  const mark = `${currentKey}:${randomBytes(6).toString("hex")}`;
+  const mark = `${currentKey}:${randomBytes(6).toString("hex")}:${Date.now()}`;
   const workerPath = resolveWorkerPath(WORKER_PATH);
   const command = workerCommand({
     tmux: paths.executable,
@@ -167,6 +168,13 @@ export function tmuxPipeReaderListener({
               "set-option", "-p", "-u", "-t", pane.paneID, PIPED_OPTION,
             ]);
           } else {
+            // pipe-pane can already be closed while its worker is starting.
+            // The worker still sees EOF and records the closed program. Give
+            // it time to do so before retrying an unacknowledged launch,
+            // including when a new follower reads the mark after a restart.
+            const started = Number(live.pipeMark.split(":")[3]);
+            const age = Date.now() - started;
+            if (markedKey === currentKey && age >= 0 && age < WORKER_START_MS) continue;
             await attachPipe(runTmux, target, {
               paths,
               serverPid,

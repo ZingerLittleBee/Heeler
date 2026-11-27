@@ -425,9 +425,13 @@ suite("tmux pipe-pane status reader", { skip }, () => {
     server.run("send-keys", "-t", paneID, "-l", `'${firstCodex.executable}'; '${secondCodex.executable}'`);
     server.run("send-keys", "-t", paneID, "Enter");
 
+    // Close the pipe before the worker has recorded its first acknowledgement.
+    const delayed = join(root, "starting-worker.mjs");
+    const worker = new URL("../helper/tmux/pipe-pane-worker.js", import.meta.url).href;
+    writeFileSync(delayed, `await new Promise(resolve => setTimeout(resolve, 350));\nawait import(${JSON.stringify(worker)});\n`);
     const firstFollower = followTmuxServer("work", server.paths, {
       pollIntervalMs: 30,
-      listener: tmuxPipeReaderListener(),
+      listener: tmuxPipeReaderListener({ resolveWorkerPath: () => delayed }),
     });
     cleanups.push(() => firstFollower.stop());
 
