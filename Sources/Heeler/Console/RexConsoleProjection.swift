@@ -1318,3 +1318,53 @@ final class RexConsoleProjection: ConsoleHostProjection {
         throw HeelerPluginUnavailableError.rex
     }
 }
+
+extension RexConsoleProjection: AmpChatProjection {
+    /// The control link identifies the foreground of this block. Linux supplies its
+    /// birth and configuration directory. Check the block again after the SSH read.
+    func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation {
+        guard kernel == HerdrCoreLocator.linuxKernel, !isAwaitingSnapshot,
+              let address = RexPaneAddress(paneID: pane), let listed = listedDetails(at: address),
+              let currentServer = server else { throw AmpChatProblem.unidentified }
+        let before = try await detailsWithCurrentForeground(at: address, listed: listed, server: currentServer)
+        guard RexAgentRule.agentKind(in: before) == ChatProgram.amp.rawValue, let pid = before.processID, pid > 0
+        else { throw AmpChatProblem.unidentified }
+        let key = String(pid)
+        let facts = try await session.withConnection { link in
+            guard link.server == currentServer else { throw TransportError.rexServerGone }
+            return try await link.transport.reads.readProcesses(.init(pids: [key], readsStart: true, valuesOf: ["HOME", "XDG_CONFIG_HOME"]))
+        }
+        let after = try await detailsWithCurrentForeground(at: address, listed: listed, server: currentServer)
+        guard after.processID == pid, RexAgentRule.agentKind(in: after) == ChatProgram.amp.rawValue, let fact = facts[key],
+              let place = AmpPluginLocation(pid: pid, facts: fact, rexInstance: currentServer.instanceID)
+        else { throw AmpChatProblem.changed }
+        return place
+    }
+
+    func exchangeAmp(_ request: AmpChatRequest, record: AmpPluginRecord, at place: AmpPluginLocation, in pane: String) async throws -> AmpChatReply {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.exchangeAmpChat(request, record: record)
+        }
+    }
+
+    func installAmp(at place: AmpPluginLocation, replacing previous: Data?, in pane: String) async throws {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.installAmpChatPlugin(in: place.directory, replacing: previous)
+        }
+    }
+
+    private func withAmp<Value: Sendable>(
+        at place: AmpPluginLocation, in pane: String,
+        operation: @escaping @Sendable (any AmpChatHost) async throws -> Value
+    ) async throws -> Value {
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        let result = try await session.withConnection { link in
+            guard link.server.instanceID == place.rexInstance, let endpoint = link.transport.readOnlyAmp else {
+                throw AmpChatProblem.changed
+            }
+            return try await operation(endpoint)
+        }
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        return result
+    }
+}

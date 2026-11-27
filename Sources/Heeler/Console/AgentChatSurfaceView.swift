@@ -967,6 +967,10 @@ struct AgentChatSurfaceView: View {
             }
             return banner
         }
+        if chat?.ampConnection?.isReadOnly == true, chat?.displayedAmpBinding != nil {
+            banners.append(Banner(id: "rex-amp-read-only", systemImage: "eye", text: AmpChatProblem.readOnly.explanation,
+                actionTitle: AgentDetailSurface.terminal.showTitle, action: { showAgentTerminal() }))
+        }
         if chat?.isReadingPickedConversation == true {
             var banner = Banner(id: "rex-picked-conversation", systemImage: "eye",
                 text: AgentChatStore.rexReadOnlyConversation, actionTitle: AgentDetailSurface.terminal.showTitle,
@@ -2023,7 +2027,7 @@ struct AgentChatSurfaceView: View {
     /// though the store can keep the card it showed, or read an Antigravity
     /// CLI for its trust prompt as the departure clears its status.
     private var showsBlockedCard: Bool {
-        chat?.isReadingPickedConversation != true && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+        showsChatInput && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
     }
 
     /// A Blocked Agent's dialog, answered in the Composer's place, or a sign

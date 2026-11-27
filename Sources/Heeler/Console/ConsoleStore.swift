@@ -1219,10 +1219,12 @@ final class ConsoleStore {
         let paneID = agent.agent.paneID
         var files = chatHostFiles(for: hostID, agentID: agent.id)
         if program == .amp {
-            guard host.serverKind == .herdrTUI else { return nil }
-            files.amp = AmpChatConnection(pane: paneID) { [weak self] in
-                guard let live = self?.projections[hostID] as? HostConsoleProjection else { throw TransportError.cancelled }
-                return live
+            guard hostProjection is any AmpChatProjection else { return nil }
+            let readOnly = capabilities(for: hostID).readOnlyChatPrograms.contains(.amp)
+            files.amp = AmpChatConnection(pane: paneID, readOnly: readOnly) { [weak self, weak hostProjection] in
+                guard let live = self?.projections[hostID], live === hostProjection,
+                      let amp = live as? any AmpChatProjection else { throw TransportError.cancelled }
+                return amp
             }
         }
         var source = AgentChatSource(
@@ -1269,9 +1271,6 @@ final class ConsoleStore {
         if program.pinsComposerToSession, let tui = hostProjection as? HostConsoleProjection {
             source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID, program: program) }
         }
-        if let amp = files.amp {
-            source.sessionEvidence = { try await amp.evidence() }
-        }
         if let processBound {
             // No record names a session here.
             source.processInfo = nil
@@ -1283,6 +1282,11 @@ final class ConsoleStore {
             source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: processBound.chatCacheScope)
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = processBound.sessionEventRevision(of: paneID)
+        }
+        if let amp = files.amp {
+            if amp.isReadOnly { source.screen = .unavailable }
+            source.picks = nil
+            source.sessionEvidence = { try await amp.evidence() }
         }
         if program == .agy {
             source.onAgyConversationBound = { [weak self] root, rootID in

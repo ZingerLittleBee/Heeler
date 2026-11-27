@@ -450,3 +450,109 @@ struct RexOpenCodeHistoryLiveTests {
         #expect(after == a && peerAfter == b)
     }
 }
+
+/// A real Linux Rex pair. The independent desktop operator reloads the named
+/// plugin or switches A only after the test reaches each corresponding step.
+@MainActor
+@Suite("Read-only Amp Chat on a Linux Rex Host", .serialized, .timeLimit(.minutes(5)))
+struct RexAmpChatLiveTests {
+    private struct Steps: Decodable {
+        let firstThread: String
+        let peerThread: String
+        let nextMarker: String
+        let signalDirectory: String
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_REX_AMP_CHAT_LAB"] != nil))
+    func followsTheForegroundThreadAndKeepsInputInTheTerminal() async throws {
+        let environment = "HEELER_REX_AMP_CHAT_LAB"
+        let fixture = try RexHostServicesLiveTests.Fixture.load(environment)
+        let url = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment[environment]))
+        let steps = try JSONDecoder().decode(Steps.self, from: Data(contentsOf: url))
+        let signals = URL(fileURLWithPath: steps.signalDirectory, isDirectory: true).standardizedFileURL
+        try #require(signals.deletingLastPathComponent().path == url.deletingLastPathComponent().standardizedFileURL.path)
+        func signal(_ step: String) throws {
+            try Data().write(to: signals.appendingPathComponent(step), options: .withoutOverwriting)
+        }
+        let pane = RexPaneAddress(sessionID: try #require(fixture.rexSession), blockID: try #require(fixture.rexBlock)).paneID
+        let peer = RexPaneAddress(sessionID: try #require(fixture.peerSession), blockID: try #require(fixture.peerBlock)).paneID
+        let firstMarker = try #require(fixture.sourceMarker)
+        let peerMarker = try #require(fixture.peerMarker)
+        try #require(pane != peer && firstMarker != peerMarker && steps.firstThread != steps.peerThread)
+        let suite = "heeler-lab-amp-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (host, console) = try fixture.connect(.rex, defaults: defaults)
+        defer { console.setHosts([]) }
+        await console.resume()
+
+        func wait(_ description: String, until satisfied: @MainActor () async throws -> Bool) async throws {
+            let deadline = ContinuousClock.now + .seconds(40)
+            while ContinuousClock.now < deadline {
+                if try await satisfied() { return }
+                try await Task.sleep(for: .milliseconds(180))
+            }
+            throw NSError(domain: "RexAmpChatLive", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
+        }
+        try await wait("Linux did not list both Amp terminals") {
+            [pane, peer].allSatisfy { id in console.agents.contains { $0.agent.paneID == id && console.chatProgram(for: $0) == .amp } }
+        }
+        let agent = try #require(console.agents.first { $0.agent.paneID == pane })
+        let other = try #require(console.agents.first { $0.agent.paneID == peer })
+        let capabilities = console.capabilities(for: host.id)
+        try #require(capabilities.offersAmpPlugin && capabilities.readOnlyChatPrograms.contains(.amp))
+        let chat = try #require(console.chatStore(for: agent, program: .amp))
+        let peerChat = try #require(console.chatStore(for: other, program: .amp))
+        defer { chat.end(); peerChat.end() }
+        let connection = try #require(chat.ampConnection)
+        try #require(connection.isReadOnly)
+        let peerConnection = try #require(peerChat.ampConnection)
+        try #require(try await peerConnection.evidence() == .bound(sessionID: steps.peerThread, transcriptRoot: nil, directory: nil))
+        let peerTarget = try #require(peerConnection.current)
+        let peerPage = try await peerConnection.page(thread: steps.peerThread, expected: peerTarget, offset: nil, limit: 20).1
+        try #require(peerPage.rows.contains { $0.role == "assistant" && $0.blocks.contains { $0.text == peerMarker } })
+        try #require(try await connection.evidence() == .unavailable(.amp(.missing)))
+        let location = try #require(connection.location)
+        try await connection.install(location)
+        try #require(try await connection.evidence() == .unavailable(.amp(.reload)))
+        try signal("place-previous-plugin")
+        try await wait("The previous shipping plugin was not offered an update") {
+            try await connection.evidence() == .unavailable(.amp(.update))
+        }
+        try await connection.install(location, updating: true)
+        try signal("reload-updated-plugin")
+        chat.show()
+        func assistant(_ expected: String) -> Bool {
+            chat.conversation.transcript.entries.contains {
+                if case .assistant(let message) = $0.content { return message.text == expected }
+                return false
+            }
+        }
+        try await wait("A did not open its own official thread") { assistant(firstMarker) && chat.displayedAmpBinding?.binding.thread == steps.firstThread }
+        try #require(!assistant(peerMarker) && !chat.offersCandidates)
+        let original = try #require(chat.displayedAmpBinding)
+        let composer = console.composerSession(for: agent).composer
+        let draft = "REX_LAB_AMP_UNSUBMITTED_" + UUID().uuidString
+        composer.replaceDraft(with: draft)
+        let refusal = CheckedSendOutcome.refused(.inputNotReady(AmpChatProblem.readOnly.explanation))
+        try #require(await connection.send(id: UUID(), text: draft, target: original) == refusal)
+        let permit = try #require(chat.composerWriteCheck(for: composer))
+        try #require(await !permit() && composer.draft == draft)
+        await #expect(throws: TransportError.self) { try await chat.screenIO.sendKeys(["Escape"]) }
+        try signal("switch-a")
+        try await wait("Chat did not follow A's newly selected thread") {
+            assistant(steps.nextMarker) && chat.displayedAmpBinding?.binding.thread != steps.firstThread
+        }
+        try #require(!assistant(firstMarker) && !assistant(peerMarker))
+        await #expect(throws: ChatSourceUnavailable.self) {
+            _ = try await connection.page(thread: steps.firstThread, expected: original, offset: nil, limit: 20)
+        }
+        try #require(try await peerConnection.evidence() == .bound(sessionID: steps.peerThread, transcriptRoot: nil, directory: nil))
+        try #require(peerConnection.current == peerTarget)
+        try signal("unload-a-plugin")
+        try await wait("Chat retained the old thread after the foreground plugin was unloaded") {
+            chat.conversation.phase == .unavailable(.amp(.missing)) && chat.displayedAmpBinding == nil
+        }
+        try #require(composer.draft == draft && !assistant(steps.nextMarker))
+    }
+}

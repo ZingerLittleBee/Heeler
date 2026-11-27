@@ -257,8 +257,10 @@ struct HostOnboardingView: View {
                 if !names.isEmpty {
                     LabeledContent("Native Chat", value: names.formatted(.list(type: .and)))
                 }
-                if capabilities.readOnlyChatPrograms.contains(.opencode) {
-                    LabeledContent("Read-Only Chat", value: "OpenCode")
+                let readOnly = ChatProgram.allCases.filter(capabilities.readOnlyChatPrograms.contains)
+                    .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }
+                if !readOnly.isEmpty {
+                    LabeledContent("Read-Only Chat", value: readOnly.formatted(.list(type: .and)))
                 }
                 Text("Use the terminal for other programs and unverified prompts. Manage splits and move blocks in Rex on the Host.")
                     .foregroundStyle(.secondary)

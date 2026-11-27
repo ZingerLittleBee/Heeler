@@ -518,7 +518,7 @@ herdr-core, tmux and Rex Hosts, Droid's hook identifies the session and transcri
 of the foreground Droid by PID and process start. On POSIX Herdr TUI Hosts,
 Amp Chat reads the thread selected in the foreground Amp terminal through
 Heeler's Amp plugin. Confirm its installation in Chat, then reload plugins in
-Amp. Plain text goes to that same thread through the plugin (ADR 0066). Chat holds no Attach; its Composer and draft are the
+Amp. Herdr TUI sends plain text to that thread through the plugin. On Linux Rex, Chat reads the active thread and directs all input to the terminal (ADR 0066). Chat holds no Attach; its Composer and draft are the
 terminal's. For transcript-backed Chat on Herdr TUI, Send is one `agent.prompt` request, made only after a screen read
 shows the program's input box empty, and refused for text the program would
 run rather than read. Its `/` menu offers the Agent's skills and `/compact`;

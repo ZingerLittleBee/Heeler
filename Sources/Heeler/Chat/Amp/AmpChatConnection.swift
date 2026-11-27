@@ -1,41 +1,37 @@
 import Foundation
 
-/// One Herdr TUI pane. Resolve its foreground on the current Host connection,
-/// then only ask the socket published by that CLI's own plugin.
+/// The operations a host supplies for one foreground Amp client. Rex checks its block
+/// on the control link and limits the plugin connection to binding and page requests.
+@MainActor
+protocol AmpChatProjection: AnyObject {
+    func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation
+    func chatHostFiles() -> ChatHostFiles
+    func exchangeAmp(_ request: AmpChatRequest, record: AmpPluginRecord, at place: AmpPluginLocation, in pane: String) async throws -> AmpChatReply
+    func installAmp(at place: AmpPluginLocation, replacing previous: Data?, in pane: String) async throws
+}
+
+/// Follows the socket published by the current foreground CLI's own plugin.
 @MainActor
 final class AmpChatConnection {
-    typealias Projection = @MainActor () throws -> HostConsoleProjection
+    typealias Projection = @MainActor () throws -> any AmpChatProjection
     let pane: String
+    let isReadOnly: Bool
     private let projection: Projection
     private(set) var current: AmpChatTarget?
     private(set) var location: AmpPluginLocation?
     private var inspection: UInt64 = 0
 
-    init(pane: String, projection: @escaping Projection) {
+    init(pane: String, readOnly: Bool = false, projection: @escaping Projection) {
         self.pane = pane
+        isReadOnly = readOnly
         self.projection = projection
-    }
-
-    private func locate() async throws -> AmpPluginLocation {
-        let host = try projection()
-        guard let pid = AmpPluginLocation.foreground(try await host.processInfo(paneID: pane)) else {
-            throw AmpChatProblem.unidentified
-        }
-        let key = String(pid)
-        let facts = try await host.withHostServices {
-            try await $0.readProcesses(.init(pids: [key], readsStart: true, valuesOf: ["HOME", "XDG_CONFIG_HOME"]))
-        }
-        guard let fact = facts[key], let place = AmpPluginLocation(pid: pid, facts: fact),
-            AmpPluginLocation.foreground(try await host.processInfo(paneID: pane)) == pid
-        else { throw AmpChatProblem.unidentified }
-        return place
     }
 
     func evidence() async throws -> ChatSessionEvidence {
         inspection &+= 1
         let check = inspection
         do {
-            let place = try await locate()
+            let place = try await projection().ampPluginLocation(in: pane)
             let files = try projection().chatHostFiles()
             let record: AmpPluginRecord?
             do {
@@ -77,20 +73,19 @@ final class AmpChatConnection {
     }
 
     func install(_ place: AmpPluginLocation, updating: Bool = false) async throws {
-        guard try await locate() == place else { throw AmpChatProblem.changed }
+        guard try await projection().ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
         let previous: Data?
         if updating {
             let state = try await place.installation(projection().chatHostFiles())
             guard state.problem == .update || state.problem == .reload else { throw state.problem }
             previous = state.previous
         } else { previous = nil }
-        try await projection().session.withTransportOnce {
-            try await $0.installAmpChatPlugin(in: place.directory, replacing: previous)
-        }
+        try await projection().installAmp(at: place, replacing: previous, in: pane)
     }
 
     private func exchange(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
-        try await projection().session.withTransportOnce { try await $0.exchangeAmpChat(request, record: record) }
+        guard let place = location, place.pid == record.pid, place.start == record.start else { throw AmpChatProblem.changed }
+        return try await projection().exchangeAmp(request, record: record, at: place, in: pane)
     }
 
     func page(
@@ -115,6 +110,7 @@ final class AmpChatConnection {
     }
 
     func send(id: UUID, text: String, target: AmpChatTarget?) async -> CheckedSendOutcome {
+        guard !isReadOnly else { return .refused(.inputNotReady(AmpChatProblem.readOnly.explanation)) }
         guard text.utf8.count <= 96 * 1024 else {
             return .refused(.inputNotReady(String(localized: "This message is too long for Amp Chat.")))
         }
@@ -141,5 +137,29 @@ final class AmpChatConnection {
             }
             return .outcomeUnknown
         } catch { return .outcomeUnknown }
+    }
+}
+
+extension HostConsoleProjection: AmpChatProjection {
+    func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation {
+        guard let pid = AmpPluginLocation.foreground(try await processInfo(paneID: pane)) else {
+            throw AmpChatProblem.unidentified
+        }
+        let key = String(pid)
+        let facts = try await withHostServices {
+            try await $0.readProcesses(.init(pids: [key], readsStart: true, valuesOf: ["HOME", "XDG_CONFIG_HOME"]))
+        }
+        guard let fact = facts[key], let place = AmpPluginLocation(pid: pid, facts: fact),
+            AmpPluginLocation.foreground(try await processInfo(paneID: pane)) == pid
+        else { throw AmpChatProblem.unidentified }
+        return place
+    }
+
+    func exchangeAmp(_ request: AmpChatRequest, record: AmpPluginRecord, at place: AmpPluginLocation, in pane: String) async throws -> AmpChatReply {
+        try await session.withTransportOnce { try await $0.exchangeAmpChat(request, record: record) }
+    }
+
+    func installAmp(at place: AmpPluginLocation, replacing previous: Data?, in pane: String) async throws {
+        try await session.withTransportOnce { try await $0.installAmpChatPlugin(in: place.directory, replacing: previous) }
     }
 }

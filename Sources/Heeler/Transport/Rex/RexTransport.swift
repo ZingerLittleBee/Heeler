@@ -44,6 +44,9 @@ protocol RexTransport: Sendable {
     /// else of it.
     nonisolated var reads: any RexHostReads { get }
 
+    /// The Amp plugin's two read operations and its user-initiated installation.
+    nonisolated var readOnlyAmp: (any AmpChatHost)? { get }
+
     /// The staging of a file or image the user attaches, on this same SSH
     /// connection, and nothing else of it.
     nonisolated var staging: any RexHostStaging { get }
@@ -74,6 +77,7 @@ protocol RexTransport: Sendable {
 }
 
 extension RexTransport {
+    nonisolated var readOnlyAmp: (any AmpChatHost)? { nil }
     nonisolated var projects: (any RexHostProjects)? { nil }
 
     func abandon() async {
@@ -160,7 +164,7 @@ protocol RexHostProjects: HostProjectReading, HostWorktreeAccess {
 /// production one; tests script one.
 protocol RexHostConnection:
     ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI,
-    RexHostBrowsing
+    RexHostBrowsing, AmpChatHost
 {
     nonisolated var projects: (any RexHostProjects)? { get }
     nonisolated var routeID: UUID? { get }
@@ -306,6 +310,8 @@ actor RexSSHTransport: RexTransport {
     /// The connection's reads behind a type of their own, so nothing handed
     /// them can be cast back to the connection and write.
     nonisolated var reads: any RexHostReads { RexReadsOnly(connection: connection) }
+
+    nonisolated var readOnlyAmp: (any AmpChatHost)? { RexReadOnlyAmp(connection: connection) }
 
     /// The connection's staging behind a type of its own, for the same reason.
     nonisolated var staging: any RexHostStaging { RexStagingOnly(connection: connection) }
@@ -477,6 +483,20 @@ private struct RexReadsOnly: RexHostReads {
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         try await connection.readProcesses(request)
+    }
+}
+
+/// Even a stale caller cannot send input to an Amp plugin on a Rex Host.
+struct RexReadOnlyAmp: AmpChatHost {
+    let connection: any AmpChatHost
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        guard request.op == "binding" || request.op == "page" else { throw AmpChatProblem.readOnly }
+        return try await connection.exchangeAmpChat(request, record: record)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        try await connection.installAmpChatPlugin(in: directory, replacing: previous)
     }
 }
 

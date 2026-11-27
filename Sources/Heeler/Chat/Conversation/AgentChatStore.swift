@@ -402,7 +402,8 @@ final class AgentChatStore {
     static let rexReadOnlyConversation = String(localized: "This conversation is open for reading. Use the terminal for input until Rex can verify the active conversation.")
 
     var composerSessionInputCheck: ChatSessionInputCheck? {
-        source.requiresIndependentInputSession ? independentInputSession(allowFirstPrompt: true) : nil
+        if ampConnection?.isReadOnly == true { return { false } }
+        return source.requiresIndependentInputSession ? independentInputSession(allowFirstPrompt: true) : nil
     }
 
     private func independentInputSession(allowFirstPrompt: Bool = false) -> ChatSessionInputCheck {
@@ -426,6 +427,7 @@ final class AgentChatStore {
     /// its open recorded turn. A manual pick can show either of two rollouts
     /// the same process is holding, while Esc always goes to its current one.
     func rexStopVerification() -> ChatStopVerification {
+        if ampConnection?.isReadOnly == true { return { false } }
         let shown = followed
         let turn = activeRecordedTurn
         let pinnedSession = composerSessionID

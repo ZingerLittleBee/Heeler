@@ -161,6 +161,10 @@ extension HostCapabilities {
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
             if posix { readOnlyChatPrograms = [.opencode] }
+            if coreKernel == HerdrCoreLocator.linuxKernel {
+                readOnlyChatPrograms.insert(.amp)
+                offersAmpPlugin = true
+            }
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel

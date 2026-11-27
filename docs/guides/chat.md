@@ -2,7 +2,7 @@
 
 Use your coding Agent in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid and local Devin CLI Chat support all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, or Amp). Droid and local Devin CLI Chat support all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
 
 ## Set up the Host
 
@@ -37,6 +37,8 @@ alias codex='codex --no-daemon'
 ```
 
 With the alias, run plain `codex` and `codex resume`: Codex refuses `--no-daemon` given twice.
+
+On a Linux Rex Host, Amp Chat reads the thread selected in that terminal through Heeler’s Amp plugin. The terminal handles input and approvals. See [Amp setup on Rex](rex.md#chat).
 
 ## Open Chat
 
