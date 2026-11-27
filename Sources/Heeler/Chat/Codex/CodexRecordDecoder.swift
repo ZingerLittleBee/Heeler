@@ -516,6 +516,18 @@ enum CodexRecordDecoder {
             if classification.name == "request_user_input" {
                 return decodeQuestionCall(line, context)
             }
+            if !legacy, classification.name == "exec_command", !line.isTruncated {
+                guard let response = envelope(line, CodexRawResponse.self)?.payload else { return .invalid }
+                if response.type == "function_call", response.name == "exec_command",
+                   let turnID = response.turnID, !turnID.isEmpty, let callID = response.callID, !callID.isEmpty,
+                   let body = response.arguments?.data(using: .utf8),
+                   let args = try? JSONDecoder().decode(CodexRawCallArguments.self, from: body),
+                   args.sandboxPermissions == "require_escalated", let command = args.cmd, !command.isEmpty
+                {
+                    return CodexLineOutcome(record: .execApproval(turnID: turnID, callID: callID, command: command))
+                }
+                return .accepted
+            }
             return legacy ? decodeCall(type, line, classification, context) : shapeChecked(line)
         case "custom_tool_call", "local_shell_call":
             if legacy { return decodeCall(type, line, classification, context) }
@@ -879,6 +891,7 @@ enum CodexRecordDecoder {
 struct CodexRawCallArguments: Decodable {
     var command: [String]?
     var cmd: String?
+    var sandboxPermissions: String?
     var input: String?
     var path: String?
 
@@ -886,6 +899,7 @@ struct CodexRawCallArguments: Decodable {
         let container = try decoder.container(keyedBy: CodexKey.self)
         command = container.lenient("command", as: CodexLossyArray<String>.self)?.elements
         cmd = container.lenient("cmd")
+        sandboxPermissions = container.lenient("sandbox_permissions")
         input = container.lenient("input")
         path = container.lenient("path")
     }

@@ -2942,7 +2942,9 @@ final class AgentChatStore {
     }
 
     private var projectionContext: ChatProjectionContext {
-        ChatProjectionContext(activity: ChatAgentActivity(agent.status), skillNames: skillNames)
+        ChatProjectionContext(
+            activity: ChatAgentActivity(agent.status), skillNames: skillNames,
+            requiresIndependentInputSession: source.requiresIndependentInputSession)
     }
 
     // MARK: Sent prompts

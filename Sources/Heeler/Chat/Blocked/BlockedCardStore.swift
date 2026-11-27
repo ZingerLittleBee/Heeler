@@ -1358,6 +1358,9 @@ final class BlockedCardStore {
     nonisolated private static func uniqueRequest(for dialog: BlockedDialog, in calls: [ChatPendingRequest]) -> ChatPendingRequest? {
         let matches = BlockedRequestMatch.requests(answering: dialog, in: calls)
         guard matches.count == 1, let request = matches.first, let id = request.callID, !id.isEmpty else { return nil }
+        if dialog.kind == .codexExec, request.toolName == "exec_command", dialog.subject.command != request.summary {
+            return nil
+        }
         return request
     }
 

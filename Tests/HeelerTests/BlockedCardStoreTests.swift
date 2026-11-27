@@ -77,6 +77,31 @@ struct BlockedCardStoreTests {
         #expect(await pane.keys == [["1"]])
     }
 
+    @Test func aRexCodexLiteralExecApprovalRequiresTheWholeCommand() async throws {
+        let pane = FakePane(try ScreenFixture.screen("codex-01-x1-exec"))
+        let store = Self.store(.codex, pane: pane)
+        var request = ChatPendingRequest(
+            entryID: ChatEntryID("command"), callID: "call", kind: .command,
+            toolName: "exec_command", summary: "touch x1.txt.bak")
+        store.captureSessionCheck = { ("session", { true }) }
+        store.readRexRequests = { [request] }
+        store.update(activity: .blocked)
+        store.update(transcript: Self.transcript(pending: [request]))
+        await store.refresh()
+        #expect(store.content == .unreadable)
+        await store.press(number: 1)
+        #expect(await pane.keys.isEmpty)
+
+        request.summary = "touch x1.txt"
+        store.update(transcript: Self.transcript(pending: [request]))
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the literal command with its recorded call.")
+            return
+        }
+        #expect(card.request == request)
+    }
+
     @Test func aRexQuestionFormChecksItsRecordedCallBeforeEveryPageAndField() async throws {
         let tui = FakeQuestionTUI(.codex, QuestionFormTests.codexQuestions)
         let io = BlockedScreenIO(readScreen: { await tui.read() }, sendKeys: { await tui.send($0) }, paste: { await tui.paste($0) })

@@ -1072,6 +1072,8 @@ enum CodexRecord: Equatable, Sendable {
     case turnAborted(turnID: String?, reason: CodexAbortReason, error: String?, times: CodexTurnTimes)
     case item(turnID: String, CodexItem)
     case questionCall(CodexQuestionCall)
+    /// A model request for elevated execution. Its response status describes the request, not its execution.
+    case execApproval(turnID: String, callID: String, command: String)
     case verifiedAnswer(CodexVerifiedAnswer)
     case callOutput(CodexCallOutput)
     case codeModePatch(CodexCodeModePatch)

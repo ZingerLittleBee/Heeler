@@ -97,6 +97,10 @@ struct CodexPaginatedBuilder {
     private var turns: [String: Turn] = [:]
     /// Question calls by `call_id`, with the turn holding their row.
     private var questionTurns: [String: String] = [:]
+    /// Pending elevated commands belong to the live root turn. Codex writes their execution items only after approval.
+    private var approvalTurn: String?
+    private var execApprovals: [String: ChatPendingRequest] = [:]
+    private var finishedExecCalls: Set<String> = []
     /// Code-mode patch calls by `call_id`, until an output aborts them.
     private var pendingPatches: [String: PendingPatch] = [:]
     /// The turn last started, for a question call without a turn id.
@@ -175,8 +179,15 @@ struct CodexPaginatedBuilder {
     }
 
     private mutating func apply(_ record: CodexRecord, line: CodexStoredLine, segment: CodexSegment, at position: Position) {
+        if case .callOutput(let output) = record, approvalTurn != nil {
+            finishedExecCalls.insert(output.callID)
+            execApprovals.removeValue(forKey: output.callID)
+        }
         switch record {
         case .turnStarted(let started, let root, let times):
+            approvalTurn = root == nil && segment.path == nil && segment.meta.subagentHistoryStartOrdinal == nil ? started : nil
+            execApprovals.removeAll()
+            finishedExecCalls.removeAll()
             var turnID = started
             if let root, namedTurns.contains(root) {
                 forwardedTurns[started] = root
@@ -205,7 +216,17 @@ struct CodexPaginatedBuilder {
             let ending: CodexTimelineEntry.Content? =
                 reason == .replaced || reason == .reviewEnded ? nil : .stopped(reason, error: error)
             setStatus(.interrupted, of: turnID, ending: ending, line: line, segment: segment, at: position)
+        case .execApproval(let turnID, let callID, let command):
+            guard segment.path == nil, approvalTurn == turnID, turns[turnID]?.status == .inProgress,
+                  !finishedExecCalls.contains(callID) else { return }
+            execApprovals[callID] = ChatPendingRequest(
+                entryID: ChatEntryID("codex/\(segment.rolloutID)/\(turnID)/\(callID)"),
+                callID: callID, kind: .command, toolName: "exec_command", summary: command)
         case .item(let named, let item):
+            if approvalTurn == named, case .tool(let tool) = item.content, tool.kind == .command, let id = tool.callID {
+                finishedExecCalls.insert(id)
+                execApprovals.removeValue(forKey: id)
+            }
             let turnID = forwardedTurns[named] ?? named
             if turnID != named, case .user = item.content { return }
             touch(turnID, at: position)
@@ -390,7 +411,9 @@ struct CodexPaginatedBuilder {
                         }
                         return entry
                     },
-                    ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt, opensInWindow: turn.sawStart)
+                    ending: turn.ending, startedAt: turn.startedAt, endedAt: turn.endedAt, opensInWindow: turn.sawStart,
+                    execApprovals: turn.id == approvalTurn && ordinals.gaps == 0
+                        ? execApprovals.sorted { $0.key < $1.key }.map(\.value) : [])
             },
             model: model,
             effort: effort)

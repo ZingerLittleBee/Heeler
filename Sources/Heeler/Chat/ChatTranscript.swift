@@ -1680,7 +1680,13 @@ struct ChatProjectionContext: Equatable, Sendable {
     /// `/name` even when the file did not record a skill part.
     var skillNames: Set<String>
 
-    init(windowStart: UInt64 = 0, activity: ChatAgentActivity = .unknown, skillNames: Set<String> = []) {
+    var requiresIndependentInputSession: Bool
+
+    init(
+        windowStart: UInt64 = 0, activity: ChatAgentActivity = .unknown, skillNames: Set<String> = [],
+        requiresIndependentInputSession: Bool = false
+    ) {
+        self.requiresIndependentInputSession = requiresIndependentInputSession
         self.windowStart = windowStart
         self.activity = activity
         self.skillNames = skillNames
