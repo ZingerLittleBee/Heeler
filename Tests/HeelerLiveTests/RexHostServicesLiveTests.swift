@@ -539,7 +539,7 @@ struct RexAmpChatLiveTests {
         let refusal = CheckedSendOutcome.refused(.inputNotReady(AmpChatProblem.readOnly.explanation))
         try #require(await connection.send(id: UUID(), text: draft, target: original) == refusal)
         let permit = try #require(chat.composerWriteCheck(for: composer))
-        try #require(await !permit() && composer.draft == draft)
+        try #require(await !permit(nil) && composer.draft == draft)
         await #expect(throws: TransportError.self) { try await chat.screenIO.sendKeys(["Escape"]) }
         try signal("switch-a")
         try await wait("Chat did not follow A's newly selected thread") {

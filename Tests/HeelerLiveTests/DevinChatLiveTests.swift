@@ -574,7 +574,7 @@ struct DevinChatLiveTests {
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
             var current = policy
-            current.sessionWrite = chat.composerSessionInputCheck
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
             let sent = await composer.send(policy: current)
             try #require([.deliveredViaAttach, .submittedViaAttach, .deliveredViaPrompt].contains(sent), "Delivery via \(projection.host.serverKind): \(sent)")
         }

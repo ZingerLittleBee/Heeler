@@ -5296,6 +5296,13 @@ struct AgentChatStoreTests {
         let composer = AgentComposerStore(target: agent.paneID) { _ in throw TransportError.cancelled }
         composer.bindChatDraft(to: owner, program: program)
         composer.replaceDraft(with: "Original server's draft")
+        let admits = try #require(original.composerWriteCheck(for: composer))
+        #expect(await admits(first))
+        #expect(await !admits(restored))
+        #expect(await !admits(replacement))
+        var wrongSession = first
+        wrongSession.sessionID = "another-conversation"
+        #expect(await !admits(wrongSession))
         composer.imageStagingDidBegin(operationID: 1)
         composer.imageStagingDidComplete(operationID: 1, path: "/tmp/heeler-lab-draft/A.png", preview: nil)
         composer.bindChatDraft(to: other.composerSessionID, program: program)

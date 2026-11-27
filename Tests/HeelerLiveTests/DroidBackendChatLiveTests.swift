@@ -72,7 +72,7 @@ struct DroidBackendChatLiveTests {
         var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
-        policy.sessionWrite = chat.composerSessionInputCheck
+        policy.sessionWrite = chat.composerWriteCheck(for: composer)
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with only the marker on the last line, without indentation or formatting. Do not use tools.\n\n    \(token)"
         try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
@@ -286,7 +286,7 @@ struct DroidBackendChatLiveTests {
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
             var current = policy
-            current.sessionWrite = chat.composerSessionInputCheck
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
             let result = await composer.send(policy: current)
             try #require(result == .submittedViaAttach || result == .deliveredViaPrompt || result == .deliveredViaAttach, "Droid submission: \(result)")
         }

@@ -92,17 +92,22 @@ enum ComposerRefusal: Equatable, Sendable {
 /// Checks that a Chat action still addresses the conversation it was offered for.
 typealias ChatSessionInputCheck = @MainActor @Sendable () async -> Bool
 
+/// The argument is a full foreground target read and compared in this write's
+/// queue, or nil when the Composer still has to read the conversation.
+typealias ComposerSessionCheck = @MainActor @Sendable (DroidDialogTarget?) async -> Bool
+
 /// The final checks a backend makes in its input queue before paste and Enter.
 struct ComposerWriteVerification: Sendable {
-    var session: ChatSessionInputCheck?
+    var session: ComposerSessionCheck?
     var droid: DroidSendVerification?
 
     @MainActor func refusal(staged text: String? = nil) async -> ComposerRefusal? {
-        if let session, !(await session()) {
+        if let refusal = await droid?.refusal(staged: text) { return refusal }
+        if let session, !(await session(droid?.target)) {
             return text == nil ? .inputNotReady(AgentChatStore.rexReadOnlyConversation)
                 : .notSubmitted(String(localized: "The conversation changed after the paste. Check the terminal before sending again."))
         }
-        return await droid?.refusal(staged: text)
+        return nil
     }
 }
 
@@ -118,7 +123,7 @@ struct ComposerDeliveryPolicy: Sendable {
     var droidScreen: (@MainActor @Sendable () async throws -> ANSIScreen)?
     var requiresSpec = false
     private var droidWrite: DroidSendVerification?
-    var sessionWrite: ChatSessionInputCheck?
+    var sessionWrite: ComposerSessionCheck?
     var writeVerification: ComposerWriteVerification? {
         guard sessionWrite != nil || droidWrite != nil else { return nil }
         return ComposerWriteVerification(session: sessionWrite, droid: droidWrite)

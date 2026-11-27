@@ -373,12 +373,24 @@ final class AgentChatStore {
         return tracksConversationDraft && !composer.draftMatches(composerSessionID) ? program.draftOwnerGuidance : nil
     }
 
-    func composerWriteCheck(for composer: AgentComposerStore) -> ChatSessionInputCheck? {
+    func composerWriteCheck(for composer: AgentComposerStore) -> ComposerSessionCheck? {
         guard let check = composerSessionInputCheck else { return nil }
         let owner = composerSessionID
-        return { [weak self, weak composer] in
-            guard let self, let composer, let owner, self.composerSessionID == owner,
-                  composer.draftMatches(owner), await check() else { return false }
+        let shown = followed
+        return { [weak self, weak composer] checkedTarget in
+            guard let self, let composer, let owner, !Task.isCancelled, self.composerSessionID == owner,
+                  composer.draftMatches(owner) else { return false }
+            if let target = checkedTarget {
+                // The same fresh target used to verify the input box also names
+                // the official conversation. A later key gets its own read.
+                guard self.program.pinsComposerToSession, self.source.requiresIndependentInputSession,
+                      let scope = self.source.coreScope, target.rexServerScope == scope,
+                      self.displayedDroidTarget == target, target.draftID(for: self.program) == owner,
+                      !self.isReadingPickedConversation, let shown, let id = target.sessionID,
+                      self.followed?.namesSameSession(as: shown) == true else { return false }
+                return shown.namesSameSession(as: ConversationReference(program: self.program, sessionID: id))
+            }
+            guard await check() else { return false }
             return !Task.isCancelled && self.composerSessionID == owner && composer.draftMatches(owner)
         }
     }

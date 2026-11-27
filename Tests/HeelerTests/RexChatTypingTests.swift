@@ -183,7 +183,8 @@ struct RexChatTypingTests {
         defer { rig.end() }
         let sender = try rig.composerSend()
         var checks = 0
-        let verification = ComposerWriteVerification(session: {
+        let verification = ComposerWriteVerification(session: { target in
+            #expect(target == nil)
             checks += 1
             return checks == 1
         }, droid: nil)
