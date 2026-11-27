@@ -70,7 +70,7 @@ struct TmuxInventoryLoopTests {
             #expect(!format.contains(word))
         }
         // Twelve fixed fields on the row's first line and ten shell-quoted text fields after it.
-        #expect(names.count == 12 + 10)
+        #expect(names.count == 12 + 11)
     }
 
     // MARK: Reading
