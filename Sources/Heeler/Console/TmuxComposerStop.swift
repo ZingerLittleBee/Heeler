@@ -33,6 +33,7 @@ final class TmuxComposerStop {
     private let corePin: TerminalCorePin
     private let clock: BlockedCardClock
     private let seat: Seat
+    private let confirmTarget: ChatStopVerification?
 
     init(
         paneID: String,
@@ -41,7 +42,8 @@ final class TmuxComposerStop {
         projection: @escaping @MainActor () -> TmuxConsoleProjection?,
         corePin: TerminalCorePin,
         clock: BlockedCardClock,
-        seat: Seat
+        seat: Seat,
+        confirmTarget: ChatStopVerification? = nil
     ) {
         self.paneID = paneID
         self.program = program
@@ -50,6 +52,7 @@ final class TmuxComposerStop {
         self.corePin = corePin
         self.clock = clock
         self.seat = seat
+        self.confirmTarget = confirmTarget
     }
 
     convenience init(
@@ -117,6 +120,9 @@ final class TmuxComposerStop {
     private func runStopPlan(
         on send: TmuxAttachSend, in projection: TmuxConsoleProjection
     ) async -> AgentInterruptOutcome {
+        if case .chat = seat, program == .droid {
+            guard let confirmTarget, await confirmTarget() else { return .failed(ChatStopPlan.changedDroidTurn) }
+        }
         if let screenGuard = plan.screenGuard {
             switch await send.capturePane(clock.sleep) {
             case .text(let text):

@@ -202,6 +202,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         keepingTo corePin: TerminalCorePin,
         agentKeys: ChatAgentKeysStore?,
         followThrough: (@MainActor () -> ChatStopFollowThrough?)?,
+        confirmTarget: ChatStopVerification?,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt?
 
@@ -324,6 +325,7 @@ extension ConsoleHostProjection {
         keepingTo _: TerminalCorePin,
         agentKeys _: ChatAgentKeysStore? = nil,
         followThrough _: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget _: ChatStopVerification? = nil,
         live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? { nil }
 

@@ -376,33 +376,50 @@ struct DroidBackendChatLiveTests {
         let context: @MainActor () async throws -> ChatStopContext = {
             try await .init(screen: typing.readScreen(), activity: ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown))
         }
-        let interrupt = projection.checkedChatStop(for: pane, program: .droid,
-            keepingTo: TerminalCorePin(joined: projection.inventoryCore), agentKeys: keys, followThrough: nil,
-            live: { projection }) ?? plan.composerInterrupt(context: context, agentKeys: keys)
-        composer.replaceDraft(with: "List the numbers from one to two thousand on separate lines. Do not use tools.")
-        chat.draftDidChange(to: composer.draft)
-        let result = await composer.send(policy: policy)
-        try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt)
-        let deadline = ContinuousClock.now + .seconds(20)
-        while ContinuousClock.now < deadline {
-            let activity = ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown)
-            if screenGuard(.init(screen: try await typing.readScreen(), activity: activity)) == .press {
-                let outcome = await interrupt.perform()
-                try #require(outcome == .sent)
-                break
-            }
-            try await Task.sleep(for: .milliseconds(100))
+        @MainActor func interrupt(_ verify: @escaping ChatStopVerification) -> AgentComposerInterrupt {
+            projection.checkedChatStop(for: pane, program: .droid, keepingTo: TerminalCorePin(joined: projection.inventoryCore),
+                agentKeys: keys, followThrough: nil, confirmTarget: verify, live: { projection })
+                ?? plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: verify)
         }
-        let stopped = ContinuousClock.now + .seconds(15)
-        while ContinuousClock.now < stopped {
-            await chat.step()
-            if chat.conversation.transcript.turns.last?.ending == .interrupted,
-               ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) == .idle,
-               DroidInputBox.read(try await typing.readScreen()).isSendable {
-                return
+        var previous: AgentComposerInterrupt?
+        for tag in ["first", "second"] {
+            composer.replaceDraft(with: "List the numbers from one to two thousand on separate lines. Begin with " + tag + ". Do not use tools.")
+            chat.draftDidChange(to: composer.draft)
+            let result = await composer.send(policy: policy)
+            try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt)
+            let deadline = ContinuousClock.now + .seconds(25)
+            var pressed = false
+            while ContinuousClock.now < deadline {
+                await chat.step()
+                let activity = ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown)
+                if let turn = chat.conversation.transcript.turns.last, turn.ending == nil,
+                   screenGuard(.init(screen: try await typing.readScreen(), activity: activity)) == .press {
+                    let current = interrupt(chat.droidStopVerification())
+                    if let previous {
+                        try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn))
+                    }
+                    try #require(await current.perform() == .sent)
+                    previous = current
+                    pressed = true
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(200))
             }
-            try await Task.sleep(for: .milliseconds(200))
+            try #require(pressed)
+            let idleDeadline = ContinuousClock.now + .seconds(20)
+            var interrupted = false
+            while ContinuousClock.now < idleDeadline {
+                await chat.step()
+                if chat.conversation.transcript.turns.last?.ending == .interrupted,
+                   ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) == .idle,
+                   DroidInputBox.read(try await typing.readScreen()).isSendable {
+                    interrupted = true
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            try #require(interrupted)
         }
-        Issue.record("The interrupted turn or the idle composer did not return")
+        print("Droid evidence \(projection.host.serverKind) held the old Stop and interrupted only its selected turn")
     }
 }

@@ -1991,10 +1991,6 @@ struct AgentChatSurfaceView: View {
         let readScreen = readAgentScreen
         let activity = agentActivity
         return {
-            if program == .droid {
-                guard let chat, let shown = chat.droidSessionID, await chat.confirmSessionBeforeSend() == nil,
-                      chat.droidSessionID == shown else { throw TransportError.cancelled }
-            }
             let screen = try await readScreen()
             return ChatStopContext(screen: screen, activity: activity())
         }

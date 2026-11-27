@@ -1291,13 +1291,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         keepingTo corePin: TerminalCorePin,
         agentKeys: ChatAgentKeysStore? = nil,
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget: ChatStopVerification? = nil,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? {
         let plan = ChatStopPlan.standard(for: program)
         let stop = TmuxComposerStop(
             paneID: paneID, program: program, plan: plan,
             projection: { live() as? TmuxConsoleProjection },
-            corePin: corePin, clock: sendClock, seat: .chat)
+            corePin: corePin, clock: sendClock, seat: .chat, confirmTarget: confirmTarget)
         return AgentComposerInterrupt(
             wait: plan.wait, accessibilityHint: plan.accessibilityHint
         ) {

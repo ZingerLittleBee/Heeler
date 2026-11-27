@@ -362,6 +362,97 @@ extension DroidChatLiveTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
+    func aReviewedEditChangesOnlyTheDisplayedFile() async throws {
+        try await withLab { lab, host, projection in
+            let live = try await self.live("edit", lab: lab, host: host, projection: projection)
+            defer { live.chat.end() }
+            let path = live.fixture.directory + "/proof.txt"
+            let files = projection.chatHostFiles()
+            func contents() async throws -> String {
+                String(decoding: try await files.read(.init(path: path, offset: 0, maxBytes: 80)).data, as: UTF8.self)
+            }
+            try #require(try await contents() == "old fixture line\n")
+            try await live.send("Use Edit directly to replace 'old fixture line' with 'new fixture line' in proof.txt. Do not use a shell. Reply EDIT_DONE.")
+            let card = try await live.card(.droidPermission, path: "proof.txt")
+            try #require(card.request?.toolName == "Edit")
+            let diff = card.dialog.subject.changeLines.joined(separator: "\n")
+            try #require(diff.contains("old fixture line") && diff.contains("new fixture line"))
+            await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+            try await live.wait { live.reply("EDIT_DONE") }
+            #expect(try await contents() == "new fixture line\n")
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
+    func cancellingAnAskUserCardInterruptsItsTurnAndKeepsTheDraft() async throws {
+        try await withLab { lab, host, projection in
+            let live = try await self.live("askCancel", lab: lab, host: host, projection: projection)
+            defer { live.chat.end() }
+            try await live.send("Call AskUser directly to ask 'Which fixture?' with Peach and Plum as options. Wait for my answer.")
+            let ask = try await live.card(.droidQuestion)
+            let session = try #require(live.chat.droidSessionID)
+            live.composer.replaceDraft(with: "Keep this unsent draft")
+            await live.chat.blocked.perform(.dismiss, shownCard: ask)
+            try await live.wait { live.chat.conversation.transcript.turns.last?.ending == .interrupted }
+            #expect(live.chat.droidSessionID == session && live.composer.draft == "Keep this unsent draft")
+            #expect(DroidInputBox.read(try await projection.readAgentScreen(live.fixture.pane)).isSendable)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
+    func aSpecHandoffFollowsTheNewForegroundSession() async throws {
+        try await withLab { lab, host, projection in
+            let live = try await self.live("handoff", lab: lab, host: host, projection: projection)
+            defer { live.chat.end() }
+            try await live.send("Call ExitSpecMode with a short plan whose only implementation step is to reply HANDOFF_DONE. No files or other tools.")
+            let spec = try await live.card(.droidSpec)
+            let original = try #require(live.chat.droidSessionID)
+            let choice = try #require(spec.dialog.options.first { $0.label.contains("handoff to a new session") })
+            await live.chat.blocked.perform(.choose(ordinal: choice.ordinal), shownCard: spec)
+            let autonomy = try await live.card(.droidSpecAutonomy)
+            await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: autonomy)
+            try await live.wait { live.chat.droidSessionID != nil && live.chat.droidSessionID != original && live.reply("HANDOFF_DONE") }
+            #expect(try await projection.droidDialogTarget(paneID: live.fixture.pane)?.sessionID == live.chat.droidSessionID)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
+    func anOldStopCannotInterruptANewDroidConversation() async throws {
+        try await withLab { lab, host, projection in
+            let live = try await self.live("stop", lab: lab, host: host, projection: projection)
+            defer { live.chat.end() }
+            let keys = ChatAgentKeysStore { try await projection.sendAgentKeys($0, to: live.fixture.pane) }
+            let plan = ChatStopPlan.standard(for: .droid)
+            let context: @MainActor () async throws -> ChatStopContext = {
+                try await .init(screen: projection.readAgentScreen(live.fixture.pane), activity: ChatAgentActivity(live.chat.agent.status))
+            }
+            @MainActor func begin(_ marker: String) async throws -> AgentComposerInterrupt {
+                try await live.send("List the numbers 1 through 2000, one per line with prefix " + marker + ". Do not use tools.")
+                let deadline = ContinuousClock.now + .seconds(25)
+                while ContinuousClock.now < deadline {
+                    try await live.poll()
+                    if let turn = live.chat.conversation.transcript.turns.last, turn.ending == nil,
+                       try await DroidInputBox.stop(context()) == .press {
+                        return plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())
+                    }
+                    try await Task.sleep(for: .milliseconds(150))
+                }
+                throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
+            }
+            let old = try await begin("FIRST_STOP")
+            let original = try #require(live.chat.droidSessionID)
+            try #require(await old.perform() == .sent)
+            try await live.wait { live.chat.conversation.transcript.turns.last?.ending == .interrupted && live.chat.agent.status == .idle }
+            try await self.desktop("/new", in: live.fixture.pane, projection: projection)
+            try await live.wait { live.chat.droidSessionID != nil && live.chat.droidSessionID != original }
+            let current = try await begin("SECOND_STOP")
+            #expect(await old.perform() == .failed(ChatStopPlan.changedDroidTurn))
+            try #require(await current.perform() == .sent)
+            try await live.wait { live.chat.conversation.transcript.turns.last?.ending == .interrupted && live.chat.agent.status == .idle }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
     func stagesImageAndFileAndKeepsBothWhenTheTerminalHasADraft() async throws {
         try await withLab { lab, host, projection in
             let live = try await self.live("attach", lab: lab, host: host, projection: projection)

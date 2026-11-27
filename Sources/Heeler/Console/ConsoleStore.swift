@@ -1341,18 +1341,22 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
+        let verification: ChatStopVerification? = program == .droid
+            ? chatStores[agent.id]?.droidStopVerification() ?? { false }
+            : nil
         if let stop = projections[hostID]?.checkedChatStop(
             for: agent.agent.paneID,
             program: program,
             keepingTo: corePin,
             agentKeys: agentKeys,
             followThrough: followThrough,
+            confirmTarget: verification,
             live: { [weak self] in self?.projections[hostID] })
         {
             return stop
         }
         return chatStopPlan(for: agent, program: program).composerInterrupt(
-            context: context, agentKeys: agentKeys, followThrough: followThrough)
+            context: context, agentKeys: agentKeys, followThrough: followThrough, confirmTarget: verification)
     }
 
     /// A confirmation is an action a detail takes on an address, so it keeps to the

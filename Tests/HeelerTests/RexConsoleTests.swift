@@ -27,7 +27,7 @@ struct RexConsoleTests {
     /// Windows directory, and starts no Agent, closes and renames nothing
     /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
     /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
-    /// Codex, Pi and Oh My Pi and uploads once the server has named a Linux
+    /// Codex, Pi, Oh My Pi and Droid and uploads once the server has named a Linux
     /// or macOS kernel, and Chat for Claude Code alone and uploads once it
     /// has named Windows, whatever a
     /// platform probe would say, since none runs. A terminal shows in one
@@ -38,8 +38,7 @@ struct RexConsoleTests {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.macOSKernel: [.claude, .codex, .pi, .omp, .droid]
-            case HerdrCoreLocator.linuxKernel: [.claude, .codex, .pi, .omp]
+            case HerdrCoreLocator.macOSKernel, HerdrCoreLocator.linuxKernel: [.claude, .codex, .pi, .omp, .droid]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }

@@ -220,6 +220,32 @@ struct DroidChatTests {
         #expect(DroidInputBox.stop(.init(screen: screen(""), activity: .working)) != .press)
     }
 
+    @MainActor @Test func stopRequiresTheSameLiveTurnAfterTheLastTranscriptRead() async throws {
+        let files = VirtualHostFiles(home: "/home/test")
+        let path = "/home/test/.factory/sessions/-repo/" + session + ".jsonl"
+        let first = header(session) + #"{"type":"message","id":"first","message":{"role":"user","content":"first"}}"# + "\n"
+        await files.write(first, at: path)
+        let agent = Agent(terminalID: "t", kind: "droid", title: "", status: .working, workspaceID: "w",
+            tabID: "tab", paneID: "p", cwd: "/repo", revision: 1,
+            agentSession: .init(agent: "droid", kind: .id, source: "herdr:droid", value: session))
+        let host = UUID()
+        let source = AgentChatSource(hostID: host, socketLocation: .defaultSession, files: files.hostFiles(),
+            agentInfo: { agent }, cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)))
+        let chat = AgentChatStore(agentID: .init(hostID: host, paneID: agent.paneID), agent: agent, program: .droid, source: source)
+        defer { chat.end() }
+        await chat.step()
+        let old = chat.droidStopVerification()
+        try #require(await old())
+        let next = first + #"{"type":"agent_turn_outcome","turnId":"first","reason":"completed"}"# + "\n"
+            + #"{"type":"message","id":"second","message":{"role":"user","content":"second"}}"# + "\n"
+        await files.write(next, at: path)
+        #expect(!(await old()))
+        let current = chat.droidStopVerification()
+        try #require(await current())
+        await files.write(header(other), at: path)
+        #expect(!(await current()))
+    }
+
     @Test func terminalPagesKeepSendAndStopAwayFromSelections() throws {
         for page in ["bash-mode", "model-selector", "skills", "mission-control", "btw", "slash-menu", "linux-login", "mcp-approval"] {
             let screen = try ScreenFixture.screen("droid-" + page)

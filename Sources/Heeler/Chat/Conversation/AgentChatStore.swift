@@ -343,6 +343,28 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     var droidSessionID: String? { program == .droid ? followed?.sessionID : nil }
+
+    /// A Stop button belongs to the recorded turn on screen, even when the
+    /// same Droid process opens another conversation or starts another turn.
+    func droidStopVerification() -> ChatStopVerification {
+        let session = droidSessionID
+        let turn = activeDroidTurn
+        return { [weak self] in
+            guard let self, let session, let turn, self.droidSessionID == session,
+                  self.activeDroidTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
+            let previousRead = self.readsBegun
+            await self.step()
+            return !Task.isCancelled && self.lastAppliedRead > previousRead
+                && self.droidSessionID == session && self.activeDroidTurn == turn
+        }
+    }
+
+    private var activeDroidTurn: ChatEntryID? {
+        guard case .following = conversation.phase, !conversation.isFromCache, !conversation.hasUnreadRecords,
+              conversation.readFailure == nil, let last = conversation.transcript.turns.last,
+              last.ending == nil else { return nil }
+        return last.firstEntryID
+    }
     var droidScreen: BlockedScreenIO { source.screen }
     var droidTaskActionInFlight = false
     @ObservationIgnored var droidTaskStops: Set<String> = []
