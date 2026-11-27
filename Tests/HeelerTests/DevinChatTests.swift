@@ -127,7 +127,7 @@ struct DevinChatTests {
             #"{"id":"f","role":"assistant","text":"Parent done","calls":[],"finish":"stop"}"#,
             #"{"id":"child-report","role":"subagent_report","text":"child output","agentID":"123abcd","calls":[]}"#,
             #"{"id":"get","role":"assistant","text":"","calls":[{"id":"read2","name":"get_output","arguments":{"shell_id":"qa-two"},"complete":true}]}"#,
-            #"{"id":"res","role":"tool","text":"second output\n\nExit code: 0","calls":[],"resultFor":"read2","childReports":{"123abcd":"child output"}}"#,
+            #"{"id":"res","role":"tool","text":"second output\n\nExit code: 0","calls":[],"resultFor":"read2","shellExit":{"code":0,"outputLength":14},"childReports":{"123abcd":"child output"}}"#,
         ]
         let lines = records.enumerated().map { index, record in
             ChatLine(offset: UInt64(index), data: Data(record.replacingOccurrences(of: #""role":"#, with: #""truncated":false,"role":"#).utf8))
@@ -142,6 +142,96 @@ struct DevinChatTests {
         #expect(transcript.backgroundWork.map(\.state) == [.completed, .running, .completed])
         #expect(transcript.backgroundWork.map(\.reportedOutput) == ["child output", nil, "second output"])
         #expect(transcript.turns.count == 1)
+    }
+
+    @Test func truncatedShellResultsKeepTheirOwnExitStatesAfterReopening() throws {
+        typealias Row = DevinSessionPage.Row
+        let shells = ["success", "failure", "busy"]
+        let launches = shells.map { DevinSessionPage.Call(id: "launch-" + $0, name: "exec", arguments: .init(command: $0, shell_id: $0), complete: true) }
+        let reads = shells.map { DevinSessionPage.Call(id: "read-" + $0, name: "get_output", arguments: .init(shell_id: $0), complete: true) }
+        var rows = [Row(id: "launch", role: "assistant", text: "", truncated: false, calls: launches)]
+        rows += shells.map { shell in
+            Row(id: "ack-" + shell, role: "tool", text: "Command running in background with ID: " + shell + ". Run get_output with timeout if you need to wait.",
+                truncated: false, calls: [], resultFor: "launch-" + shell, success: true)
+        }
+        rows.append(Row(id: "read", role: "assistant", text: "", truncated: false, calls: reads))
+        let output = String(repeating: "中", count: 2048)
+        rows += [
+            Row(id: "ok", role: "tool", text: output, truncated: true, shellExit: .init(code: 0, outputLength: 9000), calls: [], resultFor: "read-success"),
+            Row(id: "bad", role: "tool", text: "failed\nExit co", truncated: true, shellExit: .init(code: 17, outputLength: 6), calls: [], resultFor: "read-failure"),
+            Row(id: "pending", role: "tool", text: "output\nExit code: 0", truncated: true, calls: [], resultFor: "read-busy", success: true),
+        ]
+        let earlier = rows.enumerated().map { DevinSessionPage.EarlierWork(offset: UInt64($0.offset), row: $0.element) }
+        let tail = Row(id: "tail", role: "assistant", text: "Parent done", truncated: false, calls: [], earlierWork: earlier)
+        var reducer = DevinTranscriptReducer()
+        reducer.append([try ChatLine(offset: UInt64(rows.count), data: JSONEncoder().encode(tail))])
+        let work = reducer.transcript(.init()).backgroundWork
+        #expect(work.map(\.state) == [.completed, .failed, .running])
+        #expect(work.map(\.reportedOutput) == [output, "failed", "output\nExit code: 0"])
+    }
+
+    @Test func chatAndHandOffReadWholeMessagesAcrossUnicodeChunkBoundaries() async throws {
+        let texts = [String(repeating: "u", count: 8191) + "e\u{301} prompt end",
+                     String(repeating: "👩🏽‍🔧", count: 5000) + " reply end"]
+        let rows = texts.enumerated().map { i, text in
+            DevinSessionPage.Row(id: "message-\(i)", role: i == 0 ? "user" : "assistant",
+                text: String(text.unicodeScalars.prefix(8192)), truncated: true,
+                fullText: .init(length: text.unicodeScalars.count, sha256: "revision-\(i)"), calls: [])
+        }
+        let page = DevinSessionPage(offset: 0, total: rows.count, rows: rows)
+        var files = VirtualHostFiles().hostFiles()
+        files.queryDevin = { query in
+            guard let part = query.messageText else { return page }
+            let i = try #require(query.offset)
+            #expect(query.session == "test" && query.limit == 1 && part.id == rows[i].id && part.sha256 == rows[i].fullText?.sha256)
+            let chunk = texts[i].unicodeScalars.dropFirst(part.start).prefix(5001)
+            return .init(offset: i, total: rows.count, rows: [], textChunk: String(chunk))
+        }
+        var source = try #require(DevinRecordSource(session: "test", root: "/qa/devin/cli"))
+        var changing = files
+        let read = try #require(files.queryDevin)
+        changing.queryDevin = { query in
+            if let part = query.messageText, part.id == rows[1].id, part.start > 8192 {
+                return .init(offset: 1, total: rows.count, rows: [])
+            }
+            return try await read(query)
+        }
+        await #expect(throws: TransportError.self) { try await source.open(changing) }
+        #expect(source.readOffset == 0)
+
+        let lines = try #require(try await source.open(files))
+        var reducer = DevinTranscriptReducer()
+        reducer.append(lines)
+        let transcript = reducer.transcript(.init())
+        #expect(transcript.recordedPrompts.map(\.text) == [texts[0]])
+        #expect(transcript.entries.map(\.content) == [.user(.init(text: texts[0])), .assistant(.init(text: texts[1]))])
+        let handOff = HandOffSource(agentName: "QA", program: .devin, transcriptPath: source.path, transcript: transcript, startsMidConversation: false)
+        let record = HandOffRecord.markdown(for: handOff, recordedAt: .now)
+        #expect(texts.allSatisfy { record.contains($0) })
+        let capped = HandOffRecord.markdown(for: handOff, recordedAt: .now, characterLimit: 80)
+        #expect(capped.contains("beginning of the first included entry was omitted") && capped.contains("[…]") && capped.contains("reply end"))
+
+        files.queryDevin = { query in
+            #expect(query.messageText == nil)
+            return page
+        }
+        #expect(try await source.poll(files) == .unchanged)
+    }
+
+    @Test func olderSavedMessagesKeepTheirTextAndMarkPossibleTruncation() throws {
+        let prefix = String(repeating: "e\u{301}", count: 4096)
+        let entries: [ChatEntry] = [
+            .init(id: .init("devin:1"), sourceOffset: 0, content: .user(.init(text: prefix))),
+            .init(id: .init("devin:2"), sourceOffset: 1, content: .assistant(.init(text: "Short reply"))),
+        ]
+        let saved = ChatCacheDocument(key: .init(hostID: UUID(), herdrSession: "", program: .devin, conversationID: "test"),
+                                      adapterRevision: 1, transcriptPath: "/qa/devin/cli/sessions.db#test", head: Data(),
+                                      coverageStart: 0, coverageEnd: 2, reachedStart: true, title: nil, entries: entries, savedAt: .now)
+        let migrated = try #require(ChatTranscriptAdapter.standard(for: .devin)?.migrateCache?(saved))
+        #expect(migrated.entries.first == entries.first && migrated.entries.last == entries.last)
+        #expect(migrated.entries.count == 3)
+        guard case .notice(let notice) = migrated.entries[1].content else { Issue.record("Missing saved message notice"); return }
+        #expect(notice.title == String(localized: "This saved Devin message may be incomplete."))
     }
 
     @Test @MainActor func parksEachSessionsDraftAndRefusesTheOldTarget() async throws {

@@ -46,12 +46,19 @@ enum DevinSession {
 }
 
 struct DevinSessionQuery: Encodable, Sendable {
+    struct MessageText: Encodable, Sendable {
+        var id, sha256: String
+        /// Offset in Unicode scalars, the unit of Python's string slices.
+        var start: Int
+    }
+
     var session: String
     var root: String
     var offset: Int?
     var limit: Int
     var expanded = false
     var earlierWork = false
+    var messageText: MessageText?
 
     func script() throws -> Data {
         guard DevinSession.id(session) != nil, RemoteFilePath.isAcceptable(root), root.hasSuffix("/devin/cli"),
@@ -69,6 +76,7 @@ struct DevinSessionPage: Decodable, Sendable {
     var offset, total: Int
     var title, model: String?
     var rows: [Row]
+    var textChunk: String?
 
     struct EarlierWork: Codable, Equatable, Sendable {
         var offset: UInt64
@@ -76,8 +84,21 @@ struct DevinSessionPage: Decodable, Sendable {
     }
 
     struct Row: Codable, Equatable, Sendable {
+        struct FullText: Codable, Equatable, Sendable {
+            var length: Int
+            var sha256: String
+        }
+
+        struct ShellExit: Codable, Equatable, Sendable {
+            var code: Int
+            /// Number of output scalars before Devin's final exit line.
+            var outputLength: Int
+        }
+
         var id, role, text: String
         var truncated: Bool
+        var fullText: FullText?
+        var shellExit: ShellExit?
         var calls: [Call]
         var resultFor, finish, timestamp: String?
         var title, model, agentID: String?

@@ -1,11 +1,15 @@
 """Read one local Devin session from its active SQLite chain. Writes only stdout."""
 import base64
+import hashlib
 import json
 import pathlib
 import re
 import sqlite3
 import sys
 import time
+
+
+SHELL_EXIT_LINE = re.compile(r"Exit code: ([+-]?[0-9]{1,10})")
 
 
 def content_text(value):
@@ -15,6 +19,17 @@ def content_text(value):
         return "\n".join(part["text"] for part in value if isinstance(part, dict)
                          and part.get("type") in ("text", "input_text") and isinstance(part.get("text"), str))
     return ""
+
+
+def message_chunk(message, part):
+    # Streaming replies can retain their message ID while their text changes.
+    if message["role"] not in ("user", "assistant") or message["message_id"] != part["id"]:
+        return None
+    body = content_text(message.get("content"))
+    start = part["start"]
+    if start >= len(body) or hashlib.sha256(body.encode()).hexdigest() != part["sha256"]:
+        return None
+    return body[start:start + 65536]
 
 
 def row(message, limit):
@@ -49,10 +64,20 @@ def row(message, limit):
         understood = known is None or all(k in known or (k == "replace_all" and v is False) for k, v in args.items())
         complete = understood and len(json.dumps(inputs, ensure_ascii=False).encode()) <= 16384
         calls.append(dict(id=call["id"], name=call["name"], arguments=inputs if complete else {}, complete=complete))
-    return dict(id=message["message_id"], role=role, text=body[:limit], truncated=len(body) > limit,
-                calls=calls, resultFor=message.get("tool_call_id"), finish=meta.get("finish_reason"),
-                timestamp=meta.get("created_at"), agentID=agent,
-                success=(extra.get("chisel/tool_result_meta") or {}).get("success"))
+    record = dict(id=message["message_id"], role=role, text=body[:limit], truncated=len(body) > limit,
+                  calls=calls, resultFor=message.get("tool_call_id"), finish=meta.get("finish_reason"),
+                  timestamp=meta.get("created_at"), agentID=agent,
+                  success=(extra.get("chisel/tool_result_meta") or {}).get("success"))
+    if role == "tool":
+        # Only the actual final line is evidence. A preview can end on a line
+        # printed by the command, or cut through Devin's exit line.
+        last = body.rfind("\n") + 1
+        exit_line = SHELL_EXIT_LINE.fullmatch(body, last)
+        if exit_line:
+            record["shellExit"] = dict(code=int(exit_line[1]), outputLength=max(0, last - 1))
+    elif limit and role in ("user", "assistant") and record["truncated"]:
+        record["fullText"] = dict(length=len(body), sha256=hashlib.sha256(body.encode()).hexdigest())
+    return record
 
 
 def earlier_work(db, session, ids):
@@ -110,6 +135,9 @@ def read(db, request):
     offset, limit = request.get("offset"), request["limit"]
     if not 1 <= limit <= 33 or (offset is not None and not 0 <= offset < 2**31):
         raise ValueError("invalid page")
+    part = request.get("messageText")
+    if part is not None and (limit != 1 or offset is None or not isinstance(part["start"], int) or part["start"] < 0):
+        raise ValueError("invalid message range")
     db.execute("BEGIN")
     header = db.execute("SELECT main_chain_id,title,model FROM sessions WHERE id=?", (session,)).fetchone()
     if header is None:
@@ -148,7 +176,10 @@ def read(db, request):
     for node in ids[start:start + limit]:
         (raw,) = db.execute("SELECT chat_message FROM message_nodes WHERE session_id=? AND node_id=?",
                             (session, node)).fetchone()
-        result.append(row(json.loads(raw), text_limit))
+        message = json.loads(raw)
+        if part is not None:
+            return dict(offset=start, total=len(ids), rows=[], textChunk=message_chunk(message, part))
+        result.append(row(message, text_limit))
     if result and offset is None and start and request.get("earlierWork"):
         result[0]["earlierWork"] = earlier_work(db, session, ids[:start])
     if result and start + len(result) == len(ids):

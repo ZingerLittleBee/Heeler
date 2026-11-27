@@ -1,7 +1,29 @@
 import Foundation
 
 struct DevinTranscriptReducer: ChatTranscriptReducer {
+    static let revision = 2
     private var rows: [UInt64: DevinSessionPage.Row] = [:]
+
+    /// Revision 1 saved only the prefix, without its truncation flag. Retain
+    /// offline history and identify the messages whose ending needs a live read.
+    static func migrateCache(_ saved: ChatCacheDocument) -> ChatCacheDocument? {
+        guard saved.key.program == .devin, saved.adapterRevision == 1 else { return nil }
+        var document = saved
+        document.entries = saved.entries.flatMap { entry -> [ChatEntry] in
+            let text: String
+            switch entry.content {
+            case .user(let message): text = message.text
+            case .assistant(let message): text = message.text
+            default: return [entry]
+            }
+            guard text.unicodeScalars.count == 8192 else { return [entry] }
+            let notice = ChatNotice(kind: .error, title: String(localized: "This saved Devin message may be incomplete."),
+                                    detail: String(localized: "Open the live session to read the full message."))
+            return [entry, .init(id: .init("devin-cache-limit:" + entry.id.rawValue), sourceOffset: entry.sourceOffset, content: .notice(notice))]
+        }
+        document.adapterRevision = revision
+        return document
+    }
 
     mutating func append(_ lines: [ChatLine]) {
         for line in lines {

@@ -27,11 +27,45 @@ struct DevinRecordSource: ChatTranscriptSource {
 
     private func read(_ files: ChatHostFiles, offset: Int?, count: Int, expanded: Bool = false, earlierWork: Bool = false) async throws -> DevinSessionPage {
         guard let query = files.queryDevin else { throw TransportError.hostFeatureUnavailable(feature: String(localized: "Devin Chat")) }
-        let page = try await query(.init(session: session, root: root, offset: offset, limit: count, expanded: expanded, earlierWork: earlierWork))
+        var page = try await query(.init(session: session, root: root, offset: offset, limit: count, expanded: expanded, earlierWork: earlierWork))
         guard page.offset >= 0, page.total >= page.offset, page.rows.count <= count,
               page.rows.count <= page.total - page.offset,
               !page.rows.contains(where: { $0.id.isEmpty }) else { throw TransportError.hostStoreUnreadable(detail: "Invalid Devin page") }
+        if expanded { return page } // Tool details verify the call ID before using the row.
+        for i in page.rows.indices {
+            let row = page.rows[i]
+            guard row.truncated, row.role == "user" || row.role == "assistant" else { continue }
+            page.rows[i].text = try await completeText(of: row, at: page.offset + i, query: query)
+            page.rows[i].truncated = false
+        }
         return page
+    }
+
+    private func completeText(of row: DevinSessionPage.Row, at position: Int,
+                              query: @Sendable (DevinSessionQuery) async throws -> DevinSessionPage) async throws -> String {
+        var start = row.text.unicodeScalars.count
+        guard let body = row.fullText, body.length > start else {
+            throw TransportError.hostStoreUnreadable(detail: String(localized: "Devin returned an invalid message length."))
+        }
+        if let previous = held[position], previous.id == row.id, previous.fullText == body, !previous.truncated {
+            return previous.text
+        }
+        var text = row.text
+        while start < body.length {
+            try Task.checkCancellation()
+            let part = DevinSessionQuery.MessageText(id: row.id, sha256: body.sha256, start: start)
+            let reply = try await query(.init(session: session, root: root, offset: position, limit: 1, messageText: part))
+            guard reply.offset == position, let chunk = reply.textChunk, !chunk.isEmpty else {
+                throw TransportError.hostStoreUnreadable(detail: String(localized: "The Devin message changed while Chat was reading it."))
+            }
+            let length = chunk.unicodeScalars.count
+            guard length <= body.length - start else {
+                throw TransportError.hostStoreUnreadable(detail: String(localized: "Devin returned an invalid message range."))
+            }
+            text += chunk
+            start += length
+        }
+        return text
     }
 
     mutating func open(_ files: ChatHostFiles) async throws -> [ChatLine]? {

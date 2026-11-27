@@ -69,23 +69,24 @@ enum HandOffRecord {
         for source: HandOffSource, recordedAt: Date, characterLimit: Int = characterLimit
     ) -> String {
         var pieces = Self.pieces(of: source.transcript.entries)
-        var isCut = false
+        var omittedEarlier = source.startsMidConversation
         var count = pieces.reduce(0) { $0 + $1.count }
         while count > characterLimit, pieces.count > 1 {
             count -= pieces.removeFirst().count
-            isCut = true
+            omittedEarlier = true
         }
+        var omissions: [String] = []
+        if omittedEarlier { omissions.append("Earlier messages are not in this record.") }
         if let only = pieces.first, pieces.count == 1, only.count > characterLimit {
             pieces = ["[…]" + String(only.suffix(characterLimit))]
-            isCut = true
+            omissions.append("The beginning of the first included entry was omitted to fit this record.")
         }
         // A cut may leave bullets whose message is gone; they still read as
         // what happened next.
         var lines = header(for: source, recordedAt: recordedAt)
-        if isCut || source.startsMidConversation {
-            lines.append(
-                "> Earlier messages are not in this record."
-                    + (source.transcriptPath == nil ? "" : " The full transcript has them."))
+        if !omissions.isEmpty {
+            if source.transcriptPath != nil { omissions.append("The full transcript has the omitted text.") }
+            lines.append("> " + omissions.joined(separator: " "))
             lines.append("")
         }
         if pieces.isEmpty {

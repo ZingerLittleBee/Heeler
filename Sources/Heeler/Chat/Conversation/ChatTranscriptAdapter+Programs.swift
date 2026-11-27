@@ -43,8 +43,9 @@ extension ChatTranscriptAdapter {
                 identity: { PiTranscriptLocator.sessionID(inHead: $0) },
                 echoesByEntry: true)
         case .devin:
-            ChatTranscriptAdapter(revision: 1, joinsCachedHistory: false, makeReducer: { _ in DevinTranscriptReducer() },
-                                  echoesByEntry: true, makeRecordSource: { DevinRecordSource(session: $0, root: $1) })
+            ChatTranscriptAdapter(revision: DevinTranscriptReducer.revision, joinsCachedHistory: false, makeReducer: { _ in DevinTranscriptReducer() },
+                                  echoesByEntry: true, makeRecordSource: { DevinRecordSource(session: $0, root: $1) },
+                                  migrateCache: DevinTranscriptReducer.migrateCache)
         case .droid:
             ChatTranscriptAdapter(
                 revision: 1, wantsFirstLine: true, joinsCachedHistory: false,

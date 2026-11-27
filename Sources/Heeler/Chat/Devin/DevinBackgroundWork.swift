@@ -39,13 +39,11 @@ struct DevinBackgroundWork {
             case "get_output":
                 if let shell = args.shell_id, !ambiguousShells.contains(shell), let index = shells[shell] {
                     items[index].lastActivityAt = date
-                    let lines = row.text.components(separatedBy: "\n")
                     if !row.truncated, row.success == false, row.text == "This background shell was killed by the user and is no longer running. If you still need to run this command, start a new shell." {
                         finish(index, .stopped, output: row.text, at: offset, date: date)
-                    } else if !row.truncated, let last = lines.last, last.hasPrefix("Exit code: "),
-                       let code = Int(last.dropFirst("Exit code: ".count)) {
-                        let output = lines.dropLast().joined(separator: "\n").trimmingCharacters(in: .newlines)
-                        finish(index, code == 0 ? .completed : .failed, output: output, at: offset, date: date)
+                    } else if let exit = row.shellExit, exit.outputLength >= 0 {
+                        let output = String(row.text.unicodeScalars.prefix(exit.outputLength)).trimmingCharacters(in: .newlines)
+                        finish(index, exit.code == 0 ? .completed : .failed, output: output, at: offset, date: date)
                     } else if row.success == true, !row.text.isEmpty {
                         items[index].reportedOutput = row.text
                     }
