@@ -77,7 +77,7 @@ Review the command, file changes, permission scope, or proposal in the card befo
 
 Send while Droid’s message box is empty. A desktop draft, a menu, Bash mode, a running turn, or a different foreground session holds Send. Return to the original UUID to recover its draft. A lost acknowledgement stays in the timeline for reconciliation. **Stop** requires a visible interrupt prompt on the active turn. Use the terminal for steering, queue editing, selectors, side chats and Mission Control.
 
-Open the task bar for background commands and sub-Droids. A parent reply can arrive while a task is running. A recorded completion carries its own output. A running command with a verified PID and command line can be inspected and stopped from its details. When Droid has supplied only its last report, Chat shows that report. An interactive `/fork` leaves the original conversation open. Resume the copy in the terminal to switch Chat to its UUID.
+Open the task bar for background commands and sub-Droids. A parent reply can arrive while a task is running. A recorded completion carries its own output. A running command with a verified PID and complete command line can be inspected and stopped from its details. When a narrow terminal also clips the command in the details, Chat returns to the previous screen and offers the terminal. When Droid has supplied only its last report, Chat shows that report. An interactive `/fork` leaves the original conversation open. Resume the copy in the terminal to switch Chat to its UUID.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 

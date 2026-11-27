@@ -456,7 +456,7 @@ enum DroidLiveBackground {
         }
         let id = try #require(chat.droidSessionID)
         let tag = UUID().uuidString.prefix(6)
-        try await send("Use two Execute calls with fireAndForget true. First run: for i in 1 2 3 4 5 6; do echo RED_\(tag); sleep 12; done. Separately run: for i in 1 2 3 4 5 6; do echo BLUE_\(tag); sleep 7; done. Reply immediately with PARENT_\(tag). No other tools.")
+        try await send("Use two Execute calls with fireAndForget true. First run: echo RED_\(tag); sleep 72. Separately run: echo BLUE_\(tag); sleep 42. Reply immediately with PARENT_\(tag). No other tools.")
         try await wait { reply("PARENT_\(tag)") && chat.backgroundWork.rows.filter(\.isRunning).count == 2 }
         chat.suspend()
         chat.resume()

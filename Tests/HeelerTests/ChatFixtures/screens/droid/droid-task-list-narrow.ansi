@@ -1,0 +1,4 @@
+╰──────────────────────────────────────────────────────────────────────────────╯
+ > bash: For i in 1 2 3 4 5; do echo LONG_87654_TEST; sleep 17; done (pi...
+ [enter] details | [esc] back
+[⏱ 43s] ? for help                                                         IDE ◌

@@ -23,8 +23,11 @@ enum DroidChatHook: CommandHookSettings {
     private static let originalEntries = ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"].map {
         CommandHookEntry(event: $0, matcher: nil)
     }
-    static let entries = originalEntries + [CommandHookEntry(event: "Notification", matcher: "permission_prompt|elicitation_dialog"),
-                                             CommandHookEntry(event: "PostToolUse", matcher: nil)]
+    private static func notificationEntries(matcher: String) -> [CommandHookEntry] {
+        originalEntries + [CommandHookEntry(event: "Notification", matcher: matcher),
+                           CommandHookEntry(event: "PostToolUse", matcher: nil)]
+    }
+    static let entries = notificationEntries(matcher: "permission_prompt|elicitation_dialog")
     static let mixedFormReason = String(localized: "Droid's settings contain a hooks entry Heeler couldn't update.")
 
     static func disabled(in data: Data) -> Bool {
@@ -73,7 +76,12 @@ enum DroidChatHook: CommandHookSettings {
             try await createFolder(config)
             try await createFolder(folder)
             try await placeFile(contents, at: script) { $0.starts(with: Data("# Heeler Droid Chat hook\n".utf8)) }
-            try await placeFile(launchSettings(script: script), at: launch) { $0 == launchSettings(script: script, using: originalEntries) }
+            try await placeFile(launchSettings(script: script), at: launch) { previous in
+                // Only replace complete launch files emitted by earlier Heeler builds.
+                [originalEntries, notificationEntries(matcher: "permission_prompt")].contains {
+                    previous == launchSettings(script: script, using: $0)
+                }
+            }
         }
         if action != .launch {
             let settings = RemoteFilePath.join(config, "settings.json")

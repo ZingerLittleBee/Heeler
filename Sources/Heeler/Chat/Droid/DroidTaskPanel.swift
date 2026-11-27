@@ -8,8 +8,24 @@ enum DroidTaskPanel {
         var command: String
     }
 
+    enum ListEntry: Equatable {
+        case process(Process)
+        case truncated(String)
+
+        func mayIdentify(_ item: ChatBackgroundWorkItem) -> Bool {
+            switch self {
+            case .process(let process): return DroidTaskPanel.matches(process, item: item)
+            case .truncated(let prefix):
+                guard let pid = item.taskID, let first = item.title.first else { return false }
+                return [item.title, first.uppercased() + item.title.dropFirst()].contains {
+                    "bash: \($0) (pid: \(pid))".hasPrefix(prefix)
+                }
+            }
+        }
+    }
+
     enum Page: Equatable {
-        case list([Process], selection: Int)
+        case list([ListEntry], selection: Int)
         case detail(Process, output: String)
     }
 
@@ -18,7 +34,7 @@ enum DroidTaskPanel {
         guard let footer = lines.lastIndex(where: { !$0.isEmpty }), footer > 1 else { return nil }
         let hint = footer - 1
         if lines[hint] == "[enter] details | [esc] back" {
-            var processes: [Process] = []
+            var processes: [ListEntry] = []
             var focus: Int?
             var index = hint
             while index > 0 {
@@ -26,12 +42,16 @@ enum DroidTaskPanel {
                 var row = lines[index]
                 let selected = row.hasPrefix("> ")
                 if selected { row = String(row.dropFirst(2)) }
-                guard let process = process(row) else { break }
+                let entry: ListEntry
+                if let process = process(row) { entry = .process(process) }
+                else if row.hasPrefix("bash: "), row.hasSuffix("...") {
+                    entry = .truncated(String(row.dropLast(3)))
+                } else { break }
                 if selected {
                     guard focus == nil else { return nil }
                     focus = processes.count
                 }
-                processes.append(process)
+                processes.append(entry)
             }
             guard let focus else { return nil }
             return .list(processes.reversed(), selection: processes.count - 1 - focus)
@@ -39,8 +59,8 @@ enum DroidTaskPanel {
         guard lines[hint] == "[K] Kill [Esc] Back",
               let border = lines[..<hint].lastIndex(where: { $0.hasPrefix("╰──") && $0.hasSuffix("─╯") }),
               border + 2 < hint, let selected = process(lines[border + 1]),
-              lines[border + 2].hasPrefix("Started: "),
-              let output = lines[(border + 3)..<hint].firstIndex(of: "--- Latest output ---") else { return nil }
+              let started = lines[(border + 2)..<hint].firstIndex(where: { !$0.isEmpty }), lines[started].hasPrefix("Started: "),
+              let output = lines[(started + 1)..<hint].firstIndex(of: "--- Latest output ---") else { return nil }
         return .detail(selected, output: lines[(output + 1)..<hint].joined(separator: "\n").trimmingCharacters(in: .newlines))
     }
 
@@ -83,7 +103,8 @@ extension AgentChatStore {
         }
         do {
             let first = try await io.readScreen()
-            if DroidTaskPanel.read(first) == nil {
+            let openedList = DroidTaskPanel.read(first) == nil
+            if openedList {
                 let available: @Sendable (ANSIScreen) -> Bool = { screen in
                     DroidInputBox.read(screen).isSendable && screen.rows.contains {
                         $0.trimmedText.wholeMatch(of: /\([1-9][0-9]*\) processes? running \(press ↓ to view\)/) != nil
@@ -91,10 +112,20 @@ extension AgentChatStore {
                 }
                 try await key("down", showing: available)
             }
+            func closeOpenedList() async throws {
+                guard openedList else { return }
+                let list = try await read { if case .list = DroidTaskPanel.read($0) { true } else { false } }
+                let expected = DroidTaskPanel.read(list)
+                try await key("esc") { DroidTaskPanel.read($0) == expected }
+            }
             let panel = try await read { DroidTaskPanel.read($0) != nil }
+            var enteredDetails = false
             if case .list(let list, let focus) = DroidTaskPanel.read(panel) {
-                let matching = list.indices.filter { DroidTaskPanel.matches(list[$0], item: item) }
-                guard matching.count == 1, let index = matching.first else { return denied }
+                let matching = list.indices.filter { list[$0].mayIdentify(item) }
+                guard matching.count == 1, let index = matching.first else {
+                    try await closeOpenedList()
+                    return denied
+                }
                 var position = focus
                 while position != index {
                     let expected = DroidTaskPanel.Page.list(list, selection: position)
@@ -105,13 +136,26 @@ extension AgentChatStore {
                 }
                 let selected = DroidTaskPanel.Page.list(list, selection: index)
                 try await key("enter") { DroidTaskPanel.read($0) == selected }
+                enteredDetails = true
             }
             let correctDetails: @Sendable (ANSIScreen) -> Bool = { screen in
                 guard case .detail(let selected, _) = DroidTaskPanel.read(screen) else { return false }
                 return DroidTaskPanel.matches(selected, item: item)
             }
-            let details = try await read(correctDetails)
-            guard case .detail(_, let output) = DroidTaskPanel.read(details) else { return denied }
+            let details = try await read { if case .detail = DroidTaskPanel.read($0) { true } else { false } }
+            guard case .detail(let selected, let output) = DroidTaskPanel.read(details) else { return denied }
+            func leaveDetails() async throws {
+                guard enteredDetails else { return }
+                try await key("esc") {
+                    guard case .detail(let visible, _) = DroidTaskPanel.read($0) else { return false }
+                    return selected == visible
+                }
+                try await closeOpenedList()
+            }
+            guard DroidTaskPanel.matches(selected, item: item) else {
+                try await leaveDetails()
+                return denied
+            }
             if stop {
                 // A lost receipt must never press Kill again, even if the next
                 // selected process reuses the same command or process id.
@@ -119,10 +163,7 @@ extension AgentChatStore {
                 try await key("K", showing: correctDetails)
                 return String(localized: "Stop requested. Waiting for Droid’s task result.")
             }
-            try await key("esc", showing: correctDetails)
-            let list = try await read { if case .list = DroidTaskPanel.read($0) { true } else { false } }
-            let expected = DroidTaskPanel.read(list)
-            try await key("esc") { DroidTaskPanel.read($0) == expected }
+            try await leaveDetails()
             return output.isEmpty ? String(localized: "Droid has not shown any output yet.") : output
         } catch { return denied }
     }

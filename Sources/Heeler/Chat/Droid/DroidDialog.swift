@@ -245,7 +245,8 @@ enum DroidDialog {
         if footer.hasPrefix("↑↓ navigate 1-5 select"), lines.count == 5,
            lines[0] == "1. Proceed with the proposal", lines[1] == "2. Proceed with comment",
            lines[2].hasPrefix("3. Proceed and handoff to a new session"),
-           lines[3] == "4. Manually edit spec (open via system default)", lines[4] == "5. No and explain why" {
+           ["4. Manually edit spec (open via system default)", "4. Manually edit spec (xdg-open via system default)"].contains(lines[3]),
+           lines[4] == "5. No and explain why" {
             kind = .droidSpec
         } else if footer.hasPrefix("↑↓ navigate 1-4 select"), lines == [
             "1. Proceed with Manual Approvals", "2. Proceed with Low autonomy",

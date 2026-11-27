@@ -75,7 +75,12 @@ struct DroidChatTests {
         }
         let launch = try await place(.launch)
         #expect(await host.files[config] == original)
-        #expect(await host.files[launch] != nil)
+        let generated = try #require(await host.files[launch])
+        let previous = String(decoding: generated, as: UTF8.self)
+            .replacingOccurrences(of: "permission_prompt|elicitation_dialog", with: "permission_prompt")
+        await host.set(launch, Data(previous.utf8))
+        _ = try await place(.launch)
+        #expect(await host.files[launch] == generated)
         for arguments in [["--settings", "/custom.json"], ["--settings=/custom.json"]] {
             #expect(!DroidChatHook.offersLaunchSettings(kind: "droid", arguments: arguments, kernel: HerdrCoreLocator.macOSKernel))
         }
@@ -86,6 +91,9 @@ struct DroidChatTests {
         #expect(await host.files[config] == added)
         _ = try await place(.removeRegistration)
         #expect(await host.files[config] == original)
+        await host.set(launch, original)
+        await #expect(throws: HostTextFileError.self) { try await place(.launch) }
+        #expect(await host.files[launch] == original)
     }
 
     @Test func trustReadsTheCompleteFolderBeforeFactoryHasASession() throws {
@@ -139,6 +147,9 @@ struct DroidChatTests {
         let spec = try #require(DroidDialog.parse(ScreenFixture.screen("droid-spec")).dialog)
         #expect(spec.kind == .droidSpec)
         #expect(spec.options.count == 5)
+        let linux = try #require(DroidDialog.parse(ScreenFixture.screen("droid-spec-linux")).dialog)
+        #expect(linux.kind == .droidSpec && linux.options.count == 5)
+        #expect(linux.options[3].label.contains("xdg-open"))
         #expect(try DroidDialog.plan(.choose(ordinal: 3), spec, callID: "plan").keys == ["3"])
     }
 
@@ -172,6 +183,23 @@ struct DroidChatTests {
         #expect(byID["call_blue"]?.state == .completed)
         #expect(byID["call_child"]?.reportedOutput == "DROID_CHILD_742")
         #expect(byID["call_red"]?.reportedOutput?.contains("ISOLATED_BLUE") == false)
+    }
+
+    @Test func anElidedTaskListMayOpenDetailsButAClippedCommandCannotBeKilled() throws {
+        let data = Data(try ChatFixture.text("droid/background.jsonl").utf8)
+        var reducer = DroidTranscriptReducer()
+        reducer.append(JSONLLineFramer.lines(in: data))
+        var item = try #require(reducer.transcript(.init()).backgroundWork.first { $0.kind == .command })
+        item.title = "for i in 1 2 3 4 5; do echo LONG_87654_TEST; sleep 17; done"
+        item.taskID = "103804"
+        guard case .list(let list, let index) = try DroidTaskPanel.read(ScreenFixture.screen("droid-task-list-narrow")),
+              case .detail(let detail, _) = try DroidTaskPanel.read(ScreenFixture.screen("droid-task-detail-narrow")) else {
+            Issue.record("Droid's narrow task panel was not identified")
+            return
+        }
+        #expect(list[index].mayIdentify(item))
+        #expect(detail.pid == item.taskID)
+        #expect(!DroidTaskPanel.matches(detail, item: item))
     }
 
     @Test func sendsOnlyAtAnEmptyDroidPromptAndInterruptsOnlyAWorkingTurn() {
