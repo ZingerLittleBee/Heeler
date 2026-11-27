@@ -6,7 +6,7 @@ import Foundation
 struct DroidTranscriptReducer: ChatTranscriptReducer {
     private struct Record: Decodable {
         var type: String
-        var id, title, cwd, timestamp, turnId, reason: String?
+        var id, parentId, title, cwd, timestamp, turnId, reason: String?
         var message: Message?
     }
 
@@ -16,6 +16,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
         var model, effort: String?
         var systemNotice: String?
         var background: DroidBackgroundEvent?
+        var scriptWork: DroidScriptBackground.Record?
         var arguments: [String: Arguments] = [:]
 
         struct Arguments: Decodable {
@@ -66,6 +67,9 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
                notes.count == 1, notes[0].type == "text", let note = notes[0].text {
                 background = DroidBackgroundEvent(note)
             }
+            if visibility == "user_only", !fields.contains(.hookEventName) {
+                scriptWork = DroidScriptBackground.Record(decoder, role: role, visibility: visibility)
+            }
             // Startup hooks and injected context are separate user-role records.
             guard role == "user" || role == "assistant",
                   visibility == nil,
@@ -74,6 +78,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
                 return
             }
             blocks = ClaudeContentBlock.decode(from: fields, forKey: .content)
+            scriptWork = DroidScriptBackground.Record(decoder, role: role, visibility: nil, blocks: blocks)
             if role == "assistant", let raw = try? fields.decode([Arguments].self, forKey: .content) {
                 for item in raw where item.type == "tool_use" {
                     if let id = item.id { arguments[id] = item }
@@ -115,7 +120,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
             case "session_start" where line.offset == 0:
                 title = record.title
                 directory = record.cwd
-            case "message" where record.message?.blocks.isEmpty == false || record.message?.background != nil || record.message?.systemNotice != nil,
+            case "message" where record.message?.blocks.isEmpty == false || record.message?.background != nil || record.message?.systemNotice != nil || record.message?.scriptWork != nil,
                  "agent_turn_outcome" where record.turnId != nil:
                 records[line.offset] = (record, line.length)
             default: continue
@@ -134,6 +139,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
         var pending: [String: ChatPendingRequest] = [:]
         var seenMessages: Set<String> = []
         var seenCalls: Set<String> = []
+        var scripts = DroidScriptBackground()
         var currentTurn: String?
         var missingCall = false
         for offset in records.keys.sorted() {
@@ -150,6 +156,12 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
                 continue
             }
             guard let message = record.message, let id = record.id, seenMessages.insert(id).inserted else { continue }
+            if let script = message.scriptWork {
+                if let item = scripts.read(script, messageID: id, parentID: record.parentId, offset: offset,
+                                           date: ClaudeTranscriptProjection.date(record.timestamp), missingCall: &missingCall) {
+                    work.append(item)
+                }
+            }
             if let notice = message.systemNotice {
                 transcript.entries.append(.init(id: .init("droid:" + id), sourceOffset: offset,
                                                 content: .notice(.init(kind: .system, title: notice))))
@@ -158,7 +170,8 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
             if let event = message.background {
                 let index = work.firstIndex { item in
                     switch event.target {
-                    case .call(let id): item.kind == .command && item.id == id
+                    case .call(let id):
+                        item.kind == .command && item.id == id && event.matchesOutputFile(of: item)
                     case .task(let id): item.kind == .subagent && item.taskID == id
                     }
                 }
@@ -167,6 +180,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
                     work[index].endOffset = offset
                     work[index].endedAt = ClaudeTranscriptProjection.date(record.timestamp)
                     work[index].reportedOutput = event.output
+                    work[index].exitCode = event.exitCode
                 } else if index == nil { missingCall = true }
                 continue
             }

@@ -105,7 +105,7 @@ struct ChatBackgroundWorkSheet: View {
         let session = chat.droidSessionID
         return ChatBackgroundWorkActivityCard(row: row, expandedCards: $expandedCards, isDivided: isDivided,
             inspectDroid: item.flatMap { task in
-                guard chat.program == .droid, isHostConnected, let session, task.kind == .command, task.state == .running else { return nil }
+                guard chat.program == .droid, isHostConnected, let session, task.allowsDroidTaskPanel, task.state == .running else { return nil }
                 return { stop in await chat.inspectDroidTask(task, session: session, stop: stop) }
             })
     }
@@ -181,6 +181,10 @@ struct ChatBackgroundWorkActivityCard: View {
                     .buttonStyle(.bordered)
                     .disabled(actingOnTask)
                     .padding(.top, 8)
+                }
+                if isExpanded, let status = row.exitCode {
+                    Text("Exit code \(status)")
+                        .font(.caption.monospaced())
                 }
                 if isExpanded, let output = row.reportedOutput ?? taskOutput, !output.isEmpty {
                     Text(verbatim: output)

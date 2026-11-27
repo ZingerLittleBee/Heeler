@@ -220,6 +220,36 @@ extension DroidChatLiveTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCRIPT_BACKGROUND"] == "1"))
+    func reopensReadOnlyScriptCommandsWithTheirOfficialResults() async throws {
+        for _ in 0..<2 {
+            try await withLab { lab, host, projection in
+                let expected = try #require(lab.scriptBackground)
+                let live = try await self.live("work", lab: lab, host: host, projection: projection)
+                defer { live.chat.end() }
+                try #require(expected.commands.count >= 2)
+                try await live.wait {
+                    live.chat.droidSessionID == expected.sessionID && expected.commands.allSatisfy { wanted in
+                        live.chat.backgroundWork.rows.contains { $0.item.id == wanted.callID && $0.item.endOffset != nil }
+                    }
+                }
+                for wanted in expected.commands {
+                    let matches = live.chat.backgroundWork.rows.map(\.item).filter { $0.id == wanted.callID }
+                    try #require(matches.count == 1)
+                    let item = try #require(matches.first)
+                    #expect(item.kind == .command && item.droidScriptCallID == wanted.outerID)
+                    #expect(item.taskID == wanted.pid && item.title == wanted.title)
+                    #expect(item.exitCode == wanted.exitCode && item.reportedOutput == wanted.output)
+                    #expect(item.state == (wanted.exitCode == 0 ? .completed : .failed))
+                    #expect(!item.allowsDroidTaskPanel)
+                }
+                #expect(live.chat.conversation.transcript.pendingRequests.allSatisfy { request in
+                    !expected.commands.contains { $0.callID == request.callID }
+                })
+            }
+        }
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
     func keepsAnUnsentDraftWithItsSessionThroughSwitchAndReconnect() async throws {
         try await withLab { lab, host, projection in

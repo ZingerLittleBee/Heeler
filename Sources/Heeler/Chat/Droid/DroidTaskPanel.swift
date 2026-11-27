@@ -75,12 +75,18 @@ enum DroidTaskPanel {
     }
 }
 
+extension ChatBackgroundWorkItem {
+    var allowsDroidTaskPanel: Bool {
+        kind == .command && taskID?.isEmpty == false && droidScriptCallID == nil
+    }
+}
+
 extension AgentChatStore {
     /// Uses the same scoped read and checked Attach as a Blocked Card. Never
     /// signal an OS PID or send a key from an unrecognized task screen.
     func inspectDroidTask(_ item: ChatBackgroundWorkItem, session: String, stop: Bool) async -> String {
         let denied = String(localized: "Open this Droid terminal to inspect the task. Its current selection could not be verified.")
-        guard program == .droid, !droidTaskActionInFlight, !droidTaskStops.contains(item.id) else { return denied }
+        guard program == .droid, item.allowsDroidTaskPanel, !droidTaskActionInFlight, !droidTaskStops.contains(item.id) else { return denied }
         droidTaskActionInFlight = true
         defer { droidTaskActionInFlight = false }
         guard

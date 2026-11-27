@@ -1261,6 +1261,10 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     var outputPath: String?
     /// The task-specific output delivered by its finishing record.
     var reportedOutput: String?
+    /// A numeric process exit status recorded with the background command's result.
+    var exitCode: Int?
+    /// The enclosing Factory Script that reported this inner command on the transcript.
+    var droidScriptCallID: String?
     /// Claude Code's id for a background command's task, which a stop or a
     /// Monitor's closing event names in place of the launching call; for a
     /// teammate, its agent id, which names its files under `subagents/`.

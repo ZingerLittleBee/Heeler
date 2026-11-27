@@ -84,6 +84,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
         let usage: String?
         let agents: [Agent]
         var reportedOutput: String? = nil
+        var exitCode: Int? = nil
         let accessibilityLabel: String
 
         static func singleLine(_ text: String) -> String {
@@ -317,7 +318,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 id: item.id, kind: item.kind, status: status, title: item.title, caption: caption,
                 detail: item.kind == .workflow || item.kind == .command ? item.subtitle : nil, fraction: fraction,
                 time: seconds.map { ChatBackgroundWorkPresentation.duration($0, width: .narrow, locale: locale) },
-                note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status), reportedOutput: item.reportedOutput,
+                note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status), reportedOutput: item.reportedOutput, exitCode: item.exitCode,
                 accessibilityLabel: spoken.joined(separator: ", "))
         }
 
