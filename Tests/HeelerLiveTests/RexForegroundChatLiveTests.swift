@@ -839,3 +839,277 @@ private extension RexForegroundChatLiveTests {
         #expect(peerFile.range(of: Data(probe.callID.utf8)) == nil)
     }
 }
+
+/// A and B have separate signed-in Antigravity sessions in one disposable
+/// directory. A third foreground has never received a prompt.
+@MainActor
+@Suite("Bound Antigravity on a private Linux Rex Host", .serialized, .timeLimit(.minutes(4)))
+struct RexAntigravityChatLiveTests {
+    private struct Peer: Decodable {
+        let session, block: String
+        let id, file, startMarker, directory: String?
+        let pid: Int
+
+        var address: RexPaneAddress { RexPaneAddress(sessionID: session, blockID: block) }
+    }
+
+    private struct Lab: Decodable {
+        let port: Int
+        let user, seed, fingerprint, rexSocket, directory, executable: String
+        let peers: [String: Peer]
+
+        func settings() throws -> SSHTransportSettings {
+            let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: seed)))
+            var connection = SSHTransportSettings(
+                host: "127.0.0.1", port: port, username: user, credentials: .ed25519(key),
+                hostKeyPolicy: .init(knownHosts: InMemoryKnownHostsStore()) { $0.fingerprint.displayString == self.fingerprint },
+                socket: .defaultSession)
+            connection.serverKind = .rex
+            return connection
+        }
+    }
+
+    private func wait(_ description: String, _ predicate: () async throws -> Bool) async throws {
+        let until = ContinuousClock.now.advanced(by: .seconds(38))
+        repeat {
+            if try await predicate() { return }
+            try await Task.sleep(for: .milliseconds(250))
+        } while ContinuousClock.now < until
+        try #require(Bool(false), "\(description)")
+    }
+
+    @Test func routesTheNativeApprovalToItsOwnTerminal() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_REX_ANTIGRAVITY_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let peer = try #require(lab.peers["blocked"])
+        let directory = try #require(peer.directory)
+        try #require(directory.split(separator: "/").contains { $0.hasPrefix("heeler-lab-") })
+        let socket = try #require(RexSocket(path: lab.rexSocket))
+        let ssh = try lab.settings()
+        let session = RexHostSession(storedSocket: socket) { saved, previous in
+            try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: ssh), socket: saved, resuming: previous)
+        }
+        let host = Host(name: "heeler-lab-agy-approval", address: "127.0.0.1", port: lab.port, username: lab.user, serverKind: .rex)
+        let console = ConsoleStore(makeRexSession: { _ in session })
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await wait("the original foreground reports a blocked state") {
+            console.agents.contains { $0.id.hostID == host.id && $0.id.paneID == peer.address.paneID
+                && $0.agent.kind == ChatProgram.agy.rawValue && $0.agent.cwd == directory && $0.agent.status == .blocked }
+        }
+        let row = try #require(console.agents.first { $0.id.hostID == host.id && $0.id.paneID == peer.address.paneID })
+        await console.refreshAntigravityBinding(for: row)
+        #expect(console.chatProgram(for: row) == nil)
+        #expect(console.chatStore(for: row, program: .agy) == nil)
+        #expect(AgentDetailView.openingSurface(for: row, console: console, preferred: .chat, keepingTo: nil) == .terminal)
+        let block = try await session.blockRequests(at: peer.address, readDeadline: .sharedLinkRead)
+        let process = try await RexInventoryWire.process(block.read(.process))
+        #expect(process.processID == peer.pid && process.program == "agy")
+        let screen = try await console.readAgentScreen(peer.address.paneID, on: host.id, keepingTo: console.composerSession(for: row).corePin)
+        let prompt = screen.rows.map(\.text).joined(separator: " ").lowercased()
+        let offersNativeApproval = prompt.contains("run command") && prompt.contains("allow")
+        #expect(offersNativeApproval)
+        let files = console.chatHostFiles(for: host.id)
+        let nativeRecord = try await files.status(try #require(peer.file))
+        #expect(nativeRecord != nil)
+        let commandResult = try await files.status(directory + "/heeler-lab-approval.txt")
+        #expect(commandResult == nil)
+    }
+
+    @Test func textFollowsOnlyThePublishedForegroundAndRestoresItsDraft() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_REX_ANTIGRAVITY_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let a = try #require(lab.peers["a"]), b = try #require(lab.peers["b"]), fresh = try #require(lab.peers["fresh"])
+        let first = try #require(a.file), peerFile = try #require(b.file), uuid = try #require(a.id)
+        try #require(UUID(uuidString: uuid) != nil && first != peerFile && a.pid != b.pid)
+        try #require(lab.directory.split(separator: "/").contains { $0.hasPrefix("heeler-lab-") })
+        try #require(lab.executable.hasSuffix("/bin/agy") && lab.executable.range(of: #"^/[A-Za-z0-9/_-]+$"#, options: .regularExpression) != nil)
+        let socket = try #require(RexSocket(path: lab.rexSocket))
+        let ssh = try lab.settings()
+        let link = RexHostSession(storedSocket: socket) { saved, previous in
+            try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: ssh), socket: saved, resuming: previous)
+        }
+        let desktop = try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: ssh), socket: socket)
+        defer { Task { await desktop.close() } }
+        let host = Host(name: "heeler-lab-agy-bound", address: "127.0.0.1", port: lab.port, username: lab.user, serverKind: .rex)
+        let console = ConsoleStore(makeRexSession: { _ in link })
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        func agent(_ peer: Peer) -> ConsoleAgent? {
+            console.agents.first { $0.id.hostID == host.id && $0.id.paneID == peer.address.paneID
+                && $0.agent.kind == ChatProgram.agy.rawValue && $0.agent.cwd == lab.directory }
+        }
+        func checkBinding(_ peer: Peer) async -> ConsoleAgent? {
+            guard let current = agent(peer) else { return nil }
+            await console.refreshAntigravityBinding(for: current)
+            return console.chatProgram(for: current) == .agy ? current : nil
+        }
+        func file(_ path: String) async throws -> Data {
+            let slice = try await console.chatHostFiles(for: host.id).read(.init(path: path, offset: 0, maxBytes: 2 << 20))
+            try #require(slice.length == UInt64(slice.data.count) && !slice.data.isEmpty)
+            return slice.data
+        }
+        func request(_ peer: Peer, _ method: String, _ args: [String: JSONValue] = [:]) async throws -> JSONValue {
+            var payload = ["session_id": JSONValue.string(peer.session), "block_id": .string(peer.block)]
+            payload.merge(args) { $1 }
+            return try await desktop.control.call(RexInventoryWire.terminalMethod(method), payload: JSONValue.object(payload)).result(JSONValue.self)
+        }
+        func desktopLine(_ text: String) async throws {
+            _ = try await request(a, "write", ["args": .object(["data": .string(text)])])
+            try await Task.sleep(for: .milliseconds(230))
+            _ = try await request(a, "write", ["args": .object(["data": .string("\r")])])
+        }
+        _ = try await desktop.control.call("session.attach_all", payload: JSONValue.object(["event_scope": .string("all")]))
+        for peer in [a, b, fresh] {
+            let session = JSONValue.object(["session_id": .string(peer.session)])
+            let view = try await desktop.control.call("session.view", payload: session).result(JSONValue.self)
+            try #require(view["label"]?.stringValue?.hasPrefix("heeler-lab-") == true)
+            _ = try await desktop.control.call("session.attach", payload: session)
+        }
+        try await wait("all three official foregrounds in the Console") { [a, b, fresh].allSatisfy { agent($0) != nil } }
+        let empty = try #require(agent(fresh))
+        await console.refreshAntigravityBinding(for: empty)
+        #expect(console.chatProgram(for: empty) == nil)
+        #expect(console.chatStore(for: empty, program: .agy) == nil)
+        #expect(AgentDetailView.openingSurface(for: empty, console: console, preferred: .chat, keepingTo: nil) == .terminal)
+        try await wait("the two published foregrounds") {
+            let one = await checkBinding(a)
+            let two = await checkBinding(b)
+            return one != nil && two != nil
+        }
+        let row = try #require(agent(a)), peerRow = try #require(agent(b))
+        let chat = try #require(console.chatStore(for: row, program: .agy))
+        let second = try #require(console.chatStore(for: peerRow, program: .agy))
+        defer { chat.end(); second.end() }
+        try await wait("distinct official transcripts") {
+            await chat.step()
+            await second.step()
+            return chat.conversation.phase == .following(path: first) && second.conversation.phase == .following(path: peerFile)
+        }
+        let peerBefore = try await file(peerFile), beforeGrid = try await request(a, "size"), peerGrid = try await request(b, "size")
+        let marker = "HEELER_LAB_AGY_SEND_" + UUID().uuidString.prefix(8)
+        let held = "HEELER_LAB_AGY_HELD_" + UUID().uuidString.prefix(8)
+        let rotated = "HEELER_LAB_AGY_NEW_" + UUID().uuidString.prefix(8)
+        let session = console.composerSession(for: row)
+        let composer = session.composer
+        composer.bindChatDraft(to: chat.composerSessionID, program: .agy)
+        let originalOwner = try #require(chat.composerSessionID)
+        let originalCheck = try #require(chat.composerSessionInputCheck)
+        let rules = ChatSendRules(program: .agy, commands: [])
+        func policy() -> ComposerDeliveryPolicy {
+            var result = ComposerDeliveryPolicy.chat(rules: rules,
+                activity: { ChatAgentActivity(agent(a)?.agent.status) },
+                readScreen: {
+                    let screen = try await console.readAgentScreen(a.address.paneID, on: host.id, keepingTo: session.corePin)
+                    chat.inputBoxWasRead(screen)
+                    return screen
+                },
+                confirmSession: { await chat.confirmSessionBeforeSend(for: composer) },
+                heldSession: { chat.sessionRefusalBeforeCheck() },
+                sendConcern: { chat.sendConcern(for: $0, after: $1) },
+                willReadScreen: { chat.updateSends(ChatComposerEchoes.sentMessages(composer.messages, rules: rules)) },
+                conversation: { chat.conversationGeneration })
+            result.sessionWrite = chat.composerWriteCheck(for: composer)
+            result.restrictAntigravityToMessages(hasAttachments: !composer.imageAttachments.isEmpty)
+            return result
+        }
+        func put(_ text: String) {
+            composer.replaceDraft(with: text)
+            chat.draftDidChange(to: text)
+        }
+        put("/clear")
+        guard case .refused = await composer.send(policy: policy()) else {
+            Issue.record("Chat accepted a command reserved for the terminal")
+            return
+        }
+        let local = FileManager.default.temporaryDirectory.appendingPathComponent("heeler-lab-agy-" + UUID().uuidString + ".txt")
+        defer { try? FileManager.default.removeItem(at: local) }
+        let bytes = Data(held.utf8)
+        try bytes.write(to: local)
+        let stagedFile = PreparedFile(fileURL: local, fileExtension: "txt", byteCount: Int64(bytes.count), pickedName: local.lastPathComponent)
+        let staged = try await console.fileStager(for: host.id, beside: a.address.paneID, keepingTo: session.corePin)(stagedFile, .init { _ in })
+        try #require(try await file(staged.path) == bytes)
+        composer.imageStagingDidBegin(operationID: 1)
+        composer.imageStagingDidComplete(operationID: 1, path: staged.path, preview: nil)
+        put(held)
+        guard case .refused = await composer.send(policy: policy()) else {
+            Issue.record("Chat accepted a message with attachments")
+            return
+        }
+        let pill = try #require(composer.imageAttachments.first)
+        composer.removeImageAttachment(id: pill.id)
+        try #require(composer.imageAttachments.isEmpty)
+        do {
+            try await chat.screenIO.sendKeys(["enter"])
+            Issue.record("Chat offered an unchecked approval key")
+            return
+        } catch {}
+        let prompt = "Reply with exactly this marker. Do not use tools.\n\n请只返回标记 " + marker
+        put(prompt)
+        let sent = await composer.send(policy: policy())
+        try #require(sent == .deliveredViaAttach || sent == .submittedViaAttach || sent == .deliveredViaPrompt, "\(String(describing: sent))")
+        try await wait("one user prompt and its official Antigravity reply") {
+            await chat.step()
+            return chat.conversation.transcript.recordedPrompts.filter { $0.text.contains(marker) }.count == 1
+                && chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: marker)) }
+        }
+        let accepted = try await file(first)
+        put(held)
+        let earlierPolicy = policy()
+        try await desktopLine("/clear")
+        try await wait("the desktop clears the original UUID") { !(await originalCheck()) }
+        try await wait("a locked conversation without a published transcript uses Terminal") { await checkBinding(a) == nil }
+        guard case .refused = await composer.send(policy: earlierPolicy) else {
+            Issue.record("A parked message reached the new empty conversation")
+            return
+        }
+        try await desktopLine("Reply with exactly " + rotated + ". Do not use tools.")
+        try await wait("the new foreground publishes its own user and assistant turns") {
+            guard await checkBinding(a) != nil else { return false }
+            await chat.step()
+            return chat.composerSessionID != originalOwner
+                && chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: rotated)) }
+        }
+        guard case .following(let newFile) = chat.conversation.phase else { throw TransportError.cancelled }
+        try #require(newFile != first && newFile != peerFile)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .agy)
+        #expect(composer.draft.isEmpty)
+        #expect(!(await originalCheck()))
+        _ = try await request(a, "write", ["args": .object(["data": .string("\u{4}")])])
+        try await wait("the original block returns to its own shell") {
+            let f = RexInventoryWire.process(try await request(a, "process"))
+            return f.program == "bash" && f.processID != a.pid
+        }
+        await console.refreshAntigravityBinding(for: row)
+        #expect(console.chatProgram(for: row) == nil)
+        #expect(!(await originalCheck()))
+        let shellRequests = try await link.blockRequests(at: a.address, readDeadline: .sharedLinkRead)
+        let shell = try await RexChatScreen.read(on: shellRequests).screen
+        let wroteToShell = shell.rows.contains { $0.text.contains(held) }
+        #expect(!wroteToShell)
+        try await desktopLine(lab.executable + " --conversation " + uuid)
+        try await wait("returning to the original official UUID restores its draft") {
+            guard let resumedRow = await checkBinding(a),
+                  let resumedChat = console.chatStore(for: resumedRow, program: .agy) else { return false }
+            await resumedChat.step()
+            guard resumedChat.conversation.phase == .following(path: first),
+                  resumedChat.composerSessionID == originalOwner else { return false }
+            let resumedComposer = console.composerSession(for: resumedRow).composer
+            resumedComposer.bindChatDraft(to: resumedChat.composerSessionID, program: .agy)
+            return resumedComposer.draft == held
+        }
+        let resumed = try await file(first), newRecord = try await file(newFile), peerAfter = try await file(peerFile)
+        #expect(resumed.starts(with: accepted))
+        let history = String(decoding: resumed + newRecord + peerAfter, as: UTF8.self)
+        let recordedParkedDraft = history.contains(held)
+        let recordedAttachment = history.contains(staged.path)
+        let peerWasUnchanged = peerBefore == peerAfter
+        #expect(!recordedParkedDraft)
+        #expect(!recordedAttachment)
+        #expect(peerWasUnchanged)
+        #expect(try await request(a, "size") == beforeGrid)
+        #expect(try await request(b, "size") == peerGrid)
+    }
+}
