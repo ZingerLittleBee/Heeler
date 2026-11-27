@@ -70,6 +70,12 @@ final class NotificationPreferencesStore {
     }
 
     private(set) var hosts: [Host] = []
+    private(set) var rexBannerHosts: [Host] = []
+    /// An entry enables local banners for this Rex Host; its value includes Done.
+    private var rexDoneByHost: [String: Bool]
+    private let rexBannerDefaults: UserDefaults?
+    private static let rexBannersKey = "notifications.rexForegroundBanners"
+    @ObservationIgnored var onRexBannersChanged: (@MainActor (Host.ID) -> Void)?
     private(set) var states: [Host.ID: HostState] = [:]
     /// What a core Host's Helper needs, from its last read.
     private var helperRequirements: [Host.ID: String] = [:]
@@ -111,18 +117,26 @@ final class NotificationPreferencesStore {
         transports: any NotificationTransportProvider,
         deviceToken: @escaping @MainActor () -> APNSDeviceToken?,
         relayBaseURL: @escaping @MainActor () -> URL? = { nil },
-        ceremony: NotificationRegistrationCeremony = NotificationRegistrationCeremony()
+        ceremony: NotificationRegistrationCeremony = NotificationRegistrationCeremony(),
+        rexBannerDefaults: UserDefaults? = nil
     ) {
         self.transports = transports
         self.deviceToken = deviceToken
         self.relayBaseURL = relayBaseURL
         self.ceremony = ceremony
+        self.rexBannerDefaults = rexBannerDefaults
+        rexDoneByHost = rexBannerDefaults?.dictionary(forKey: Self.rexBannersKey) as? [String: Bool] ?? [:]
     }
 
     /// Only unchanged Hosts keep confirmed state and in-flight operations. A
     /// Host waiting for its Server Kind has no notifications to offer yet, nor
     /// has one of a kind without a plugin or a Host Helper.
     func setHosts(_ catalogHosts: [Host]) {
+        let rexHosts = catalogHosts.filter { $0.serverKind == .rex }
+        for old in rexBannerHosts where !rexHosts.contains(where: { $0.id == old.id }) {
+            setRexBannersEnabled(false, for: old.id)
+        }
+        rexBannerHosts = rexHosts
         let hosts = catalogHosts.filter(\.serverKind.hasHostIntegrations)
         let unchanged = Set(
             hosts.filter { incoming in
@@ -141,6 +155,29 @@ final class NotificationPreferencesStore {
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
         operations[host.id] == operation && hosts.contains { Self.isSameNotificationHost($0, host) }
+    }
+
+    func rexBannerTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {
+        guard rexBannerHosts.contains(where: { $0.id == hostID }),
+            let done = rexDoneByHost[hostID.uuidString] else { return nil }
+        return NotificationTriggerPreferences(blocked: true, done: done)
+    }
+
+    func setRexBannersEnabled(_ enabled: Bool, for hostID: Host.ID) {
+        saveRexBannerChoice(enabled ? rexDoneByHost[hostID.uuidString] ?? false : nil, for: hostID)
+    }
+
+    func setRexDoneEnabled(_ enabled: Bool, for hostID: Host.ID) {
+        guard rexDoneByHost[hostID.uuidString] != nil else { return }
+        saveRexBannerChoice(enabled, for: hostID)
+    }
+
+    private func saveRexBannerChoice(_ includeDone: Bool?, for hostID: Host.ID) {
+        guard rexBannerHosts.contains(where: { $0.id == hostID }),
+            rexDoneByHost[hostID.uuidString] != includeDone else { return }
+        rexDoneByHost[hostID.uuidString] = includeDone
+        rexBannerDefaults?.set(rexDoneByHost, forKey: Self.rexBannersKey)
+        onRexBannersChanged?(hostID)
     }
 
     /// A tmux Host's stored paths move as a connection resolves them, without

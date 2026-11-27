@@ -666,6 +666,24 @@ final class RexConsoleProjection: ConsoleHostProjection {
             .first { $0.blockID == address.blockID }?.details
     }
 
+    func bannerRecipient(for paneID: String) -> RexBannerRecipient? {
+        guard status == .connected, !isAwaitingSnapshot, let server, let address = RexPaneAddress(paneID: paneID),
+            let details = listedDetails(at: address), let pid = details.processID,
+            let kind = RexAgentRule.agentKind(in: details),
+            let follow = RexAgentRule.report(of: details, heldBy: kind)?.follow else { return nil }
+        return RexBannerRecipient(
+            instanceID: server.instanceID, connectionGeneration: transportGeneration, followID: follow.id, pid: pid, kind: kind)
+    }
+
+    func verifyBannerRecipient(_ captured: RexBannerRecipient, for paneID: String) async -> Bool {
+        guard bannerRecipient(for: paneID) == captured, let server, let address = RexPaneAddress(paneID: paneID),
+            let listed = listedDetails(at: address),
+            let fresh = try? await detailsWithCurrentForeground(at: address, listed: listed, server: server)
+        else { return false }
+        return fresh.processID == captured.pid && RexAgentRule.agentKind(in: fresh) == captured.kind
+            && bannerRecipient(for: paneID) == captured
+    }
+
     /// The terminal's pick as it stands now; nil once its server or the
     /// terminal is gone, which says nothing newer.
     private func pickLabels(at paneID: String, on core: String) -> [String: String]? {

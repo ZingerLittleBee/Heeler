@@ -38,6 +38,18 @@ struct NotificationSettingsView: View {
                 }
             }
 
+            if !notificationPreferences.rexBannerHosts.isEmpty {
+                Section {
+                    ForEach(notificationPreferences.rexBannerHosts) { @Sendable host in
+                        MainActorContent { rexBannerToggles(for: host) }
+                    }
+                } header: {
+                    Text("Rex In-App Banners")
+                } footer: {
+                    Text("While Heeler is open, show a banner when an Agent is blocked or reports an error.")
+                }
+            }
+
             // The persistent privacy disclosure (#76): the same story as
             // the pre-permission explainer, reachable any time, linking to
             // PRIVACY.md.
@@ -125,6 +137,21 @@ struct NotificationSettingsView: View {
         HostNotificationSettings(
             host: host, preferences: notificationPreferences, liveActivities: liveActivities,
             pluginStatuses: pluginStatuses, openHostHelper: openHostHelper)
+    }
+
+    @ViewBuilder
+    private func rexBannerToggles(for host: Host) -> some View {
+        let triggers = notificationPreferences.rexBannerTriggers(for: host.id)
+        Toggle(host.displayName, isOn: Binding(
+            get: { triggers != nil },
+            set: { notificationPreferences.setRexBannersEnabled($0, for: host.id) }))
+            .accessibilityIdentifier("settings.notifications.rexBanners.\(host.id.uuidString)")
+        if let triggers {
+            Toggle("Include Done", isOn: Binding(
+                get: { triggers.done },
+                set: { notificationPreferences.setRexDoneEnabled($0, for: host.id) }))
+                .accessibilityIdentifier("settings.notifications.rexDone.\(host.id.uuidString)")
+        }
     }
 
     @ViewBuilder

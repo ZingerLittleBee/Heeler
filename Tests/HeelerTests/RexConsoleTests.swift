@@ -345,6 +345,56 @@ struct RexConsoleTests {
         return studio
     }
 
+    @Test func aRexBannerOpensOnlyTheForegroundThatReported() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let server = await served(world)[0]
+        let console = store(servers: [server])
+        let host = rex
+        let preferences = NotificationPreferencesStore(transports: console, deviceToken: { nil })
+        let banners = AgentNotificationBannerStore(
+            holdDuration: .milliseconds(5), presentedAgent: { nil },
+            triggers: { preferences.rexBannerTriggers(for: $0) }, playSound: {},
+            rexRecipient: { console.rexBannerRecipient(for: $0) },
+            verifyRexRecipient: { await console.verifyRexBannerRecipient($1, for: $0) })
+        preferences.setHosts([host])
+        preferences.setRexBannersEnabled(true, for: host.id)
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("working") { console.agents.first?.agent.status == .working }
+        let target = try #require(console.agents.first?.id)
+        let block = world.sessions[0].windows[0].layers[0].blocks[2]
+        func receive(_ state: String, _ status: AgentStatus, second: Int) async throws {
+            let record = block.record(state, app: "codex", at: "2026-11-16T12:00:0\(second)+00:00")
+            world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
+            await server.push("block_event",
+                blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]), session: "session:studio")
+            try await waitUntil(state) { console.agents.first?.agent.status == status }
+            banners.agentsDidChange(console.agents)
+        }
+        try await receive("blocked", .blocked, second: 1)
+        banners.setRexForeground(true, agents: console.agents)
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(banners.banner == nil, "An existing Blocked row is the foreground baseline")
+        try await receive("working", .working, second: 2)
+        try await receive("blocked", .blocked, second: 3)
+        try await waitUntil("the banner") { banners.banner != nil }
+        let first = try #require(banners.banner)
+        var landed: AgentNotificationTarget?
+        await banners.open(first) { landed = $0 }
+        #expect(landed?.agentID == target)
+        try await receive("working", .working, second: 4)
+        try await receive("blocked", .blocked, second: 5)
+        try await waitUntil("the next banner") { banners.banner != nil }
+        let stale = try #require(banners.banner)
+        // The foreground changed on the server before its event reached this device.
+        world.update { $0[0].windows[0].layers[0].blocks[2].processID += 1 }
+        var replacement: AgentNotificationTarget?
+        await banners.open(stale) { replacement = $0 }
+        #expect(replacement == nil)
+        #expect(banners.banner == nil)
+        await console.suspend()
+    }
+
     private func blockEvent(_ name: String, _ payload: JSONValue, block: String = "block:left") -> JSONValue {
         ["block_id": .string(block), "creator_name": .string(RexInventoryWire.terminalCreator), "name": .string(name),
          "payload": payload]

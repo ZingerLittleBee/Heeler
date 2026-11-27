@@ -481,8 +481,11 @@ struct ConsoleView: View {
         .overlay(alignment: .top) {
             if let banner = bannerStore.banner {
                 AgentNotificationBannerView(banner: banner) {
-                    bannerStore.dismiss()
-                    openNotificationTarget(banner.target)
+                    Task { @MainActor in
+                        await bannerStore.open(banner) { target in
+                            openNotificationTarget(target, requiresKnownAgent: banner.rexRecipient != nil)
+                        }
+                    }
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -2946,11 +2949,11 @@ struct ConsoleView: View {
 
     /// Deep links raised inside this window obey the same single-window rule
     /// as a notification tap.
-    private func openNotificationTarget(_ target: AgentNotificationTarget?) {
+    private func openNotificationTarget(_ target: AgentNotificationTarget, requiresKnownAgent: Bool) {
         if let sceneRouting {
-            sceneRouting.open(target)
+            sceneRouting.open(target, requiresKnownAgent: requiresKnownAgent)
         } else {
-            notificationRouter.open(target)
+            notificationRouter.open(target, requiresKnownAgent: requiresKnownAgent)
         }
     }
 

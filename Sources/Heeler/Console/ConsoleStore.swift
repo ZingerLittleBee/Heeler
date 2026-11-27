@@ -840,6 +840,17 @@ final class ConsoleStore {
 
     /// The projection behind every Host-scoped RPC; an unconnected Host
     /// fails loudly instead of silently dropping the action.
+    func rexBannerRecipient(for id: ConsoleAgent.ID) -> RexBannerRecipient? {
+        (projections[id.hostID] as? RexConsoleProjection)?.bannerRecipient(for: id.paneID)
+    }
+
+    func verifyRexBannerRecipient(_ captured: RexBannerRecipient, for id: ConsoleAgent.ID) async -> Bool {
+        guard let rex = projections[id.hostID] as? RexConsoleProjection,
+            await rex.verifyBannerRecipient(captured, for: id.paneID)
+        else { return false }
+        return projections[id.hostID] === rex
+    }
+
     private func projection(for hostID: Host.ID) throws -> any ConsoleHostProjection {
         guard let projection = projections[hostID] else {
             throw TransportError.sshUnreachable(

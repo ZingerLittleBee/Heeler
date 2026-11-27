@@ -363,16 +363,15 @@ final class AgentSceneDirectory {
     /// Routes one deep link under the single-window rule. `preferredSceneID`
     /// is the window the link arrived through, when there is one — a banner
     /// tap, a URL opened into that window.
-    func open(_ target: AgentNotificationTarget?, preferredSceneID: UUID? = nil) {
+    func open(_ target: AgentNotificationTarget?, preferredSceneID: UUID? = nil, requiresKnownAgent: Bool = false) {
         let decision = AgentDeepLinkPolicy.decide(
             target: target?.agentID, scenes: scenes, preferredSceneID: preferredSceneID)
         switch decision {
         case .awaitScene:
-            pendingOpen = .some(target)
+            if !requiresKnownAgent { pendingOpen = .some(target) }
         case .activate(let sceneID), .route(let sceneID):
+            guard let entry = entries[sceneID], entry.router.open(target, requiresKnownAgent: requiresKnownAgent) else { return }
             pendingOpen = nil
-            guard let entry = entries[sceneID] else { return }
-            entry.router.open(target)
             reconcileTerminalOwnership()
             entry.activate()
         }
@@ -404,8 +403,8 @@ struct AgentSceneRouting: Equatable {
     }
 
     @MainActor
-    func open(_ target: AgentNotificationTarget?) {
-        directory.open(target, preferredSceneID: sceneID)
+    func open(_ target: AgentNotificationTarget?, requiresKnownAgent: Bool = false) {
+        directory.open(target, preferredSceneID: sceneID, requiresKnownAgent: requiresKnownAgent)
     }
 
     @MainActor
