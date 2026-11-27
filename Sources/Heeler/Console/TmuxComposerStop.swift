@@ -91,8 +91,9 @@ final class TmuxComposerStop {
                     return .failed(ChatStopPlan.unreadableScreenMessage)
                 }
                 let activity = Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown)
-                let verified = if program == .devin, activity == .unknown { await confirmTarget?() == true } else { false }
-                if program == .devin, activity == .unknown, !verified { return .failed(ChatStopPlan.changedDroidTurn) }
+                let needsTurnProof = program == .devin && (activity == .unknown || activity == .idle)
+                let verified = if needsTurnProof { await confirmTarget?() == true } else { false }
+                if needsTurnProof, !verified { return .failed(ChatStopPlan.changedDroidTurn) }
                 let context = ChatStopContext(screen: screen, activity: activity, hasVerifiedTurn: verified)
                 if case .refuse(let reason) = screenGuard(context) {
                     return .failed(reason)

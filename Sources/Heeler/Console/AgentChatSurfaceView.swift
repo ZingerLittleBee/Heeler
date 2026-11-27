@@ -1337,7 +1337,7 @@ struct AgentChatSurfaceView: View {
     }
 
     private var composerStatus: AgentStatus {
-        if program == .devin, agent.agent.status == .unknown,
+        if program == .devin, [.unknown, .idle, .done].contains(agent.agent.status),
            console.tmuxProjection(on: agent.hostID) != nil, chat?.hasActivePinnedTurn == true { return .working }
         return agent.agent.status
     }

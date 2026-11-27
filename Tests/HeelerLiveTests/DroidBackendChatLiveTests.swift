@@ -101,7 +101,7 @@ struct DroidBackendChatLiveTests {
     /// The external driver replaces only this dedicated server. Both the old
     /// and the new Droid must show their own live Create call for the same file.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"] != nil),
-          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+          arguments: LiveChatLabSelection.cases([.herdrTUI, .herdrCore, .tmux, .rex]))
     func staleCardAndDraftCannotWriteToAReplacementServer(_ kind: ServerKind) async throws {
         let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"]))
         let directory = root.appendingPathComponent(kind.rawValue)

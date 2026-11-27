@@ -5,6 +5,24 @@ import Testing
 
 @Suite("Devin Chat")
 struct DevinChatTests {
+    @Test func stopNeedsTheOpenTurnAndInterruptFooterWhenTheLastReportWasIdle() throws {
+        let screen = ANSIScreenDecoder.decode("""
+            Generating (esc twice to interrupt)
+            ─────────────────────────
+            ❭ Guide Devin while it works
+            ─────────────────────────
+            SWE-2 High
+            """)
+        #expect(DevinInputBox.stop(.init(screen: screen, activity: .idle, hasVerifiedTurn: true)) == .press)
+        for context in [
+            ChatStopContext(screen: screen, activity: .idle),
+            .init(screen: screen, activity: .blocked, hasVerifiedTurn: true),
+            .init(screen: try ScreenFixture.screen("devin-idle"), activity: .idle, hasVerifiedTurn: true),
+        ] {
+            if case .press = DevinInputBox.stop(context) { Issue.record("Unexpected Stop on a stale or blocked turn") }
+        }
+    }
+
     @Test func ordinaryNewAgentUsesADedicatedWriterAndPreservesPresets() {
         let plain = AgentLaunchRequest(kind: "devin", name: "review")
         #expect(DevinSession.localLaunch(plain, platform: .posix).arguments == ["--process-model=in-process"])

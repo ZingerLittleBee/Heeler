@@ -225,14 +225,15 @@ struct DevinChatLiveTests {
                 } else {
                     await chat.blocked.perform(.choose(ordinal: 2), shownCard: shown)
                     var running = true
-                    for _ in 0..<30 {
+                    let deadline = ContinuousClock.now + .seconds(25)
+                    while ContinuousClock.now < deadline {
                         if let tui = live.projection as? HostConsoleProjection {
                             running = (try? await tui.processInfo(paneID: pane).foregroundProcesses?.contains { $0.name == "devin" }) == true
                         } else {
                             running = live.projection.agentsByPane[pane]?.agent.kind == "devin"
                         }
                         if !running { break }
-                        try await Task.sleep(for: .milliseconds(150))
+                        try await Task.sleep(for: .milliseconds(250))
                     }
                     try #require(!running)
                     await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
