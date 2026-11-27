@@ -101,7 +101,7 @@ struct DevinChatLiveTests {
             let files = live.projection.chatHostFiles()
             let marker = "DEVIN_A_" + tag
             let rawRex = backend == .rex && live.chat.agent.status == .unknown
-            try await live.send("Use write to create " + fileA + " in the current directory with exactly " + marker + ". Do not use exec or ask a follow-up question.")
+            try await live.send("Use write to create exactly " + lab.directory + "/" + fileA + " with contents " + marker + ". Use this full path. Do not use exec or ask a follow-up question.")
             if rawRex {
                 try await live.wait { try await DevinDialog.parse(live.io.readScreen()).dialog?.kind == .devinPermission }
                 if case .card = live.chat.blocked.content { Issue.record("Unknown Rex exposed an actionable card") }
@@ -115,7 +115,7 @@ struct DevinChatLiveTests {
                     let chunk = try await files.read(.init(path: lab.directory + "/" + fileA, offset: 0, maxBytes: 128))
                     return String(decoding: chunk.data, as: UTF8.self).trimmingCharacters(in: .newlines) == marker
                 }
-                try await live.send("Use write to create " + fileB + " in the current directory containing DEVIN_B. Do not use exec.")
+                try await live.send("Use write to create exactly " + lab.directory + "/" + fileB + " with contents DEVIN_B. Use this full path. Do not use exec.")
                 let second = try await live.card(.devinPermission)
                 try #require(second.request?.summary == lab.directory + "/" + fileB && second.request?.callID != first.request?.callID)
                 await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: first)
