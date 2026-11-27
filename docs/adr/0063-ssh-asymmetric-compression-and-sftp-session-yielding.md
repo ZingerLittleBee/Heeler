@@ -47,8 +47,10 @@ of interactive lag and megabytes of redundant traffic:
 - **Yield the operation mutex during SFTP waits and prioritize interactive PTY
   turns.** `SessionDriver` serializes SFTP operations on the shared handle with
   its SFTP gate while releasing the session operation mutex during `EAGAIN`
-  waits (`waitForSessionYielding`), except during `libssh2_sftp_init` (which
-  opens the SFTP subsystem channel and remains bound by the channel-open rule).
+  waits (`waitForSessionYielding`). `libssh2_sftp_init` opens the SFTP
+  subsystem channel and is bound by the channel-open rule: since #809 it
+  claims the channel-open slot and yields the mutex while it waits, as every
+  channel open does (ADR 0011).
   Interactive `readPTY` and `writePTY` turns acquire the operation mutex with
   `.interactive` priority ahead of queued normal operations, eliminating mutex
   contention behind concurrent SFTP reads while preserving transport-send owner

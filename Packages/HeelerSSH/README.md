@@ -66,6 +66,15 @@ cancelled or timed out while queued has no uncertain native channel state, so
 it leaves the connection reusable; once its own open call has started, the
 existing whole-session invalidation rule still applies to an interrupted open.
 
+The open slot, not the operation mutex, keeps opens apart. An open claims the
+slot before its first native call and keeps it until the open has an outcome,
+but releases the mutex while it waits for the socket, so other channels keep
+reading and writing while its confirmation crosses. Held across that wait, the
+mutex kept a terminal from being read for as long as the terminal's own output
+took to arrive ahead of the confirmation (#809). `libssh2_sftp_init` opens its
+channel through the same `open_state` and keeps its own init state on the
+session too, so it claims the same slot and waits the same way.
+
 Most of what follows open is **channel** state — `process_state`, `read_state`,
 `write_state`, `close_state`, `wait_eof_state`, `wait_closed_state`,
 `free_state` and `reqPTY_state` all live on `LIBSSH2_CHANNEL` — which is why
@@ -89,9 +98,9 @@ The consequence is a livelock, not a slowdown. `_libssh2_channel_write` sends
 from the channel's own `write_packet` buffer, so the owning channel can resume
 across a mutex release; anyone else cannot. If a caller holds the operation
 mutex across its own `EAGAIN` loop while another channel owns a pending packet,
-it spins until its deadline and the owner never gets a turn. Channel open is
-such a caller. Any call that loops on `EAGAIN` while holding the mutex must
-therefore first establish that no other operation is the transport-send owner;
+it spins until its deadline and the owner never gets a turn. Any call that
+loops on `EAGAIN` while holding the mutex must therefore first establish that
+no other operation is the transport-send owner;
 `libssh2_session_block_directions` reporting an outbound block after a
 packet-producing `EAGAIN` is the public signal for it, and `send_existing` runs
 before `_libssh2_transport_send` clears that bit, so the report is conservative
@@ -135,7 +144,7 @@ own, so it can combine one request's packet with another's length or deliver
 one call's result into another's output buffer. Re-resolving the handle by id
 does not isolate this, because the id resolves to the same shared state. Every call on one SFTP handle stays mutually exclusive via the per-handle SFTP
 gate for its whole logical operation, waits included, and `libssh2_sftp_init`
-stays serialized on its own session-owned `open_state`. Once initialized, SFTP
+stays serialized by the channel-open slot. Once initialized, SFTP
 operations release the shared session operation mutex during `EAGAIN` waits so
 concurrent interactive PTY reads and writes (scheduled with `.interactive`
 priority) make progress without head-of-line blocking, while the SFTP gate

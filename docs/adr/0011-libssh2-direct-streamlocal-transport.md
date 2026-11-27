@@ -264,6 +264,37 @@ an open the server is slow to confirm still holds the session for that one
 round trip; only a separate single-flight open owner could relax that, and it
 needs its own evidence that open itself costs user-visible time.
 
+Amendment (#809): that evidence came from a reconnect. Right behind a
+terminal's attach the app opens several one-shot exec channels, and a program
+that reprints its history on the attach's resize sends the reprint at the same
+moment. Each open's confirmation then reaches the client behind the reprint, so
+on a link of 15 KB/s one exec open took about 3 s, and for all of it the
+operation mutex kept the terminal's own read from running: libssh2 took the
+terminal's data off the socket inside the open's loop, nothing consumed it, no
+window adjust went out, and the reprint reached the view in one burst at the
+end. Four slowed reconnects of four stalled the read for 2.77 to 3.14 s.
+
+The channel-open slot is therefore the single-flight open owner. An open
+claims it before its first native call and keeps it until the open has an
+outcome, but releases the operation mutex while it waits for the socket, as an
+established channel's turn does, and comes back through the same checks:
+transport-send admission, then a session that must still be valid. Every other
+open waits for the slot, so none can resume the first one's session-owned
+state, and nothing else touches that state: in the pinned source the opening
+channel joins the session's channel list before its open packet leaves
+(`src/channel.c`), so its data read off the socket by another operation is
+queued for it, and the open takes its reply from the packet queue by channel
+id. Waiting for the slot stays admission under the #130 amendment, and a
+cancelled open that the #824 amendment drives to its answer holds only the
+slot for that budget, no longer the mutex. `libssh2_sftp_init` opens its
+channel through the same `open_state` and keeps its own init state on the
+session, so it claims the same slot and waits the same way; its cancellation
+and deadline rule is unchanged. With opens yielding, the same reconnects kept
+the terminal read moving, about 8 KB every 0.4 s, through a process-read open
+that still took 3 s, three reconnects of three, and the reprint reached the
+view in one write. The cost that remains is the one serialization means: a
+slow open still delays the opens queued behind it.
+
 Error precedence is unchanged. A turn checks cancellation and the deadline
 before it checks session validity, and the error that entered the catch is the
 error the caller sees; whole-session invalidation remains a side effect of

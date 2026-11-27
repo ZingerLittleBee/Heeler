@@ -1429,6 +1429,8 @@ actor SessionDriver {
             let owner = allocateTransportSendOwner()
 
             do {
+                try await claimChannelOpenSlot(deadline: deadline, cancellable: true)
+                defer { releaseChannelOpenSlot() }
                 while true {
                     try checkProgress(deadline: deadline)
                     try await waitForTransportSendAdmission(
@@ -1461,7 +1463,7 @@ actor SessionDriver {
                     applyTransportSendOwnerDisposition(disposition)
                     if error == LIBSSH2_ERROR_EAGAIN {
                         initWasPending = true
-                        try await waitForSession(session, deadline: deadline)
+                        try await waitForSessionYielding(session, deadline: deadline)
                     } else if Self.isConnectionLoss(error) {
                         throw SSHError.connectionInvalidated
                     } else {
@@ -3110,8 +3112,8 @@ actor SessionDriver {
         nextSessionWaitHoldForTesting = hold
     }
 
-    /// Occupies the operation mutex the way a pending channel open does, so
-    /// later operations queue behind it without any network impairment.
+    /// Occupies the operation mutex, so later operations queue behind it
+    /// without any network impairment.
     func holdOperationForTesting(_ hold: @Sendable () async -> Void) async {
         await acquireOperation()
         await hold()
@@ -4570,7 +4572,7 @@ actor SessionDriver {
             }
             isOnSession = true
             do {
-                try await waitForSession(
+                try await waitForSessionYielding(
                     session,
                     deadline: abandonedUntil ?? deadline,
                     cancellable: abandonedUntil == nil)
