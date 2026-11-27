@@ -65,7 +65,7 @@ struct StartAgentView: View {
                 origin: origin,
                 gitHubLaunch: gitHubLaunch,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
-                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
+                offersConnectedWorktrees: { console.capabilities(for: $0).createsWorktrees },
                 presets: { console.launchPresets.presets },
                 accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) })
         }

@@ -14,6 +14,8 @@ struct HostCapabilities: Equatable, Sendable {
     let startsAgents: Bool
     let startsTerminals: Bool
     let renameAgent: Bool
+    /// A title is stored by the harness. Renaming a Rex block only changes its management label.
+    var renamesConversationTitles = false
     /// Read through `renameWorkspace(id:)`, which answers per Workspace.
     let renamesWorkspaces: Bool
     let worktrees: Bool
@@ -52,9 +54,15 @@ struct HostCapabilities: Equatable, Sendable {
     /// 0056).
     var terminalsShowInOneWindow = false
 
+    /// A Rex Host can read Skills and Changes and create a linked checkout over its POSIX SSH connection.
+    var rexAPIRevision: Int?
+    var rexProjects = false
+    var readsProjects: Bool { hostScripts || rexProjects }
+    var createsWorktrees: Bool { worktrees || (rexProjects && startsAgents) }
+
     /// Whether an Agent in this directory offers Changes, wherever it does.
     func offersChanges(directory: String?) -> Bool {
-        hostScripts && directory != nil
+        readsProjects && directory != nil
     }
 
     /// Whether an Agent in this directory offers Files: a path SFTP can
@@ -131,36 +139,28 @@ extension HostCapabilities {
         coreLinuxChatPrograms: Set<ChatProgram> = confirmedLinuxCoreChatPrograms,
         coreMacOSChatPrograms: Set<ChatProgram> = confirmedMacOSCoreChatPrograms,
         coreWindowsChatPrograms: Set<ChatProgram> = confirmedWindowsCoreChatPrograms,
-        isLocatingCore: Bool = false
+        isLocatingCore: Bool = false, rexAcceptsCommand: Bool = false, rexAPIRevision: Int? = nil
     ) {
-        // A Rex Host starts a shell for New Terminal, in a new window of a
-        // session or in a new session it names (ADR 0049's update of
-        // 2026-11-25), and starts no Agent and closes nothing, renames
-        // nothing, has no Worktrees, Host scripts or layout, and is never
-        // taken over (ADR 0049), so it stays out of New Agent. Its Terminals
-        // and Agents open and take input (ADRs 0051 to 0054). Its Agents offer
-        // Composer Send and Stop, and Chat for `rexChatPrograms` once the
-        // server has named Linux or macOS, or for `rexWindowsChatPrograms`
-        // once it has named Windows, read and typed over the Host's own
-        // connection (ADRs 0055 and 0056). Wherever Chat opens it also stages
-        // images and files over SFTP for them: on Linux and macOS as a tmux
-        // Host does, on native Windows into the account's temp folder by SFTP
-        // alone (ADR 0056's update of 2026-11-25).
+        // Rex lists and opens terminals on every supported kernel. POSIX project
+        // reads and launches depend on the SSH account; Chat uses each kernel's
+        // confirmed harnesses and its own foreground checks (ADRs 0049–0056).
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
-                case HerdrCoreLocator.linuxKernel: Self.rexChatPrograms
-                case HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
+                case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
                 case HerdrCoreLocator.windowsKernel: Self.rexWindowsChatPrograms
                 default: nil
                 }
+            let posix = coreKernel == HerdrCoreLocator.macOSKernel || coreKernel == HerdrCoreLocator.linuxKernel
             self.init(
-                startsAgents: false, startsTerminals: true, renameAgent: false, renamesWorkspaces: false,
+                startsAgents: posix && rexAcceptsCommand, startsTerminals: true, renameAgent: posix, renamesWorkspaces: posix,
                 worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
-                tabNames: false, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
+                tabNames: posix, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
+            self.rexAPIRevision = rexAPIRevision
+            rexProjects = posix
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
@@ -218,6 +218,7 @@ extension HostCapabilities {
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
+        renamesConversationTitles = offered
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
     }
 
@@ -260,12 +261,9 @@ extension HostCapabilities {
     /// permissions and questions from cards, and the colored one followed `/clear`.
     static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
 
-    /// The programs a Rex Host's Chat opens for (ADRs 0034 and 0056,
-    /// rex-compatibility.md): Claude Code and Codex, each bound from its own process
-    /// and files with nothing installed, and Pi and Oh My Pi, bound through Heeler's
-    /// extension, which Chat offers to add where the Agent's extension folder lacks
-    /// it. Rex 0.1.0-preview.14 on macOS confirmed nothing for Grok Build or agy, and
-    /// OpenCode binds only with Heeler's plugin, so none of those is offered.
+    /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
+    /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
+    /// process start in the local account registry (rex-chat-parity.md).
     static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid, .devin]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a

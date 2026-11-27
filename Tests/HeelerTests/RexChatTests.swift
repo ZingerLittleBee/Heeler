@@ -313,7 +313,10 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .pi, .omp, .droid, .devin])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .droid, .devin])
+        #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).offersChat(for: .grok))
+        #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel).offersChat(for: .grok))
+        #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))
         #expect(!rig.host.capabilities.chat)
 
         world.restart(as: "instance-0002")
@@ -345,14 +348,21 @@ struct RexChatTests {
         #expect(request.valuesOf.starts(with: ["REX_SESSION", "REX_BLOCK"]))
 
         let logged = await connection.log
-        let grok = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .grok)
-        #expect(grok == .unavailable(.cannotTellSession(.grok)))
+        let amp = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .amp)
+        #expect(amp == .unavailable(.cannotTellSession(.amp)))
         let gone = RexPaneAddress(sessionID: "session:studio", blockID: "block:gone").paneID
         let unlisted = try await rig.projection.checkChatSession(paneID: gone, program: .claude)
         #expect(unlisted == .unavailable(.cannotTellSession(.claude)))
         #expect(try await rig.projection.chatCandidates(paneID: gone, program: .claude) == .noProcess)
         #expect(await connection.log == logged)
         #expect(rig.projection.chatCannotTell(.claude) == .cannotTellSession(.claude))
+        // A new foreground read must succeed even when the last inventory still names Claude.
+        await server.answer(RexInventoryWire.terminalMethod("process"), using: { _ in
+            .error(code: "not_found", message: "gone", status: 404)
+        })
+        await #expect(throws: (any Error).self) {
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .claude)
+        }
     }
 
     /// The revision moves when a check could answer differently: the
@@ -710,6 +720,8 @@ struct RexChatTests {
         await files.write("const terminal = process.env.HC_TERMINAL_ID;\n", at: Self.piExtension)
         #expect(try await reason() == .unavailable(absent))
         await files.write("if (!env.REX_SESSION || !env.REX_BLOCK) return null;\n", at: Self.piExtension)
+        #expect(try await reason() == .unavailable(absent))
+        await files.write("// Rex session report format v2\n", at: Self.piExtension)
         #expect(try await reason() == .unavailable(inPlace))
 
         #expect(rig.projection.chatCannotTell(.pi) == absent)

@@ -136,6 +136,9 @@ struct HostOnboardingView: View {
             integrationSection
 
             preflightSection
+            if let console = harnessEdits, store.host.serverKind == .rex {
+                rexFeatures(console)
+            }
             HerdrCoreStartSection(store: store)
             if let coreEnvironmentNotice {
                 HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
@@ -232,6 +235,37 @@ struct HostOnboardingView: View {
                 offersStart: store.coreStartOffer != nil || store.isWaitingForTmuxServer)
             if action == .runChecks { Task { await store.runChecks() } }
         }
+    }
+
+    @ViewBuilder
+    private func rexFeatures(_ console: ConsoleStore) -> some View {
+        let capabilities = console.capabilities(for: store.host)
+        Section("Available on This Rex Server") {
+            if let kernel = console.hostCoreKernels[store.host.id] {
+                LabeledContent("Host System", value: kernel == HerdrCoreLocator.macOSKernel ? "macOS" : kernel)
+                if let revision = capabilities.rexAPIRevision {
+                    LabeledContent("Negotiated API Revision", value: String(revision))
+                }
+                if capabilities.startsAgents {
+                    Text("New Agent can use a Workspace, a launch preset or a new Git worktree.")
+                }
+                if capabilities.readsProjects {
+                    Text("Open Files and Changes from an Agent. Open Skills from its keyboard.")
+                }
+                let names = ChatProgram.allCases.filter { capabilities.offersChat(for: $0) }
+                    .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }
+                if !names.isEmpty {
+                    LabeledContent("Native Chat", value: names.formatted(.list(type: .and)))
+                }
+                Text("Use the terminal for other programs and unverified prompts. Manage splits and move blocks in Rex on the Host.")
+                    .foregroundStyle(.secondary)
+                Text("To see Agent banners while Heeler is open, use Settings → Notifications.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Connect to see the actions and Chat programs available on this Host.")
+            }
+        }
+        .accessibilityIdentifier("hosts.rex.features")
     }
 
     /// The checklist of a Host whose kind is confirmed, over the version the

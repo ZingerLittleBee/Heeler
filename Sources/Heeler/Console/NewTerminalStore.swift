@@ -97,6 +97,7 @@ final class NewTerminalStore {
     private let create: (Destination, Host.ID) async throws -> ShellTerminalIdentity
     private let awaitTerminal: (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?
     /// Whether a Host's desktop app could apply a typed Workspace name now.
+    private let offersTabNames: (Host.ID) -> Bool
     private let offersDesktopAppNames: (Host.ID) -> Bool
 
     init(
@@ -108,9 +109,11 @@ final class NewTerminalStore {
         remoteHome: @escaping (Host.ID) async throws -> String,
         create: @escaping (Destination, Host.ID) async throws -> ShellTerminalIdentity,
         awaitTerminal: @escaping (ShellTerminalIdentity, Host.ID) async -> ConsoleTerminal?,
+        offersTabNames: ((Host.ID) -> Bool)? = nil,
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false }
     ) {
         let hostChoices = LaunchHostChoice.grouped(hosts)
+        self.offersTabNames = offersTabNames ?? { id in hosts.first { $0.id == id }?.capabilities.tabNames == true }
         self.offersDesktopAppNames = offersDesktopAppNames
         self.hosts = hosts
         self.hostChoices = hostChoices
@@ -133,7 +136,7 @@ final class NewTerminalStore {
 
     /// Whether the form asks for Workspace and tab names.
     var offersWorkspaceAndTabNames: Bool {
-        hosts.first(where: { $0.id == selectedHostID })?.capabilities.tabNames != false
+        selectedHostID.map(offersTabNames) ?? true
     }
 
     /// Whether New Workspace asks for a name. A herdr-core Host has none of its
@@ -194,8 +197,7 @@ final class NewTerminalStore {
     /// the one it vouches for; only when it reports none, or for a
     /// name-only New Workspace, does the Host's home directory stand in.
     private func destination(on hostID: Host.ID) async throws -> Destination {
-        let offersNames = hosts.first(where: { $0.id == hostID })?.capabilities.tabNames != false
-        let label = offersNames ? Self.nonEmptyTrimmed(tabLabel) : nil
+        let label = offersTabNames(hostID) ? Self.nonEmptyTrimmed(tabLabel) : nil
         switch target {
         case .existingWorkspace:
             guard let workspaceID = selectedWorkspaceID else {

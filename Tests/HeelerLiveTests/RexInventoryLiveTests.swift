@@ -46,7 +46,7 @@ struct RexInventoryLiveTests {
             case .status(let status):
                 statuses.append(status)
                 if case .failed(let failure) = status { Issue.record("The session failed: \(failure)") }
-            case .server:
+            case .server, .inventoryRefreshFinished:
                 break
             case .inventory(let next):
                 inventory = next
@@ -102,7 +102,7 @@ struct RexInventoryLiveTests {
             try await Task.sleep(for: .milliseconds(100))
         }
 
-        let first = try await session.createTerminal(.session(label: "heeler-lab-new-terminal"), cwd: "/tmp")
+        let first = try await session.createTerminal(.session(label: "heeler-lab-new-terminal"), cwd: "/usr")
         let sessionID = first.address.sessionID
         var made = [first]
         var owners: [String?] = []
@@ -139,7 +139,7 @@ struct RexInventoryLiveTests {
         let owned = owners.compactMap { $0 }.count
         print("Rex New Terminal: made \(made.count), listed \(terminals.count), owned \(owned)")
         #expect(Set(terminals.map(\.blockID)) == Set(made.map(\.address.blockID)))
-        #expect(terminals.first { $0.blockID == first.address.blockID }?.details.directory == "/private/tmp")
+        #expect(terminals.first { $0.blockID == first.address.blockID }?.details.directory == "/usr")
         #expect(owners.count == made.count && owners.allSatisfy { $0 == nil })
     }
 

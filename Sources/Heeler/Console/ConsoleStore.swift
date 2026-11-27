@@ -946,7 +946,7 @@ final class ConsoleStore {
             return cached
         }
         let query = SkillListQuery(kind: kind, projectRoot: projectRoot)
-        let skills = try await projection(for: hostID).withHostServices { services in
+        let skills = try await projection(for: hostID).withProjectReads { services in
             try await services.listSkills(query)
         }
         skillsCache = skillsCache.filter {
@@ -960,7 +960,7 @@ final class ConsoleStore {
     /// the Host's live Console connection. Uncached — it is user-triggered,
     /// one file at a time.
     func readSkillFile(path: String, on hostID: Host.ID) async throws -> String {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readSkillFile(atPath: path)
         }
     }
@@ -996,7 +996,7 @@ final class ConsoleStore {
     func listUntrackedDirectory(
         _ request: UntrackedDirectoryRequest, on hostID: Host.ID
     ) async throws -> UntrackedDirectoryListing {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.listUntrackedDirectory(request)
         }
     }
@@ -1007,7 +1007,7 @@ final class ConsoleStore {
     func readChanges(
         _ request: ChangesReadRequest, on hostID: Host.ID
     ) async throws -> CheckoutChangesRead {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readChanges(request)
         }
     }
@@ -1016,7 +1016,7 @@ final class ConsoleStore {
     func readFilePatch(
         _ request: FilePatchRequest, on hostID: Host.ID
     ) async throws -> FilePatch {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readFilePatch(request)
         }
     }
@@ -2033,7 +2033,7 @@ final class ConsoleStore {
     }
 
     func offersTitleRename(for agent: ConsoleAgent) -> Bool {
-        capabilities(for: agent.hostID).renameAgent
+        capabilities(for: agent.hostID).renamesConversationTitles
             && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
     }
 
@@ -2406,6 +2406,21 @@ final class ConsoleStore {
         pendingTitleRenameCleanupTasks[id] = (token, task)
     }
 
+    /// The presented sheet keeps the block and foreground it was opened for.
+    func agentNameStore(for agent: ConsoleAgent, keepingTo pin: TerminalCorePin?) -> RenameStore {
+        let rex = projections[agent.hostID] as? RexConsoleProjection
+        let block = rex?.renameBlockAction(for: agent.agent.paneID)
+        return RenameStore(subject: .agent(detectedKind: agent.agent.kind), currentValue: agent.agent.name ?? "") { name in
+            guard !self.hasLeftCore(pin, on: agent.hostID) else { throw self.leftCoreError(on: agent.hostID) }
+            if let rex {
+                guard self.projections[agent.hostID] === rex, let block else { throw TransportError.rexServerGone }
+                try await block(name)
+            } else {
+                try await self.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
+            }
+        }
+    }
+
     func renameAgent(
         _ paneID: String, name: String?, on hostID: Host.ID
     ) async throws {
@@ -2414,8 +2429,9 @@ final class ConsoleStore {
     }
 
     func renameWorkspace(
-        _ workspaceID: String, label: String, on hostID: Host.ID
+        _ workspaceID: String, label: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
         flushScheduledRebuild()
     }
@@ -2476,6 +2492,7 @@ final class ConsoleStore {
                 case .rex:
                     RexConsoleProjection(
                         host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
+                        gitGate: gitExecGate(for: host.id),
                         onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .herdrTUI, .unconfirmed:
@@ -2966,6 +2983,8 @@ final class ConsoleStore {
     /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
     /// with an Account: the Host's Accounts name it, else the harness does.
     func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async throws -> String? {
+        // Rex has no per-server Accounts file. Presets can still select the harness's own folder.
+        if projections[hostID] is RexConsoleProjection { return kind.configDirectoryVariable }
         let store = hostAccountsStore(for: hostID)
         try await store.load()
         return store.variable(for: kind)
@@ -3168,7 +3187,9 @@ final class ConsoleStore {
                 coreLinuxChatPrograms: coreLinuxChatPrograms,
                 coreMacOSChatPrograms: coreMacOSChatPrograms,
                 coreWindowsChatPrograms: coreWindowsChatPrograms,
-                isLocatingCore: hostStatuses[host.id] == .connecting)
+                isLocatingCore: hostStatuses[host.id] == .connecting,
+                rexAcceptsCommand: (projections[host.id] as? RexConsoleProjection)?.acceptsAgentCommand == true,
+                rexAPIRevision: (projections[host.id] as? RexConsoleProjection)?.apiRevision)
         }
         if hostCapabilities != next {
             hostCapabilities = next
@@ -4106,7 +4127,7 @@ extension ConsoleStore: NotificationTransportProvider {
     /// and its menus list Ports. A native Windows machine waits for a test
     /// there, as its Files do.
     func offersPortPreview(for hostID: Host.ID) -> Bool {
-        connectPortPreview != nil && hostPlatforms[hostID] != .nativeWindows
+        connectPortPreview != nil && !isNativeWindows(hostID)
             && !capabilities(for: hostID).isNativeWindowsCore
             && catalog.contains { $0.id == hostID }
     }

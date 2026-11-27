@@ -174,8 +174,8 @@ struct RexInventoryBook {
         for event in waiting where event.seq > seq { apply(event) }
     }
 
-    /// Events went missing: the list is read again, and with it everything else.
-    mutating func sequenceBroke() {
+    /// Read the list and everything it names again, after a gap or an explicit refresh.
+    mutating func requestListing() {
         needsListing = true
     }
 

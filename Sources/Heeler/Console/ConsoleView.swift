@@ -2216,7 +2216,7 @@ struct ConsoleView: View {
                 capabilities: capabilities,
                 supportsMultipleWindows: supportsMultipleWindows)
             let renamesTitle =
-                capabilities.renameAgent
+                capabilities.renamesConversationTitles
                 && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
             let savedEntry = saved[agent.id]
             let presentation = AgentCardPresentation(
@@ -2398,7 +2398,7 @@ struct ConsoleView: View {
                 let origin = savedEntry == nil && capabilities.startsAgents
                     ? StartAgentStore.LaunchOrigin(beside: agent, in: console) : nil
                 let renamesTitle =
-                    capabilities.renameAgent
+                    capabilities.renamesConversationTitles
                     && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
                 let showsHost = standsAlone && !card.isRepository
                 let hiddenTokens = ConsoleWorkspaceCard.hiddenTokens(

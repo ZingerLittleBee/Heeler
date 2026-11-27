@@ -1,10 +1,69 @@
 import Foundation
 
+/// The read-only SSH operations behind Skills and Changes.
+protocol HostProjectReading: Sendable {
+    /// Lists the skills / custom slash commands installed for a kind on this
+    /// Host: global sources under the remote home plus project sources under
+    /// the query's project root, per `SkillSourceCatalog`. Kinds without a
+    /// catalog entry return empty. Reads the filesystem over exec, so
+    /// alternative transports without a Host process environment report
+    /// nothing by default.
+    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill]
+
+    /// Reads one skill document in full (capped) for the on-demand content
+    /// view; `path` is what the skills probe reported. Same transport caveat
+    /// as `listSkills`.
+    func readSkillFile(atPath path: String) async throws -> String
+
+    /// Lists the files inside one untracked directory: one git script over
+    /// one exec, using the top level from the latest Changes read. Entries
+    /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
+    /// git read past its deadline throws `TransportError.gitTimedOut`.
+    /// Transports that cannot run git on a Host throw
+    /// `ChangesReadError.unavailable` by default.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing
+
+    /// Reads the Changes of the Checkout containing `request.directory`:
+    /// one git script over one exec, resolved and parsed by `GitProbe`.
+    /// Git-level outcomes throw `ChangesReadError`; a git read past its
+    /// deadline throws `TransportError.gitTimedOut`. Transports that cannot
+    /// run git on a Host throw `ChangesReadError.unavailable` by default.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
+
+    /// Reads one file's patch in its resolved Checkout, including both paths
+    /// for a rename and an empty-file comparison for an untracked file.
+    /// Transports without Host git throw `ChangesReadError.unavailable`.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
+}
+
+/// The Git and home-directory operations used to create and inspect linked checkouts.
+protocol HostWorktreeAccess: Sendable {
+    /// The Host's home directory as its SSH account sees it, for Chat to
+    /// find transcripts under. A probe past its deadline throws
+    /// `.hostFileTimedOut`, like the file operations.
+    func hostHomeDirectory() async throws -> String
+
+    /// The Checkout of each directory, in one git script over one exec. Asks
+    /// about at most `GitProbe.checkoutRootsPerCall` of them, the first ones; a
+    /// directory it asked about and that is in no checkout has no entry. Only a
+    /// herdr-core projection and Worktree ask, a projection through
+    /// `HerdrCoreTransport.checkouts`, which picks the read for the Host's platform.
+    /// A caller goes through the Host's `GitExecGate`, as Changes does.
+    func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
+
+    /// One git command in one exec, the same way. A refusal comes back as its
+    /// status. A mutation past its deadline throws `TransportError.gitTimedOut`
+    /// and is not sent again. The Worktree service runs this on the selected Host.
+    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult
+}
+
 /// The exec and SFTP services a Host offers whichever Server Kind it runs.
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032). Its gh runs are
 /// `GitHubHostCLI`'s (ADR 0065).
-protocol HostServices: GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
+protocol HostServices: HostProjectReading, HostWorktreeAccess, GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive
     /// permissions, partial-file handling, and atomic completion (ADR 0006).
@@ -19,19 +78,6 @@ protocol HostServices: GitHubHostCLI, DroidChatHookHost, DroidForegroundReading,
         _ file: PreparedFile,
         progress: @escaping @Sendable (AttachmentStageProgress) async -> Void
     ) async throws -> StagedFile
-
-    /// Lists the skills / custom slash commands installed for a kind on this
-    /// Host: global sources under the remote home plus project sources under
-    /// the query's project root, per `SkillSourceCatalog`. Kinds without a
-    /// catalog entry return empty. Reads the filesystem over exec, so
-    /// alternative transports without a Host process environment report
-    /// nothing by default.
-    func listSkills(_ query: SkillListQuery) async throws -> [AgentSkill]
-
-    /// Reads one skill document in full (capped) for the on-demand content
-    /// view; `path` is what the skills probe reported. Same transport caveat
-    /// as `listSkills`.
-    func readSkillFile(atPath path: String) async throws -> String
 
     /// Lists the models Antigravity CLI offers on this Host (`agy models`),
     /// grouped into families and effort levels for Chat's model menu.
@@ -57,11 +103,6 @@ protocol HostServices: GitHubHostCLI, DroidChatHookHost, DroidForegroundReading,
     /// the directory does not exist. Errors follow `readHostFileRange`.
     func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?
 
-    /// The Host's home directory as its SSH account sees it, for Chat to
-    /// find transcripts under. A probe past its deadline throws
-    /// `.hostFileTimedOut`, like the file operations.
-    func hostHomeDirectory() async throws -> String
-
     /// One absolute Host path's subdirectories, for the remote directory browser.
     func listDirectories(at path: String) async throws -> RemoteDirectoryListing
 
@@ -78,41 +119,6 @@ protocol HostServices: GitHubHostCLI, DroidChatHookHost, DroidForegroundReading,
 
     /// Reads selected process facts, filtering arguments and variables on the Host.
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
-
-    /// Lists the files inside one untracked directory: one git script over
-    /// one exec, using the top level from the latest Changes read. Entries
-    /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
-    /// git read past its deadline throws `TransportError.gitTimedOut`.
-    /// Transports that cannot run git on a Host throw
-    /// `ChangesReadError.unavailable` by default.
-    func listUntrackedDirectory(
-        _ request: UntrackedDirectoryRequest
-    ) async throws -> UntrackedDirectoryListing
-
-    /// Reads the Changes of the Checkout containing `request.directory`:
-    /// one git script over one exec, resolved and parsed by `GitProbe`.
-    /// Git-level outcomes throw `ChangesReadError`; a git read past its
-    /// deadline throws `TransportError.gitTimedOut`. Transports that cannot
-    /// run git on a Host throw `ChangesReadError.unavailable` by default.
-    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
-
-    /// Reads one file's patch in its resolved Checkout, including both paths
-    /// for a rename and an empty-file comparison for an untracked file.
-    /// Transports without Host git throw `ChangesReadError.unavailable`.
-    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
-
-    /// The Checkout of each directory, in one git script over one exec. Asks
-    /// about at most `GitProbe.checkoutRootsPerCall` of them, the first ones; a
-    /// directory it asked about and that is in no checkout has no entry. Only a
-    /// herdr-core projection and Worktree ask, a projection through
-    /// `HerdrCoreTransport.checkouts`, which picks the read for the Host's platform.
-    /// A caller goes through the Host's `GitExecGate`, as Changes does.
-    func checkouts(for directories: [String]) async throws -> [String: HostCheckout]
-
-    /// One git command in one exec, the same way. A refusal comes back as its
-    /// status. A mutation past its deadline throws `TransportError.gitTimedOut`
-    /// and is not sent again. Only a herdr-core Worktree calls this.
-    func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult
 
     /// Replaces one Host text file only while it still holds `expected`, or while
     /// there is none when `expected` is nil, and otherwise throws

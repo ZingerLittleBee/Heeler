@@ -37,6 +37,7 @@ struct NewTerminalView: View {
                     }
                 },
                 awaitTerminal: { await console.waitForTerminal($0, on: $1) },
+                offersTabNames: { console.capabilities(for: $0).tabNames },
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }
 

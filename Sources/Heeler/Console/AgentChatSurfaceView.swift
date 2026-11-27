@@ -336,12 +336,7 @@ struct AgentChatSurfaceView: View {
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
                 title: String(localized: "Rename Agent"),
-                store: RenameStore(
-                    subject: .agent(detectedKind: agent.agent.kind),
-                    currentValue: agent.agent.name ?? ""
-                ) { [console, agent] name in
-                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
-                })
+                store: console.agentNameStore(for: agent, keepingTo: session.corePin))
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
@@ -350,9 +345,9 @@ struct AgentChatSurfaceView: View {
                 title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
-                ) { [console, agent] label in
+                ) { [console, agent, corePin = session.corePin] label in
                     try await console.renameWorkspace(
-                        agent.agent.workspaceID, label: label, on: agent.hostID)
+                        agent.agent.workspaceID, label: label, on: agent.hostID, keepingTo: corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
@@ -1131,7 +1126,7 @@ struct AgentChatSurfaceView: View {
 
     /// What every Skills entry here reads: nil hides them, the `/` menu's included.
     private var skills: SkillsPaneStore? {
-        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
+        console.capabilities(for: agent.hostID).readsProjects ? skillsStore : nil
     }
 
     /// The `/` menu: the Host's skills once loaded, plus `/compact`.

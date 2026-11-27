@@ -92,7 +92,7 @@ final class HerdrCoreHostMemory {
     }
 
     /// What a locator last found, which outlives the core it found.
-    func noteKernel(_ kernel: String, for hostID: Host.ID) {
+    func noteKernel(_ kernel: String?, for hostID: Host.ID) {
         var entry = entries[hostID] ?? Entry()
         guard entry.kernel != kernel else { return }
         entry.kernel = kernel

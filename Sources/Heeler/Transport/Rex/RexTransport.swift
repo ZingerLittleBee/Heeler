@@ -57,6 +57,9 @@ protocol RexTransport: Sendable {
     /// nothing else of it (ADR 0065).
     nonisolated var gitHub: any GitHubHostCLI { get }
 
+    /// POSIX project operations provided by the SSH account. A socket-only connection has none.
+    nonisolated var projects: (any RexHostProjects)? { get }
+
     /// New Terminal's home directory and Browse Directory, on this same SSH
     /// connection, and nothing else of it.
     nonisolated var browsing: any RexHostBrowsing { get }
@@ -71,6 +74,8 @@ protocol RexTransport: Sendable {
 }
 
 extension RexTransport {
+    nonisolated var projects: (any RexHostProjects)? { nil }
+
     func abandon() async {
         await close()
     }
@@ -146,12 +151,18 @@ protocol RexHostExtensionPlacing: DroidChatHookHost {
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
 }
 
+/// The SSH operations behind project reads, Agent discovery and Worktree creation.
+protocol RexHostProjects: HostProjectReading, HostWorktreeAccess {
+    func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents
+}
+
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
 protocol RexHostConnection:
     ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI,
     RexHostBrowsing
 {
+    nonisolated var projects: (any RexHostProjects)? { get }
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -179,6 +190,8 @@ protocol RexHostConnection:
 }
 
 extension RexHostConnection {
+    nonisolated var projects: (any RexHostProjects)? { nil }
+
     func abandon() async {
         try? await close()
     }
@@ -306,6 +319,8 @@ actor RexSSHTransport: RexTransport {
     nonisolated var gitHub: any GitHubHostCLI { RexGitHubOnly(connection: connection) }
 
     /// And its home directory and directory listings, for the same reason.
+    nonisolated var projects: (any RexHostProjects)? { connection.projects }
+
     nonisolated var browsing: any RexHostBrowsing { RexBrowsingOnly(connection: connection) }
 
     func close() async {

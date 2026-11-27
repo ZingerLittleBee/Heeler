@@ -51,6 +51,7 @@ actor RexInventoryFollower {
     private var published: RexInventory?
     private var ending: Ending?
     private var waiter: CheckedContinuation<Ending, Never>?
+    private var refreshCompletions: [@Sendable () -> Void] = []
 
     /// Whether an inventory was published on this link.
     var hasPublished: Bool { published != nil }
@@ -129,6 +130,7 @@ actor RexInventoryFollower {
         reads = [:]
         for retry in retries.values { retry.cancel() }
         retries = [:]
+        completeRefreshes()
         waiter?.resume(returning: reason)
         waiter = nil
     }
@@ -142,7 +144,7 @@ actor RexInventoryFollower {
         case .event(let event):
             book.apply(event)
         case .sequenceBroken:
-            book.sequenceBroke()
+            book.requestListing()
         }
         advance()
     }
@@ -154,6 +156,27 @@ actor RexInventoryFollower {
     }
 
     // MARK: Reads
+
+    /// Overlapping requests share one full read. A list already in flight
+    /// before the first request may predate it, so a fresh list follows that one.
+    func refresh(then completion: @escaping @Sendable () -> Void) {
+        guard ending == nil else {
+            completion()
+            return
+        }
+        let startsRefresh = refreshCompletions.isEmpty
+        refreshCompletions.append(completion)
+        if startsRefresh {
+            book.requestListing()
+            advance()
+        }
+    }
+
+    private func completeRefreshes() {
+        let completions = refreshCompletions
+        refreshCompletions.removeAll()
+        for completion in completions { completion() }
+    }
 
     private func startListing() {
         guard ending == nil, listing == nil else { return }
@@ -199,6 +222,9 @@ actor RexInventoryFollower {
             reads[id] = Task { await self.perform(read, id: id) }
         }
         publishIfSettled()
+        if !refreshCompletions.isEmpty, book.isStructureSettled, book.isDetailSettled {
+            completeRefreshes()
+        }
     }
 
     private func perform(_ read: RexInventoryBook.Read, id: UInt64) async {

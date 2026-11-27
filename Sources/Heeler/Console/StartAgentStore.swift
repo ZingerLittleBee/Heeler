@@ -640,7 +640,7 @@ final class StartAgentStore {
     /// the Worktree on the branch the user names, from the Workspace's HEAD
     /// (ADR 0032, ADR 0045).
     var worktreeNeedsBranch: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     /// Whether the form asks for Workspace and tab names. Its Agent name is
@@ -658,7 +658,7 @@ final class StartAgentStore {
     /// A herdr-core Host, and a tmux Host, find Agents through the user's
     /// interactive shell (ADR 0032), not the Host's PATH.
     var discoversThroughUserShell: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     private var selectedHost: Host? {

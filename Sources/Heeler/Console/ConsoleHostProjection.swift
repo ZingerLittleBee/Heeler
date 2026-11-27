@@ -153,6 +153,10 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func remoteHomeDirectory() async throws -> String
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing
 
+    func withProjectReads<Value: Sendable>(
+        _ operation: @escaping @Sendable (any HostProjectReading) async throws -> Value
+    ) async throws -> Value
+
     /// Borrows the Host's exec and SFTP services, whichever Server Kind runs.
     func withHostServices<Value: Sendable>(
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
@@ -263,6 +267,12 @@ protocol CheckedChatTyping: AnyObject {
 }
 
 extension ConsoleHostProjection {
+    func withProjectReads<Value: Sendable>(
+        _ operation: @escaping @Sendable (any HostProjectReading) async throws -> Value
+    ) async throws -> Value {
+        try await withHostServices { services in try await operation(services) }
+    }
+
     var departedAgentsByPane: [String: ConsoleAgent] { [:] }
 
     /// For a Server Kind whose `withHostServices` never runs an operation

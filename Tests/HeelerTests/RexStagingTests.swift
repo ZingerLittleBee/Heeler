@@ -165,14 +165,16 @@ struct RexStagingTests {
         (HerdrCoreLocator.windowsKernel, true),
     ] as [(String?, Bool)])
     func uploadsOpenWhereChatDoes(kernel: String?, opens: Bool) {
-        let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+        let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel, rexAcceptsCommand: true)
         #expect(capabilities.uploads == opens)
         #expect(capabilities.chat == opens)
         #expect(capabilities.composerSend)
         let offers = AgentDetailMenuOffers(
             capabilities: capabilities, workspaceID: "session:studio", removesSavedChat: false)
         #expect(offers.attachments == opens)
-        #expect(!offers.newAgent && !offers.renameAgent && !offers.renameWorkspace && !offers.close)
+        let posix = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        #expect(offers.newAgent == posix && offers.renameWorkspace == posix)
+        #expect(offers.renameAgent == posix && !offers.close)
         // The catalog's Host knows no kernel, so nothing offers them ahead.
         #expect(!Self.rex.capabilities.uploads)
     }
