@@ -349,6 +349,131 @@ extension RexHostServicesLiveTests {
         #expect(matches.count == 1)
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_PRIVATE_GITHUB_PULL_LAB"] != nil))
+    func approvingThePrivatePullRequestRunsOnceAndReadsTheReview() async throws {
+        try await exercisePrivatePull(approve: true)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_PRIVATE_GITHUB_PULL_LAB"] != nil))
+    func mergingThePrivatePullRequestMatchesItsDisplayedHeadOnce() async throws {
+        try await exercisePrivatePull(approve: false)
+    }
+
+    private struct PullAttempt: Decodable {
+        let action, node, head, client: String
+        let requestHead, body, method: String?
+        let accepted: Bool
+    }
+
+    private struct PullHeadRead: Decodable {
+        let node, head, state, client: String
+        let mutations: Int
+    }
+
+    private func exercisePrivatePull(approve: Bool) async throws {
+        let fixture = try Fixture.load("HEELER_PRIVATE_GITHUB_PULL_LAB")
+        let suite = "heeler-lab-private-pull-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (host, console) = try fixture.connect(.rex, defaults: defaults)
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await wait("the private pull request Host") { console.hostStatuses[host.id] == .connected }
+        let (preflight, comments) = try privateGitHubWriteEndpoint(macRoot: fixture.macGitHubWriteRoot)
+        let folder = (comments as NSString).deletingLastPathComponent
+        let check = preflight + "\n[ \"$(cat '\(folder)/pull-fixture-version')\" = heeler-private-pulls-v1 ]"
+        let isolated = try await console.runGitHubSeamScript(Data(check.utf8), on: host.id)
+        try #require(isolated.exitStatus == 0)
+        func attempts() async throws -> [PullAttempt] {
+            let command = "cat '\(folder)/pull-attempts.jsonl'"
+            let read = try await console.runGitHubSeamScript(Data(command.utf8), on: host.id)
+            try #require(read.exitStatus == 0)
+            return try read.stdout.split(separator: 10).map { try JSONDecoder().decode(PullAttempt.self, from: Data($0)) }
+        }
+
+        let tab = console.gitHub
+        let machine = try #require(tab.selectedHost)
+        try #require(machine.records == [host.id])
+        await tab.appear(showing: .pullRequest)
+        let listing = try #require(tab.shown(.pullRequest, on: machine))
+        let number = approve ? 9671 : 9672
+        let node = "LAB_PULL_\(number)"
+        let expectedHead = String(repeating: approve ? "a" : "b", count: 40)
+        let item = try #require(listing.list.items.first { $0.id == node })
+        try #require(listing.login == "heeler-lab-write-fixture" && item.repository == "lab/write-fixture")
+        try #require(item.number == number && item.url == "https://heeler-lab-github-write.test/lab/write-fixture/pull/\(number)")
+        await tab.openDetail(item, on: machine)
+        let before = try #require(tab.detailState(of: item, on: machine).detail)
+        let pull = try #require(before.pullRequest)
+        let initialHead = try #require(pull.headCommit)
+        try #require(before.item.state == .open && before.item.id == node && initialHead == expectedHead)
+        try #require(GitHubWrite.actions(for: before).contains(approve ? .approve : .merge))
+        let history = try await attempts()
+        try #require(!history.contains { $0.node == node }, "Use a fresh private pull fixture for this action.")
+
+        let presenter = UUID()
+        tab.present(presenter)
+        defer { tab.leave(presenter) }
+        let message = "Heeler private approval " + UUID().uuidString
+        let head: String
+        if approve {
+            head = initialHead
+        } else {
+            let advance = "umask 077 && mkdir '\(folder)/pull-head-9672-advanced'"
+            let moved = try await console.runGitHubSeamScript(Data(advance.utf8), on: host.id)
+            try #require(moved.exitStatus == 0)
+            let stale = await tab.write(.merge(.squash, deleteBranch: false, headCommit: initialHead),
+                                        on: item, host: machine, shownBy: presenter)
+            guard case .result(let refusal) = stale, case .notRun = refusal.outcome else {
+                Issue.record("A changed head must be rejected before gh can merge.")
+                return
+            }
+            let unchanged = try await attempts()
+            try #require(unchanged.count == history.count)
+            let refreshed = try #require(tab.detailState(of: item, on: machine).detail)
+            head = try #require(refreshed.pullRequest?.headCommit)
+            try #require(refreshed.item.id == item.id && head == String(repeating: "d", count: 40))
+        }
+        let write: GitHubWrite = approve ? .approve(message) : .merge(.squash, deleteBranch: false, headCommit: head)
+        async let first = tab.write(write, on: item, host: machine, shownBy: presenter)
+        try await wait("the first private pull write") { tab.isWriting(item, on: machine) }
+        let repeated = await tab.write(write, on: item, host: machine, shownBy: presenter)
+        #expect(repeated == .ranNothing)
+        let delivery = await first
+        guard case .result(let result) = delivery else {
+            Issue.record("The visible form did not receive the pull request result.")
+            return
+        }
+        try #require(result.isPlainSuccess && result.readFailure == nil)
+        let after = try #require(result.detail)
+        let saved = try #require(tab.detailState(of: item, on: machine).detail)
+        try #require(after.item.id == node && saved == after && after.pullRequest?.headCommit == head)
+        if approve {
+            #expect(after.item.state == .open && after.pullRequest?.review == .approved(by: [listing.login]))
+        } else {
+            #expect(after.item.state == .merged && !GitHubWrite.actions(for: after).contains(.merge))
+        }
+        let final = try await attempts()
+        try #require(final.count == history.count + 1)
+        let attempt = try #require(final.last)
+        #expect(attempt.accepted && attempt.client.hasPrefix("GitHub CLI"))
+        #expect(attempt.node == node && attempt.head == head)
+        let readLog = try await console.runGitHubSeamScript(Data("cat '\(folder)/pull-reads.jsonl'".utf8), on: host.id)
+        try #require(readLog.exitStatus == 0)
+        let reads = try readLog.stdout.split(separator: 10).map {
+            try JSONDecoder().decode(PullHeadRead.self, from: Data($0))
+        }.filter { $0.node == node && $0.client.hasPrefix("GitHub CLI") }
+        #expect(reads.contains { $0.head == initialHead && $0.state == "OPEN" && $0.mutations == 0 })
+        #expect(reads.contains { $0.head == head && $0.state == "OPEN" && $0.mutations == 0 })
+        #expect(reads.contains { $0.head == head && $0.state == (approve ? "OPEN" : "MERGED") && $0.mutations == 1 })
+        if approve {
+            #expect(attempt.action == "approve" && attempt.body == message)
+            #expect(attempt.requestHead == nil || attempt.requestHead == head)
+        } else {
+            #expect(attempt.action == "merge" && attempt.requestHead == head && attempt.method == "SQUASH")
+        }
+    }
+
     /// Each Host proves its loopback destination before the shared write case runs.
     private func privateGitHubWriteEndpoint(macRoot: String?) throws -> (preflight: String, receipts: String) {
         if let root = macRoot {
