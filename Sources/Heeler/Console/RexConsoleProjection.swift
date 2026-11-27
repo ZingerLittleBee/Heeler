@@ -492,6 +492,16 @@ final class RexConsoleProjection: ConsoleHostProjection {
             : HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
+    /// The published status must still belong to the Antigravity process
+    /// named by this server's inventory. A bare shell never has a binding.
+    func antigravityForeground(in paneID: String) -> Int? {
+        guard kernel == HerdrCoreLocator.linuxKernel, status == .connected, !isAwaitingSnapshot,
+              let address = RexPaneAddress(paneID: paneID), let details = listedDetails(at: address),
+              RexAgentRule.agentKind(in: details) == ChatProgram.agy.rawValue,
+              RexAgentRule.status(of: details, heldBy: ChatProgram.agy.rawValue) != .unknown else { return nil }
+        return details.processID
+    }
+
     /// One exec from the foreground Rex names, then the program's own files.
     /// A program a Rex Host does not bind, or a terminal no longer listed,
     /// cannot tell.
@@ -501,8 +511,22 @@ final class RexConsoleProjection: ConsoleHostProjection {
             let listed = listedDetails(at: address), let activeServer = server
         else { return .unavailable(chatCannotTell(program)) }
         let details = try await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
+        let unavailable = ChatSessionEvidence.unavailable(chatCannotTell(program))
+        if program == .agy {
+            guard let pid = antigravityForeground(in: paneID), details.processID == pid,
+                  RexAgentRule.agentKind(in: details) == program.rawValue else { return unavailable }
+        }
         let evidence = try await chatBinder(at: address, details: details, program: program, server: activeServer)
             .check(chatRecord(at: address, details: details))
+        if program == .agy {
+            // After /clear the same PID can hold its next presence lock before
+            // the first message publishes the official transcript.
+            guard case .bound(let id, let root?, _) = evidence,
+                  let uuid = ConversationReference.canonicalUUID(id) else { return unavailable }
+            let path = AgyTranscriptLocator.transcriptPath(inFolder: AgyTranscriptLocator.folder(in: root, id: uuid))
+            let head = try? await chatHostFiles().read(.init(path: path, offset: 0, maxBytes: 1))
+            guard head?.data.first == 0x7B, details.processID == antigravityForeground(in: paneID) else { return unavailable }
+        }
         guard server == activeServer else { throw TransportError.rexServerGone }
         return evidence
     }
@@ -540,6 +564,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
 
     func chatCandidates(paneID: String, program: ChatProgram) async throws -> ChatCandidatesAnswer {
+        guard program != .agy else { return .noProcess }
         guard !isAwaitingSnapshot, inventory != nil else { throw TransportError.cancelled }
         guard HostCapabilities(serverKind: .rex, coreKernel: kernel).offersChat(for: program), let address = RexPaneAddress(paneID: paneID),
             let listed = listedDetails(at: address), let activeServer = server
@@ -1042,6 +1067,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
         agentKeys: ChatAgentKeysStore? = nil, followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
         confirmTarget: ChatStopVerification? = nil, live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? {
+        if program == .agy {
+            return .escape { .failed(String(localized: "Use the Antigravity terminal to stop work.")) }
+        }
         let plan = ChatStopPlan.standard(for: program)
         let address = RexPaneAddress(paneID: paneID)
         let listed = address.flatMap { listedDetails(at: $0) }

@@ -34,6 +34,9 @@ struct HostCapabilities: Equatable, Sendable {
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
     var readOnlyChatPrograms: Set<ChatProgram> = []
+    /// Antigravity on Linux Rex offers plain chat only after its foreground has
+    /// published a conversation. A fresh prompt and other controls use Terminal.
+    var requiresBoundAntigravity = false
     /// A core on a native Windows machine. Its Terminals start in directories of that
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
@@ -162,6 +165,8 @@ extension HostCapabilities {
                 startsInWindowsDirectories: true)
             if posix { readOnlyChatPrograms = [.opencode] }
             if coreKernel == HerdrCoreLocator.linuxKernel {
+                self.chatPrograms?.insert(.agy)
+                requiresBoundAntigravity = true
                 readOnlyChatPrograms.insert(.amp)
                 offersAmpPlugin = true
             }

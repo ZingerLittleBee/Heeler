@@ -346,6 +346,12 @@ struct AgentDetailView: View {
         console.isSavedChat(id) ? .chat : preferred
     }
 
+    private var visibleAntigravityPane: ConsoleAgent.ID? {
+        guard agent.agent.kind == ChatProgram.agy.rawValue, console.capabilities(for: agent.hostID).requiresBoundAntigravity,
+              scenePhase == .active, showsAgentSurface, isOnStage() else { return nil }
+        return agent.id
+    }
+
     /// The terminal is on screen: no Shell Terminal, no Changes over it, and
     /// not Chat in its place.
     private var showsAgentTerminal: Bool {
@@ -627,6 +633,13 @@ struct AgentDetailView: View {
             session.detailDidAppear(presenceKey)
             prepareRetainedAgent()
             updateFocus()
+        }
+        .task(id: visibleAntigravityPane) {
+            guard visibleAntigravityPane != nil else { return }
+            while !Task.isCancelled {
+                await console.refreshAntigravityBinding(for: agent)
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
         }
         .modifier(AgentFocusFeed(
             mount: mount,

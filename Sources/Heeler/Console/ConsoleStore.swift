@@ -281,6 +281,12 @@ final class ConsoleStore {
     /// One Chat per Agent whose detail has shown it, kept like the Composer
     /// so leaving and returning keeps the conversation and its position.
     @ObservationIgnored private var chatStores: [ConsoleAgent.ID: AgentChatStore] = [:]
+    private struct RexAntigravityBinding: Equatable {
+        let instance: String
+        let pid: Int
+        let conversation: String
+    }
+    private var rexAntigravityBindings: [ConsoleAgent.ID: RexAntigravityBinding] = [:]
     /// The last session event each core Agent's Chat has heard of.
     @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
@@ -1206,7 +1212,9 @@ final class ConsoleStore {
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
-        guard capabilities(for: agent.hostID).offersChat(for: program) else { return nil }
+        let capabilities = capabilities(for: agent.hostID)
+        guard capabilities.offersChat(for: program),
+              !(program == .agy && capabilities.requiresBoundAntigravity) || hasBoundAntigravity(agent) else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let hostProjection = projections[agent.hostID], let adapter = chatAdapter(program) else {
             return nil
@@ -1282,6 +1290,14 @@ final class ConsoleStore {
             source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: processBound.chatCacheScope)
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = processBound.sessionEventRevision(of: paneID)
+        }
+        if program == .agy, capabilities.requiresBoundAntigravity {
+            source.picks = nil
+            // Plain messages use RexComposerSend. A dialog or background
+            // action must never acquire an unchecked screen writer.
+            let readScreen = source.screen.readScreen
+            source.screen = .unavailable
+            source.screen.readScreen = readScreen
         }
         if let amp = files.amp {
             if amp.isReadOnly { source.screen = .unavailable }
@@ -3756,12 +3772,42 @@ final class ConsoleStore {
             form: form, files: try OpenCodePluginEdit.pluginFiles(from: try hostHelperBundle()))
     }
 
+    /// The foreground detail asks about its own pane. A lock can change in
+    /// the same process without Rex announcing a new foreground.
+    func refreshAntigravityBinding(for agent: ConsoleAgent) async {
+        let id = agent.id
+        guard let rex = projections[id.hostID] as? RexConsoleProjection,
+              let instance = rex.server?.instanceID, let pid = rex.antigravityForeground(in: id.paneID) else {
+            rexAntigravityBindings.removeValue(forKey: id)
+            return
+        }
+        let evidence = try? await rex.checkChatSession(paneID: id.paneID, program: .agy)
+        guard !Task.isCancelled, projections[id.hostID] === rex, rex.server?.instanceID == instance,
+              rex.antigravityForeground(in: id.paneID) == pid else { return }
+        let binding: RexAntigravityBinding?
+        if case .bound(let conversation, _, _) = evidence {
+            binding = RexAntigravityBinding(instance: instance, pid: pid, conversation: conversation)
+        } else {
+            binding = nil
+        }
+        if rexAntigravityBindings[id] != binding { rexAntigravityBindings[id] = binding }
+    }
+
+    private func hasBoundAntigravity(_ agent: ConsoleAgent) -> Bool {
+        guard let rex = projections[agent.hostID] as? RexConsoleProjection,
+              let binding = rexAntigravityBindings[agent.id] else { return false }
+        return binding.instance == rex.server?.instanceID && binding.pid == rex.antigravityForeground(in: agent.agent.paneID)
+    }
+
     func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
         // Chat goes on to the address's new Agent. A detail stays with the old one,
         // which has no Chat left to show.
         guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
         let capabilities = capabilities(for: agent.hostID)
         guard capabilities.chat else { return nil }
+        if capabilities.requiresBoundAntigravity, agent.agent.kind == ChatProgram.agy.rawValue, !hasBoundAntigravity(agent) {
+            return nil
+        }
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }

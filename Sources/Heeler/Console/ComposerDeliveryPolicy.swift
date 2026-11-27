@@ -167,6 +167,16 @@ struct ComposerDeliveryPolicy: Sendable {
         return await preflight?(text)
     }
 
+    /// Antigravity on Rex has verified plain text delivery. Commands and staged files use its terminal.
+    mutating func restrictAntigravityToMessages(hasAttachments: Bool) {
+        prependingPreflight { text in
+            if hasAttachments || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+                return .inputNotReady(String(localized: "Use the Antigravity terminal for commands and attachments."))
+            }
+            return nil
+        }
+    }
+
     /// Prepends a guard that runs before both the regular preflight and the
     /// Send Anyway unconfirmed-input-box preflight.
     mutating func prependingPreflight(

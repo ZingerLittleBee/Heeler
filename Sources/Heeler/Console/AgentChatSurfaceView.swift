@@ -510,6 +510,10 @@ struct AgentChatSurfaceView: View {
         themeColors.colorScheme ?? themeAppearance
     }
 
+    private var isBoundAntigravity: Bool {
+        program == .agy && console.capabilities(for: agent.hostID).requiresBoundAntigravity
+    }
+
     private var showsChatInput: Bool {
         !console.capabilities(for: agent.hostID).readOnlyChatPrograms.contains(program) && chat?.isReadingPickedConversation != true
     }
@@ -587,7 +591,7 @@ struct AgentChatSurfaceView: View {
                     },
                     snippets: terminal.snippets,
                     manageSnippets: { isManagingSnippets = true },
-                    agentKeys: session.agentKeys,
+                    agentKeys: isBoundAntigravity ? nil : session.agentKeys,
                     height: composerKeyboardLayout.availableToolsHeight)
                 .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
                 .disabled(composerKeyboardPresentation != .tools)
@@ -1156,12 +1160,13 @@ struct AgentChatSurfaceView: View {
 
     /// What every Skills entry here reads: nil hides them, the `/` menu's included.
     private var skills: SkillsPaneStore? {
-        console.capabilities(for: agent.hostID).readsProjects ? skillsStore : nil
+        !isBoundAntigravity && console.capabilities(for: agent.hostID).readsProjects ? skillsStore : nil
     }
 
     /// The `/` menu: the Host's skills once loaded, plus `/compact`.
     private var commands: [ChatCommand] {
-        ChatCommandMenu.commands(
+        guard !isBoundAntigravity else { return [] }
+        return ChatCommandMenu.commands(
             skills: skills?.skills ?? [],
             agentIsIdle: ChatAgentActivity(agent.agent.status) == .idle,
             program: program)
@@ -1182,6 +1187,9 @@ struct AgentChatSurfaceView: View {
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         policy.sessionWrite = chat?.composerWriteCheck(for: composer)
+        if isBoundAntigravity {
+            policy.restrictAntigravityToMessages(hasAttachments: !composer.imageAttachments.isEmpty)
+        }
         if program == .amp {
             let connection = chat?.ampConnection
             let displayed = chat?.displayedAmpBinding
@@ -1473,6 +1481,7 @@ struct AgentChatSurfaceView: View {
 
     /// Session settings switched from Chat's header or status line.
     private var sessionControls: AgentSessionControls? {
+        guard !isBoundAntigravity else { return nil }
         let status = agent.agent.status
         let isEnabled = (status == .idle || status == .done)
             && !isSwitchingSetting && !isComposerSending && !session.agentKeys.isRunningQueuedWork
@@ -1981,7 +1990,7 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt? {
-        guard program != .amp else { return nil }
+        guard program != .amp, !isBoundAntigravity else { return nil }
         return console.chatInterrupt(
             for: agent, program: program, keepingTo: session.corePin,
             context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
@@ -1992,7 +2001,7 @@ struct AgentChatSurfaceView: View {
     /// Background Work keeps the Agent Working after its foreground turn
     /// already finished, there is no open foreground turn to place.
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
-        guard program == .agy, let chat else { return nil }
+        guard program == .agy, !isBoundAntigravity, let chat else { return nil }
         let composer = composer
         return {
             guard chat.agent.status == .working else { return nil }
@@ -2027,7 +2036,7 @@ struct AgentChatSurfaceView: View {
     /// though the store can keep the card it showed, or read an Antigravity
     /// CLI for its trust prompt as the departure clears its status.
     private var showsBlockedCard: Bool {
-        showsChatInput && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+        !isBoundAntigravity && showsChatInput && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
     }
 
     /// A Blocked Agent's dialog, answered in the Composer's place, or a sign
@@ -2051,7 +2060,7 @@ struct AgentChatSurfaceView: View {
     /// zero with the last row.
     private var backgroundWorkStrip: some View {
         VStack(spacing: 0) {
-            if let chat, presentation == .timeline {
+            if !isBoundAntigravity, let chat, presentation == .timeline {
                 BackgroundWorkInset(
                     chat: chat,
                     isHostConnected: isHostConnected,
@@ -2108,10 +2117,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: offers.attachments && program != .amp ? { isSelectingPhoto = true } : nil,
-            pasteImage: offers.attachments && program != .amp
+            addImage: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments && program != .amp && !isBoundAntigravity
                 ? { session.pasteClipboard() } : nil,
-            addFile: offers.attachments && program != .amp ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {
