@@ -30,7 +30,7 @@ def pull(number, attempts, head_advanced):
     merged = "merge" in changes
     reviews = [{"state": "APPROVED", "author": {"login": VIEWER}}] if "approve" in changes else []
     repository = {
-        "id": "LAB_REPOSITORY", "name": "write-fixture", "nameWithOwner": REPOSITORY, "owner": {"login": "lab"},
+        "id": "LAB_REPOSITORY", "name": "write-fixture", "nameWithOwner": REPOSITORY, "owner": {"login": "lab", "__typename": "Organization"},
         "defaultBranchRef": BRANCH, "viewerPermission": "ADMIN",
         "squashMergeAllowed": True, "mergeCommitAllowed": True, "rebaseMergeAllowed": True,
         "viewerDefaultMergeMethod": "SQUASH", "deleteBranchOnMerge": False,
@@ -86,12 +86,12 @@ def dispatch(query, variables, client, ledger, issue):
             if not eligible:
                 return HTTPStatus.UNPROCESSABLE_ENTITY, {"errors": [{"message": "Private fixture rejected this pull mutation."}]}
             mutation = "addPullRequestReview" if is_review else "mergePullRequest"
-            response = {"clientMutationId": None}
-            if is_review:
-                response["pullRequestReview"] = {"id": "LAB_APPROVAL_9671", "state": "APPROVED"}
-            else:
-                response["pullRequest"] = pull(number, [*attempts, row], head_advanced)
-            return HTTPStatus.OK, {"data": {mutation: response}}
+            return HTTPStatus.OK, {"data": {mutation: {"clientMutationId": None}}}
+
+        types = re.findall(r'(\w+)\s*:\s*__type\(name:\s*"(\w+)"\)', query)
+        if types and not variables and all(name in {"PullRequest", "WorkflowRun", "StatusCheckRollupContextConnection"} for _, name in types):
+            fields = {alias: {"fields": []} for alias, _ in types}
+            return HTTPStatus.OK, {"data": fields}
 
         aliases = re.findall(r"(s\d+)\s*:\s*search\s*\(", query)
         if aliases and any("is:pr" in str(v) for v in variables.values()):
