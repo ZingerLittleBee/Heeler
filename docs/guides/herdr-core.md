@@ -4,6 +4,7 @@ Agents in the Herdr desktop app belong to herdr-core, a server separate from Her
 
 ## Before you start
 
+- [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. On Windows, follow [Windows setup](windows-setup.md).
 - The Herdr desktop app running on the Mac, or herdr-core running on Linux or [native Windows](#native-windows).
 - A way for your phone to reach the Mac: directly on the same network, or over an [overlay network](overlay-networks.md). A Host can have [multiple routes](host-routes.md).

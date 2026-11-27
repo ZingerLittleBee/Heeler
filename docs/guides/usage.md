@@ -1,10 +1,10 @@
 # See Usage and Usage Limits
 
-Check Claude Code and Codex Usage Limits on iPhone or iPad, with Home Screen and Lock Screen widgets for account limits and reset times.
+Check Claude Code, Codex, and Antigravity CLI Usage Limits on iPhone or iPad, with Home Screen and Lock Screen widgets for account limits and reset times.
 
 Usage also shows how many tokens each Host's Agents used over the last 30 days, with what those tokens would cost at API list prices. The estimated cost is not your subscription bill.
 
-You need a macOS or Linux Host with the Heeler plugin 0.7.0 or newer, or the Host Helper on a [herdr-core](herdr-core.md#host-helper) or [tmux](tmux.md#host-helper) Host.
+You need [Heeler](https://apps.apple.com/app/id6797263135) on your iPhone or iPad and a macOS or Linux Host with the Heeler plugin 0.7.0 or newer, or the Host Helper on a [herdr-core](herdr-core.md#host-helper) or [tmux](tmux.md#host-helper) Host. Antigravity CLI usage requires plugin 0.10.0 or newer (or Host Helper 0.5.8 or newer), and its Usage Limits also need `agy` 1.1.11 or newer on the Host.
 
 ## Set up the Host
 
@@ -46,9 +46,9 @@ If a Host runs more than one Claude Code subscription, each signed in from its o
 
 Every Host starts with the **Default** Account: the directory Claude Code uses when herdr starts it. Each Account you add gets its own Token Usage, listed under Claude Code. With **Claude Code limits** on, it also gets its own Usage Limits and its own line in the Usage Limits widget.
 
-1. In Usage, choose one Host. If Heeler found directories that look like Claude Code's, a notice such as **Found 1 Claude Code directory** appears; tap it. Otherwise tap **Details** beside **Usage Limits**, then **Claude Code Accounts**.
-2. Under **Suggestions**, tap **Add** to count a directory, or **Ignore** to stop suggesting it. Heeler suggests directories that a running Agent uses or that sit in your home folder, and counts none until you add it.
-3. To add a directory Heeler didn't suggest, tap **Choose Another Directory…** and pick it on the Host. It must hold a Claude Code sign-in or Transcripts: a `.claude.json` file or a `projects` folder.
+1. In Usage, choose one Host. If Heeler found directories that look like Account folders, a notice such as **Found 1 Account folder** appears; tap it. Otherwise open **Settings > Agents & Accounts**, choose the Host, and find the **Claude Code** section.
+2. For a suggested folder listed there, tap **Add** to count it, or **Ignore** to stop suggesting it. Heeler suggests directories that a running Agent uses or that sit in your home folder, and counts none until you add it.
+3. To add a directory Heeler didn't suggest, tap **Choose a Folder…** and pick it on the Host. It must hold a Claude Code sign-in or Transcripts: a `.claude.json` file or a `projects` folder.
 
 A new Account counts from the next refresh. A Host can have up to four Claude Code Accounts, Default included; at four, remove one to add another.
 

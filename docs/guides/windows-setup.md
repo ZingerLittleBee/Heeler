@@ -1,12 +1,16 @@
 # Windows setup
 
-Set up a native Windows Host for Heeler, including SSH login and automatic
-startup of SSH and herdr.
+Set up OpenSSH and native Herdr TUI on Windows 11 for live Agents and
+terminals in Heeler (without Chat or Pairing), including automatic startup of
+SSH and herdr.
+
+> [!NOTE]
+> For native Chat on Windows (Claude Code, Grok Build, Pi, and Oh My Pi), finish [step 1](#1-enable-ssh) for OpenSSH and then follow [Native Windows in Connect herdr-core](herdr-core.md#native-windows). For Windows Rex support (with Claude Code Chat), see [Connect Rex](rex.md).
 
 ## Before you start
 
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.13 or newer on your iPhone or iPad, and native herdr 0.9.3 or newer.
 - Windows 11 with administrator access.
-- Native herdr 0.9.3 or newer, and Heeler 0.1.13 or newer.
 - Use the same Windows account for SSH login, herdr, coding agents, and the startup task.
 - The examples use the named session `heeler-win-test`; replace it consistently if you choose another name.
 

@@ -1,12 +1,15 @@
-<!-- Translated from docs/guides/windows-setup.md at d65d8b36 -->
+<!-- Translated from docs/guides/windows-setup.md at 03606d07 -->
 # Windows 配置
 
-为 Heeler 配置原生 Windows Host，包括 SSH 登录以及 SSH 与 herdr 的开机自启。
+在 Windows 11 上配置 OpenSSH 与原生 Herdr TUI，以便在 Heeler 中使用实时 Agent 与终端（不含 Chat 或配对），并配置 SSH 与 herdr 开机自启。
+
+> [!NOTE]
+> 如果你想在 Windows 上使用原生 Chat（Claude Code、Grok Build、Pi 与 Oh My Pi），请完成[第 1 步](#1-启用-ssh)配置 OpenSSH 后，转到[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。如需在 Windows 上使用 Rex（支持 Claude Code 的 Chat），请参阅[连接 Rex](rex.md)。
 
 ## 开始之前
 
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)（0.1.13 或更高版本），并在 Windows 上准备原生 herdr 0.9.3 或更高版本。
 - 具备管理员权限的 Windows 11。
-- 原生 herdr 0.9.3 或更高版本，以及 Heeler 0.1.13 或更高版本。
 - 请使用同一个 Windows 账户进行 SSH 登录、运行 herdr、运行编程 Agent（coding agent）以及配置开机自启任务。
 - 下文示例使用命名会话 `heeler-win-test`；如果选用其他名称，请保持前后一致。
 

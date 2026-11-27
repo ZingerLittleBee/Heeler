@@ -13,10 +13,10 @@ import {
   ViewOptionsPopover,
 } from '@fumadocs/base-ui/layouts/spacious/page';
 import { RootProvider } from '@fumadocs/base-ui/provider/astro';
-import { GlobeIcon, House } from 'lucide-react';
+import { GlobeIcon, House, LanguagesIcon, Smartphone } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { navigate } from 'astro:transitions/client';
-import { githubRepo, htmlLang, type Locale, localeFromPath } from '@/lib/guides.ts';
+import { githubRepo, htmlLang, type Locale, localeFromPath, localePath } from '@/lib/guides.ts';
 import { useLanguage } from './language';
 import { layoutSlots } from './layout-slots';
 import { usePanelScroll } from './panel-scroll';
@@ -139,7 +139,29 @@ export function Docs({ trees, pathname, params, page, children }: DocsProps) {
               </div>
             )}
             <DocsBody className="text-fd-foreground/90">{children}</DocsBody>
-            <EditOnGitHub href={page.sourceUrl} className="mt-6 self-start" />
+            <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <EditOnGitHub href={page.sourceUrl} />
+              {page.markdownUrl && (
+                <a
+                  href="https://apps.apple.com/app/id6797263135"
+                  rel="noreferrer noopener"
+                  target="_blank"
+                  className="inline-flex items-center gap-1.5 rounded-md text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring"
+                >
+                  <Smartphone className="size-3.5 shrink-0" aria-hidden="true" />
+                  {isZh ? '在 App Store 下载 Heeler' : 'Download Heeler on the App Store'}
+                </a>
+              )}
+              <a
+                href={localePath(activePathname, isZh ? 'en' : 'zh')}
+                hrefLang={isZh ? 'en' : 'zh-CN'}
+                lang={isZh ? 'en' : 'zh-CN'}
+                className="inline-flex items-center gap-1.5 rounded-md text-sm text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring"
+              >
+                <LanguagesIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                {isZh ? 'English' : '简体中文'}
+              </a>
+            </div>
           </DocsPage>
         ) : (
           <NotFoundPanel locale={locale}>{children}</NotFoundPanel>

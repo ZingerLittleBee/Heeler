@@ -30,24 +30,48 @@ export const steps = [
     lead: 'Know the second',
     dim: 'it stops.',
     body: 'When an Agent goes Blocked or Done, you get an end-to-end encrypted push. A Live Activity keeps every Agent on your Lock Screen and in the Dynamic Island.',
-    note: 'The relay only ever sees ciphertext.',
+    note: 'Notification bodies and Agent details stay end-to-end encrypted; Live Activity counts and delivery metadata pass through the relay.',
   },
   {
     screen: 'usage',
     label: 'Usage',
     lead: 'See the limit',
     dim: 'before you hit it.',
-    body: 'Claude Code and Codex Usage Limits with their reset times, plus 30 days of tokens and estimated API cost across every Host. Widgets keep them on your Home and Lock Screen.',
+    body: 'Claude Code, Codex, and Antigravity CLI Usage Limits with reset times, 30-day tokens, and estimated API cost on macOS and Linux Hosts (herdr, herdr-core, tmux), plus Home and Lock Screen widgets.',
   },
 ] as const;
 
 export type Screen = (typeof steps)[number]['screen'];
 
 export const backends = [
-  { name: 'Herdr TUI', body: 'Pair by scanning a QR code.', runs: 'macOS, Linux, Windows' },
-  { name: 'Herdr desktop', body: 'Follows your spaces and tabs.', runs: 'herdr-core on macOS, Linux, Windows' },
-  { name: 'tmux', body: 'Sessions, windows and panes, alongside your desktop terminal.', runs: '3.3 or newer on macOS and Linux' },
-  { name: 'Rex', body: 'Sessions, windows and terminals, in the same console.', runs: 'Experimental, on macOS and Linux' },
+  {
+    name: 'Herdr TUI',
+    body: 'Pair by QR code on macOS and Linux, or add a Windows machine manually.',
+    runs: 'macOS, Linux, Windows',
+    guide: { label: 'Pairing guide', slug: 'pairing' },
+    windows: true,
+  },
+  {
+    name: 'Herdr desktop',
+    body: 'Follows your spaces and tabs.',
+    runs: 'herdr-core on macOS, Linux, Windows',
+    guide: { label: 'herdr-core guide', slug: 'herdr-core' },
+    windows: true,
+  },
+  {
+    name: 'tmux',
+    body: 'Sessions, windows and panes, alongside your desktop terminal.',
+    runs: '3.3 or newer on macOS and Linux',
+    guide: { label: 'tmux guide', slug: 'tmux' },
+    windows: false,
+  },
+  {
+    name: 'Rex',
+    body: 'Sessions, windows and terminals, in the same console.',
+    runs: 'macOS, Linux, Windows',
+    guide: { label: 'Rex guide', slug: 'rex' },
+    windows: true,
+  },
 ];
 
 /** Agents whose conversations Chat can read. */
@@ -59,17 +83,17 @@ export const routes = ['Direct', 'Tailscale', 'Jump Host'];
 export const privacy = [
   'Plain SSH, straight to your Host. Your code never passes through us.',
   'The Device Key is generated on your phone and stays in the Keychain.',
-  'Notifications are end-to-end encrypted. The relay sees ciphertext.',
+  'Notification bodies and per-Agent details stay end-to-end encrypted; the relay sees APNs and request routing metadata plus unencrypted Live Activity counts, events, and timestamps.',
   'Open source, Apache-2.0.',
 ];
 
-/** The two commands that pair a Herdr TUI machine. */
+/** The two commands that pair a Herdr TUI machine on macOS or Linux. */
 export const pairCommands = ['herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes', 'herdr plugin action invoke heeler.pair'];
 
 export const faq = [
   {
     q: 'What do I need on the machine?',
-    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server (experimental).',
+    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server.',
   },
   {
     q: 'Do I have to switch to herdr?',
@@ -77,7 +101,7 @@ export const faq = [
   },
   {
     q: 'Does my code go through your servers?',
-    a: 'No. Heeler talks to your machine over SSH. Notifications pass through a relay as ciphertext it cannot read.',
+    a: 'No. Heeler talks to your machine over SSH. Notification bodies and per-Agent details stay end-to-end encrypted before reaching the push relay; the relay sees the APNs and request routing metadata needed for delivery, along with unencrypted Live Activity summary counts, events, and timestamps.',
   },
   {
     q: 'Which agents work?',

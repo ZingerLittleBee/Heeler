@@ -1,5 +1,5 @@
 {
-  "$comment": "The guides published from docs/guides/ (and translated in docs/guides/zh/), in sidebar order. Each slug is a basename (without .md) and becomes /<slug> in English and /zh/<slug> in Simplified Chinese. Read by src/lib/guides.ts and scripts/check-links.mjs. Each section's title is localized by locale code (en, zh). sidebarTitles[locale] overrides a page's sidebar label in that language (its H1 title otherwise); keep labels short enough for one sidebar line, in sentence case in English except for domain terms such as Host. The GuideCard links in content/index.mdx and content/zh/index.mdx show the same localized sidebar label and shared icon. icons names the Lucide icon (https://lucide.dev/icons, PascalCase) shown beside each page in the sidebar; every page needs one.",
+  "$comment": "The guides published from docs/guides/ (and translated in docs/guides/zh/), in sidebar order. Each slug is a basename (without .md) and becomes /<slug> in English and /zh/<slug> in Simplified Chinese. Read by src/lib/guides.ts and scripts/check-links.mjs. Each section's title is localized by locale code (en, zh). sidebarTitles[locale] overrides a page's sidebar label in that language (its H1 title otherwise); keep labels short enough for one sidebar line, in sentence case in English except for domain terms such as Host. The GuideCard links in content/index.mdx and content/zh/index.mdx show the same localized sidebar label and shared icon. seo[locale][slug] optionally overrides HTML <title> (seoTitle) and <meta name=\"description\"> (seoDescription) without altering the visible H1 or raw GitHub Markdown files. icons names the Lucide icon (https://lucide.dev/icons, PascalCase) shown beside each page in the sidebar; every page needs one.",
   "sections": [
     {
       "title": {
@@ -104,6 +104,92 @@
       "chat-troubleshooting": "疑难排解",
       "voice-input": "使用 Voice Input",
       "usage": "Usage 与小组件"
+    }
+  },
+  "seo": {
+    "en": {
+      "index": {
+        "seoTitle": "Heeler Docs — iPhone & iPad Console for Claude Code, Codex, herdr & tmux",
+        "seoDescription": "Set up Heeler on iPhone and iPad to monitor and control Claude Code, Codex, and other coding agents over SSH with Herdr TUI, herdr-core, tmux, or Rex."
+      },
+      "pairing": {
+        "seoTitle": "Pair a Mac or Linux Host via QR Code over SSH",
+        "seoDescription": "Connect iPhone or iPad to a Mac or Linux Host over SSH by scanning a one-time Pairing Code from the Heeler plugin or npx heeler-pair—no manual key setup."
+      },
+      "tmux": {
+        "seoTitle": "Connect tmux on macOS or Linux over SSH",
+        "seoDescription": "Monitor and control Claude Code, Codex, Grok Build, Pi, and Oh My Pi with native Chat (and OpenCode in the terminal) on macOS or Linux tmux 3.3+, plus hooks and Host Helper."
+      },
+      "herdr-core": {
+        "seoTitle": "Connect herdr-core and Herdr Desktop App over SSH",
+        "seoDescription": "Connect Heeler over SSH to the Herdr desktop app or headless herdr-core on macOS, Linux, and native Windows, with native Chat and macOS/Linux Host Helper notifications and Usage."
+      },
+      "windows-setup": {
+        "seoTitle": "Windows 11 Setup: OpenSSH and Native Herdr TUI",
+        "seoDescription": "Enable Win32-OpenSSH, firewall rules, and native Herdr TUI auto-start on Windows 11 for live Agents and terminals in Heeler, plus paths to Windows herdr-core and Rex."
+      },
+      "tailscale": {
+        "seoTitle": "Connect Heeler over Tailscale Without an iOS VPN App",
+        "seoDescription": "Join your tailnet with Heeler's built-in Tailscale node so iPhone and iPad need no Tailscale app or iOS VPN slot, including optional VPN-free userspace Tailscale on Mac."
+      },
+      "usage": {
+        "seoTitle": "Track Claude Code, Codex & Antigravity CLI Usage Widgets",
+        "seoDescription": "View Claude Code, Codex, and Antigravity CLI Usage Limits and 30-day Token Usage on iPhone and iPad Home Screen and Lock Screen widgets on macOS and Linux Hosts."
+      },
+      "chat": {
+        "seoTitle": "Native Chat for Claude Code, Codex & Coding Agents",
+        "seoDescription": "Read conversations, send prompts, stop turns, and answer Blocked prompts with buttons in Heeler's native Chat over SSH across Herdr TUI, herdr-core, tmux, and Rex."
+      },
+      "chat-troubleshooting": {
+        "seoTitle": "Chat Troubleshooting: Codex --no-daemon & Session Binding",
+        "seoDescription": "Fix common Heeler Chat issues including missing Show Chat, Codex Started Without --no-daemon, Can't Tell the Conversation, custom Account folders, and SFTP uploads."
+      },
+      "rex": {
+        "seoTitle": "Connect Rex Server over SSH",
+        "seoDescription": "Connect Heeler over SSH to a running Rex server (API revisions 12–19) on macOS, Linux, or Windows for terminals, new shells, and native Chat."
+      }
+    },
+    "zh": {
+      "index": {
+        "seoTitle": "Heeler 文档 — iPhone 与 iPad 上的 Claude Code、Codex、herdr 与 tmux 控制台",
+        "seoDescription": "在 iPhone 和 iPad 上配置 Heeler，通过 SSH 连接 Herdr TUI、herdr-core、tmux 或 Rex，远程查看并控制 Claude Code、Codex 等编程 Agent。"
+      },
+      "pairing": {
+        "seoTitle": "扫码配对 Mac 或 Linux Host（SSH 免手动填表）",
+        "seoDescription": "扫描 Heeler 插件或 npx heeler-pair 生成的一次性配对码，免手动配置 SSH 密钥与指纹，将 iPhone 或 iPad 连接到 Mac 或 Linux Host。"
+      },
+      "tmux": {
+        "seoTitle": "通过 SSH 连接 macOS 或 Linux 上的 tmux 服务端",
+        "seoDescription": "在 iPhone 或 iPad 上连接已有的 macOS 或 Linux tmux 3.3+ 服务端，在原生 Chat 中使用 Claude Code、Codex、Grok Build、Pi 和 Oh My Pi（OpenCode 仅提供终端），并支持 hooks 与 Host Helper 通知。"
+      },
+      "herdr-core": {
+        "seoTitle": "通过 SSH 连接 herdr-core 与 Herdr 桌面端",
+        "seoDescription": "通过 SSH 将 Heeler 连接到 macOS、Linux 或原生 Windows 上的 Herdr 桌面端与无界面 herdr-core，支持原生 Chat，并在 macOS/Linux 上通过 Host Helper 启用通知与 Usage。"
+      },
+      "windows-setup": {
+        "seoTitle": "Windows 11 配置：OpenSSH 与原生 Herdr TUI",
+        "seoDescription": "在 Windows 11 上启用 OpenSSH、放行防火墙并配置原生 Herdr TUI 开机自启，用于 Heeler 实时 Agent 与终端，同时指引 Windows herdr-core 与 Rex 入口。"
+      },
+      "tailscale": {
+        "seoTitle": "通过 Tailscale 连接 Heeler（iPhone 无需安装 VPN 应用）",
+        "seoDescription": "使用 Heeler 内置 Tailscale 节点直接加入 tailnet，iPhone 与 iPad 无需安装 Tailscale 应用也不占用 iOS VPN 通道，并附 Mac 端免 VPN 运行方案。"
+      },
+      "usage": {
+        "seoTitle": "查看 Claude Code、Codex 与 Antigravity CLI 用量及小组件",
+        "seoDescription": "在 iPhone 与 iPad 的主屏和锁屏小组件上查看 macOS 或 Linux Host 的 Claude Code、Codex 与 Antigravity CLI 额度限制与 30 天 Token 用量。"
+      },
+      "chat": {
+        "seoTitle": "在原生 Chat 中使用 Claude Code、Codex 等编程 Agent",
+        "seoDescription": "通过 SSH 在 Heeler 原生 Chat 中阅读对话、发送提示、停止运行并用按钮回答 Blocked 提问，支持 Herdr TUI、herdr-core、tmux 及 Rex。"
+      },
+      "chat-troubleshooting": {
+        "seoTitle": "Chat 疑难排解：Codex --no-daemon 与会话识别问题",
+        "seoDescription": "解决 Heeler Chat 常见问题：没有 Show Chat、Codex 未使用 --no-daemon 启动、无法识别当前对话、自定义配置目录 Account 与 SFTP 上传失败。"
+      },
+      "rex": {
+        "seoTitle": "通过 SSH 连接 Rex 服务端",
+        "seoDescription": "通过 SSH 将 Heeler 连接到 macOS、Linux 或 Windows 上运行中的 Rex 服务端（API revision 12–19），支持终端、新建 Shell 与原生 Chat。"
+      }
     }
   },
   "icons": {

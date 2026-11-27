@@ -17,7 +17,7 @@ import '../styles/home/stage.css';
 import '../styles/home/sections.css';
 
 const description =
-  'Heeler is a mobile agent console for herdr, herdr-core, tmux, and Rex on iPhone and iPad. Control Claude Code and Codex over SSH, with native Chat, encrypted alerts, and Usage widgets.';
+  'iPhone & iPad SSH console for Claude Code and Codex running on your own machines. Herdr TUI, Herdr desktop (herdr-core), tmux, and Rex.';
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -51,7 +51,7 @@ const structuredData = {
 };
 ---
 
-<Layout title="Heeler — Claude Code & Codex on iPhone and iPad" description={description}>
+<Layout title="Heeler — Claude Code, Codex & tmux over SSH on iPhone & iPad" description={description}>
   <script is:inline slot="head" type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
   <Stage />
   <Backends />

@@ -4,6 +4,7 @@ Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH,
 
 ## Before you start
 
+- [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for tmux Hosts.
 - tmux 3.3 or newer (`tmux -V`) on your login shell's `PATH`. Ubuntu 22.04 and AlmaLinux or Rocky Linux 9 ship tmux 3.2a, so install a newer build there first.
 - A running tmux server on the Mac (`tmux` or `tmux -L <name>`). On Linux, you can start tmux ahead of time or let **New Workspace** start it later.

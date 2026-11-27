@@ -1,10 +1,11 @@
-<!-- Translated from docs/guides/tmux.md at 4732ddb2 -->
+<!-- Translated from docs/guides/tmux.md at d418c957 -->
 # 连接 tmux
 
 通过 SSH 将 Heeler 连接到你在 Mac 或 Linux Host 上运行的 tmux 服务端，与 Herdr TUI 和 [herdr-core](herdr-core.md) 并列使用。每个 tmux socket 在 Heeler 中都是其 Host 的一个 Server，可在控制台和原生 [Chat](#chat) 中直接使用其中的会话、窗口与编程 Agent。
 
 ## 开始之前
 
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。tmux Host 不支持原生 Windows。
 - 登录 shell 的 `PATH` 中装有 tmux 3.3 或更新版本（`tmux -V`）。Ubuntu 22.04 以及 AlmaLinux、Rocky Linux 9 自带 tmux 3.2a，请先安装更新版本。
 - 在 Mac 上已启动 tmux 服务端（`tmux` 或 `tmux -L <name>`）。在 Linux 上可以提前启动 tmux，也可以稍后通过 **New Workspace** 启动。

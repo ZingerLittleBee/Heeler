@@ -16,6 +16,7 @@ import {
   type Locale,
   locales,
   pageIcons,
+  seoMeta,
   sidebarTitle,
 } from './guides.ts';
 import type { Root as MdastRoot } from 'mdast';
@@ -29,6 +30,10 @@ export type IconName = keyof typeof icons;
 interface DocsPageData {
   title: string;
   description: string;
+  /** Optional HTML `<title>` override (src/guides.json) that keeps H1 and sidebar labels untouched. */
+  seoTitle?: string;
+  /** Optional `<meta name="description">` override (src/guides.json) that keeps visible copy untouched. */
+  seoDescription?: string;
   /** Lucide icon for the sidebar and for cards that link to the page (src/guides.json). */
   icon: IconName;
   /** Source file on GitHub, for the "Edit on GitHub" link. */
@@ -119,11 +124,15 @@ async function createSource() {
 
   for (const entry of await getCollection('pages')) {
     const path = collectionPath(entry.filePath, 'content/');
+    const locale: Locale = path.startsWith('zh/') ? 'zh' : 'en';
+    const seo = seoMeta(slugOf(path), locale);
     out.files.push({
       type: 'page',
       path,
       data: {
         ...entry.data,
+        ...(seo?.seoTitle ? { seoTitle: seo.seoTitle } : {}),
+        ...(seo?.seoDescription ? { seoDescription: seo.seoDescription } : {}),
         icon: iconFor(path),
         sourceUrl: `${githubRepo}/blob/main/docs-site/content/${path}`,
         entry,
@@ -133,6 +142,8 @@ async function createSource() {
 
   for (const entry of await getCollection('guides')) {
     const path = collectionPath(entry.filePath, '../docs/guides/');
+    const locale: Locale = path.startsWith('zh/') ? 'zh' : 'en';
+    const seo = seoMeta(slugOf(path), locale);
     // remarkGuideTitle moved the H1 and lead paragraph into the frontmatter.
     const frontmatter: Record<string, unknown> = (await render(entry)).remarkPluginFrontmatter;
     const { title, description } = frontmatter;
@@ -142,7 +153,15 @@ async function createSource() {
     out.files.push({
       type: 'page',
       path,
-      data: { title, description, icon: iconFor(path), sourceUrl: `${githubRepo}/blob/main/${guidesDir}/${path}`, entry },
+      data: {
+        title,
+        description,
+        ...(seo?.seoTitle ? { seoTitle: seo.seoTitle } : {}),
+        ...(seo?.seoDescription ? { seoDescription: seo.seoDescription } : {}),
+        icon: iconFor(path),
+        sourceUrl: `${githubRepo}/blob/main/${guidesDir}/${path}`,
+        entry,
+      },
     });
   }
 

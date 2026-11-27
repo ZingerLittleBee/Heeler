@@ -1,13 +1,13 @@
-<!-- Translated from docs/guides/tailscale.md at 5171f178 -->
+<!-- Translated from docs/guides/tailscale.md at d418c957 -->
 
 # 通过 Tailscale 连接 Heeler
 
-Heeler 会直接加入你的 tailnet，因此手机上无需安装 Tailscale 应用或配置系统 VPN。
+Heeler 内置 Tailscale 节点，可自行加入你的 tailnet，因此 iPhone 或 iPad 上无需安装 Tailscale 应用，也不会占用 iOS 系统 VPN 通道。
 
 ## 开始之前
 
-- 你需要使用包含 **Settings > Overlay Networks** 的 Heeler 版本。
-- 你需要一个可以添加设备的 Tailscale 账号。
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)（包含 **Settings > Overlay Networks** 的版本）。
+- 一个可以添加设备的 Tailscale 账号。
 - 如果不想在 Mac 上安装系统 VPN 或网络扩展，请按[不在 Mac 上配置 VPN 运行 Tailscale（进阶）](#不在-mac-上配置-vpn-运行-tailscale进阶)操作，代替第 2 步。
 
 ## 1. 准备 Mac

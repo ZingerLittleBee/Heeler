@@ -9,23 +9,21 @@
 .lp.home {
   /* ------------------------------------------------------------ stage: hero + story share one pinned phone */
   .stage { position: relative; }
-  /* The story scrubs across 5.6 viewports; without scripts the hero is one static screen. */
-  :where(.js) & .stage { height: 660vh; }
-  .anc { position: absolute; top: calc(125vh + 64px); }
-  /* The pin spans the large viewport, so a collapsing browser toolbar never uncovers its cut edge.
-     Everything inside is laid out against the small one and does not move when the toolbar does. */
-  .pin { position: sticky; top: 0; height: 100vh; height: 100lvh; overflow: clip; }
+  .anc { position: absolute; top: 90svh; }
+  .pin { position: relative; }
   /* --dr: from the phone's centre line to the right edge of the viewport */
   .pin-in {
-    position: relative; height: 100vh; height: 100svh;
+    position: relative;
     --pw: clamp(110px, min(35vh, 26vw), 380px); --dr: calc(50vw - 0.29 * min(100vw, 1320px));
   }
 
   .hero {
-    position: absolute; inset: 0 var(--pad); z-index: 1; padding-top: 44px;
+    position: relative; z-index: 1;
+    min-height: max(92svh, calc(160px + var(--pw) * 2.2));
+    padding-top: 64px;
     display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
     will-change: transform, opacity;
-    &.is-off { visibility: hidden; }
+    &.is-off { pointer-events: none; visibility: hidden; }
   }
   .d1 {
     font-size: clamp(38px, min(7.2vw, 14vh), 104px); font-weight: 600; line-height: 0.98; letter-spacing: -0.04em;
@@ -55,43 +53,68 @@
   .hero .bdg { animation: lp-up 1s var(--ease-out-expo) 0.6s backwards; }
   .hero-n { margin-top: 16px; font: 400 12.5px/1.5 var(--mono); color: var(--t3); text-wrap: balance; animation: lp-up 1s var(--ease-out-expo) 0.7s backwards; }
 
-  /* story copy: a wheel of five steps, the current one bright */
-  .sc {
-    position: absolute; left: var(--cl); top: 0; bottom: 0; --cl: max(var(--pad), 46px);
-    /* the third term keeps the copy clear of the cards that hang off the phone's left side */
-    width: min(46%, 570px, calc(79% - var(--pw) * 1.07 - var(--cl) - 28px));
-    --slot: max(34vh, 290px); opacity: 0; will-change: opacity;
-    -webkit-mask-image: linear-gradient(transparent 9%, #000 30%, #000 72%, transparent 95%);
-    mask-image: linear-gradient(transparent 9%, #000 30%, #000 72%, transparent 95%);
+  /* Without scripts the five story steps read statically below the hero on desktop and mobile. */
+  .sc { position: relative; padding: clamp(48px, 6vw, 84px) 0 24px; }
+  .wh {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: clamp(28px, 4vw, 48px) clamp(24px, 3vw, 40px);
   }
-  .wh { position: absolute; inset: calc(50% - var(--slot) / 2) 0 auto; will-change: transform; }
   .st {
-    height: var(--slot); display: flex; flex-direction: column; justify-content: center;
-    opacity: calc(1 - var(--d, 1) * 0.78);
-    h2 { margin-top: 14px; font-size: clamp(28px, 3.7vw, 54px); font-weight: 600; line-height: 1.02; letter-spacing: -0.035em; text-wrap: balance; }
-    p, small { opacity: calc(1 - var(--d, 1) * 2); }
-    p { margin-top: 16px; max-width: 27em; color: var(--t2); text-wrap: pretty; }
+    display: flex; flex-direction: column;
+    h2 { margin-top: 12px; font-size: clamp(24px, 2.6vw, 34px); font-weight: 600; line-height: 1.06; letter-spacing: -0.03em; text-wrap: balance; }
+    p { margin-top: 12px; max-width: 27em; color: var(--t2); text-wrap: pretty; }
     small { display: block; margin-top: 10px; font: 400 12.5px/1.5 var(--mono); color: var(--t3); }
   }
-  .rl {
-    position: absolute; left: max(12px, calc(var(--pad) - 34px)); top: 50%; z-index: 3; translate: 0 -50%;
-    display: flex; flex-direction: column; opacity: 0;
-    button { display: grid; align-items: center; width: 30px; height: 22px; }
-    i {
-      display: block; width: 8px; height: 1.5px; border-radius: 2px; background: var(--tx); opacity: 0.3;
-      transform-origin: 0 50%; transition: transform 0.7s var(--spring), opacity 0.3s var(--ease-out);
-    }
-    button:hover i { opacity: 0.75; transform: scaleX(1.6); }
-    .is-cur i { opacity: 1; transform: scaleX(2.5); }
-  }
-  .stage[data-step='-1'] .rl { pointer-events: none; }
+  .rl { display: none; }
   .scr { display: none; }
+
+  /* Once stage.ts initializes (html.stage-ready), the hero and five-step story share one pinned 660vh stage and scrubbed wheel. */
+  :where(.stage-ready) & {
+    .stage { height: 660vh; }
+    .anc { top: calc(125vh + 64px); }
+    /* The pin spans the large viewport, so a collapsing browser toolbar never uncovers its cut edge.
+       Everything inside is laid out against the small one and does not move when the toolbar does. */
+    .pin { position: sticky; top: 0; height: 100vh; height: 100lvh; overflow: clip; }
+    .pin-in { height: 100vh; height: 100svh; }
+    .hero { position: absolute; inset: 0 var(--pad); min-height: 0; padding-top: 44px; }
+    .sc {
+      position: absolute; left: var(--cl); top: 0; bottom: 0; --cl: max(var(--pad), 46px);
+      padding: 0;
+      /* the third term keeps the copy clear of the cards that hang off the phone's left side */
+      width: min(46%, 570px, calc(79% - var(--pw) * 1.07 - var(--cl) - 28px));
+      --slot: max(34vh, 290px); opacity: 0; will-change: opacity;
+      -webkit-mask-image: linear-gradient(transparent 9%, #000 30%, #000 72%, transparent 95%);
+      mask-image: linear-gradient(transparent 9%, #000 30%, #000 72%, transparent 95%);
+    }
+    .wh { display: block; position: absolute; inset: calc(50% - var(--slot) / 2) 0 auto; will-change: transform; }
+    .st {
+      height: var(--slot); justify-content: center;
+      opacity: calc(1 - var(--d, 1) * 0.78);
+      h2 { margin-top: 14px; font-size: clamp(28px, 3.7vw, 54px); line-height: 1.02; letter-spacing: -0.035em; }
+      p, small { opacity: calc(1 - var(--d, 1) * 2); }
+      p { margin-top: 16px; }
+    }
+    .rl {
+      position: absolute; left: max(12px, calc(var(--pad) - 34px)); top: 50%; z-index: 3; translate: 0 -50%;
+      display: flex; flex-direction: column; opacity: 0;
+      button { display: grid; align-items: center; width: 30px; height: 22px; }
+      i {
+        display: block; width: 8px; height: 1.5px; border-radius: 2px; background: var(--tx); opacity: 0.3;
+        transform-origin: 0 50%; transition: transform 0.7s var(--spring), opacity 0.3s var(--ease-out);
+      }
+      button:hover i { opacity: 0.75; transform: scaleX(1.6); }
+      .is-cur i { opacity: 1; transform: scaleX(2.5); }
+      &.is-off { pointer-events: none; visibility: hidden; }
+    }
+    .stage[data-step='-1'] .rl { pointer-events: none; }
+  }
 
   /* the device */
   .dev {
-    position: absolute; left: 79%; top: max(52%, calc(76px + var(--pw) * 1.055)); z-index: 2; width: var(--pw);
+    position: absolute; left: 79%; top: max(52svh, calc(76px + var(--pw) * 1.055)); z-index: 2; width: var(--pw);
     translate: -50% -50%; perspective: 1400px; font-size: max(9px, calc(var(--pw) * 0.0405)); line-height: 1.35; --h: 0;
   }
+  :where(.stage-ready) & .dev { top: max(52%, calc(76px + var(--pw) * 1.055)); }
   .gl {
     position: absolute; left: 50%; top: 50%; width: 260%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
     background: radial-gradient(closest-side, var(--c), transparent 70%);
@@ -317,16 +340,18 @@
     .hero-p { margin-top: 10px; font-size: 14.5px; line-height: 1.45; }
     .bdg { margin-top: 14px; img { height: 40px; } }
     .hero-n { margin-top: 10px; }
-    /* the copy wheel centres in what the header leaves */
-    .sc {
-      -webkit-mask-image: linear-gradient(transparent 58px, #000 98px, #000 82%, transparent 99%);
-      mask-image: linear-gradient(transparent 58px, #000 98px, #000 82%, transparent 99%);
-    }
-    .wh { top: calc(50% + 28px - var(--slot) / 2); }
-    .st {
-      h2 { margin-top: 10px; font-size: clamp(24px, 3.7vw, 54px); }
-      p { margin-top: 10px; font-size: 15px; line-height: 1.45; }
-      small { margin-top: 6px; }
+    :where(.stage-ready) & {
+      /* the copy wheel centres in what the header leaves */
+      .sc {
+        -webkit-mask-image: linear-gradient(transparent 58px, #000 98px, #000 82%, transparent 99%);
+        mask-image: linear-gradient(transparent 58px, #000 98px, #000 82%, transparent 99%);
+      }
+      .wh { top: calc(50% + 28px - var(--slot) / 2); }
+      .st {
+        h2 { margin-top: 10px; font-size: clamp(24px, 3.7vw, 54px); }
+        p { margin-top: 10px; font-size: 15px; line-height: 1.45; }
+        small { margin-top: 6px; }
+      }
     }
   }
   @media (max-width: 899px) and (orientation: landscape) and (max-height: 560px) {
@@ -336,45 +361,47 @@
   /* ------------------------------------------------------------ stacked: phone pins at the top, copy beneath.
      Narrow and upright only; a narrow window that is wider than tall keeps the side-by-side stage. */
   @media (max-width: 559px), (max-width: 899px) and (orientation: portrait) {
-    .hero { justify-content: flex-start; padding-top: 92px; }
     .d1 { font-size: min(46px, 10.7vw); }
     .hero-p { max-width: 30em; font-size: 16px; }
-    /* The phone clears the header by 16px. The copy always keeps 196px; on a short screen the phone
+    /* The phone clears the header by 16px. The copy always keeps 240px; on a short screen the phone
        keeps its size instead and up to 30% of it runs under the copy, behind a scrim.
        --ph phone height, --ns copy slot, --hid how far the phone runs under the copy, --gut and --tg
        the viewport gutters in .dev coordinates (for story fragments and the scaled-up hero toasts). */
     .pin-in {
-      --pw: max(150px, min(64vw, 380px, (100svh - 316px) / 1.477));
+      --pw: max(150px, min(64vw, 380px, (100svh - 360px) / 1.477));
       --ph: calc(var(--pw) * 2.11);
-      --ns: max(196px, calc(100svh - 122px - var(--ph)));
+      --ns: max(240px, calc(100svh - 122px - var(--ph)));
       --hid: max(0px, calc(114px + var(--ph) + var(--ns) - 100svh));
       --gut: calc(50% - 50vw + 22px);
       --tg: calc(50% - (50vw - 18px) / 1.2);
     }
-    .dev { left: 50%; top: calc(80px + var(--ph) / 2); perspective: 1000px; font-size: max(9.5px, calc(var(--pw) * 0.0465)); }
     .gl { width: 190%; }
-    .scr {
-      display: block; position: absolute; left: 0; right: 0; bottom: -30vh; z-index: 3;
-      height: calc(var(--ns) + 34px + min(44px, var(--hid)) + 30vh);
-      background: linear-gradient(transparent, var(--bg) min(52px, calc(var(--hid) + 8px)));
-      opacity: 0; pointer-events: none; will-change: opacity;
-    }
-    .sc {
-      left: var(--pad); right: var(--pad); top: auto; bottom: 34px; z-index: 4; width: auto; height: var(--slot); --slot: var(--ns);
-      -webkit-mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent);
-      mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent);
-    }
-    .wh { top: 0; }
-    .st {
-      justify-content: flex-start; padding-top: 10px;
-      h2 { margin-top: 8px; font-size: min(28px, 7.2vw); }
-      p { margin-top: 8px; font-size: 15px; line-height: 1.45; }
-      small { margin-top: 6px; font-size: 11.5px; }
-    }
-    .rl {
-      left: 50%; top: auto; bottom: 0; z-index: 5; translate: -50% 0; flex-direction: row;
-      button { justify-items: center; width: 44px; height: 34px; }
-      i { width: 12px; transform-origin: 50% 50%; }
+    :where(.stage-ready) & {
+      .hero { justify-content: flex-start; padding-top: 92px; }
+      .dev { left: 50%; top: calc(80px + var(--ph) / 2); perspective: 1000px; font-size: max(9.5px, calc(var(--pw) * 0.0465)); }
+      .scr {
+        display: block; position: absolute; left: 0; right: 0; bottom: -30vh; z-index: 3;
+        height: calc(var(--ns) + 34px + min(44px, var(--hid)) + 30vh);
+        background: linear-gradient(transparent, var(--bg) min(52px, calc(var(--hid) + 8px)));
+        opacity: 0; pointer-events: none; will-change: opacity;
+      }
+      .sc {
+        left: var(--pad); right: var(--pad); top: auto; bottom: 34px; z-index: 4; width: auto; height: var(--slot); --slot: var(--ns);
+        -webkit-mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent);
+        mask-image: linear-gradient(transparent, #000 9%, #000 91%, transparent);
+      }
+      .wh { top: 0; }
+      .st {
+        justify-content: flex-start; padding-top: 10px;
+        h2 { margin-top: 8px; font-size: min(28px, 7.2vw); }
+        p { margin-top: 8px; font-size: 15px; line-height: 1.45; }
+        small { margin-top: 6px; font-size: 11.5px; line-height: 1.4; }
+      }
+      .rl {
+        left: 50%; top: auto; bottom: 0; z-index: 5; translate: -50% 0; flex-direction: row;
+        button { justify-items: center; width: 44px; height: 34px; }
+        i { width: 12px; transform-origin: 50% 50%; }
+      }
     }
     /* Floating pieces hang off the phone but never past the viewport gutter, and they sit
        shallower so the perspective cannot push them back out. */
@@ -402,14 +429,13 @@
   /* reduced motion: no entrances, nothing in flight */
   .is-still & :is(.d1 .l > span, .hero-p, .bdg, .hero-n, .dv-in, .lp-phone, .ts) { animation: none; }
 
-  /* Without scripts nothing measures the hero copy, so where the stage stacks the phone follows the copy in the flow. */
+  /* Without an initialized stage nothing measures the hero copy, so where the stage stacks the phone and story steps follow the hero in flow. */
   @media (max-width: 559px), (max-width: 899px) and (orientation: portrait) {
-    :where(html:not(.js)) & {
-      .pin { position: static; height: auto; }
-      .pin-in { height: auto; padding-bottom: 64px; }
-      .hero { position: static; padding-top: 108px; }
-      .dev { position: relative; left: auto; top: auto; translate: none; margin: 64px auto 0; }
-      .sc, .rl, .scr { display: none; }
+    :where(html:not(.stage-ready)) & {
+      .pin-in { display: flex; flex-direction: column; padding-bottom: 48px; }
+      .hero { min-height: 0; padding-top: 108px; justify-content: flex-start; }
+      .dev { position: relative; left: auto; top: auto; translate: none; margin: 56px auto 0; order: 2; perspective: 1000px; font-size: max(9.5px, calc(var(--pw) * 0.0465)); }
+      .sc { order: 3; padding: 56px 0 0; }
     }
   }
 }

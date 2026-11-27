@@ -1,14 +1,14 @@
-<!-- Translated from docs/guides/rex.md at 56f5cb32 -->
+<!-- Translated from docs/guides/rex.md at 03606d07 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac、Linux 或 Windows Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
 
-> [!IMPORTANT]
-> Rex 支持仍处于实验阶段。它基于 macOS 上的 Rex 0.1.0-preview.14（Rex API revision 12）开发和测试，可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
+> [!NOTE]
+> Heeler 支持 macOS、Linux 和 Windows 上的 Rex API revision 12 到 19（基于 Rex 0.1.0-preview.14 开发，并在 0.1.0-preview.23 上核对过），可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
 
 ## 开始之前
 
-- 0.1.20 之后的 Heeler 版本。
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 或更新版本（用于在 macOS 和 Linux 上连接 Rex，支持 API revision 12），或 0.1.24 及更新版本（支持原生 Windows 上的 Rex、New Terminal 以及 API revision 12 到 19）。
 - Host 上的 Rex 以你通过 SSH 登录的账户运行。Heeler 只连接已在运行的 Rex 服务端，绝不会自行启动。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。在 Windows 上运行 Win32-OpenSSH，并让 `rex.exe` 位于该账户的 PATH 中（WinGet 安装时即如此）；Heeler 通过 Rex 自带的 stdio 桥接连接服务端，那里的 [Chat](#chat) 支持 Claude Code。
 - 在 Mac 或 Linux 上，SSH 服务端允许转发到 Unix socket，OpenSSH 默认即允许。如果它的 `sshd_config` 设置了 `AllowStreamLocalForwarding no` 或 `AllowTcpForwarding no`，Heeler 将无法连接 Rex。
@@ -20,7 +20,7 @@ Heeler 在连接或检查时绝不会启动 Rex；在你轻点 [New Terminal](#n
 
 ### 1. 连接
 
-1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。也可以改为[扫描配对码](pairing.md#配对没有-herdr-的机器)，这样会跳过本步骤，直接进入[选择 Server](#2-选择-server)。
+1. 在 **Hosts** 中轻点 **+**，列表为空时轻点 **Add Manually**。在 macOS 和 Linux 上也可以改为[扫描配对码](pairing.md#配对没有-herdr-的机器)，这样会跳过本步骤，直接进入[选择 Server](#2-选择-server)；在原生 Windows 上，请手动添加 Host。
 2. 输入 **Address**，并以运行 Rex 的账户作为 SSH **User**。端口、Jump Host 和 Overlay Network 在 **More Options** 中。
 3. 选择 **Device Key**、**RSA Key** 或 **Password**。若选择 **Device Key**，请将公钥行复制到 Host 的 `~/.ssh/authorized_keys` 中。
 4. 轻点 **Connect**，核对 Host 的密钥指纹，然后轻点 **Trust and Continue**。
@@ -82,6 +82,7 @@ Heeler 按原样显示你的 Rex 结构，只有在你新建 [New Terminal](#new
 - **打开：** 终端会在 Rex 重绘完屏幕和历史记录后显示，因此在较慢的连接上，较长的历史记录可能需要几秒钟。持续输出的程序（例如 spinner）在暂停之前，可能有几行重复或错位；暂停后 Heeler 会重新绘制。
 - **输入与粘贴：** 在 Text 或 Keys 模式下输入、轻点 **Paste**，或发送 Snippet。无论终端尺寸由哪台设备设定，你都可以输入。你输入的内容按顺序到达终端，Heeler 绝不会重复发送：如果连接在 Rex 回复前断开，终端会显示 **Connection dropped** 和 **Reattach**，此后输入的内容都没有发送。Heeler 重新连接期间输入的按键同样不会发送；终端会重新连接并重新绘制。过大、无法一次发送的粘贴会被阻止而不会拆分；请分几次粘贴。
 - **结束：** 当终端在 Rex 中关闭或其中的程序退出时，它的视图随之结束。
+- **Rex 重启：** 当 Rex 重启并恢复其会话时，其中的终端、你的 Pin 和 Chat 都会保留。已打开的终端会重新连接并显示新屏幕，因为原先在其中运行的程序已经重新启动或结束了。
 
 终端停止时会说明原因：
 
@@ -90,7 +91,7 @@ Heeler 按原样显示你的 Rex 结构，只有在你新建 [New Terminal](#new
 | **Connection dropped** | 你输入的内容可能没有送达。轻点 **Reattach**，确认屏幕内容后再继续输入。 |
 | **This terminal's history is too long to show** | 在 Rex 中清除该终端的回滚记录，然后轻点 **Reattach**。 |
 | **Rex stopped sending this terminal's output** | Host 保持连接期间，Rex 停止了该终端的输出。轻点 **Reattach**。如果是与 Host 的连接断开，终端会自行重新连接并重新绘制，不会显示这条消息。 |
-| **This Terminal belongs to a Rex server that is gone** | Rex 已重启。请从 **Terminals** 重新打开该终端。 |
+| **This Terminal belongs to a Rex server that is gone** | 应答的是另一个 Rex 服务端，且它没有恢复该终端的会话。请从 **Terminals** 重新打开该终端。 |
 
 ### 适配你的屏幕
 
@@ -135,7 +136,7 @@ Heeler 会像 Rex 自己的 New Terminal 一样，在 Rex 的新窗口中启动�
 - **Send：** **Send** 会先确认仍是同一个 Agent 占据终端、它不处于 **Blocked**，并且接受粘贴，然后粘贴你的消息并按下 Enter。终端下方的 Composer 也以同样方式发送。如果 Rex 没有回应，Heeler 绝不会重新发送该消息；请先查看终端。
 - **Stop 和 Blocked 提示取决于 Agent 的状态：** 当 Agent 显示 **Working** 且消息为空时，**Send** 会变成 **Stop**，先确认仍是同一个 Agent 占据终端，再按下 Esc。Agent 显示 **Blocked** 时会出现带按钮的卡片。不向 Rex 上报状态的 Agent 显示为 **Unknown**：既没有 **Stop**，也没有卡片，请在它的终端中停止或作答。Claude Code 的回合已经结束、但它放到后台的命令还在运行时，显示为 **Done** 或 **Idle**，你可以直接发送下一条消息；**Stop** 不会结束这条后台命令，请在终端中结束它。
 - **命令：** 在 Agent 上报空闲时，`/` 提供 `/compact`，不提供 Agent 的技能。其他操作请在终端中完成。
-- **图片和文件：** 在 Chat 或 Agent 的终端中轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Heeler 通过 Host 的 SSH 连接（而不是经由 Rex）把文件上传到你登录所用账户的临时目录下的一个新文件夹（在 Windows 上是其用户文件夹中的 `AppData\Local\Temp`），并把路径加到你的消息里；**Send** 会把路径连同消息一起输入，且只输入一次。图片以不超过 16 MiB 的 JPEG 或 PNG 发送，文件最大 64 MiB。Heeler 从不删除已上传到 Host 的文件。如果 Rex 重启，之后开始的上传会停止并显示 **This Terminal belongs to a Rex server that is gone**；已在进行的上传会完成，文件留在 Host 上，但 **Send** 随后会以同样的提示拒绝发送。请从列表中重新打开该 Agent。
+- **图片和文件：** 在 Chat 或 Agent 的终端中轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Heeler 通过 Host 的 SSH 连接（而不是经由 Rex）把文件上传到你登录所用账户的临时目录下的一个新文件夹（在 Windows 上是其用户文件夹中的 `AppData\Local\Temp`），并把路径加到你的消息里；**Send** 会把路径连同消息一起输入，且只输入一次。图片以不超过 16 MiB 的 JPEG 或 PNG 发送，文件最大 64 MiB。Heeler 从不删除已上传到 Host 的文件。如果另一个未恢复该 Agent 会话的 Rex 服务端接管，之后开始的上传会停止并显示 **This Terminal belongs to a Rex server that is gone**；已在进行的上传会完成，文件留在 Host 上，但 **Send** 随后会以同样的提示拒绝发送。请从列表中重新打开该 Agent。
 
 ### Pi 与 Oh My Pi
 
