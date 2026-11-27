@@ -19,7 +19,8 @@ SIMULATOR_UDID ?=
 CI_APP_SHARD ?= all
 TEST_FLAGS ?=
 TEST_SELECTOR ?=
-export TEST_FLAGS TEST_SELECTOR
+TEST_XCTESTRUN ?=
+export TEST_FLAGS TEST_SELECTOR TEST_XCTESTRUN
 export VERSION BUILD TAG DRY_RUN YES
 export ADHOC_DIR ADHOC_URL ADHOC_UDID ADHOC_IPA ADHOC_PUBLISH_URL
 BUILD_FLAGS ?=
@@ -90,10 +91,18 @@ build-ci-package: ## Compile HeelerSSH and its tests without running tests or bo
 		'COMPILATION_CACHE_CAS_PATH=$(CURDIR)/.ci/app-compilation-cache' \
 		GCC_GENERATE_DEBUGGING_SYMBOLS=NO COMPILER_INDEX_STORE_ENABLE=NO
 
-test-app: generate ## Run app tests and verify execution (SIM_DESTINATION, TEST_SELECTOR, TEST_FLAGS)
+ifeq ($(strip $(TEST_XCTESTRUN)),)
+test-app: generate
+endif
+test-app: ## Run and count selected app tests on a Simulator, optionally from TEST_XCTESTRUN
+ifneq ($(strip $(TEST_XCTESTRUN)),)
+	python3 scripts/run-app-simulator-tests.py -xctestrun "$$TEST_XCTESTRUN" \
+		-destination '$(SIM_DESTINATION)' test-without-building
+else
 	python3 scripts/run-app-simulator-tests.py -project $(PROJECT) -scheme $(SCHEME) \
 		-destination '$(SIM_DESTINATION)' -derivedDataPath $(DERIVED) \
 		test
+endif
 
 test: test-app ## Run the app and HeelerSSH unit test suites on a simulator
 	scripts/run-heelerssh-package-tests.sh '$(SIM_DESTINATION)'

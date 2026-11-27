@@ -119,6 +119,20 @@ make test-app SCHEME=HeelerLiveTests \
 xcrun simctl spawn <UDID> launchctl unsetenv HEELER_REX_LIVE_SOCKET
 ```
 
+For repeated runs on one candidate, build the live scheme once using
+`make build-ci-app SCHEME=HeelerLiveTests`.
+Keep the resulting `.ci/app-derived/Build/Products` directory together. Run each selected
+case in the foreground and record its result bundle before starting the next
+one. The archive supplies the scheme and its exact application and test
+binaries. Record their SHA-256 digests alongside the candidate commit.
+
+```sh
+make test-app TEST_XCTESTRUN="$live_xctestrun" \
+  SIM_DESTINATION="platform=iOS Simulator,id=$simulator_udid" \
+  TEST_SELECTOR='HeelerLiveTests/RexSSHLiveTests' \
+  TEST_FLAGS='-parallel-testing-enabled NO -resultBundlePath build/rex-ssh.xcresult'
+```
+
 Each suite's header comment states what it may create or change. Never commit
 or print a configuration, key seed, session label or terminal contents. The
 Rex suites print counts and booleans only; record their Rex version in
