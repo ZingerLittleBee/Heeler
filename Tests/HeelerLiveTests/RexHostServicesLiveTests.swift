@@ -14,7 +14,8 @@ struct RexHostServicesLiveTests {
         let user: String
         let seed: String
         let fingerprint: String
-        let rexSocket: String
+        let rexSocket: String?
+        let program: ChatProgram?
         let herdrSocket: String?
         let rexSession: String?
         let rexBlock: String?
@@ -52,7 +53,8 @@ struct RexHostServicesLiveTests {
                 socket: .absolutePath(herdrSocket ?? "/unused-heeler-lab.sock"))
             settings.serverKind = kind
             let ssh = settings
-            let socket = try #require(RexSocket(path: rexSocket))
+            let socket = rexSocket.flatMap { RexSocket(path: $0) }
+            if kind == .rex { try #require(socket != nil) }
             let host = Host(name: "heeler-lab-services", address: "127.0.0.1", port: port, username: user, serverKind: kind)
             let console = ConsoleStore(gitHubSettings: GitHubSettings(defaults: defaults), makeSession: { _, subscriptions in
                 EventsSession(subscriptions: subscriptions, connect: { try await HeelerSSHTransport.connect(settings: ssh) }, keepalive: nil)
@@ -554,5 +556,95 @@ struct RexAmpChatLiveTests {
             chat.conversation.phase == .unavailable(.amp(.missing)) && chat.displayedAmpBinding == nil
         }
         try #require(composer.draft == draft && !assistant(steps.nextMarker))
+    }
+}
+
+/// Runs the same user-side Composer and official transcript checks on the
+/// reference backend. Each invocation names a separately prepared A/B pair.
+@MainActor
+@Suite("Foreground Chat on a private Herdr TUI Host", .timeLimit(.minutes(2)),
+       .enabled(if: ProcessInfo.processInfo.environment["HEELER_TUI_FOREGROUND_CHAT_LAB"] != nil))
+struct HerdrForegroundChatLiveTests {
+    @Test func aMultilineMessageReachesOnlyTheSelectedConversation() async throws {
+        let fixture = try RexHostServicesLiveTests.Fixture.load("HEELER_TUI_FOREGROUND_CHAT_LAB")
+        let program = try #require(fixture.program)
+        try #require([ChatProgram.pi, .omp, .grok, .claude, .codex].contains(program))
+        let firstPane = try #require(fixture.sourcePane), peerPane = try #require(fixture.targetPane)
+        let firstFile = try #require(fixture.firstFile), peerFile = try #require(fixture.peerFile)
+        let firstMarker = try #require(fixture.sourceMarker), peerMarker = try #require(fixture.peerMarker)
+        try #require(firstPane != peerPane && firstFile != peerFile && firstMarker != peerMarker)
+        try #require([firstFile, peerFile].allSatisfy { $0.contains("heeler-lab-") && RemoteFilePath.isAcceptable($0) })
+        let name = "heeler-lab-tui-chat-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (host, console) = try fixture.connect(.herdrTUI, defaults: defaults)
+        defer { console.setHosts([]) }
+        await console.resume()
+        func wait(_ label: String, for condition: () async throws -> Bool) async throws {
+            let until = ContinuousClock.now.advanced(by: .seconds(35))
+            while ContinuousClock.now < until {
+                if try await condition() { return }
+                try await Task.sleep(for: .milliseconds(160))
+            }
+            try #require(Bool(false), "\(label)")
+        }
+        try await wait("Both live foregrounds were reported in the same directory") {
+            let agents = console.agents.filter { $0.hostID == host.id && [firstPane, peerPane].contains($0.agent.paneID) }
+            return agents.count == 2 && Set(agents.map(\.agent.cwd)).count == 1
+                && agents.allSatisfy { $0.agent.kind == program.rawValue && console.chatProgram(for: $0) == program }
+        }
+        let target = try #require(console.agents.first { $0.hostID == host.id && $0.agent.paneID == firstPane })
+        let other = try #require(console.agents.first { $0.hostID == host.id && $0.agent.paneID == peerPane })
+        let chat = try #require(console.chatStore(for: target, program: program))
+        let peer = try #require(console.chatStore(for: other, program: program))
+        defer { chat.end(); peer.end() }
+        try await wait("Each native Chat followed its own official seed and file") {
+            await chat.step()
+            await peer.step()
+            return chat.conversation.phase == .following(path: firstFile) && peer.conversation.phase == .following(path: peerFile)
+                && chat.conversation.transcript.recordedPrompts.contains { $0.text == firstMarker }
+                && peer.conversation.transcript.recordedPrompts.contains { $0.text == peerMarker }
+        }
+        let files = console.chatHostFiles(for: host.id)
+        func bytes(at path: String) async throws -> Data {
+            let size = try #require(try await files.status(path)?.size)
+            try #require(size > 0 && size <= 4 << 20)
+            return try #require(try await files.read(path: path, from: 0, to: size, chunk: 64 << 10))
+        }
+        let beforeA = try await bytes(at: firstFile), beforeB = try await bytes(at: peerFile)
+        let session = console.composerSession(for: target), composer = session.composer
+        let rules = ChatSendRules(program: program, commands: [])
+        if program.pinsComposerToSession || chat.tracksConversationDraft {
+            composer.bindChatDraft(to: chat.composerSessionID, program: program)
+        }
+        var confirm: (@MainActor () async -> String?)?
+        if chat.confirmsSessionBeforeSend { confirm = { await chat.confirmSessionBeforeSend(for: composer) } }
+        var policy = ComposerDeliveryPolicy.chat(rules: rules,
+            activity: { ChatAgentActivity(console.agents.first { $0.id == target.id }?.agent.status) },
+            readScreen: {
+                let screen = try await console.readAgentScreen(firstPane, on: host.id, keepingTo: session.corePin)
+                chat.inputBoxWasRead(screen)
+                return screen
+            }, confirmSession: confirm, heldSession: { chat.sessionRefusalBeforeCheck() },
+            sendConcern: { chat.sendConcern(for: $0, after: $1) },
+            willReadScreen: { chat.updateSends(ChatComposerEchoes.sentMessages(composer.messages, rules: rules)) },
+            conversation: { chat.conversationGeneration })
+        policy.sessionWrite = chat.composerWriteCheck(for: composer)
+        let marker = "REX_LAB_HERDR_SEND_" + UUID().uuidString.prefix(8)
+        let prompt = "Reply only with this marker. 请保留换行。\n\n    " + marker
+        composer.replaceDraft(with: prompt)
+        chat.draftDidChange(to: prompt)
+        let result = await composer.send(policy: policy)
+        try #require(result == .deliveredViaPrompt || result == .submittedViaAttach || result == .deliveredViaAttach)
+        let outgoing = program == .grok ? rules.outgoingText(prompt) : prompt
+        try await wait("Only A recorded the marked user prompt and its reply") {
+            await chat.step()
+            return chat.conversation.transcript.recordedPrompts.filter { $0.text == outgoing }.count == 1
+                && chat.conversation.transcript.entries.filter { $0.content == .assistant(.init(text: marker)) }.count == 1
+        }
+        await peer.step()
+        #expect(try await bytes(at: firstFile).starts(with: beforeA))
+        #expect(try await bytes(at: peerFile) == beforeB)
+        #expect(!peer.conversation.transcript.recordedPrompts.contains { $0.text.contains(marker) })
     }
 }
