@@ -325,11 +325,24 @@ struct DroidBackendChatLiveTests {
         let draft = "Draft for the previous Droid conversation"
         composer.replaceDraft(with: draft)
         chat.draftDidChange(to: draft)
+        let screen = try #require(projection.checkedChatTyping(at: pane)).blockedScreen
+        try await waitForEmptyBox(screen, projection: projection, pane: pane)
         try await projection.pasteIntoAgent("/new", paneID: pane)
         try await projection.sendAgentKeys(["enter"], to: pane)
+        var confirmed = false
         let deadline = ContinuousClock.now + .seconds(20)
         while ContinuousClock.now < deadline {
             let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+            // Factory can deliver a late background report just as the
+            // desktop requests /new. Only confirm its exact desktop prompt.
+            if !confirmed, case .bound(let shown, _, _) = evidence, shown == previous {
+                let rows = try await screen.readScreen().rows.map(\.trimmedText)
+                if rows.contains(where: { $0.contains("Droid is still working — stop the current run and run /new?") }),
+                   rows.suffix(5).contains(where: { $0.contains("Enter to confirm, ESC to cancel") }) {
+                    confirmed = true
+                    try await projection.sendAgentKeys(["enter"], to: pane)
+                }
+            }
             if case .bound(let next, _, _) = evidence, next != previous {
                 let result = await composer.send(policy: policy)
                 guard case .refused = result else {
