@@ -10,6 +10,8 @@ Heeler's range was exercised by a separately pinned client at API 12.
 Herdr TUI reports protocol 22. Xcode 27.2 (27B52) built the iOS 27.0
 Simulator app. The [daily acceptance matrix](rex-daily-acceptance.md) records results by Host, backend and running program for the November 27–28, 2026 runs.
 
+The [review handoff](rex-daily-handoff.md) records the exact application and test driver, user entry points, failure dispositions, and screenshots.
+
 ## Trace from the user entry
 
 | User entry | Herdr TUI reference | Rex at the base | Candidate implementation and acceptance check |

@@ -1,0 +1,31 @@
+{
+  "macOSTemporaryRootsRemoved": 33,
+  "retiredSimulatorUDIDs": [
+    "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+    "CD16621E-75FB-4865-B282-E0296D989D38",
+    "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+    "10F73135-B268-4ECF-B6CA-7A7F65418462",
+    "38FC9720-0863-416A-89F3-45CED5F13CE6",
+    "BC0A885C-C04E-41D8-879D-3FAC08209085",
+    "D7062210-71D9-4863-A07C-18F10EB93F04",
+    "B84F3959-B659-499D-B4AE-7DCC45228515",
+    "52737885-87EE-4173-8800-2FC118DAB5B2",
+    "53848378-BA00-4682-B2FB-5F1A1104B27D",
+    "61405B4D-A169-4DC8-82E5-340694B46992"
+  ],
+  "debianContainersRemoved": 2,
+  "debianPrivateAccountRootRemoved": true,
+  "signedSyntheticAmpThreads": {
+    "verifiedPrivateSyntheticThreads": 7,
+    "deletedAndIndependentlyAbsent": 7,
+    "unknown": 0
+  },
+  "retiredHelperWorktrees": 9,
+  "retiredHelperWorkspaces": 8,
+  "retainedWorkspace": "heeler-lab-rex-daily",
+  "retainedEvidence": [
+    "build/heeler-lab-evidence",
+    "build/heeler-lab-gui"
+  ],
+  "privateBranchBackup": "build/heeler-lab-evidence/source-fixture-archives/retired-implementation-branches.bundle"
+}
