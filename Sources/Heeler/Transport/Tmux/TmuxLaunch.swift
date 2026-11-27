@@ -57,9 +57,10 @@ enum TmuxLaunch {
         let directory = try required(request.cwd)
         let launch = try disposition(of: server, createsSession: false)
         let agent = program(of: request, on: server, hookSettings: hookSettings)
-        return command(
-            windowWords(session: session, directory: directory, environment: agent.environment, program: agent.argv),
-            paths: server.paths, loginShell: launch.loginShell)
+        return agentCommand(
+            windowWords(session: session, directory: directory, label: request.tabLabel,
+                        environment: agent.environment, program: agent.argv),
+            request: request, paths: server.paths, loginShell: launch.loginShell)
     }
 
     static func shellWindow(_ request: ShellTerminalCreationRequest, on server: Server) throws -> Command {
@@ -67,7 +68,7 @@ enum TmuxLaunch {
         return command(
             windowWords(
                 session: try required(request.workspaceID), directory: try required(request.cwd),
-                environment: [:], program: []),
+                label: request.label, environment: [:], program: []),
             paths: server.paths, loginShell: launch.loginShell)
     }
 
@@ -76,18 +77,18 @@ enum TmuxLaunch {
     ) throws -> Command {
         let launch = try disposition(of: server, createsSession: true)
         let agent = program(of: request, on: server, hookSettings: hookSettings)
-        return command(
+        return agentCommand(
             sessionWords(
-                name: workspace.label, directory: try required(workspace.directory),
+                name: workspace.label, directory: try required(workspace.directory), tab: request.tabLabel,
                 environment: agent.environment, program: agent.argv, inheritServerEnvironment: launch.inherit),
-            paths: server.paths, loginShell: launch.loginShell)
+            request: request, paths: server.paths, loginShell: launch.loginShell)
     }
 
-    static func shellSession(_ workspace: NewWorkspaceSpec, on server: Server) throws -> Command {
+    static func shellSession(_ workspace: NewWorkspaceSpec, tab: String? = nil, on server: Server) throws -> Command {
         let launch = try disposition(of: server, createsSession: true)
         return command(
             sessionWords(
-                name: workspace.label, directory: try required(workspace.directory),
+                name: workspace.label, directory: try required(workspace.directory), tab: tab,
                 environment: [:], program: [], inheritServerEnvironment: launch.inherit),
             paths: server.paths, loginShell: launch.loginShell)
     }
@@ -110,6 +111,38 @@ enum TmuxLaunch {
 
     static func killWindow(_ id: String, paths: TmuxPaths) -> Command {
         command(["kill-window", "-t", id], paths: paths, loginShell: false)
+    }
+
+    /// Check and act in the answering server's command queue. A second SSH
+    /// exec after the check could reach a replacement on the same socket.
+    static func checked(
+        target: String, instance: TmuxServerInstance, condition: String = "1",
+        commands: [[String]], paths: TmuxPaths
+    ) -> Command {
+        let server = "#{==:#{pid}:#{start_time},\(instance.pid):\(instance.startTime)}"
+        let body = commands.map { TmuxControlCommand($0).line }.joined(separator: " ; ")
+        return command(["if-shell", "-F", "-t", target, "#{&&:\(server),\(condition)}", body,
+                        "display-message -p heeler-target-changed"], paths: paths, loginShell: false)
+    }
+
+    static func movePane(
+        _ pane: TmuxInventory.Pane, to destination: String, on server: TmuxServerStatus
+    ) -> Command {
+        let source = "\(pane.sessionID):\(pane.windowID).\(pane.paneID)"
+        // A shared split loses just this Pane in each view. Moving the last
+        // Pane would instead move a window link and could leave the Agent
+        // listed under a third Workspace. Count only the user's links.
+        let thisWindow = "#{==:#{window_id},\(pane.windowID)}"
+        let userLink = "#{&&:\(thisWindow),#{!:#{@heeler-attach}}}"
+        let links = "#{S:#{W:#{?\(userLink),x,}}}"
+        let canBreak = "#{||:#{>:#{window_panes},1},#{==:\(links),x}}"
+        let sourceMatches = "#{==:#{session_id}:#{window_id}.#{pane_id},\(source)}"
+        return checked(target: source, instance: server.instance, condition: sourceMatches, commands: [[
+            "if-shell", "-F", "-t", source, canBreak,
+            [TmuxControlCommand(["break-pane", "-d", "-s", source, "-t", "\(destination):"]).line,
+             "display-message -p heeler-moved"].joined(separator: " ; "),
+            "display-message -p heeler-shared-window",
+        ]], paths: server.paths)
     }
 
     /// Ends a leftover session of Heeler's own (`@heeler-attach`) only while the
@@ -338,23 +371,81 @@ enum TmuxLaunch {
     }
 
     private static func windowWords(
-        session: String, directory: String, environment: [String: String], program: [String]
+        session: String, directory: String, label: String?, environment: [String: String], program: [String]
     ) -> [String] {
         ["new-window", "-d", "-t", session, "-c", directory]
+            + windowName(label)
             + environmentFlags(environment)
             + ["-P", "-F", paneFormat]
             + (program.isEmpty ? [] : ["--"] + program)
     }
 
     private static func sessionWords(
-        name: String?, directory: String, environment: [String: String], program: [String],
+        name: String?, directory: String, tab: String?, environment: [String: String], program: [String],
         inheritServerEnvironment: Bool
     ) -> [String] {
         var words = ["new-session", "-d"]
+        words += windowName(tab)
         if inheritServerEnvironment { words.append("-E") }
         if let name, !name.isEmpty { words += ["-s", name] }
         return words + ["-c", directory] + environmentFlags(environment) + ["-P", "-F", sessionFormat]
             + (program.isEmpty ? [] : ["--"] + program)
+    }
+
+    private static func windowName(_ value: String?) -> [String] {
+        guard let value, !value.isEmpty else { return [] }
+        return ["-n", value.replacingOccurrences(of: "#", with: "##")]
+    }
+
+    private static func agentCommand(
+        _ words: [String], request: AgentLaunchRequest, paths: TmuxPaths, loginShell: Bool
+    ) -> Command {
+        let name = request.name
+        guard AgentName.validationError(name) == nil,
+            let kind = SupportedAgentKind(rawValue: request.kind),
+            let flag = words.firstIndex(of: "-F")
+        else { return command(words, paths: paths, loginShell: loginShell) }
+        var launch = words
+        launch[flag + 1] = "#{pid}:#{start_time} #{pane_pid} " + words[flag + 1]
+        let flags = loginShell ? "-S" : "-N -S"
+        let body = """
+            t=\(HerdrCoreLocator.quoted(paths.executable))
+            s=\(HerdrCoreLocator.quoted(paths.socket))
+            made=$("$t" \(flags) "$s" \(shellArguments(launch).joined(separator: " "))) || exit "$?"
+            instance=${made%% *}
+            rest=${made#* }
+            owner=${rest%% *}
+            receipt=${rest#* }
+            pane=${receipt%% *}
+            birth=$(\(TmuxInventoryLoop.processStamp))
+            if [ -n "$birth" ]; then
+                "$t" -N -S "$s" if-shell -F -t "$pane" "#{==:#{pid}:#{start_time}:#{pane_pid},$instance:$owner}" \
+                    "set-option -p -t $pane @heeler-agent-name $owner:$birth:\(kind.rawValue):\(name)"
+            fi
+            printf '%s\\n' "$receipt"
+            """
+        return script(body, loginShell: loginShell)
+    }
+
+    static func renameAgent(
+        _ sample: TmuxPaneForeground.Sample, owner: Int, kind: String, name: String?, paths: TmuxPaths
+    ) -> Command {
+        let pane = sample.pane
+        let instance = sample.instance
+        let set = name.map { "set-option -p -t \(pane.paneID) @heeler-agent-name $owner:$birth:\(kind):\($0)" }
+            ?? "set-option -pu -t \(pane.paneID) @heeler-agent-name"
+        let body = """
+            t=\(HerdrCoreLocator.quoted(paths.executable))
+            s=\(HerdrCoreLocator.quoted(paths.socket))
+            owner=\(owner)
+            birth=$(\(TmuxInventoryLoop.processStamp))
+            fg=$(ps -p \(pane.processID) -o tpgid= | tr -d ' ')
+            [ -n "$birth" ] && [ "$fg" = "$owner" ] || exit 1
+            exec "$t" -N -S "$s" if-shell -F -t \(shellWord(pane.paneID)) \
+                '#{==:#{pid}:#{start_time}:#{pane_pid},\(instance.pid):\(instance.startTime):\(pane.processID)}' \
+                "\(set) ; display-message -p heeler-named"
+            """
+        return Command(script: Data(body.utf8), throughLoginShell: false)
     }
 
     /// Blanked names and the launch's own, in one order a test can write down.
@@ -383,6 +474,10 @@ enum TmuxLaunch {
             s=\(HerdrCoreLocator.quoted(paths.socket))
             \(line)
             """
+        return script(body, loginShell: loginShell)
+    }
+
+    private static func script(_ body: String, loginShell: Bool) -> Command {
         let script =
             loginShell
             ? """

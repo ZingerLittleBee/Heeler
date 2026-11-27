@@ -37,6 +37,7 @@ final class RenameStore {
         /// would silently blank the Console's grouping label, which is only
         /// ever a mistake from a phone keyboard.
         case workspace
+        case tab
     }
 
     let subject: Subject
@@ -74,7 +75,7 @@ final class RenameStore {
         case .agent:
             guard let value = submittedValue else { return nil }
             return AgentName.validationError(value)
-        case .workspace:
+        case .workspace, .tab:
             return nil
         }
     }
@@ -90,7 +91,7 @@ final class RenameStore {
         switch subject {
         case .agent:
             return true
-        case .workspace:
+        case .workspace, .tab:
             return submittedValue != nil
         }
     }

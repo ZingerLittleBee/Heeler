@@ -352,6 +352,9 @@ actor TmuxPaneAttach {
                 try? await client.send(command, tag: tag)
             case .write(let bytes):
                 deliver(bytes)
+            case .end(.moved):
+                finishOutput(isClosing ? .success(()) : .failure(TmuxPaneFeed.End.moved))
+                await client.close()
             case .end(.paneGone), .end(.sessionLeft):
                 // Detach ends the session, and tmux may say so before `%exit`.
                 // That is the close the user asked for, not the Pane going away.

@@ -21,7 +21,7 @@ enum TerminalProgramEnd: Error, Equatable {
 /// every address-keyed action it takes keeps to it (ADR 0031).
 @MainActor
 final class TerminalCorePin {
-    private var joined: String?
+    private(set) var joined: String?
 
     init(joined: String? = nil) {
         self.joined = joined
@@ -823,6 +823,13 @@ final class AttachTerminalStore {
             attemptTransportGeneration = nil
             do {
                 try await attach(cols: cols, rows: rows)
+            } catch TmuxPaneFeed.End.moved {
+                guard !stopRequested else { return }
+                // The old viewer sized the old window. A fresh viewer follows
+                // the same server pin and Pane ID into its new window.
+                status = .connecting
+                nextViewer = .resumed
+                continue
             } catch TerminalProgramEnd.restarted {
                 guard !stopRequested else { return }
                 // A new program, so nothing here counts against the link.

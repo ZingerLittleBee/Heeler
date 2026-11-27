@@ -19,13 +19,15 @@ struct TmuxPaneFeed: Sendable {
         case end(End)
     }
 
-    enum End: Equatable, Sendable {
+    enum End: Error, Equatable, Sendable {
         /// The Pane is gone, or Heeler closed its window once no session of the
         /// user's held it any more.
         case paneGone
         /// Heeler's session no longer holds the Pane: it ended, its client was
         /// moved, or the Pane went to another window.
         case sessionLeft
+        /// The same live Pane now belongs to another user window.
+        case moved
         /// tmux could not say what the Pane looks like, three times over.
         case paintFailed
     }
@@ -239,7 +241,10 @@ struct TmuxPaneFeed: Sendable {
         let links = reply.lines.map { String(decoding: $0, as: UTF8.self).split(separator: " ").map(String.init) }
             .filter { $0.count == 3 }
         guard reply.succeeded, !links.isEmpty else { return end(.paneGone) }
-        guard links.contains(where: { $0[0] == session && $0[1] == window }) else { return end(.sessionLeft) }
+        guard links.contains(where: { $0[0] == session && $0[1] == window }) else {
+            let moved = links.contains { $0[1] != window && $0[2] == "0" }
+            return end(moved ? .moved : .sessionLeft)
+        }
         if links.allSatisfy({ $0[2] == "1" }) {
             return [send(TmuxControlCommand(["kill-window", "-t", window]), for: .closeWindow)]
         }

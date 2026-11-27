@@ -13,18 +13,21 @@ enum MovePaneCopy {
 struct MovePaneRequest: Identifiable, Equatable, Sendable {
     let hostID: Host.ID
     let paneID: String
+    let instance: String?
     /// The Pane's own Workspace, which the sheet leaves out.
     let workspaceID: String
 
     var id: ConsoleAgent.ID { ConsoleAgent.ID(hostID: hostID, paneID: paneID) }
 
-    init(agent: ConsoleAgent) {
+    init(agent: ConsoleAgent, instance: String? = nil) {
+        self.instance = instance
         hostID = agent.hostID
         paneID = agent.agent.paneID
         workspaceID = agent.agent.workspaceID
     }
 
-    init(terminal: ConsoleTerminal) {
+    init(terminal: ConsoleTerminal, instance: String? = nil) {
+        self.instance = instance
         hostID = terminal.hostID
         paneID = terminal.paneID
         workspaceID = terminal.workspaceID
@@ -212,7 +215,8 @@ struct MovePaneSheetPresenter: ViewModifier {
         content.sheet(item: $request) { request in
             MovePaneSheet(
                 store: MovePaneStore(request: request) { [console] destination in
-                    try await console.movePane(request.paneID, on: request.hostID, to: destination)
+                    try await console.movePane(request.paneID, on: request.hostID, to: destination,
+                                               keepingTo: request.instance, from: request.workspaceID)
                 },
                 workspaces: console.workspaces(for: request.hostID),
                 onMoved: { onMoved(request, $0) }

@@ -90,8 +90,36 @@ struct RenameSheetView: View {
 
     private var fieldPrompt: String {
         switch store.subject {
+        case .tab: String(localized: "Tab name")
         case .agent: String(localized: "e.g. reviewer")
         case .workspace: String(localized: "Workspace label")
+        }
+    }
+}
+
+struct TabRenameRequest: Identifiable {
+    let hostID: Host.ID
+    let tabID: String
+    let label: String
+    let instance: String?
+    var id: String { tabID }
+}
+
+struct TabRenameSheetPresenter: ViewModifier {
+    @Binding var request: TabRenameRequest?
+    let console: ConsoleStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $request) { request in
+            RenameSheetView(
+                title: String(localized: "Rename Tab"),
+                store: RenameStore(subject: .tab, currentValue: request.label) { label in
+                    guard let label else { return }
+                    try await console.renameTab(request.tabID, label: label, on: request.hostID, keepingTo: request.instance)
+                })
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
     }
 }

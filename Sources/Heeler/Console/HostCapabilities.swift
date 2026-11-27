@@ -14,6 +14,9 @@ struct HostCapabilities: Equatable, Sendable {
     let startsAgents: Bool
     let startsTerminals: Bool
     let renameAgent: Bool
+    /// Renaming a conversation through its harness has a separate input path.
+    var renamesConversationTitles = false
+    var renamesExistingTabs = false
     /// Read through `renameWorkspace(id:)`, which answers per Workspace.
     let renamesWorkspaces: Bool
     let worktrees: Bool
@@ -83,8 +86,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// block (ADR 0050) are not offered: nothing on the machine takes them.
     var copiesPaneID = false
     /// Move to Workspace: a Pane moves into a new Tab of another Workspace,
-    /// or into a Workspace of its own, with what runs in it. Only Herdr TUI
-    /// serves it (`pane.move`).
+    /// or into a Workspace of its own, with what runs in it.
     var movesPanes = false
 
     /// What New Terminal asks for beside a Terminal in this directory. Nil on a
@@ -168,21 +170,20 @@ extension HostCapabilities {
         // a Pane or a Tab, opens a Worktree, stages images and files over SFTP,
         // runs POSIX Host scripts for Changes, Skills, and harness edits, and
         // offers Composer Send, Stop, and Chat for confirmed POSIX programs once
-        // a probe has named Linux or macOS. It does not rename an Agent, take
-        // over a Terminal, or name Tabs.
+        // a probe has named Linux or macOS. Its viewers may type concurrently.
         guard serverKind != .tmux else {
             let tmuxChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
-                case HerdrCoreLocator.linuxKernel: coreLinuxChatPrograms
-                case HerdrCoreLocator.macOSKernel: coreMacOSChatPrograms
+                case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.tmuxChatPrograms
                 default: nil
                 }
             self.init(
-                startsAgents: true, startsTerminals: true, renameAgent: false, renamesWorkspaces: true,
+                startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true,
                 worktrees: true, uploads: true, composerSend: true, chat: tmuxChatPrograms != nil,
-                tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
+                tabNames: true, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
-                namesCreatedWorkspaces: true, copiesPaneID: true)
+                namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
+            renamesExistingTabs = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
@@ -219,6 +220,7 @@ extension HostCapabilities {
             copiesPaneID: offered,
             movesPanes: offered)
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
+        renamesConversationTitles = offered
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -250,6 +252,8 @@ extension HostCapabilities {
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
     static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+
+    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New

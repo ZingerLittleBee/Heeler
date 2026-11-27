@@ -90,9 +90,10 @@ final class TmuxComposerStop {
                 else {
                     return .failed(ChatStopPlan.unreadableScreenMessage)
                 }
-                let context = ChatStopContext(
-                    screen: screen,
-                    activity: Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown))
+                let activity = Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown)
+                let verified = if program == .devin, activity == .unknown { await confirmTarget?() == true } else { false }
+                if program == .devin, activity == .unknown, !verified { return .failed(ChatStopPlan.changedDroidTurn) }
+                let context = ChatStopContext(screen: screen, activity: activity, hasVerifiedTurn: verified)
                 if case .refuse(let reason) = screenGuard(context) {
                     return .failed(reason)
                 }
@@ -120,15 +121,18 @@ final class TmuxComposerStop {
     private func runStopPlan(
         on send: TmuxAttachSend, in projection: TmuxConsoleProjection
     ) async -> AgentInterruptOutcome {
+        var verifiedTurn = false
         if case .chat = seat, program.pinsComposerToSession {
             guard let confirmTarget, await confirmTarget() else { return .failed(ChatStopPlan.changedDroidTurn) }
+            verifiedTurn = true
         }
         if let screenGuard = plan.screenGuard {
             switch await send.capturePane(clock.sleep) {
             case .text(let text):
                 let context = ChatStopContext(
                     screen: ANSIScreenDecoder.decode(text),
-                    activity: Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown))
+                    activity: Self.activity(of: projection.agentsByPane[paneID]?.agent.status ?? .unknown),
+                    hasVerifiedTurn: verifiedTurn)
                 switch screenGuard(context) {
                 case .press: break
                 case .refuse(let reason): return .failed(reason)

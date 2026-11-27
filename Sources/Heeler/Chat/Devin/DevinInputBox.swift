@@ -85,7 +85,8 @@ enum DevinInputBox {
     }
 
     static func stop(_ context: ChatStopContext) -> ChatStopVerdict {
-        guard context.activity == .working, read(context.screen) == .disabled(working),
+        guard context.activity == .working || (context.activity == .unknown && context.hasVerifiedTurn),
+              read(context.screen) == .disabled(working),
               context.screen.rows.suffix(12).map(\.trimmedText).joined(separator: " ").contains("(esc twice to interrupt)")
         else { return .refuse(String(localized: "Open the Devin terminal to check the current turn before interrupting it.")) }
         return .press
