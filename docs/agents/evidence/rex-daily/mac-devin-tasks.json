@@ -1,0 +1,35 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "backend": "rex",
+  "platform": "macOS",
+  "distinctMobileRequests": 3,
+  "jobs": {
+    "success": {
+      "shellID": "c307ba",
+      "launchCallID": "call_8c921ba9649fdb60#575a422e4c4a45aea594b44687ab8a98",
+      "lookupCallID": "call_b1ec2a07cb788863#8de9d4739afa442ca11ccc9c41875252",
+      "exitCode": 0,
+      "retainedToolContentCharacters": 42,
+      "independentMarkedOutput": true
+    },
+    "failure": {
+      "shellID": "40a047",
+      "launchCallID": "call_a7435d921550419c#2eb1702f370a4bd9a9bb2ce588371963",
+      "lookupCallID": "call_a75892f98a7f9be7#bb58d708afdf4774959ff4880569e68b",
+      "exitCode": 17,
+      "retainedToolContentCharacters": 2268,
+      "independentMarkedOutput": true,
+      "originalSubprocessBytes": 12319,
+      "originalSubprocessSHA256": "5f986a9d149c472fd90e83bebcb56195c4c41d022488b8ab2fe81f0c2792f9b4"
+    }
+  },
+  "child": {
+    "agentID": "1bc7d336",
+    "launchCallID": "call_889e9c6f96f98f4c#8433bd56ac724dcc89f1f04979f319fd",
+    "acknowledgementDatabaseRow": 867,
+    "parentFinalDatabaseRow": 878,
+    "matchingChildRelayDatabaseRow": 884,
+    "independentReleaseWitness": true
+  },
+  "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+}

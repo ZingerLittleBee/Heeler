@@ -1,0 +1,21 @@
+{
+  "executables": {
+    "rex": "/usr/local/bin/rex",
+    "herdr": null,
+    "herdr-core": null,
+    "tmux": null
+  },
+  "sockets": {
+    "rex": true,
+    "herdr": false,
+    "tmux": false
+  },
+  "version": {
+    "rex_version": "0.1.0-preview.25",
+    "platform": "linux_arm64",
+    "commit": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+    "built_at": "2026-11-25T21:59:11Z",
+    "dirty": false,
+    "api_revision": 24
+  }
+}

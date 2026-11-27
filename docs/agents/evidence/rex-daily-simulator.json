@@ -1,0 +1,3280 @@
+{
+  "baseline": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "appDebugDylibSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "recordedAt": "2026-11-27T21:59:02.512+08:00",
+  "versions": {
+    "date": "2026-11-27",
+    "xcode": "27.2 (27B52)",
+    "macOS": "27.0.1 (26A434)",
+    "darwinRex": "0.1.0-preview.25",
+    "rexSource": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+    "rexServerAPI": 24,
+    "darwinHerdrTUI": "0.9.5",
+    "debian": "12.15 bookworm arm64",
+    "linuxKernel": "7.2.12-orbstack-00394-gbecdd6130068",
+    "linuxRex": "0.1.0-preview.25",
+    "linuxHerdrTUI": "0.9.5",
+    "linuxOpenSSH": "9.2",
+    "bannerPi": "1.5.2"
+  },
+  "devices": {
+    "iPhone 17e": {
+      "bundleVersion": "43",
+      "shortVersion": "0.1.18",
+      "simulatorRuntimeBuild": "24A434",
+      "source": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+      "dylibSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+      "signatureVerified": true,
+      "installedDigestVerified": true,
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "startedAt": "2026-11-27T21:15:53.063+08:00",
+      "completedAt": "2026-11-27T21:16:03.964+08:00",
+      "os": "iOS 27.0",
+      "portraitPoints": [
+        390,
+        844
+      ]
+    },
+    "iPad mini (A17 Pro)": {
+      "bundleVersion": "43",
+      "shortVersion": "0.1.18",
+      "simulatorRuntimeBuild": "24A434",
+      "source": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+      "dylibSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+      "signatureVerified": true,
+      "installedDigestVerified": true,
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "startedAt": "2026-11-27T21:15:53.054+08:00",
+      "completedAt": "2026-11-27T21:16:03.792+08:00",
+      "os": "iPadOS 27.0",
+      "landscapePoints": [
+        1133,
+        744
+      ]
+    }
+  },
+  "method": "Native Heeler app, separate XCTest UI driver, independent accessibility and screenshot observations. Before and after server reads used the named private fixture only. Device keys and host key material are omitted. Repository content, launch arguments and test prompts are synthetic. The dedicated Devin sessions use separately authorized vendor access.",
+  "fixtures": {
+    "macOS": "Private SSH listener with separately selected Herdr TUI and Rex entries. Catalog and SSH trust were seeded after authorizing each simulator public key.",
+    "debian": "First-trust wizard over the private SSH listener. The running Rex and named Herdr TUI were discoverable. Only Rex was enabled in the app.",
+    "rexOnly": "Separate first-trust wizard to a different Debian SSH listener with the vendor-default Rex socket and no other supported server installed. The second macOS-only fixture is a separate private login and SSH service on the same physical Mac, with the vendor-default Rex socket and no other supported backend executable in its login path.",
+    "agents": "The executable named claude is a local recording program without model access. Notification receipts use real Pi 1.5.2 and a private loopback model."
+  },
+  "observations": [
+    {
+      "case": "iPhone selected directory, focus and shell exit",
+      "status": "observed",
+      "action": "Long-press the macOS sibling terminal, choose New Terminal Here, rotate, use Show keyboard to send pwd and exit.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:16:10.711+08:00",
+        "2026-11-27T21:16:50.820+08:00"
+      ],
+      "observation": {
+        "desktopBefore": {
+          "session": "session:01a21cbf-f215-789f-9e91-4480daa26262",
+          "label": "heeler-lab-desktop",
+          "activeWindow": "window:01a21cbf-f235-7144-88e7-9ccf9ca6fb85",
+          "windows": [
+            {
+              "id": "window:01a21cbf-f235-7144-88e7-9ccf9ca6fb85",
+              "label": "Window 9ca6fb85",
+              "focusedBlock": "block:01a21cbf-f216-733c-a4a7-074c6fb1e46d",
+              "processes": [
+                {
+                  "block": "block:01a21cbf-f216-733c-a4a7-074c6fb1e46d",
+                  "label": "shell",
+                  "pid": 35015,
+                  "program": "fish",
+                  "cwd": "<mac-fixture>/proj"
+                }
+              ]
+            },
+            {
+              "id": "window:01a21cc0-496f-7a0a-826e-e3cd019f1ed6",
+              "label": "heeler-lab-sibling",
+              "focusedBlock": "block:01a21cc0-4929-74da-bd27-38238b7dd6a4",
+              "processes": [
+                {
+                  "block": "block:01a21cc0-4929-74da-bd27-38238b7dd6a4",
+                  "label": "shell",
+                  "pid": 36294,
+                  "program": "fish",
+                  "cwd": "<mac-fixture>/home/heeler-lab-GUI 工作目录"
+                }
+              ]
+            },
+            {
+              "id": "window:01a21ccd-2a2c-71f7-8152-15f1128f0043",
+              "label": "Window 128f0043",
+              "focusedBlock": "block:01a21ccd-29d8-7426-b51c-03ac0c90b846",
+              "processes": [
+                {
+                  "block": "block:01a21ccd-29d8-7426-b51c-03ac0c90b846",
+                  "label": "shell",
+                  "pid": 76147,
+                  "program": "fish",
+                  "cwd": "<mac-fixture>/home/heeler-lab-GUI 工作目录"
+                }
+              ]
+            },
+            {
+              "id": "window:01a21ccf-ba2e-7abe-bb87-10460867fe90",
+              "label": "heeler-lab-gui-agent",
+              "focusedBlock": "block:01a21ccf-ba12-77d3-8926-7364d6d4ed97",
+              "processes": [
+                {
+                  "block": "block:01a21ccf-ba12-77d3-8926-7364d6d4ed97",
+                  "label": "shell",
+                  "pid": 96658,
+                  "program": "claude",
+                  "cwd": "<mac-fixture>/proj"
+                }
+              ]
+            },
+            {
+              "id": "window:01a21cdb-8bca-7182-9d1a-5cafa2c2aae7",
+              "label": "Window a2c2aae7",
+              "focusedBlock": "block:01a21cdb-8b77-70a4-b3a8-eaa775561163",
+              "processes": [
+                {
+                  "block": "block:01a21cdb-8b77-70a4-b3a8-eaa775561163",
+                  "label": "claude-2",
+                  "pid": 49321,
+                  "program": "claude",
+                  "cwd": "<mac-fixture>/proj"
+                }
+              ]
+            }
+          ]
+        },
+        "newWindow": {
+          "window": "window:01a21d26-5b5b-76c6-ba71-ebc80b96c1a2",
+          "label": "Window 0b96c1a2",
+          "focused": "block:01a21d26-5af5-7465-b319-8031dc7caa18",
+          "blocks": [
+            {
+              "block": "block:01a21d26-5af5-7465-b319-8031dc7caa18",
+              "label": "shell",
+              "program": "fish",
+              "pid": 5942,
+              "cwd": "<mac-fixture>/home/heeler-lab-GUI 工作目录"
+            }
+          ]
+        },
+        "activeWhileOpen": "window:01a21cbf-f235-7144-88e7-9ccf9ca6fb85",
+        "neighborBeforeAndAfter": {
+          "session": "session:01a21cbf-f265-7ad1-ae87-c2cfba22c314",
+          "label": "heeler-lab-neighbor",
+          "activeWindow": "window:01a21cbf-f27f-7027-8292-6a28d2e0cf96",
+          "windows": [
+            {
+              "id": "window:01a21cbf-f27f-7027-8292-6a28d2e0cf96",
+              "label": "Window d2e0cf96",
+              "focusedBlock": "block:01a21cbf-f265-7c21-b373-e63956302bc4",
+              "processes": [
+                {
+                  "block": "block:01a21cbf-f265-7c21-b373-e63956302bc4",
+                  "label": "shell",
+                  "pid": 35017,
+                  "program": "fish",
+                  "cwd": "<mac-fixture>/proj"
+                }
+              ]
+            }
+          ]
+        },
+        "fullDesktopAndNeighborRestored": true,
+        "grid": {
+          "portrait": {
+            "block": "block:01a21d26-5af5-7465-b319-8031dc7caa18",
+            "columns": 60,
+            "rows": 50,
+            "owner": "client:01a21d26-126f-7c40-a6f1-c3135732b077"
+          },
+          "landscape": {
+            "block": "block:01a21d26-5af5-7465-b319-8031dc7caa18",
+            "columns": 117,
+            "rows": 22,
+            "owner": "client:01a21d26-126f-7c40-a6f1-c3135732b077"
+          }
+        },
+        "visibleAfterExit": "Terminal Closed",
+        "pwd": [
+          "<mac-fixture>/home/heeler-lab-GUI",
+          " 工作目录"
+        ]
+      },
+      "localSources": [
+        "candidate-shell-before.json",
+        "candidate-shell-opened.json",
+        "phone/candidate-active-shell-focus.png",
+        "phone/candidate-terminal-closed.png",
+        "candidate-shell-closed.json"
+      ]
+    },
+    {
+      "case": "iPhone Workspace rename in both groupings",
+      "status": "observed",
+      "action": "Tap the selected Workspace pencil in By Workspace and By Host, replace the current name and save in each grouping.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:32:36.575+08:00",
+        "2026-11-27T21:33:21.665+08:00"
+      ],
+      "observation": {
+        "labelChanges": [
+          "heeler-lab-Pencil-Workspace",
+          "heeler-lab-Renamed-Workspace",
+          "heeler-lab-Renamed-Host"
+        ],
+        "session": "session:01a21cce-f0dc-7b13-ab07-516728f2acee",
+        "targetWindow": {
+          "window": "window:01a21cce-f0f8-79f2-ab8f-1f49f808e93d",
+          "label": "Window f808e93d",
+          "focused": "block:01a21cce-f0dc-7cd9-8b3b-56cf1c4e189a",
+          "blocks": [
+            {
+              "block": "block:01a21cce-f0dc-7cd9-8b3b-56cf1c4e189a",
+              "label": "shell",
+              "program": "fish",
+              "pid": 82761,
+              "cwd": "<mac-fixture>/home/heeler-lab-GUI 工作目录"
+            }
+          ]
+        },
+        "allUntargetedWindowsAndPIDsPreserved": true,
+        "from": "2026-11-27T21:32:21.110+08:00",
+        "through": "2026-11-27T21:33:20.983+08:00"
+      },
+      "localSources": [
+        "candidate-rename.json",
+        "phone/candidate-pencil-by-workspace.png",
+        "phone/candidate-pencil-by-host.png"
+      ]
+    },
+    {
+      "case": "iPad named Workspace and Tab",
+      "status": "observed",
+      "action": "In the Terminals toolbar use New Workspace, browse into the named Unicode directory, enter independent Workspace and Tab labels, open, rotate and leave the terminal.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:40:43.919+08:00",
+        "2026-11-27T21:41:34.624+08:00"
+      ],
+      "observation": {
+        "workspace": {
+          "session": "session:01a21d3c-c0a7-702a-94c2-61df5ad97cb1",
+          "label": "heeler-lab-Pad-candidate",
+          "activeWindow": "window:01a21d3c-c107-71c9-9ad9-79813cd3ed32",
+          "windows": [
+            {
+              "id": "window:01a21d3c-c107-71c9-9ad9-79813cd3ed32",
+              "label": "heeler-lab-tab-candidate",
+              "focusedBlock": "block:01a21d3c-c0a8-70e6-a292-6ad3358c7388",
+              "processes": [
+                {
+                  "block": "block:01a21d3c-c0a8-70e6-a292-6ad3358c7388",
+                  "label": "shell",
+                  "pid": 8258,
+                  "program": "fish",
+                  "cwd": "<mac-fixture>/home/heeler-lab-GUI 工作目录"
+                }
+              ]
+            }
+          ]
+        },
+        "sizes": {
+          "landscape": {
+            "block": "block:01a21d3c-c0a8-70e6-a292-6ad3358c7388",
+            "columns": 124,
+            "rows": 42,
+            "owner": "client:01a21d3b-3e64-72af-afe8-751a4a9a4b96"
+          },
+          "portrait": {
+            "block": "block:01a21d3c-c0a8-70e6-a292-6ad3358c7388",
+            "columns": 113,
+            "rows": 66,
+            "owner": "client:01a21d3b-3e64-72af-afe8-751a4a9a4b96"
+          },
+          "hidden": {
+            "block": "block:01a21d3c-c0a8-70e6-a292-6ad3358c7388",
+            "columns": 124,
+            "rows": 42,
+            "owner": null
+          }
+        }
+      },
+      "localSources": [
+        "pad/candidate-named-workspace.png",
+        "candidate-pad-workspace.json",
+        "pad/candidate-created-split.png",
+        "pad/candidate-hidden-grid.json"
+      ]
+    },
+    {
+      "case": "iPhone macOS Herdr TUI named Tab control",
+      "status": "observed",
+      "action": "In the same candidate, use Terminals, pick the Mac Host and its named Herdr TUI Server, select the existing proj Workspace, enter the Tab name, open the shell and leave it via the back gesture.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:45:58.299+08:00",
+        "2026-11-27T21:48:35.346+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:47:16.214+08:00",
+        "through": "2026-11-27T21:48:35.346+08:00",
+        "before": {
+          "workspaces": [
+            {
+              "active_tab_id": "w1:t1",
+              "focused": true,
+              "label": "proj",
+              "workspace_id": "w1"
+            }
+          ],
+          "tabs": [
+            {
+              "focused": true,
+              "label": "1",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1"
+            },
+            {
+              "focused": false,
+              "label": "2",
+              "tab_id": "w1:t2",
+              "workspace_id": "w1"
+            }
+          ],
+          "panes": [
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": true,
+              "pane_id": "w1:p1",
+              "tab_id": "w1:t1",
+              "terminal_id": "term_661404bfc1efc1",
+              "workspace_id": "w1"
+            },
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": false,
+              "pane_id": "w1:p2",
+              "tab_id": "w1:t2",
+              "terminal_id": "term_66140888900132",
+              "workspace_id": "w1"
+            }
+          ]
+        },
+        "opened": {
+          "workspaces": [
+            {
+              "active_tab_id": "w1:t1",
+              "focused": true,
+              "label": "proj",
+              "workspace_id": "w1"
+            }
+          ],
+          "tabs": [
+            {
+              "focused": true,
+              "label": "1",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1"
+            },
+            {
+              "focused": false,
+              "label": "2",
+              "tab_id": "w1:t2",
+              "workspace_id": "w1"
+            },
+            {
+              "focused": false,
+              "label": "heeler-lab-herdr-control",
+              "tab_id": "w1:t3",
+              "workspace_id": "w1"
+            }
+          ],
+          "panes": [
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": true,
+              "pane_id": "w1:p1",
+              "tab_id": "w1:t1",
+              "terminal_id": "term_661404bfc1efc1",
+              "workspace_id": "w1"
+            },
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": false,
+              "pane_id": "w1:p2",
+              "tab_id": "w1:t2",
+              "terminal_id": "term_66140888900132",
+              "workspace_id": "w1"
+            },
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": false,
+              "pane_id": "w1:p3",
+              "tab_id": "w1:t3",
+              "terminal_id": "term_661424f2d53a212",
+              "workspace_id": "w1"
+            }
+          ]
+        },
+        "afterLeaving": {
+          "workspaces": [
+            {
+              "active_tab_id": "w1:t1",
+              "focused": true,
+              "label": "proj",
+              "workspace_id": "w1"
+            }
+          ],
+          "tabs": [
+            {
+              "focused": true,
+              "label": "1",
+              "tab_id": "w1:t1",
+              "workspace_id": "w1"
+            },
+            {
+              "focused": false,
+              "label": "2",
+              "tab_id": "w1:t2",
+              "workspace_id": "w1"
+            },
+            {
+              "focused": false,
+              "label": "heeler-lab-herdr-control",
+              "tab_id": "w1:t3",
+              "workspace_id": "w1"
+            }
+          ],
+          "panes": [
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": true,
+              "pane_id": "w1:p1",
+              "tab_id": "w1:t1",
+              "terminal_id": "term_661404bfc1efc1",
+              "workspace_id": "w1"
+            },
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": false,
+              "pane_id": "w1:p2",
+              "tab_id": "w1:t2",
+              "terminal_id": "term_66140888900132",
+              "workspace_id": "w1"
+            },
+            {
+              "cwd": "<mac-fixture>/proj",
+              "focused": false,
+              "pane_id": "w1:p3",
+              "tab_id": "w1:t3",
+              "terminal_id": "term_661424f2d53a212",
+              "workspace_id": "w1"
+            }
+          ]
+        },
+        "newTab": {
+          "focused": false,
+          "label": "heeler-lab-herdr-control",
+          "tab_id": "w1:t3",
+          "workspace_id": "w1"
+        },
+        "newPane": {
+          "cwd": "<mac-fixture>/proj",
+          "focused": false,
+          "pane_id": "w1:p3",
+          "tab_id": "w1:t3",
+          "terminal_id": "term_661424f2d53a212",
+          "workspace_id": "w1"
+        }
+      },
+      "localSources": [
+        "candidate-herdr-before.json",
+        "phone/candidate-herdr-named-tab.png",
+        "candidate-herdr-opened.json",
+        "phone/candidate-herdr-terminal-open.png",
+        "candidate-herdr-control.json"
+      ]
+    },
+    {
+      "case": "iPad New Agent in a fresh Git worktree",
+      "status": "observed",
+      "action": "Open the New Agent form for the macOS Rex Workspace, enable Start in a new worktree, enter the synthetic branch and tap Start.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:32:46.755+08:00",
+        "2026-11-27T21:37:19.713+08:00"
+      ],
+      "observation": {
+        "at": "2026-11-27T21:37:19.713+08:00",
+        "server": {
+          "session": "session:01a21d35-752e-70da-9071-91c8d90c85b2",
+          "label": "heeler-lab-ui-candidate",
+          "active": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+          "windows": [
+            {
+              "window": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+              "label": "Window c6fc228d",
+              "focused": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+              "blocks": [
+                {
+                  "block": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+                  "label": "claude",
+                  "program": "claude",
+                  "pid": 40543,
+                  "cwd": "<mac-fixture>/home/.heeler/worktrees/proj/heeler-lab-ui-candidate"
+                }
+              ]
+            }
+          ]
+        },
+        "git": {
+          "branch": "heeler-lab-ui-candidate",
+          "head": "93e25814bea26fb5019162f901638e98058297d3",
+          "status": "",
+          "isLinkedWorktree": true
+        },
+        "displayedChanges": [
+          "Claude, Claude, Heeler Lab, heeler-lab-ui-candidate",
+          "Changes",
+          "Checkout ~/.heeler/worktrees/proj/heeler-lab-ui-candidate, linked Worktree. Branch heeler-lab-ui-candidate. Latest commit: fixture baseline, 2 hours ago. 0 files changed. 0 lines added, 0 lines removed in tracked files. 0 untracked items.",
+          "No uncommitted changes"
+        ]
+      },
+      "localSources": [
+        "pad/candidate-worktree-form.png",
+        "pad/candidate-worktree-open.png",
+        "pad/candidate-worktree-changes.png",
+        "candidate-worktree-server.json"
+      ]
+    },
+    {
+      "case": "iPad New Agent with a saved preset",
+      "status": "observed",
+      "action": "Choose the previously created device-local Claude Code preset and start it on the macOS Workspace.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:43:13.788+08:00",
+        "2026-11-27T21:43:22.755+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:43:07.199+08:00",
+        "through": "2026-11-27T21:43:22.755+08:00",
+        "addedWindow": {
+          "window": "window:01a21d3f-0307-7f2e-9df9-6ccae8c8ac53",
+          "label": "Window e8c8ac53",
+          "focused": "block:01a21d3f-02e3-73b5-8f97-2377ecbacfd9",
+          "blocks": [
+            {
+              "block": "block:01a21d3f-02e3-73b5-8f97-2377ecbacfd9",
+              "label": "claude",
+              "program": "claude",
+              "pid": 29191,
+              "cwd": "<mac-fixture>/proj"
+            }
+          ]
+        },
+        "pid": 29191,
+        "cwd": "<mac-fixture>/proj",
+        "argv": [
+          "claude",
+          "--session-id",
+          "dd839f01-088e-4a7b-b763-91ca8e742b3a",
+          "--heeler-lab-gui",
+          "two words"
+        ],
+        "selectedEnvironment": {
+          "HEELER_LAB_MARKER": "fixture gui two words"
+        }
+      },
+      "localSources": [
+        "pad/candidate-preset-form.png",
+        "candidate-preset.json"
+      ]
+    },
+    {
+      "case": "iPhone project Files and Changes",
+      "status": "observed",
+      "action": "Open the original Agent’s Files menu, inspect sample.txt, then open Changes and its diff.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:40:40.844+08:00",
+        "2026-11-27T21:42:05.801+08:00"
+      ],
+      "observation": {
+        "fileLines": [
+          "fixture baseline",
+          "modified"
+        ],
+        "patch": [
+          "Unchanged, line 1: fixture baseline",
+          "Added, line 2: modified"
+        ]
+      },
+      "localSources": [
+        "phone/candidate-files-preview.png",
+        "phone/candidate-changes-diff.png"
+      ]
+    },
+    {
+      "case": "iPhone keyboard Skills and unsent draft",
+      "status": "observed",
+      "action": "Open Skills from the Agent keyboard menu, hold the fixture Skill to read its file, then choose it once to insert its invocation into the editable composer.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:42:38.441+08:00",
+        "2026-11-27T21:42:51.359+08:00"
+      ],
+      "observation": {
+        "skillContentMatched": true,
+        "draft": "/heeler-lab-gui ",
+        "sent": false
+      },
+      "localSources": [
+        "phone/candidate-skill-content.png",
+        "phone/candidate-skill-token.png"
+      ]
+    },
+    {
+      "case": "iPad macOS Done first tap",
+      "status": "inconclusive-first-attempt",
+      "action": "Tap the first observed accessibility frame as the banner animates in; inspect the selected detail and size owner.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:45:44.189+08:00",
+        "2026-11-27T21:46:55.944+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:45:37.136+08:00",
+        "bannerScreenshotAt": "2026-11-27T21:45:44.189+08:00",
+        "checkedAt": "2026-11-27T21:46:55.943+08:00",
+        "observedTarget": "heeler-lab-rex-banner · Pi, Done",
+        "driverTap": [
+          566.5,
+          31.2
+        ],
+        "settledBannerFrame": [
+          306.5,
+          32.0,
+          520.0,
+          56.0
+        ],
+        "destination": "No Agent Selected",
+        "sizeOwnerAfterTap": null,
+        "outcome": "The accessibility frame was sampled during the banner’s entrance animation. The tap landed above the final banner. A new independent turn was needed."
+      },
+      "localSources": [
+        "pad/candidate-banner-done-first.png",
+        "pad/candidate-banner-done-first.json"
+      ]
+    },
+    {
+      "case": "iPad macOS Pi banner off",
+      "status": "observed",
+      "action": "With the Agents root visible, use the isolated Pi’s native confirmation dialog or real loopback-model turn. For the stale target, exit Pi after the banner appears.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:44:14.542+08:00",
+        "2026-11-27T21:44:14.542+08:00"
+      ],
+      "observation": {
+        "timestamp": "2026-11-27T21:43:56.258798+08:00",
+        "mode": "off",
+        "initiallyVisible": false,
+        "sampleCount": 15,
+        "lastSample": [
+          16.23,
+          false
+        ],
+        "triggerTime": 1.63,
+        "targetBefore": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 6,
+            "owner": null
+          }
+        },
+        "targetAfter": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 6,
+            "owner": null
+          }
+        },
+        "completedAt": "2026-11-27T21:44:14.377+08:00",
+        "nativeTransitions": [
+          {
+            "app": "pi",
+            "state": "blocked",
+            "updatedAt": "2026-11-27T21:43:57.883691+08:00",
+            "pid": 23938
+          }
+        ],
+        "noAgentSelectedAfter": true,
+        "targetWorkspace": "heeler-lab-rex-banner",
+        "session": "session:01a21ccf-94f3-76ce-9b7b-db52c350ff19",
+        "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955"
+      },
+      "localSources": [
+        "pad/candidate-banner-off.json"
+      ]
+    },
+    {
+      "case": "iPad macOS Pi banner blocked",
+      "status": "observed",
+      "action": "With the Agents root visible, use the isolated Pi’s native confirmation dialog or real loopback-model turn. For the stale target, exit Pi after the banner appears.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:45:04.030+08:00",
+        "2026-11-27T21:45:04.030+08:00"
+      ],
+      "observation": {
+        "timestamp": "2026-11-27T21:44:48.909982+08:00",
+        "mode": "blocked",
+        "initiallyVisible": false,
+        "sampleCount": 4,
+        "lastSample": [
+          6.43,
+          true
+        ],
+        "triggerTime": 2.02,
+        "label": "heeler-lab-rex-banner · Pi, Blocked — waiting for input",
+        "value": null,
+        "tapAt": 6.43,
+        "tapReturnedAt": 9.58,
+        "targetBefore": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 6,
+            "owner": null
+          }
+        },
+        "targetAfter": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 35,
+            "owner": "client:01a21d3f-fdb5-7399-bb13-e1ced8e0da50"
+          }
+        },
+        "completedAt": "2026-11-27T21:45:03.939+08:00",
+        "nativeTransitions": [
+          {
+            "app": "pi",
+            "state": "blocked",
+            "updatedAt": "2026-11-27T21:44:50.919503+08:00",
+            "pid": 23938
+          }
+        ],
+        "noAgentSelectedAfter": false,
+        "targetWorkspace": "heeler-lab-rex-banner",
+        "session": "session:01a21ccf-94f3-76ce-9b7b-db52c350ff19",
+        "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955"
+      },
+      "localSources": [
+        "pad/candidate-banner-blocked.json"
+      ]
+    },
+    {
+      "case": "iPad macOS Pi banner done",
+      "status": "observed",
+      "action": "With the Agents root visible, use the isolated Pi’s native confirmation dialog or real loopback-model turn. For the stale target, exit Pi after the banner appears.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:48:18.420+08:00",
+        "2026-11-27T21:48:18.420+08:00"
+      ],
+      "observation": {
+        "timestamp": "2026-11-27T21:47:47.839811+08:00",
+        "mode": "done",
+        "initiallyVisible": false,
+        "sampleCount": 5,
+        "lastSample": [
+          10.66,
+          true
+        ],
+        "triggerTime": 2.79,
+        "label": "heeler-lab-rex-banner · Pi, Done",
+        "value": null,
+        "tapAt": 10.66,
+        "tapReturnedAt": 16.19,
+        "targetBefore": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 35,
+            "owner": null
+          }
+        },
+        "targetAfter": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 35,
+            "owner": "client:01a21d42-7f37-78cd-9890-10c4354a1b6c"
+          }
+        },
+        "completedAt": "2026-11-27T21:48:18.309+08:00",
+        "nativeTransitions": [
+          {
+            "app": "pi",
+            "state": "working",
+            "updatedAt": "2026-11-27T21:47:50.620933+08:00",
+            "pid": 23938
+          },
+          {
+            "app": "pi",
+            "state": "done",
+            "updatedAt": "2026-11-27T21:47:52.148773+08:00",
+            "pid": 23938
+          }
+        ],
+        "noAgentSelectedAfter": false,
+        "targetWorkspace": "heeler-lab-rex-banner",
+        "session": "session:01a21ccf-94f3-76ce-9b7b-db52c350ff19",
+        "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955"
+      },
+      "localSources": [
+        "pad/candidate-banner-done.json"
+      ]
+    },
+    {
+      "case": "iPad macOS Pi banner stale",
+      "status": "observed",
+      "action": "With the Agents root visible, use the isolated Pi’s native confirmation dialog or real loopback-model turn. For the stale target, exit Pi after the banner appears.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:49:36.164+08:00",
+        "2026-11-27T21:49:36.164+08:00"
+      ],
+      "observation": {
+        "timestamp": "2026-11-27T21:49:20.018672+08:00",
+        "mode": "stale",
+        "initiallyVisible": false,
+        "sampleCount": 4,
+        "lastSample": [
+          13.32,
+          true
+        ],
+        "triggerTime": 6.1,
+        "label": "heeler-lab-rex-banner · Pi, Done",
+        "value": null,
+        "programExitedAt": 13.63,
+        "visibleAfterExit": false,
+        "targetBefore": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 23938,
+          "program": "node",
+          "grid": {
+            "columns": 124,
+            "rows": 35,
+            "owner": null
+          }
+        },
+        "targetAfter": {
+          "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+          "pid": 95896,
+          "program": "bash",
+          "grid": {
+            "columns": 124,
+            "rows": 35,
+            "owner": null
+          }
+        },
+        "completedAt": "2026-11-27T21:49:36.076+08:00",
+        "nativeTransitions": [
+          {
+            "app": "pi",
+            "state": "working",
+            "updatedAt": "2026-11-27T21:49:26.041675+08:00",
+            "pid": 23938
+          },
+          {
+            "app": "pi",
+            "state": "done",
+            "updatedAt": "2026-11-27T21:49:27.597979+08:00",
+            "pid": 23938
+          }
+        ],
+        "noAgentSelectedAfter": true,
+        "targetWorkspace": "heeler-lab-rex-banner",
+        "session": "session:01a21ccf-94f3-76ce-9b7b-db52c350ff19",
+        "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955"
+      },
+      "localSources": [
+        "pad/candidate-banner-stale.json"
+      ]
+    },
+    {
+      "case": "phone fresh rex-only discovery and SSH connection",
+      "status": "observed",
+      "action": "Enter the dedicated loopback address, user and port in Add Host. Match the displayed first-trust fingerprint. Toggle the discovered Rex Server and save the Host.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:34:16.985+08:00",
+        "2026-11-27T21:36:18.781+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:33:36.829+08:00",
+        "through": "2026-11-27T21:34:46.313+08:00",
+        "matchedPrivateHostKey": true,
+        "detectedServers": [
+          "Rex, Running"
+        ],
+        "savedHost": "Heeler Lab Rex Only",
+        "result": "Rex, connected"
+      },
+      "localSources": [
+        "phone/candidate-rex-only-onboarding.json",
+        "phone/candidate-rex-only-scan.png",
+        "phone/candidate-rex-only-connected.png"
+      ]
+    },
+    {
+      "case": "pad fresh linux discovery and SSH connection",
+      "status": "observed",
+      "action": "Enter the dedicated loopback address, user and port in Add Host. Match the displayed first-trust fingerprint. Toggle the discovered Rex Server and save the Host.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:18:16.359+08:00",
+        "2026-11-27T21:23:45.130+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:16:58.390+08:00",
+        "through": "2026-11-27T21:23:45.130+08:00",
+        "firstTrustMatchedPrivateSshd": true,
+        "savedRexServers": 1,
+        "host": "Heeler Lab Debian",
+        "result": "Rex, connected"
+      },
+      "localSources": [
+        "pad/candidate-linux-onboarding.json",
+        "pad/candidate-linux-scan.png",
+        "pad/candidate-linux-connected.png"
+      ]
+    },
+    {
+      "case": "iPhone compact Debian Pi banner",
+      "status": "observed",
+      "action": "Observe the stored disabled Host setting, enable it, return to Agents, then tap the Blocked banner from the real Debian dialog. Leave the terminal and disable banners.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:44:14.102+08:00",
+        "2026-11-27T21:45:20.779+08:00"
+      ],
+      "observation": {
+        "trial": {
+          "from": "2026-11-27T21:44:32.525+08:00",
+          "through": "2026-11-27T21:44:47.690+08:00",
+          "firstSeenAtSeconds": 6.1,
+          "checkbox": "Heeler Lab Debian",
+          "label": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+          "frame": {
+            "y": 33.9207649230957,
+            "x": 16,
+            "width": 358,
+            "height": 58.74589920043945
+          },
+          "source": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+          "before": {
+            "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+            "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+            "size": {
+              "columns": 60,
+              "rows": 40,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": []
+            },
+            "pid": 15211,
+            "state": "idle",
+            "observed": "2026-11-27T13:44:32.446+00:00"
+          },
+          "after": {
+            "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+            "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+            "size": {
+              "columns": 60,
+              "rows": 40,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": "client:01a21d3f-86c2-7c12-a051-6883fbd3302b",
+              "desired": [
+                {
+                  "client_id": "client:01a21d3f-86c2-7c12-a051-6883fbd3302b",
+                  "columns": 60,
+                  "rows": 40,
+                  "updated_at": "2026-11-27T13:44:42.208750463Z"
+                }
+              ]
+            },
+            "pid": 15211,
+            "state": "blocked",
+            "observed": "2026-11-27T13:44:44.904+00:00"
+          },
+          "nativeStatus": [
+            {
+              "observed": "2026-11-27T13:44:33.920+00:00",
+              "action": "blocked",
+              "state": "idle",
+              "effectiveApp": "pi",
+              "updatedAt": "2026-11-27T12:51:14.432307199Z",
+              "pid": 15211,
+              "message": null
+            },
+            {
+              "observed": "2026-11-27T13:44:34.901+00:00",
+              "action": "blocked",
+              "state": "blocked",
+              "effectiveApp": "pi",
+              "updatedAt": "2026-11-27T13:44:34.553787357Z",
+              "pid": 15211,
+              "message": "Heeler lab confirmation A"
+            }
+          ]
+        },
+        "afterLeaving": {
+          "at": "2026-11-27T21:45:20.778+08:00",
+          "disabled": true,
+          "state": {
+            "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+            "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+            "size": {
+              "columns": 60,
+              "rows": 40,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": [
+                {
+                  "client_id": "client:01a21d3f-86c2-7c12-a051-6883fbd3302b",
+                  "columns": 60,
+                  "rows": 40,
+                  "updated_at": "2026-11-27T13:44:42.208750463Z"
+                }
+              ]
+            },
+            "pid": 15211,
+            "state": "idle",
+            "observed": "2026-11-27T13:45:20.721+00:00"
+          }
+        }
+      },
+      "localSources": [
+        "phone/candidate-compact-banners-off.png",
+        "phone/candidate-compact-blocked.png",
+        "phone/candidate-compact-recipient.png",
+        "phone/candidate-compact-banner.json",
+        "phone/candidate-compact-notification-release.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Done first observation",
+      "status": "inconclusive-first-attempt",
+      "action": "Trigger a real Pi turn with Include Done enabled and sample the UI while the Agent root is visible.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:54:13.303+08:00",
+        "2026-11-27T21:54:13.303+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:53:37.190+08:00",
+        "completedAt": "2026-11-27T21:54:10.750+08:00",
+        "nativeTransitions": [
+          {
+            "observed": "2026-11-27T13:53:50.251+00:00",
+            "action": "done",
+            "state": "idle",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:56.812525543Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:53:51.487+00:00",
+            "action": "done",
+            "state": "working",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:53:50.982929013Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:53:57.518+00:00",
+            "action": "done",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:53:56.446187991Z",
+            "pid": 15211,
+            "message": null
+          }
+        ],
+        "samples": [
+          {
+            "s": 8.94,
+            "visible": false
+          },
+          {
+            "s": 11.64,
+            "visible": false
+          },
+          {
+            "s": 15.25,
+            "visible": false
+          },
+          {
+            "s": 27.04,
+            "visible": false
+          }
+        ],
+        "outcome": "Four UI samples included a gap of 11.79 seconds; the banner was not observed and no tap was sent on this attempt."
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-done-first.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Pi banner off",
+      "status": "observed",
+      "action": "Act on the dedicated, real Debian Pi, track its native status independently and observe the foreground Agents UI.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:51:37.925+08:00",
+        "2026-11-27T21:51:37.925+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:51:12.945+08:00",
+        "mode": "off",
+        "initialStatus": {
+          "observed": "2026-11-27T13:51:13.329+00:00",
+          "action": "status",
+          "state": "idle",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T13:44:48.24410567Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 60,
+            "rows": 40,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "idle",
+          "observed": "2026-11-27T13:51:13.655+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T13:51:37.053+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:51:16.220892573Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "trigger": "blocked",
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T13:51:15.670+00:00",
+            "action": "blocked",
+            "state": "idle",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:44:48.24410567Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:51:16.371+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:51:16.220892573Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 0,
+        "appearanceSeconds": [],
+        "completedAt": "2026-11-27T21:51:37.065+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 60,
+            "rows": 40,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T13:51:37.327+00:00"
+        },
+        "details": {
+          "noAgentSelected": true,
+          "workspaceTerminals": false,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        }
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-off.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Pi banner repeat",
+      "status": "observed",
+      "action": "Act on the dedicated, real Debian Pi, track its native status independently and observe the foreground Agents UI.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:52:28.160+08:00",
+        "2026-11-27T21:52:28.160+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:52:03.395+08:00",
+        "mode": "repeat",
+        "initialStatus": {
+          "observed": "2026-11-27T13:52:03.600+00:00",
+          "action": "status",
+          "state": "idle",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T13:51:38.196743241Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 60,
+            "rows": 40,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "idle",
+          "observed": "2026-11-27T13:52:03.802+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T13:52:18.218+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:10.864189756Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 0782474617"
+          },
+          {
+            "observed": "2026-11-27T13:52:27.437+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:10.864189756Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 0782474617"
+          }
+        ],
+        "trigger": "blocked",
+        "repeatTriggeredAtSeconds": 6.51,
+        "bannerLabel": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+        "bannerValue": null,
+        "refreshAtSeconds": 16.93,
+        "nativeRepeatEvents": [
+          {
+            "observed": "2026-11-27T13:52:06.214+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:05.977243546Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          },
+          {
+            "observed": "2026-11-27T13:52:10.659+00:00",
+            "action": "repeat",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:05.977243546Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          },
+          {
+            "observed": "2026-11-27T13:52:10.981+00:00",
+            "action": "repeat",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:10.864189756Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 0782474617"
+          }
+        ],
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T13:52:05.408+00:00",
+            "action": "blocked",
+            "state": "idle",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:51:38.196743241Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:52:06.214+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:05.977243546Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 1,
+        "appearanceSeconds": [
+          6.51
+        ],
+        "completedAt": "2026-11-27T21:52:27.448+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 60,
+            "rows": 40,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T13:52:27.680+00:00"
+        },
+        "details": {
+          "noAgentSelected": true,
+          "workspaceTerminals": false,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        }
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-repeat.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Pi banner tap",
+      "status": "observed",
+      "action": "Act on the dedicated, real Debian Pi, track its native status independently and observe the foreground Agents UI.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:52:55.893+08:00",
+        "2026-11-27T21:52:55.893+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:52:47.040+08:00",
+        "mode": "tap",
+        "initialStatus": {
+          "observed": "2026-11-27T13:52:47.226+00:00",
+          "action": "status",
+          "state": "idle",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T13:52:28.844703906Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 60,
+            "rows": 40,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "idle",
+          "observed": "2026-11-27T13:52:47.418+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T13:52:55.078+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:49.396774011Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "trigger": "blocked",
+        "bannerLabel": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+        "bannerValue": null,
+        "tappedAtSeconds": 5.72,
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T13:52:48.892+00:00",
+            "action": "blocked",
+            "state": "idle",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:28.844703906Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:52:49.486+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:52:49.396774011Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 1,
+        "appearanceSeconds": [
+          5.72
+        ],
+        "completedAt": "2026-11-27T21:52:55.091+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d47-804c-7888-ae4c-4c55bbb82939",
+            "desired": [
+              {
+                "client_id": "client:01a21d47-804c-7888-ae4c-4c55bbb82939",
+                "columns": 124,
+                "rows": 35,
+                "updated_at": "2026-11-27T13:52:54.876451855Z"
+              }
+            ]
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T13:52:55.322+00:00"
+        },
+        "details": {
+          "noAgentSelected": false,
+          "workspaceTerminals": true,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        }
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-tap.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Pi banner done",
+      "status": "observed",
+      "action": "Act on the dedicated, real Debian Pi, track its native status independently and observe the foreground Agents UI.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:56:06.957+08:00",
+        "2026-11-27T21:56:06.957+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:55:47.265+08:00",
+        "mode": "done",
+        "initialStatus": {
+          "observed": "2026-11-27T13:55:47.469+00:00",
+          "action": "status",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T13:53:56.446187991Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T13:55:47.674+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T13:56:03.206+00:00",
+            "action": "status",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:55:54.641223529Z",
+            "pid": 15211,
+            "message": null
+          }
+        ],
+        "trigger": "done",
+        "triggerStartedAtSeconds": 0.18,
+        "bannerLabel": "heeler-lab-notification-pi · Pi, Done",
+        "bannerValue": null,
+        "tappedAtSeconds": 10.96,
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T13:55:49.103+00:00",
+            "action": "done",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:53:56.446187991Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:55:49.723+00:00",
+            "action": "done",
+            "state": "working",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:55:49.622178647Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:55:54.786+00:00",
+            "action": "done",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:55:54.641223529Z",
+            "pid": 15211,
+            "message": null
+          }
+        ],
+        "risingEdges": 1,
+        "appearanceSeconds": [
+          10.95
+        ],
+        "completedAt": "2026-11-27T21:56:03.381+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d4a-3e87-758d-b744-58049c2941a9",
+            "desired": [
+              {
+                "client_id": "client:01a21d4a-3e87-758d-b744-58049c2941a9",
+                "columns": 124,
+                "rows": 35,
+                "updated_at": "2026-11-27T13:56:02.286219401Z"
+              }
+            ]
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T13:56:04.082+00:00"
+        },
+        "details": {
+          "noAgentSelected": false,
+          "workspaceTerminals": true,
+          "targetAgentRow": null
+        }
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-done.json"
+      ]
+    },
+    {
+      "case": "iPad Debian Pi banner off-again",
+      "status": "observed",
+      "action": "Act on the dedicated, real Debian Pi, track its native status independently and observe the foreground Agents UI.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:57:17.139+08:00",
+        "2026-11-27T21:57:17.139+08:00"
+      ],
+      "observation": {
+        "startedAt": "2026-11-27T21:56:51.874+08:00",
+        "mode": "off-again",
+        "initialStatus": {
+          "observed": "2026-11-27T13:56:52.190+00:00",
+          "action": "status",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T13:55:54.641223529Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": [
+              {
+                "client_id": "client:01a21d4a-3e87-758d-b744-58049c2941a9",
+                "columns": 124,
+                "rows": 35,
+                "updated_at": "2026-11-27T13:56:02.286219401Z"
+              }
+            ]
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T13:56:52.506+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T13:57:16.248+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:56:55.085651734Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "trigger": "blocked",
+        "triggerStartedAtSeconds": 0.38,
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T13:56:54.451+00:00",
+            "action": "blocked",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:55:54.641223529Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T13:56:55.323+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T13:56:55.085651734Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 0,
+        "appearanceSeconds": [],
+        "completedAt": "2026-11-27T21:57:16.261+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T13:57:16.614+00:00"
+        },
+        "details": {
+          "noAgentSelected": true,
+          "workspaceTerminals": false,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        }
+      },
+      "localSources": [
+        "pad/candidate-linux-banner-off-again.json"
+      ]
+    },
+    {
+      "case": "Rex Agent management name",
+      "status": "observed",
+      "action": "Open the new Agent’s lower More menu, choose Rename Agent, enter a valid lowercase name, then save.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:38:57.478+08:00",
+        "2026-11-27T21:39:00.529+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:38:42.087+08:00",
+        "through": "2026-11-27T21:39:00.527+08:00",
+        "before": {
+          "session": "session:01a21d35-752e-70da-9071-91c8d90c85b2",
+          "label": "heeler-lab-ui-candidate",
+          "activeWindow": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+          "windows": [
+            {
+              "id": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+              "label": "Window c6fc228d",
+              "focusedBlock": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+              "processes": [
+                {
+                  "block": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+                  "label": "claude",
+                  "pid": 40543,
+                  "program": "claude",
+                  "cwd": "<mac-fixture>/home/.heeler/worktrees/proj/heeler-lab-ui-candidate"
+                }
+              ]
+            }
+          ]
+        },
+        "after": {
+          "session": "session:01a21d35-752e-70da-9071-91c8d90c85b2",
+          "label": "heeler-lab-ui-candidate",
+          "activeWindow": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+          "windows": [
+            {
+              "id": "window:01a21d35-755f-7d4a-b9ff-f757c6fc228d",
+              "label": "Window c6fc228d",
+              "focusedBlock": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+              "processes": [
+                {
+                  "block": "block:01a21d35-752e-7236-975e-2a88d47f0540",
+                  "label": "heeler-lab-ui-agent",
+                  "pid": 40543,
+                  "program": "claude",
+                  "cwd": "<mac-fixture>/home/.heeler/worktrees/proj/heeler-lab-ui-candidate"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "localSources": [
+        "candidate-agent-rename.json",
+        "pad/candidate-agent-renamed.png"
+      ]
+    },
+    {
+      "case": "macOS Rex-only discovery",
+      "status": "observed",
+      "action": "Add the second private macOS login on the same physical machine through Add Host, compare the first-use key and enable the only discovered Server.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:38:21.235+08:00",
+        "2026-11-27T21:38:50.725+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:37:30.317+08:00",
+        "through": "2026-11-27T21:38:50.724+08:00",
+        "matchedPrivateHostKey": true,
+        "detectedServers": [
+          "Rex, Running"
+        ],
+        "savedHost": "Heeler Lab Mac Only",
+        "result": "Rex, connected"
+      },
+      "localSources": [
+        "phone/candidate-mac-only-onboarding.json",
+        "phone/candidate-mac-only-scan.png",
+        "phone/candidate-mac-only-features.png"
+      ]
+    },
+    {
+      "case": "phone mac-only-features rendered capability rows",
+      "status": "observed",
+      "action": "Read the live API revision and scroll until the Native Chat and applicable Read-Only Chat rows fit above the navigation controls.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:38:50.687+08:00",
+        "2026-11-27T21:38:50.724+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:38:42.767+08:00",
+        "through": "2026-11-27T21:38:50.724+08:00",
+        "system": "Host System, macOS",
+        "negotiatedRevision": 19,
+        "preflight": [
+          "SSH connection",
+          "Rex installed",
+          "Rex server running",
+          "protocol compatible"
+        ],
+        "selectedCheckmarks": 4,
+        "visibleCapabilities": [
+          {
+            "text": "Native Chat, Claude Code, Codex, Pi, OMP, Grok Build, Droid, and Devin CLI",
+            "frame": [
+              16,
+              425.7,
+              358,
+              96.7
+            ]
+          },
+          {
+            "text": "Read-Only Chat, OpenCode",
+            "frame": [
+              16,
+              522,
+              358,
+              52
+            ]
+          }
+        ]
+      },
+      "localSources": [
+        "phone/candidate-mac-only-features-receipt.json",
+        "phone/candidate-mac-only-features-visible.png"
+      ]
+    },
+    {
+      "case": "phone rex-only-features rendered capability rows",
+      "status": "observed",
+      "action": "Read the live API revision and scroll until the Native Chat and applicable Read-Only Chat rows fit above the navigation controls.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:34:46.304+08:00",
+        "2026-11-27T21:34:46.313+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:34:42.448+08:00",
+        "through": "2026-11-27T21:34:46.312+08:00",
+        "system": "Host System, Linux",
+        "negotiatedRevision": 19,
+        "preflight": [
+          "SSH connection",
+          "Rex installed",
+          "Rex server running",
+          "protocol compatible"
+        ],
+        "selectedCheckmarks": 4,
+        "visibleCapabilities": [
+          {
+            "text": "Native Chat, Claude Code, Codex, Pi, OMP, Grok Build, Droid, and Devin CLI",
+            "frame": [
+              16,
+              425.7,
+              358,
+              96.7
+            ]
+          },
+          {
+            "text": "Read-Only Chat, OpenCode",
+            "frame": [
+              16,
+              522,
+              358,
+              52
+            ]
+          }
+        ]
+      },
+      "localSources": [
+        "phone/candidate-rex-only-features-receipt.json",
+        "phone/candidate-rex-only-features-visible.png"
+      ]
+    },
+    {
+      "case": "pad linux-host-features rendered capability rows",
+      "status": "observed",
+      "action": "Read the live API revision and scroll until the Native Chat and applicable Read-Only Chat rows fit above the navigation controls.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:23:45.110+08:00",
+        "2026-11-27T21:23:45.128+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:23:22.938+08:00",
+        "through": "2026-11-27T21:23:45.128+08:00",
+        "system": "Host System, Linux",
+        "negotiatedRevision": 19,
+        "preflight": [
+          "SSH connection",
+          "Rex installed",
+          "Rex server running",
+          "protocol compatible"
+        ],
+        "selectedCheckmarks": 4,
+        "visibleCapabilities": [
+          {
+            "text": "Native Chat, Claude Code, Codex, Pi, OMP, Grok Build, Droid, and Devin CLI",
+            "frame": [
+              98,
+              594.5,
+              548,
+              75
+            ]
+          },
+          {
+            "text": "Read-Only Chat, OpenCode",
+            "frame": [
+              98,
+              669.5,
+              548,
+              52
+            ]
+          }
+        ]
+      },
+      "localSources": [
+        "pad/candidate-linux-host-features-receipt.json",
+        "pad/candidate-linux-host-features-visible.png"
+      ]
+    },
+    {
+      "case": "iPhone mac-only connected terminal input",
+      "status": "observed",
+      "action": "Open the only discovered Workspace shell, send pwd, confirm it on that server and leave using the back gesture.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:39:39.502+08:00",
+        "2026-11-27T21:39:42.895+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:38:51.554+08:00",
+        "through": "2026-11-27T21:39:42.895+08:00",
+        "action": "Open the one existing shell from Terminals search, display the keyboard, type pwd and swipe back. The shell remains alive.",
+        "workspace": "heeler-lab-macos-only",
+        "before": {
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+          "pid": 20747,
+          "program": "fish",
+          "size": {
+            "columns": 80,
+            "rows": 24,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "hasTypedPWD": false,
+          "hasPWDResult": false
+        },
+        "visible": {
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+          "pid": 20747,
+          "program": "fish",
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d3b-0d86-7678-aba7-b83dd7b1aef3",
+            "desired": [
+              {
+                "client_id": "client:01a21d3b-0d86-7678-aba7-b83dd7b1aef3",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T21:39:32.267413+08:00"
+              }
+            ]
+          },
+          "hasTypedPWD": false,
+          "hasPWDResult": false
+        },
+        "afterPWD": {
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+          "pid": 20747,
+          "program": "fish",
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d3b-0d86-7678-aba7-b83dd7b1aef3",
+            "desired": [
+              {
+                "client_id": "client:01a21d3b-0d86-7678-aba7-b83dd7b1aef3",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T21:39:38.016613+08:00"
+              }
+            ]
+          },
+          "hasTypedPWD": true,
+          "hasPWDResult": true
+        },
+        "afterLeaving": {
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+          "pid": 20747,
+          "program": "fish",
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": [
+              {
+                "client_id": "client:01a21d3b-0d86-7678-aba7-b83dd7b1aef3",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T21:39:42.20913+08:00"
+              }
+            ]
+          },
+          "hasTypedPWD": true,
+          "hasPWDResult": true
+        }
+      },
+      "localSources": [
+        "phone/candidate-mac-only-terminal-receipt.json",
+        "phone/candidate-mac-only-terminal.png"
+      ]
+    },
+    {
+      "case": "iPhone rex-only connected terminal input",
+      "status": "observed",
+      "action": "Open the only discovered Workspace shell, send pwd, confirm it on that server and leave using the back gesture.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:37:09.423+08:00",
+        "2026-11-27T21:37:12.550+08:00"
+      ],
+      "observation": {
+        "from": "2026-11-27T21:36:20.216+08:00",
+        "through": "2026-11-27T21:37:12.549+08:00",
+        "action": "Open the one existing shell from Terminals search, display the keyboard, type pwd and swipe back. The shell remains alive.",
+        "workspace": "heeler-lab-only-workspace",
+        "before": {
+          "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+          "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+          "program": "bash",
+          "pid": 86,
+          "size": {
+            "columns": 80,
+            "rows": 24,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "hasTypedPWD": false,
+          "hasPWDResult": false
+        },
+        "visible": {
+          "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+          "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+          "program": "bash",
+          "pid": 86,
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d38-c51f-7dac-a907-d69c12a06fab",
+            "desired": [
+              {
+                "client_id": "client:01a21d38-c51f-7dac-a907-d69c12a06fab",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T13:37:02.351717177Z"
+              }
+            ]
+          },
+          "hasTypedPWD": false,
+          "hasPWDResult": false
+        },
+        "afterPWD": {
+          "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+          "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+          "program": "bash",
+          "pid": 86,
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21d38-c51f-7dac-a907-d69c12a06fab",
+            "desired": [
+              {
+                "client_id": "client:01a21d38-c51f-7dac-a907-d69c12a06fab",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T13:37:07.766342437Z"
+              }
+            ]
+          },
+          "hasTypedPWD": true,
+          "hasPWDResult": true
+        },
+        "afterLeaving": {
+          "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+          "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+          "program": "bash",
+          "pid": 86,
+          "size": {
+            "columns": 60,
+            "rows": 50,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": [
+              {
+                "client_id": "client:01a21d38-c51f-7dac-a907-d69c12a06fab",
+                "columns": 60,
+                "rows": 50,
+                "updated_at": "2026-11-27T13:37:11.854750101Z"
+              }
+            ]
+          },
+          "hasTypedPWD": true,
+          "hasPWDResult": true
+        }
+      },
+      "localSources": [
+        "phone/candidate-rex-only-terminal-receipt.json",
+        "phone/candidate-rex-only-terminal.png"
+      ]
+    },
+    {
+      "case": "iPhone new Debian Rex-only shell, marked pwd and exit",
+      "status": "observed",
+      "action": "Create a separate named Workspace at the private login home, check the new Bash and its screen-size owner, send echo and pwd, verify the two complete output lines, and type exit once in that same shell.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:54:43.585+08:00",
+        "2026-11-27T21:58:39.529+08:00"
+      ],
+      "observation": {
+        "form-time": {
+          "from": "2026-11-27T21:54:26.669+08:00",
+          "through": "2026-11-27T21:54:43.910+08:00",
+          "label": "heeler-lab-gui-exit-b8af66",
+          "host": "Heeler Lab Rex Only"
+        },
+        "before": {
+          "at": "2026-11-27T21:54:44.494+08:00",
+          "sessions": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 50
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            }
+          ]
+        },
+        "opened": {
+          "at": "2026-11-27T21:54:51.433+08:00",
+          "sessions": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 50
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            },
+            {
+              "activeWindow": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+              "blocks": [
+                {
+                  "block": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+                  "focusedBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+                  "name": "bash",
+                  "pid": 2064,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [
+                      {
+                        "client_id": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                        "columns": 60,
+                        "rows": 50,
+                        "updated_at": "2026-11-27T13:54:48.266149325Z"
+                      }
+                    ],
+                    "owner": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                    "rows": 50
+                  },
+                  "window": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+                  "windowLabel": "Window 0933e122"
+                }
+              ],
+              "label": "heeler-lab-gui-exit-b8af66",
+              "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+            }
+          ]
+        },
+        "pwd": {
+          "at": "2026-11-27T21:55:00.403+08:00",
+          "sessions": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 50
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            },
+            {
+              "activeWindow": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+              "blocks": [
+                {
+                  "block": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+                  "exactMarkerAndFollowingPWD": true,
+                  "focusedBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+                  "name": "bash",
+                  "pid": 2064,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [
+                      {
+                        "client_id": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                        "columns": 60,
+                        "rows": 31,
+                        "updated_at": "2026-11-27T13:54:59.499815529Z"
+                      }
+                    ],
+                    "owner": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                    "rows": 31
+                  },
+                  "window": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+                  "windowLabel": "Window 0933e122"
+                }
+              ],
+              "label": "heeler-lab-gui-exit-b8af66",
+              "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+            }
+          ]
+        },
+        "closed": {
+          "at": "2026-11-27T21:56:16.564+08:00",
+          "sessions": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 50
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            },
+            {
+              "activeWindow": null,
+              "blocks": [],
+              "label": "heeler-lab-gui-exit-b8af66",
+              "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+            }
+          ],
+          "onlyTargetSessionDisappeared": false,
+          "targetForegroundExited": true,
+          "targetSessionRemainsEmpty": true,
+          "allThreeNeighborRecordsExactlyRetained": true,
+          "targetPID": 2064,
+          "targetSession": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d",
+          "targetBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067"
+        },
+        "back": {
+          "at": "2026-11-27T21:58:27.513+08:00",
+          "screen": "Terminals tab and original macOS fixture Workspace list visible on the iPhone.",
+          "observation": "The native UI runner logged a synthesized Back to Console tap and timed out waiting for idle. A direct simulator screenshot showed the Terminals tab. The action was not repeated."
+        }
+      },
+      "localSources": [
+        "phone/candidate-pure-linux-exit-form-time.json",
+        "phone/candidate-pure-linux-exit-before.json",
+        "phone/candidate-pure-linux-exit-opened.json",
+        "phone/candidate-pure-linux-exit-pwd.json",
+        "phone/candidate-pure-linux-exit-closed.json",
+        "phone/candidate-pure-linux-exit-back.json",
+        "phone/candidate-pure-linux-exit-form.png",
+        "phone/candidate-pure-linux-marker.png",
+        "phone/candidate-pure-linux-closed.png"
+      ]
+    },
+    {
+      "case": "iPhone verified permission in the Agent Terminal",
+      "status": "observed",
+      "action": "Open the dedicated Devin from Agents search, check its official session label and verify the actual tool result. The phone checks the file and selected Allow in its landscape terminal then taps Enter once. The iPad selects Blue and Large on two native Chat cards.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:18:30.217+08:00",
+        "2026-11-27T21:31:27.090+08:00"
+      ],
+      "observation": {
+        "entry": {
+          "from": "2026-11-27T21:17:58.674+08:00",
+          "through": "2026-11-27T21:18:30.216+08:00",
+          "workspace": "heeler-lab-devin-rex-guiphone",
+          "row": "Devin CLI, Idle, devin: Request exact HEELER_LINUX_GUI_SEED_REX-, Heeler Lab Debian, heeler-lab-devin-rex-guiphone",
+          "visibleOfficialSlug": "flossy-okra",
+          "appPoints": {
+            "y": 0,
+            "x": 0,
+            "width": 390,
+            "height": 844
+          },
+          "entry": "Agents, Search Agents, select the matching Devin row, Show Chat"
+        },
+        "initialState": "done",
+        "session": "session:01a21d10-3883-7314-9cff-326f49604dbf",
+        "block": "block:01a21d10-3883-7606-a3fd-79e9483d1950",
+        "pid": 75442,
+        "promptTarget": {
+          "file": "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt",
+          "marker": "HEELER_GUI_D1B5EFB"
+        },
+        "decision": {
+          "at": "2026-11-27T21:31:23.969+08:00",
+          "mode": "Agent Terminal in landscape",
+          "nativePortraitDecision": "Terminal fallback; no native Allow button",
+          "physicalControl": "Enter",
+          "physicalFrame": {
+            "y": 272,
+            "x": 713,
+            "width": 42,
+            "height": 44
+          },
+          "confirmedTerminal": {
+            "session": "session:01a21d10-3883-7314-9cff-326f49604dbf",
+            "block": "block:01a21d10-3883-7606-a3fd-79e9483d1950",
+            "directPID": 75442,
+            "matchesVerifiedACP": true,
+            "target": "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt",
+            "marker": "HEELER_GUI_D1B5EFB",
+            "readOnlyScreen": [
+              " ● Writing ./gui-allow-d1b5efb.txt",
+              " └ 1 +  HEELER_GUI_D1B5EFB",
+              "❭ Allow  Write(/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone)",
+              "  Accept edits mode",
+              "  Bypass mode",
+              "  Deny",
+              "↑↓ select · ↵ confirm · esc cancel"
+            ],
+            "explicitOnce": false,
+            "reportedSize": 117
+          },
+          "file": "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt",
+          "marker": "HEELER_GUI_D1B5EFB",
+          "priorOfficial": {
+            "sessionSlug": "flossy-okra",
+            "siblingSlug": "chip-echium",
+            "currentProcessOwnsSameSlug": true,
+            "ownUserRows": 1,
+            "siblingMarkerRows": 0,
+            "file": "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt",
+            "exists": false,
+            "bytes": 0,
+            "sha256": null,
+            "exactMarker": false,
+            "byteExactMarker": false,
+            "singleTerminalLF": false,
+            "markerSHA256": "5349ce8eb213d5033c4bb8de7d1ddbdf313326f6491d82475e1c46f9a8e12467"
+          },
+          "actionCount": 1
+        },
+        "officialToolResult": {
+          "sessionSlug": "flossy-okra",
+          "siblingSlug": "chip-echium",
+          "currentProcessOwnsSameSlug": true,
+          "ownUserRows": 1,
+          "siblingMarkerRows": 0,
+          "file": "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt",
+          "exists": true,
+          "bytes": 18,
+          "sha256": "5349ce8eb213d5033c4bb8de7d1ddbdf313326f6491d82475e1c46f9a8e12467",
+          "exactMarker": true,
+          "byteExactMarker": true,
+          "singleTerminalLF": false,
+          "markerSHA256": "5349ce8eb213d5033c4bb8de7d1ddbdf313326f6491d82475e1c46f9a8e12467"
+        },
+        "initialCompactFallback": {
+          "at": "2026-11-27T21:23:35.742+08:00",
+          "screenPoints": [
+            390,
+            844
+          ],
+          "visibleActions": [
+            "Show Agent Terminal",
+            "Workspace terminals",
+            "Earlier message",
+            "Minimize",
+            "Escape",
+            "Tab",
+            "Backspace",
+            "Left Arrow",
+            "Up Arrow",
+            "Right Arrow",
+            "Shift Tab",
+            "Down Arrow",
+            "Enter",
+            "Open in Terminal",
+            "/home/heelerlab/heeler-lab-devin/heeler-lab-rex-guiphone/gui-allow-d1b5efb.txt, Running",
+            "devin: Request exact HEELER_LINUX_GUI_SEED_REX-",
+            "π - work",
+            "π - project",
+            "π - project",
+            "Show keyboard"
+          ],
+          "verifiedItem": " ● Writing ./gui-allow-d1b5efb.txt",
+          "fallback": "Open Devin’s terminal to review this prompt."
+        },
+        "landscapeGrid": {
+          "session": "session:01a21d10-3883-7314-9cff-326f49604dbf",
+          "block": "block:01a21d10-3883-7606-a3fd-79e9483d1950",
+          "size": {
+            "columns": 117,
+            "rows": 12,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": [
+              {
+                "client_id": "client:01a21d27-c239-7cb7-a3d6-aae24c8db51d",
+                "columns": 117,
+                "rows": 12,
+                "updated_at": "2026-11-27T13:24:21.735454751Z"
+              }
+            ]
+          }
+        },
+        "nativeChatOneTimeApproval": "Unavailable in the initial 390 pt view. The selected agent opened a terminal fallback. The reason the transient Rex program-status record later cleared was undetermined."
+      },
+      "localSources": [
+        "phone/candidate-devin-entry.json",
+        "phone/candidate-devin-before.json",
+        "phone/candidate-devin-armed.json",
+        "phone/candidate-devin-submit.json",
+        "phone/candidate-devin-result.json",
+        "phone/candidate-devin-narrow-inspect.png",
+        "phone/candidate-devin-verified-terminal-allow.png"
+      ]
+    },
+    {
+      "case": "iPad half-width native Chat question cards",
+      "status": "observed",
+      "action": "Open the dedicated Devin from Agents search, check its official session label and verify the actual tool result. The phone checks the file and selected Allow in its landscape terminal then taps Enter once. The iPad selects Blue and Large on two native Chat cards.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:27:21.060+08:00",
+        "2026-11-27T21:29:56.131+08:00"
+      ],
+      "observation": {
+        "entry": {
+          "from": "2026-11-27T21:26:15.296+08:00",
+          "through": "2026-11-27T21:27:21.059+08:00",
+          "workspace": "heeler-lab-devin-rex-guipad",
+          "row": "Devin CLI, Done, devin: Request Exact HEELER_LINUX_GUI_SEED_REX-, Heeler Lab Debian, heeler-lab-devin-rex-guipad",
+          "visibleOfficialSlug": "chip-echium",
+          "appPoints": {
+            "y": 0,
+            "x": 0,
+            "width": 561.5,
+            "height": 744
+          },
+          "entry": "Agents, Search Agents, select the matching Devin row, Show Chat"
+        },
+        "initialState": "done",
+        "session": "session:01a21d10-38ce-76ff-9c83-0e377452064b",
+        "block": "block:01a21d10-38ce-7848-bcb0-423aba742e39",
+        "pid": 75464,
+        "promptTarget": {
+          "marker": "HEELER_GUI_292BC86",
+          "questions": [
+            "Which color?",
+            "Which size?"
+          ]
+        },
+        "decision": {
+          "from": "2026-11-27T21:28:04.697+08:00",
+          "through": "2026-11-27T21:29:51.870+08:00",
+          "visibleOfficialSlug": "chip-echium",
+          "appFrame": {
+            "y": 0,
+            "x": 0,
+            "width": 561.5,
+            "height": 744
+          },
+          "firstControl": "Blue, Choose the blue color.",
+          "firstAdvanceIfShown": null,
+          "secondControl": "Large, Choose the large size.",
+          "finalSubmitIfShown": null
+        },
+        "officialToolResult": {
+          "sessionSlug": "chip-echium",
+          "siblingSlug": "flossy-okra",
+          "currentProcessOwnsSameSlug": true,
+          "ownUserRows": 1,
+          "siblingMarkerRows": 0,
+          "questionCallCount": 1,
+          "recordedResultCount": 1,
+          "knownMarker": "HEELER_GUI_292BC86",
+          "selected": {
+            "Which color?": [
+              "Blue"
+            ],
+            "Which size?": [
+              "Large"
+            ]
+          },
+          "skipped": {
+            "Which color?": false,
+            "Which size?": false
+          }
+        }
+      },
+      "localSources": [
+        "pad/candidate-devin-entry.json",
+        "pad/candidate-devin-before.json",
+        "pad/candidate-devin-armed.json",
+        "pad/candidate-devin-submit.json",
+        "pad/candidate-devin-result.json",
+        "pad/candidate-devin-color-card.png",
+        "pad/candidate-devin-size-card.png"
+      ]
+    },
+    {
+      "case": "iPadOS half-width window",
+      "status": "observed",
+      "action": "Use the native Window Controls to position the Heeler scene in the left half, then open the terminal with a long path and expose its shortcut row.",
+      "evidenceTimeRange": [
+        "2026-11-27T21:16:05.965+08:00",
+        "2026-11-27T21:16:20.428+08:00"
+      ],
+      "observation": {
+        "systemScene": {
+          "observedAt": "2026-11-27T21:16:05.964+08:00",
+          "displayPoints": [
+            1133,
+            744
+          ],
+          "windowFrames": {
+            "dev.bybee.heeler": [
+              0.0,
+              0.0,
+              561.5,
+              744.0
+            ]
+          }
+        },
+        "grid": {
+          "block": "block:01a21ccd-29d8-7426-b51c-03ac0c90b846",
+          "columns": 85,
+          "rows": 39,
+          "owner": "client:01a21d26-118f-7b17-8f1c-736e6a788efc"
+        },
+        "shortcutInteraction": {
+          "start": "2026-11-27T21:16:04.198+08:00",
+          "end": "2026-11-27T21:16:25.687+08:00",
+          "block": "block:01a21ccd-29d8-7426-b51c-03ac0c90b846",
+          "shortcutLabels": [
+            "Heeler",
+            "More",
+            "Workspace terminals",
+            "Escape",
+            "Tab",
+            "Shift Tab",
+            "Up Arrow",
+            "Down Arrow",
+            "Left Arrow",
+            "Right Arrow",
+            "Backspace",
+            "Shift Enter",
+            "Enter",
+            "More",
+            "Paste",
+            "Hide shortcut row",
+            "Show keyboard"
+          ],
+          "enterTapped": true,
+          "fixturePromptAfterEnter": true
+        }
+      },
+      "localSources": [
+        "pad/candidate-os-half-window-frames.json",
+        "pad/candidate-os-half-grid.json",
+        "pad/candidate-os-half-controls.png"
+      ]
+    }
+  ],
+  "images": [
+    {
+      "path": "rex-daily/iphone-macos-capabilities.png",
+      "caption": "iPhone showing Mac Rex Host capabilities after a first-trust scan.",
+      "sha256": "ff0f0e361b55ff01482dd927cc48af7769dea1ef277b1045a8311c893a7e266b"
+    },
+    {
+      "path": "rex-daily/iphone-devin-portrait-fallback.png",
+      "caption": "The iPhone portrait Chat identifies the dedicated session and opens a terminal fallback for the incomplete permission row.",
+      "sha256": "4f9289cf0ad7f40bae316624c00f1b39dcd1ed865a869d8c849524ea93b197e6"
+    },
+    {
+      "path": "rex-daily/iphone-terminal-approval.png",
+      "caption": "The iPhone landscape Agent Terminal shows the exact synthetic file, marker and selected Allow before the user taps Enter.",
+      "sha256": "394d9a458c252c45c779a5923b533d6da5ddfcd13c9daf592b590c38f0d8ece6"
+    },
+    {
+      "path": "rex-daily/ipad-half-width-terminal.png",
+      "caption": "The Heeler scene in the left system half, showing the long fixture directory and its native shortcut row.",
+      "sha256": "a8ad0c5e02b133d106835826003c471551e936c2f131abe3e4c276beb93b4684"
+    },
+    {
+      "path": "rex-daily/ipad-question-card.png",
+      "caption": "The second live Devin question in the half-width iPadOS window.",
+      "sha256": "8d91388a8b09fa641e2f6094093c8388035ff025bf82d28b472a5ea4533540cb"
+    },
+    {
+      "path": "rex-daily/iphone-debian-marked-pwd.png",
+      "caption": "The controlled Debian login displays the complete marker and its working directory in the new iPhone shell before exit.",
+      "sha256": "fb9b884cfeb12a7811b010eae14ac65cc9511e974f5cbfd20329cdf8279afc8f"
+    },
+    {
+      "path": "rex-daily/ipad-worktree-changes.png",
+      "caption": "The selected Agent is highlighted in the sidebar, with its linked checkout, branch and clean Changes page in the detail column.",
+      "sha256": "75d0facfc9a4eb5250511f02f87bae686c2e89faa3661f637062a447e58d72a2"
+    },
+    {
+      "path": "rex-daily/ipad-debian-blocked.png",
+      "caption": "A real Debian Pi confirmation produces a foreground Blocked banner.",
+      "sha256": "63f9b9861ed141ad1a7c20d7454df80e469cab51632d1d915c91ac12da046dac"
+    },
+    {
+      "path": "rex-daily/ipad-debian-foreground.png",
+      "caption": "Tapping the Debian banner opens that Pi in the detail column.",
+      "sha256": "b5ef9e7a30cd265f9810788ce217136abfdcf48fdbb21610031ad7560cf20927"
+    }
+  ],
+  "releasedNotificationFixtures": {
+    "at": "2026-11-27T21:58:49.882+08:00",
+    "hostPreferencesOff": true,
+    "platforms": {
+      "macOS": {
+        "block": "block:01a21ccf-94f3-77ef-9aa3-6aa9ac35c955",
+        "pid": 98442,
+        "foreground": "node",
+        "columns": 124,
+        "rows": 35,
+        "owner": null
+      },
+      "debian": {
+        "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+        "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+        "size": {
+          "columns": 124,
+          "rows": 35,
+          "cell_width_px": 8,
+          "cell_height_px": 16,
+          "owner": null,
+          "desired": []
+        },
+        "pid": 15211,
+        "state": "done",
+        "observed": "2026-11-27T13:58:49.849+00:00"
+      }
+    }
+  },
+  "notificationSettings": [
+    {
+      "from": "2026-11-27T21:43:44.215+08:00",
+      "through": "2026-11-27T21:43:44.890+08:00",
+      "requested": "observe",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:44:32.849+08:00",
+      "through": "2026-11-27T21:44:37.603+08:00",
+      "requested": "blocked",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:45:23.738+08:00",
+      "through": "2026-11-27T21:45:28.003+08:00",
+      "requested": "done",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:47:24.604+08:00",
+      "through": "2026-11-27T21:47:31.877+08:00",
+      "requested": "done",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:49:04.639+08:00",
+      "through": "2026-11-27T21:49:06.806+08:00",
+      "requested": "done",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:49:56.074+08:00",
+      "through": "2026-11-27T21:50:05.749+08:00",
+      "requested": "off",
+      "host": "Heeler Lab · Rex",
+      "before": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": true
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab · Rex",
+          "identifier": "settings.notifications.rexBanners.CF9A5F14-950E-52B1-A1C1-F228E5207E32",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:51:02.840+08:00",
+      "through": "2026-11-27T21:51:03.441+08:00",
+      "requested": "observe",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:51:51.579+08:00",
+      "through": "2026-11-27T21:51:55.479+08:00",
+      "requested": "blocked",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:52:41.179+08:00",
+      "through": "2026-11-27T21:52:41.939+08:00",
+      "requested": "blocked",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:53:19.576+08:00",
+      "through": "2026-11-27T21:53:24.654+08:00",
+      "requested": "done",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:55:40.632+08:00",
+      "through": "2026-11-27T21:55:41.447+08:00",
+      "requested": "done",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:56:38.673+08:00",
+      "through": "2026-11-27T21:56:43.553+08:00",
+      "requested": "off",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-27T21:57:34.258+08:00",
+      "through": "2026-11-27T21:57:37.133+08:00",
+      "requested": "off",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    {
+      "case": "Two simultaneously interactive iPadOS applications",
+      "status": "not-run",
+      "reason": "The separately observed left-half scene is a real iPadOS window. A preview attempt to exercise a second application caused the simulator to report Critical process backboardd crashed. Concurrent two-app interaction has no completed receipt."
+    },
+    {
+      "case": "Close an existing remote session or kill an arbitrary process from a management menu",
+      "status": "not-run",
+      "reason": "The iPhone exit exercise used the shell created for that interaction. Its original desktop and adjacent session were retained."
+    },
+    {
+      "case": "Model output from the recorded claude command",
+      "status": "not-run",
+      "reason": "Agent-launch checks used a local executable with synthetic arguments. Real foreground status events came from Pi, using its loopback model."
+    }
+  ]
+}

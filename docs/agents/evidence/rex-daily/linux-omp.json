@@ -1,0 +1,107 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "program": "omp",
+  "foreground": {
+    "target": {
+      "pid": 5342,
+      "start": "3881617",
+      "report": "2026-11-27T13-32-43-470Z_01a21d35-524e-7329-9192-c5eeaba2ae8d.jsonl",
+      "changedFile": true
+    },
+    "peer": {
+      "pid": 5377,
+      "start": "3881621",
+      "report": "2026-11-27T11-46-48-980Z_01a21cd4-5c14-7469-9994-843075fd8c5b.jsonl",
+      "changedFile": false
+    }
+  },
+  "files": {
+    "oldA": {
+      "sessionID": "01a21d07-0b58-775b-bff2-7843bb4c7f2d",
+      "beforeSHA256": "1f00be57c1d3ac11b9999da2215101b60566abf1d78d8c7c982d8ffb577d4745",
+      "matchedInitialLines": 8,
+      "appendedRows": 2,
+      "endingSHA256": "f350329bad5c7b162af231bb85e395916990aa7f01f33ac5e9d75efda4eae354",
+      "counts": {
+        "SEND": {
+          "user": 1,
+          "assistant": 1
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "newA": {
+      "sessionID": "01a21d35-524e-7329-9192-c5eeaba2ae8d",
+      "beforeSHA256": null,
+      "matchedInitialLines": 0,
+      "appendedRows": 8,
+      "endingSHA256": "196e921e244015b698cf056a4ff468bf4999c0130d7e9a425cd34d8648ae9105",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 1,
+          "assistant": 1
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "peer": {
+      "sessionID": "01a21cd4-5c14-7469-9994-843075fd8c5b",
+      "beforeSHA256": "d2c039279c9787b8f7de0d84dc649d625f9421ae9fc6993928eff3572626cc15",
+      "matchedInitialLines": 8,
+      "appendedRows": 0,
+      "endingSHA256": "d2c039279c9787b8f7de0d84dc649d625f9421ae9fc6993928eff3572626cc15",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    }
+  }
+}

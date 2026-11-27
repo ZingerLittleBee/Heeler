@@ -1,0 +1,43 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "source": "Official Amp thread-new action and private plugin; no native Rex Amp Chat in this candidate.",
+  "aOriginalRevision": 1,
+  "aNewRevision": 3,
+  "samePIDStartInstance": true,
+  "oldAndNewRetainedInPidLog": true,
+  "otherPidBindingUnchanged": true,
+  "stalePage": "stale",
+  "staleSend": "stale",
+  "officialRoleCounts": {
+    "old": {
+      "stale": [
+        0,
+        0
+      ],
+      "rotated": [
+        0,
+        0
+      ]
+    },
+    "current": {
+      "stale": [
+        0,
+        0
+      ],
+      "rotated": [
+        1,
+        1
+      ]
+    },
+    "peer": {
+      "stale": [
+        0,
+        0
+      ],
+      "rotated": [
+        0,
+        0
+      ]
+    }
+  }
+}

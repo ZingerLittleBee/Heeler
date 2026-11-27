@@ -1,0 +1,70 @@
+{
+  "candidate": "05a49f2bb673679ced131f482ad0f0af2be2a99d",
+  "kind": "Generated SSH script, signed Debian Devin and its official local read-only database. Terminal-side /clear and /resume. The iOS app was not involved in this measurement.",
+  "steps": [
+    {
+      "step": 1,
+      "session": "A",
+      "interactivePID": 225188,
+      "directACP": 225250,
+      "slugHash": "41236261873f",
+      "lockFileCount": 1,
+      "onlyActiveLockInWire": true,
+      "realLockOwnerMatched": true
+    },
+    {
+      "step": 2,
+      "session": "B",
+      "interactivePID": 225188,
+      "directACP": 229063,
+      "slugHash": "270637c10a75",
+      "lockFileCount": 1,
+      "onlyActiveLockInWire": true,
+      "realLockOwnerMatched": true
+    },
+    {
+      "step": 3,
+      "session": "A",
+      "interactivePID": 225188,
+      "directACP": 230103,
+      "slugHash": "41236261873f",
+      "lockFileCount": 1,
+      "onlyActiveLockInWire": true,
+      "realLockOwnerMatched": true
+    },
+    {
+      "step": 4,
+      "session": "B",
+      "interactivePID": 225188,
+      "directACP": 230753,
+      "slugHash": "270637c10a75",
+      "lockFileCount": 1,
+      "onlyActiveLockInWire": true,
+      "realLockOwnerMatched": true
+    },
+    {
+      "step": 5,
+      "session": "A",
+      "interactivePID": 225188,
+      "directACP": 231672,
+      "slugHash": "41236261873f",
+      "lockFileCount": 1,
+      "onlyActiveLockInWire": true,
+      "realLockOwnerMatched": true
+    }
+  ],
+  "officialDatabase": {
+    "A": {
+      "ownUser": 1,
+      "ownAssistant": 1,
+      "peerRows": 0,
+      "slugHash": "41236261873f"
+    },
+    "B": {
+      "ownUser": 1,
+      "ownAssistant": 1,
+      "peerRows": 0,
+      "slugHash": "270637c10a75"
+    }
+  }
+}

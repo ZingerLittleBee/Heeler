@@ -1,0 +1,133 @@
+{
+  "combinedDesktopPrompts": [],
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "cli": "Claude Code 2.1.332 --bare",
+  "rexVersion": "0.1.0-preview.25",
+  "rexApiRevision": 24,
+  "negotiatedRevision": 19,
+  "summary": {
+    "result": "Passed",
+    "totalTestCount": 1,
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0
+  },
+  "device": {
+    "architecture": "arm64",
+    "deviceId": "7E04F107-29B7-4703-BD9A-0E275933FDDC",
+    "deviceName": "heeler-lab-rex-native-chat",
+    "modelName": "iPhone 17e",
+    "osBuildNumber": "24A434",
+    "osVersion": "27.0",
+    "platform": "iOS Simulator"
+  },
+  "nativeControls": true,
+  "nativePermissions": true,
+  "original": {
+    "sha256": "840f3ec63a19a657ef3795470cb3cbbee4e1cadfe1063fa8614c4b2714cf7f0d",
+    "byteCount": 44795,
+    "markers": {
+      "user": {
+        "REX_LAB_SEED_CLAUDE_A_394464DA": 1,
+        "REX_LAB_SEND_76F40C73": 1,
+        "REX_LAB_ATTACHMENT_EF836779": 1,
+        "REX_LAB_STOP_EF836779": 1,
+        "REX_LAB_SUCCESSOR_SAME_EF836779": 2,
+        "REX_LAB_APPROVE_EF836779": 1,
+        "REX_LAB_DECLINE_EF836779": 3
+      },
+      "assistant": {
+        "REX_LAB_SEED_CLAUDE_A_394464DA": 1,
+        "REX_LAB_SEND_76F40C73": 1,
+        "REX_LAB_ATTACHMENT_EF836779": 1,
+        "REX_LAB_SUCCESSOR_SAME_EF836779": 1
+      }
+    },
+    "attachment": [
+      {
+        "pathBytes": 135,
+        "byteCount": 42,
+        "sha256": "a6bb3ce6eddda6fbca12a70a6b708b2bc7f18bc5c50d2c78276d0407048864eb"
+      }
+    ],
+    "events": {},
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "peer": {
+    "sha256": "6ad8d272f5461e4af55a79cd3860670605d281e4572f53ad68dda36741f3e276",
+    "byteCount": 10066,
+    "markers": {
+      "user": {
+        "REX_LAB_SEED_CLAUDE_B_0FD14D9B": 1
+      },
+      "assistant": {
+        "REX_LAB_SEED_CLAUDE_B_0FD14D9B": 1
+      }
+    },
+    "attachment": [],
+    "events": {},
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "afterSwitch": {
+    "sha256": "d8b9e66dfd2a403efec4375f22b1e2cd384b075f021ec114c30d35f14222ba3f",
+    "byteCount": 20776,
+    "markers": {
+      "user": {
+        "REX_LAB_ROTATED_1469D7F3": 2,
+        "REX_LAB_SUCCESSOR_SWITCHED_A189BBB5": 1,
+        "REX_LAB_NEW_DRAFT_796A55B5": 1
+      },
+      "assistant": {
+        "REX_LAB_ROTATED_1469D7F3": 1,
+        "REX_LAB_SUCCESSOR_SWITCHED_A189BBB5": 1,
+        "REX_LAB_NEW_DRAFT_796A55B5": 1
+      }
+    },
+    "attachment": [],
+    "events": {},
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "providerCancellation": {
+    "REX_LAB_STOP_EF836779": true
+  },
+  "operationFiles": {
+    "REX_LAB_DECLINE_EF836779": false,
+    "REX_LAB_APPROVE_EF836779": true
+  },
+  "testedProductsSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+  "execution": {
+    "selector": "HeelerLiveTests/RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+    "xctestrun": "HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
+    "preflight": false
+  },
+  "originalSessionID": "7b2e1cfe-fca0-4e61-9d16-95716c90606f",
+  "peerSessionID": "54aa76bb-dbdf-43b1-9363-e75f321a5a0d",
+  "officialPermissionCalls": [
+    {
+      "request": "REX_LAB_APPROVE_EF836779",
+      "callID": "toolu_5c3e7f6683504fbcb71aedeeeb600339",
+      "source": "tool_use",
+      "officialResult": "approved"
+    },
+    {
+      "request": "REX_LAB_DECLINE_EF836779",
+      "callID": "toolu_e01ddef5c51b45228223c79f52581748",
+      "source": "tool_use",
+      "officialResult": "declined"
+    },
+    {
+      "request": "REX_LAB_DECLINE_EF836779",
+      "callID": "toolu_b233a803c64f4ac7ab1992dfb04e2749",
+      "source": "tool_use",
+      "officialResult": "declined"
+    }
+  ],
+  "officialStop": {
+    "marker": "REX_LAB_STOP_EF836779",
+    "userOpenerCount": 1,
+    "assistantReplies": 0
+  }
+}

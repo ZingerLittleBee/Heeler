@@ -1,0 +1,36 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "server": "Herdr TUI 0.9.5",
+  "program": "pi",
+  "source": "Independent Linux process, Herdr integration records and official transcript bytes via SSH",
+  "pairs": [
+    {
+      "pane": "w1:p1",
+      "pid": 215551,
+      "startTicks": "4641500",
+      "sessionKind": "path",
+      "integration": "herdr:pi",
+      "officialSession": "2026-11-27T13-53-27-711Z_01a21d48-4e9e-75f3-80c7-29d092093acd.jsonl",
+      "recordCounts": {
+        "user": 1,
+        "assistant": 1
+      },
+      "seededSHA256": "1cb771522c9cedbb900da52b936d6a80d58f571db591cd006ba6464c69594b74",
+      "endingSHA256": "4dac2a527b81b1b4fa76e1f64fb655d452104b97f813234273c730511bb37aa8"
+    },
+    {
+      "pane": "w1:p2",
+      "pid": 216251,
+      "startTicks": "4643499",
+      "sessionKind": "path",
+      "integration": "herdr:pi",
+      "officialSession": "2026-11-27T13-53-47-983Z_01a21d48-9dce-706d-a1f5-4ef2a65f8484.jsonl",
+      "recordCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "seededSHA256": "70b2a942398a4e6fc41b730b96524f7ad5064e27d75a3af1b5056cc679850d69",
+      "endingSHA256": "70b2a942398a4e6fc41b730b96524f7ad5064e27d75a3af1b5056cc679850d69"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "frozenCandidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "candidate": "05a49f2bb673679ced131f482ad0f0af2be2a99d",
+  "sourceSHA256": "419ae7fc6cf513794d117302a085da438bc2293b7ae3a3edbf6965b9e9946ec7",
+  "results": {
+    "frozen": {
+      "expectedBytesMatch": false,
+      "perProcessOStatus": {
+        "42001": "ok",
+        "42002": "ok",
+        "42003": "ok",
+        "42004": "-",
+        "42005": "-"
+      },
+      "counts": {
+        "42001": 5,
+        "42002": 3,
+        "42003": 0
+      },
+      "vanishingMidListOmitted": true,
+      "nextAfterMissingKept": true,
+      "duplicatesKept": true,
+      "onlyAbsoluteTargets": true,
+      "embeddedAndTrailingLF": false,
+      "nonUTF8ByteRoundTrips": true
+    },
+    "batchGNU": {
+      "expectedBytesMatch": true,
+      "perProcessOStatus": {
+        "42001": "ok",
+        "42002": "ok",
+        "42003": "ok",
+        "42004": "-",
+        "42005": "-"
+      },
+      "counts": {
+        "42001": 5,
+        "42002": 3,
+        "42003": 0
+      },
+      "vanishingMidListOmitted": true,
+      "nextAfterMissingKept": true,
+      "duplicatesKept": true,
+      "onlyAbsoluteTargets": true,
+      "embeddedAndTrailingLF": true,
+      "nonUTF8ByteRoundTrips": true
+    },
+    "fallback": {
+      "expectedBytesMatch": true,
+      "perProcessOStatus": {
+        "42001": "ok",
+        "42002": "ok",
+        "42003": "ok",
+        "42004": "-",
+        "42005": "-"
+      },
+      "counts": {
+        "42001": 5,
+        "42002": 3,
+        "42003": 0
+      },
+      "vanishingMidListOmitted": true,
+      "nextAfterMissingKept": true,
+      "duplicatesKept": true,
+      "onlyAbsoluteTargets": true,
+      "embeddedAndTrailingLF": true,
+      "nonUTF8ByteRoundTrips": true
+    }
+  }
+}

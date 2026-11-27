@@ -1,0 +1,71 @@
+{
+  "from": "2026-11-27T21:44:32.525+08:00",
+  "through": "2026-11-27T21:44:47.690+08:00",
+  "firstSeenAtSeconds": 6.1,
+  "checkbox": "Heeler Lab Debian",
+  "label": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+  "frame": {
+    "y": 33.9207649230957,
+    "x": 16,
+    "width": 358,
+    "height": 58.74589920043945
+  },
+  "source": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "before": {
+    "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+    "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+    "size": {
+      "columns": 60,
+      "rows": 40,
+      "cell_width_px": 8,
+      "cell_height_px": 16,
+      "owner": null,
+      "desired": []
+    },
+    "pid": 15211,
+    "state": "idle",
+    "observed": "2026-11-27T13:44:32.446+00:00"
+  },
+  "after": {
+    "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+    "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+    "size": {
+      "columns": 60,
+      "rows": 40,
+      "cell_width_px": 8,
+      "cell_height_px": 16,
+      "owner": "client:01a21d3f-86c2-7c12-a051-6883fbd3302b",
+      "desired": [
+        {
+          "client_id": "client:01a21d3f-86c2-7c12-a051-6883fbd3302b",
+          "columns": 60,
+          "rows": 40,
+          "updated_at": "2026-11-27T13:44:42.208750463Z"
+        }
+      ]
+    },
+    "pid": 15211,
+    "state": "blocked",
+    "observed": "2026-11-27T13:44:44.904+00:00"
+  },
+  "nativeStatus": [
+    {
+      "observed": "2026-11-27T13:44:33.920+00:00",
+      "action": "blocked",
+      "state": "idle",
+      "effectiveApp": "pi",
+      "updatedAt": "2026-11-27T12:51:14.432307199Z",
+      "pid": 15211,
+      "message": null
+    },
+    {
+      "observed": "2026-11-27T13:44:34.901+00:00",
+      "action": "blocked",
+      "state": "blocked",
+      "effectiveApp": "pi",
+      "updatedAt": "2026-11-27T13:44:34.553787357Z",
+      "pid": 15211,
+      "message": "Heeler lab confirmation A"
+    }
+  ]
+}

@@ -7,6 +7,8 @@ Use [CONTEXT.md](../../CONTEXT.md) for vocabulary and [testing.md](testing.md) t
 choose the verification lane. Update a row when moving its owner or replacing
 its contract.
 
+The [Rex workflow map](rex-daily-workflows.md) follows the normal controls through the Store and transport. The [platform and Chat acceptance matrix](rex-daily-acceptance.md) links each verified scenario to its candidate and evidence.
+
 ## App entry and Console
 
 - **App/window lifetime:** [HeelerApp](../../Sources/Heeler/HeelerApp.swift) and

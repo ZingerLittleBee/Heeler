@@ -1,0 +1,21 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "version": "OpenCode 2.0.32",
+  "database": "vendor SQLite session_message (query_only)",
+  "workdirEqual": true,
+  "markerSHA256": "661de6581c413c1f437147751c203ba77da798c0b40e1d870230d0b4c972d48c",
+  "a": {
+    "userRecords": 1,
+    "assistantRecords": 1,
+    "exactMultilineUser": 1,
+    "exactAssistant": 1,
+    "uuid": "ses_de337e441ffeqT1b6dGUDkaRgS"
+  },
+  "b": {
+    "userRecords": 0,
+    "assistantRecords": 0,
+    "exactMultilineUser": 0,
+    "exactAssistant": 0,
+    "uuid": "ses_de337e3d6ffe4Y3JP3D8FoRpYO"
+  }
+}

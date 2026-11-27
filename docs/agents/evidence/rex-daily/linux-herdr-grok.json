@@ -1,0 +1,31 @@
+{
+  "appRuntimeSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "backend": "Herdr TUI",
+  "distinctOfficialSessions": true,
+  "marker": "REX_LAB_HERDR_SEND_D774DDC3",
+  "peerRoleCounts": {
+    "assistant": 0,
+    "user": 0
+  },
+  "peerSHA256": "f27075c3a1a7333a2a1354382c9e969be2bc372a39b17db2987583b3e5a9496e",
+  "program": "grok",
+  "sameDirectory": true,
+  "send": "deliveredViaPrompt",
+  "targetAfterSHA256": "749eb2efa4b747963dab0a1f39f21b12cc4ccb0676b525aac5d5c75e6c31b696",
+  "targetBeforeSHA256": "2a40869379240be07e5098b319e362eed32d151ee343af5cbc5d81a70406f6e8",
+  "targetRoleCounts": {
+    "assistant": 1,
+    "user": 1
+  },
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "elapsed": 6.769,
+  "driver": "iOS Simulator process linked against the frozen Heeler application runtime",
+  "programVersion": "1.0.92",
+  "server": "Herdr TUI 0.9.5",
+  "seededForegroundPIDs": [
+    216907,
+    220902
+  ],
+  "currentApplicationSourceRebuilt": false
+}

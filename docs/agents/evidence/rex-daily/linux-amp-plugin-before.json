@@ -1,0 +1,38 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "source": "Independent plugin and OpenSSH exchange, additional to UI evidence. No native C Amp action on Rex.",
+  "a": {
+    "pid": 201596,
+    "procStart": "4602092",
+    "instanceSHA256": "249286ce58a6537bb855484435b8ef7a5b12c54ff18d58232195b8782f9aab27",
+    "threadSHA256": "b866b00226c2858e2e85102a1500252524cdb7095d4f0e5eab69cdc658260229",
+    "revision": 1,
+    "officialThreadAgrees": true,
+    "ownSeed": [
+      1,
+      1
+    ],
+    "peerSeed": 0,
+    "storeRows": 4,
+    "privateSocketMode": "0600",
+    "privateDirectoryMode": "0700",
+    "independentDirectStreamlocal": true
+  },
+  "b": {
+    "pid": 201624,
+    "procStart": "4602118",
+    "instanceSHA256": "0a7cac706547bdb68532d9eb35a9528ca7eb50c8ccd20991c3715c7c7f6a1913",
+    "threadSHA256": "5516cfaa4567e646760de253d008a9db18a872781a8ddfb7a80c3360aaa1f6aa",
+    "revision": 1,
+    "officialThreadAgrees": true,
+    "ownSeed": [
+      1,
+      1
+    ],
+    "peerSeed": 0,
+    "storeRows": 2,
+    "privateSocketMode": "0600",
+    "privateDirectoryMode": "0700",
+    "independentDirectStreamlocal": true
+  }
+}

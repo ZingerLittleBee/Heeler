@@ -1,0 +1,9 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "platform": "Debian 12.15",
+  "backend": "Herdr TUI",
+  "resultBundle": "official-final-b8af66cfd-herdrTUI-trust-1795786976.xcresult",
+  "observationSeconds": 22,
+  "rawTerminalInputBytesAfterDevinExit": 0,
+  "scenario": "Trust the named first folder, decline the second. The old card was tapped after the second client exited. Its successor tty observer received no input."
+}

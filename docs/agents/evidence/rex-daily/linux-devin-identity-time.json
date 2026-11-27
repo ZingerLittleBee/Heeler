@@ -1,0 +1,69 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "sourceSHA256": "e0df5bf7ec96d1d67a24078c5cf4929a1f0f0b190428da4d39d2e852dc3ebd89",
+  "scenario": "Exact production HostProcessReader shell with the POSIX Rex/Devin argument, variable, descriptor, descendant and birth requests. Timed within the real Linux guest. Additional Rex RPCs, SFTP lock and screen reads, Simulator scheduling and command submission are outside this measurement.",
+  "results": [
+    {
+      "target": "rex-plan-extra",
+      "timings": [
+        {
+          "milliseconds": 2714.8,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 2172.1,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 1711.5,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 880.8,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 1219.4,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        }
+      ],
+      "totalSSHMilliseconds": 8956.5
+    },
+    {
+      "target": "rex-plan-solo",
+      "timings": [
+        {
+          "milliseconds": 1369.3,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 1147.9,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 1390.4,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 3534.0,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        },
+        {
+          "milliseconds": 1844.5,
+          "descendantsAndRoot": 2,
+          "absoluteFileEntries": 9
+        }
+      ],
+      "totalSSHMilliseconds": 9561.3
+    }
+  ]
+}

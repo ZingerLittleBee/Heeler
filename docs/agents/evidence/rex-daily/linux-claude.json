@@ -1,0 +1,65 @@
+{
+  "original": {
+    "sessionID": "51107594-e09a-4e92-85cf-607f90d0ff2d",
+    "sha256": "0d5db028f0693d7bae56d29b1d487ca9ae56675ab74e3f774f3a33fa24701d25",
+    "counts": {
+      "SEND": {
+        "user": 1,
+        "assistant": 1
+      },
+      "ATTACHMENT": {
+        "user": 1,
+        "assistant": 1
+      },
+      "APPROVE": {
+        "user": 1,
+        "assistant": 0
+      },
+      "DECLINE": {
+        "user": 2,
+        "assistant": 0
+      }
+    },
+    "toolCalls": [
+      {
+        "kind": "APPROVE",
+        "commandSHA256": "68cd519824f92f9834a1eb4ef976ee062ec451dd96856ce8d75e3fd945532334",
+        "id": "toolu_99e2bc514e2549b6af00967377c47a64",
+        "resultIsError": false
+      },
+      {
+        "kind": "DECLINE",
+        "commandSHA256": "3ad26a98db11bac55ccc688080c0e217c0b4dd7b1e44523905f1fba16a4f786a",
+        "id": "toolu_957a19c7eee44521a47ba806cc582f4a",
+        "resultIsError": true
+      },
+      {
+        "kind": "DECLINE",
+        "commandSHA256": "3ad26a98db11bac55ccc688080c0e217c0b4dd7b1e44523905f1fba16a4f786a",
+        "id": "toolu_fa8ca39ee3df44399f78369261f15c32",
+        "resultIsError": true
+      }
+    ]
+  },
+  "peer": {
+    "sessionID": "9bd9ef81-5088-4f96-a0fc-8329c4410575",
+    "sha256": "a89885fffc63f475c7c936567e434d1128c4cc53b028962a72f6dd4159b20c64",
+    "counts": {},
+    "toolCalls": []
+  },
+  "rotated": {
+    "sessionID": "dff1cb6b-c303-4aad-a35e-4c48614bd3c8",
+    "sha256": "bdfc85322e0ffba805f53313fa598c7dc75256c01a45bfdf50a28ea93bfdb03c",
+    "counts": {
+      "ROTATED": {
+        "user": 1,
+        "assistant": 1
+      },
+      "SUCCESSOR_SWITCHED": {
+        "user": 1,
+        "assistant": 1
+      }
+    },
+    "toolCalls": []
+  }
+}

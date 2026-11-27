@@ -1,0 +1,145 @@
+{
+  "combinedDesktopPrompts": [],
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "cli": "Codex 0.172.0 --no-daemon",
+  "rexVersion": "0.1.0-preview.25",
+  "rexApiRevision": 24,
+  "negotiatedRevision": 19,
+  "summary": {
+    "result": "Passed",
+    "totalTestCount": 1,
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0
+  },
+  "device": {
+    "architecture": "arm64",
+    "deviceId": "7E04F107-29B7-4703-BD9A-0E275933FDDC",
+    "deviceName": "heeler-lab-rex-native-chat",
+    "modelName": "iPhone 17e",
+    "osBuildNumber": "24A434",
+    "osVersion": "27.0",
+    "platform": "iOS Simulator"
+  },
+  "nativeControls": true,
+  "nativePermissions": true,
+  "original": {
+    "sha256": "46f31fd9fb670223df7ece3680a76afd1d60e78272fc37c5a4d7f258df099067",
+    "byteCount": 111117,
+    "markers": {
+      "user": {
+        "REX_LAB_SEED_CODEX_A_CA77858E": 1,
+        "REX_LAB_SEND_5EDADA1D": 1,
+        "REX_LAB_ATTACHMENT_6CECC221": 1,
+        "REX_LAB_STOP_6CECC221": 1,
+        "REX_LAB_SUCCESSOR_SAME_6CECC221": 1,
+        "REX_LAB_APPROVE_6CECC221": 1,
+        "REX_LAB_DECLINE_6CECC221": 2
+      },
+      "assistant": {
+        "REX_LAB_SEED_CODEX_A_CA77858E": 1,
+        "REX_LAB_SEND_5EDADA1D": 1,
+        "REX_LAB_ATTACHMENT_6CECC221": 1,
+        "REX_LAB_SUCCESSOR_SAME_6CECC221": 1
+      }
+    },
+    "attachment": [
+      {
+        "pathBytes": 135,
+        "byteCount": 42,
+        "sha256": "ad0b23a526b13e838e03a44ddc9fc79453e8258ea9f8d097e9e9c7cedf353246"
+      }
+    ],
+    "events": {
+      "task_complete": 5,
+      "turn_aborted": 3
+    },
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "peer": {
+    "sha256": "2a0eea26076ff55431d6d0aee43da32ddc9be5876be7bdeacaf268375a936737",
+    "byteCount": 43735,
+    "markers": {
+      "user": {
+        "REX_LAB_SEED_CODEX_B_9DDA8CAF": 1
+      },
+      "assistant": {
+        "REX_LAB_SEED_CODEX_B_9DDA8CAF": 1
+      }
+    },
+    "attachment": [],
+    "events": {
+      "task_complete": 1
+    },
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "afterSwitch": {
+    "sha256": "62184fb82cb8851dca67792dfcf709f2f4ba3cba04411fef58763b37d7f9b7b1",
+    "byteCount": 62856,
+    "markers": {
+      "user": {
+        "REX_LAB_ROTATED_530004E1": 1,
+        "REX_LAB_SUCCESSOR_SWITCHED_834A9FA7": 1,
+        "REX_LAB_APPROVE_WRONG_PICK_E541BE4C": 1
+      },
+      "assistant": {
+        "REX_LAB_ROTATED_530004E1": 1,
+        "REX_LAB_SUCCESSOR_SWITCHED_834A9FA7": 1
+      }
+    },
+    "attachment": [],
+    "events": {
+      "task_complete": 2,
+      "turn_aborted": 1
+    },
+    "parkedDraftOccurrences": 0,
+    "wrongPickDraftOccurrences": 0
+  },
+  "providerCancellation": {
+    "REX_LAB_STOP_6CECC221": false
+  },
+  "operationFiles": {
+    "REX_LAB_APPROVE_WRONG_PICK_E541BE4C": false,
+    "REX_LAB_DECLINE_6CECC221": false,
+    "REX_LAB_APPROVE_6CECC221": true
+  },
+  "testedProductsSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+  "execution": {
+    "selector": "HeelerLiveTests/RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+    "xctestrun": "HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
+    "preflight": false
+  },
+  "originalSessionID": "01a21cfa-4497-7032-bd5d-ef994f55cd61",
+  "peerSessionID": "01a21cfa-485b-76e2-bd1f-2557415fce14",
+  "officialPermissionCalls": [
+    {
+      "request": "REX_LAB_APPROVE_6CECC221",
+      "callID": "call_6b088e54dd7f4598a5222bdabcea71a7",
+      "source": "function_call",
+      "officialResult": "approved"
+    },
+    {
+      "request": "REX_LAB_DECLINE_6CECC221",
+      "callID": "call_602fed80e2694882bc9fb86d8aa6177b",
+      "source": "function_call",
+      "officialResult": "declined"
+    },
+    {
+      "request": "REX_LAB_DECLINE_6CECC221",
+      "callID": "call_d8867592023c471ca32d07eab2add36e",
+      "source": "function_call",
+      "officialResult": "declined"
+    }
+  ],
+  "officialStop": {
+    "marker": "REX_LAB_STOP_6CECC221",
+    "userOpenerCount": 1,
+    "assistantReplies": 0,
+    "turnID": "01a21d26-bb37-7f91-90eb-67067d3a5361",
+    "officialAbortedReasons": [
+      "interrupted"
+    ]
+  }
+}

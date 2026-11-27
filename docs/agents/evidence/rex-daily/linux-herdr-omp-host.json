@@ -1,0 +1,36 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "server": "Herdr TUI 0.9.5",
+  "program": "omp",
+  "source": "Independent Linux process, Herdr integration records and official transcript bytes via SSH",
+  "pairs": [
+    {
+      "pane": "w1:p1",
+      "pid": 217791,
+      "startTicks": "4647931",
+      "sessionKind": "path",
+      "integration": "herdr:omp",
+      "officialSession": "2026-11-27T13-54-33-140Z_01a21d49-4e34-735c-ba84-3063259cafc4.jsonl",
+      "recordCounts": {
+        "user": 1,
+        "assistant": 1
+      },
+      "seededSHA256": "9624a3ef2c5b2b7ec69373a9ef2c627bd212b814a979352fc92898933c458d2c",
+      "endingSHA256": "4ac802ea0a40ab25d23ef8aa6c65e0c176f0b2c42207ec47daa0baf5ab09e875"
+    },
+    {
+      "pane": "w1:p2",
+      "pid": 217998,
+      "startTicks": "4648278",
+      "sessionKind": "path",
+      "integration": "herdr:omp",
+      "officialSession": "2026-11-27T13-54-35-761Z_01a21d49-5871-766b-b2b4-e6a2630cf827.jsonl",
+      "recordCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "seededSHA256": "bd4c22c54eea39d9375e4968a0832f9dcea3c7abb806552b8f444328735fb29f",
+      "endingSHA256": "bd4c22c54eea39d9375e4968a0832f9dcea3c7abb806552b8f444328735fb29f"
+    }
+  ]
+}

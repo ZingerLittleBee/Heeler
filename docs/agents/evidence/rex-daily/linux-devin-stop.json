@@ -1,0 +1,11 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "backend": "Rex",
+  "enteredFirstRequestRow": 1150,
+  "officialInterruptedByUserRow": 1152,
+  "firstMarkerHashPrefix": "f75475773bb8",
+  "newUnsubmittedMarkerHashPrefix": "94344f0731e3",
+  "currentInputContainsDifferentSecondRequest": true,
+  "officialUserRowsForSecondRequest": 0,
+  "originalScope": "The driver sent Stop on the first turn. Its next send expired before Enter, so the stale Stop check against a second running turn was not reached."
+}

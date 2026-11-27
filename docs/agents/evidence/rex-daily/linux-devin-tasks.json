@@ -1,0 +1,33 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "backend": "rex",
+  "platform": "Debian GNU/Linux 12.15",
+  "distinctMobileRequests": 3,
+  "jobs": {
+    "success": {
+      "shellID": "817995",
+      "launchCallID": "exec:0#b688a2560e8e46a881ce44711a7600cc",
+      "lookupCallID": "get_output:1#90151622680b4d45bca65aedfffdbd96",
+      "exitCode": 0,
+      "retainedToolContentCharacters": 45,
+      "independentMarkedOutput": true
+    },
+    "failure": {
+      "shellID": "09ebb5",
+      "launchCallID": "exec:2#b35f78ee18ba43158604634c09232630",
+      "lookupCallID": "get_output:3#f7642b04b74d469f9c06eb7d6fd2410b",
+      "exitCode": 17,
+      "retainedToolContentCharacters": 2232,
+      "independentMarkedOutput": true
+    }
+  },
+  "child": {
+    "agentID": "f4da19ac",
+    "launchCallID": "run_subagent:4#402172590e7e402bb754744490730a0f",
+    "acknowledgementDatabaseRow": 709,
+    "parentFinalDatabaseRow": 720,
+    "matchingChildRelayDatabaseRow": 726,
+    "independentReleaseWitness": true
+  },
+  "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+}

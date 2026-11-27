@@ -1,0 +1,19 @@
+{
+  "pid": 3331,
+  "cwd": "/home/heeleronly",
+  "currentLoginHome": "/home/heeleronly",
+  "argvShape": [
+    "claude",
+    "--session-id",
+    "<session UUID>"
+  ],
+  "bytes": 473,
+  "sha256": "222d604364dc68547f70b4bdd08cb4621ed74fb35234f944ba5c7422e5cf837c",
+  "otherPublishedPIDs": [
+    3379,
+    3419
+  ],
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "source": "Independent SSH read of the focused split recorder after the drive had ended",
+  "testOriginalResult": "failed reading empty JSON during foreground startup"
+}

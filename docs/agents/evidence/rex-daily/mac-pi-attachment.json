@@ -1,0 +1,27 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "platform": "macOS",
+  "program": "Pi 1.5.2",
+  "source": "Independent native Pi JSONL and separately opened files from its one user message",
+  "markerSHA256": "bcb30a939c08f750db7d3a25b89e0f7b610238af16c9dfcbcb5b46f47225d739",
+  "oldAUser": 1,
+  "oldAAssistant": 1,
+  "peerBUser": 0,
+  "peerBAssistant": 0,
+  "ChineseBlankAndIndentPreserved": true,
+  "stagedFiles": [
+    {
+      "extension": "txt",
+      "byteCount": 24,
+      "SHA256": "bcb30a939c08f750db7d3a25b89e0f7b610238af16c9dfcbcb5b46f47225d739",
+      "pathOccurrencesInIntendedUserMessage": 1
+    },
+    {
+      "extension": "png",
+      "byteCount": 67,
+      "SHA256": "d44c0303173ecdb8ba72a7ab688f020583b31865537e2f9ab57e56aeec687807",
+      "pathOccurrencesInIntendedUserMessage": 1
+    }
+  ],
+  "twoMatchingStagedFilesRemoved": true
+}

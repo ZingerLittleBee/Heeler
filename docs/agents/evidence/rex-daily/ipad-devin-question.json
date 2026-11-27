@@ -1,0 +1,46 @@
+{
+  "at": "2026-11-27T21:29:56.130+08:00",
+  "status": {
+    "label": "heeler-lab-devin-rex-guipad",
+    "session": "session:01a21d10-38ce-76ff-9c83-0e377452064b",
+    "block": "block:01a21d10-38ce-7848-bcb0-423aba742e39",
+    "state": "done",
+    "owner": 75464,
+    "allowedFiles": [],
+    "target": {
+      "marker": "HEELER_GUI_292BC86",
+      "questions": [
+        "Which color?",
+        "Which size?"
+      ]
+    },
+    "permission": false,
+    "visibleTarget": null
+  },
+  "officialSession": {
+    "sessionSlug": "chip-echium",
+    "siblingSlug": "flossy-okra",
+    "currentProcessOwnsSameSlug": true,
+    "ownUserRows": 1,
+    "siblingMarkerRows": 0,
+    "questionCallCount": 1,
+    "recordedResultCount": 1,
+    "answerWords": [
+      "Blue",
+      "Large"
+    ],
+    "knownMarker": "HEELER_GUI_292BC86",
+    "selected": {
+      "Which color?": [
+        "Blue"
+      ],
+      "Which size?": [
+        "Large"
+      ]
+    },
+    "skipped": {
+      "Which color?": false,
+      "Which size?": false
+    }
+  }
+}
