@@ -510,6 +510,10 @@ struct AgentChatSurfaceView: View {
         themeColors.colorScheme ?? themeAppearance
     }
 
+    private var showsChatInput: Bool {
+        !console.capabilities(for: agent.hostID).readOnlyChatPrograms.contains(program) && chat?.isReadingPickedConversation != true
+    }
+
     private var chatSurface: some View {
         conversation
         .overlay(alignment: .bottom) { floatingTimelineControls }
@@ -546,18 +550,20 @@ struct AgentChatSurfaceView: View {
             // Agent switcher isolated to their own child slots so 1-second
             // transcript polls, scroll-state changes, and other Agents' status
             // updates never rebuild `AgentComposerView` or re-measure the draft.
-            KeyedContent(key: composerChromeKey) { composerChrome }
-                .equatable()
-                // Its own background, so the fade rides every change of the
-                // Composer's place and height with it: the keyboard, the
-                // input's fold, the strip of work folding over it.
-                .background {
-                    ChatBottomFade(color: themeColors.background)
-                        .ignoresSafeArea(.container, edges: .horizontal)
-                }
-                .keyboardLiftPadding(
-                    keyboardInset, restingInset: composerKeyboardLayout.contentInset,
-                    isEnabled: composerKeyboardPresentation != .tools)
+            if showsChatInput {
+                KeyedContent(key: composerChromeKey) { composerChrome }
+                    .equatable()
+                    // Its own background, so the fade rides every change of the
+                    // Composer's place and height with it: the keyboard, the
+                    // input's fold, the strip of work folding over it.
+                    .background {
+                        ChatBottomFade(color: themeColors.background)
+                            .ignoresSafeArea(.container, edges: .horizontal)
+                    }
+                    .keyboardLiftPadding(
+                        keyboardInset, restingInset: composerKeyboardLayout.contentInset,
+                        isEnabled: composerKeyboardPresentation != .tools)
+            }
         }
         // The Composer's fold and the condensed background work change the
         // chrome's height with the keyboard. Out here, so the conversation
@@ -573,19 +579,21 @@ struct AgentChatSurfaceView: View {
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
-            AgentChatToolsKeyboard(
-                insertText: { composer.insertIntoDraft($0) },
-                skills: skills.map { store in
-                    TerminalSkillsContext(store: store) { viewingSkill = $0 }
-                },
-                snippets: terminal.snippets,
-                manageSnippets: { isManagingSnippets = true },
-                agentKeys: session.agentKeys,
-                height: composerKeyboardLayout.availableToolsHeight)
-            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
-            .disabled(composerKeyboardPresentation != .tools)
-            .allowsHitTesting(composerKeyboardPresentation == .tools)
-            .accessibilityHidden(composerKeyboardPresentation != .tools)
+            if showsChatInput {
+                AgentChatToolsKeyboard(
+                    insertText: { composer.insertIntoDraft($0) },
+                    skills: skills.map { store in
+                        TerminalSkillsContext(store: store) { viewingSkill = $0 }
+                    },
+                    snippets: terminal.snippets,
+                    manageSnippets: { isManagingSnippets = true },
+                    agentKeys: session.agentKeys,
+                    height: composerKeyboardLayout.availableToolsHeight)
+                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+                .disabled(composerKeyboardPresentation != .tools)
+                .allowsHitTesting(composerKeyboardPresentation == .tools)
+                .accessibilityHidden(composerKeyboardPresentation != .tools)
+            }
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
