@@ -1,0 +1,9 @@
+
+  Tool to approve · high impact
+  ↳ qa -> fixture_mark
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Yes, allow                                                                                                               │
+│  Yes, and always allow high impact commands (all commands)                                                                │
+│  No, cancel                                                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  ↑↓ navigate   Enter select   Esc cancel   Alt/Option+E to inspect approval details

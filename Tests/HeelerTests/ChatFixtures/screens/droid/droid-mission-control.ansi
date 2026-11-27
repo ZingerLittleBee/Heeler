@@ -1,0 +1,17 @@
+    ├─ exec python3 $HOME/Documents/worktree/Heeler/droid/integrations/droid/heeler-droid.py : Exit code 0
+    ├─ exec python3 $LAB/scenarios/hook-log.py : Exit code 0
+    └─ bash '$HOME/.factory/hooks/herdr-agent-state.sh' session (10s timeout) : Exit code 0
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Missions                                                                                                                     │
+│                                                                                                                              │
+│ Missions                                                                                                                     │
+│                                                                                                                              │
+│ Type to filter missions...                                                                                                   │
+│                                                                                                                              │
+│ › Begin new mission                                                                                                          │
+│                                                                                                                              │
+│   State          Updated Features  Title                                                                                Path │
+│                                                                                                                              │
+╰─No missions found. Select Begin new mission to start one.────────────────────────────────────────────────────────────────────╯
+  ↑↓ navigate   Enter select   Ctrl+R rename   Esc cancel                                                                  0-0

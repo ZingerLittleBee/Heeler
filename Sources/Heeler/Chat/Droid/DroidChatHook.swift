@@ -20,10 +20,18 @@ enum DroidChatHook: CommandHookSettings {
 
     static let fileName = "heeler-droid.py"
     static let marker = "/.factory/hooks/" + fileName
-    static let entries = ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"].map {
+    private static let originalEntries = ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"].map {
         CommandHookEntry(event: $0, matcher: nil)
     }
+    static let entries = originalEntries + [CommandHookEntry(event: "Notification", matcher: "permission_prompt|elicitation_dialog"),
+                                             CommandHookEntry(event: "PostToolUse", matcher: nil)]
     static let mixedFormReason = String(localized: "Droid's settings contain a hooks entry Heeler couldn't update.")
+
+    static func disabled(in data: Data) -> Bool {
+        guard let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = settings["hooks"] as? [String: Any] else { return false }
+        return hooks["hooksDisabled"] as? Bool == true
+    }
 
     static func command(script: String) -> String {
         let path = HostHelperScript.quote(script)
@@ -31,7 +39,7 @@ enum DroidChatHook: CommandHookSettings {
     }
 
     static func offersLaunchSettings(kind: String, arguments: [String], kernel: String?) -> Bool {
-        kind == SupportedAgentKind.droid.rawValue && kernel == HerdrCoreLocator.macOSKernel
+        kind == SupportedAgentKind.droid.rawValue && (kernel == HerdrCoreLocator.macOSKernel || kernel == HerdrCoreLocator.linuxKernel)
             && !arguments.contains { $0 == "--settings" || $0.hasPrefix("--settings=") }
     }
 
@@ -65,7 +73,7 @@ enum DroidChatHook: CommandHookSettings {
             try await createFolder(config)
             try await createFolder(folder)
             try await placeFile(contents, at: script) { $0.starts(with: Data("# Heeler Droid Chat hook\n".utf8)) }
-            try await placeFile(launchSettings(script: script), at: launch) { _ in false }
+            try await placeFile(launchSettings(script: script), at: launch) { $0 == launchSettings(script: script, using: originalEntries) }
         }
         if action != .launch {
             let settings = RemoteFilePath.join(config, "settings.json")

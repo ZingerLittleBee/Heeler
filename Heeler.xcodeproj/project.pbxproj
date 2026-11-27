@@ -31,6 +31,7 @@
 		058F611CE402B80590DDAE63 /* AgentLayoutTokensEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884AFF5E583F527547B61F95 /* AgentLayoutTokensEditingTests.swift */; };
 		05A3B1DA297E638BEE665BE5 /* ChangesUntrackedDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7DCACA2FB4440071032D467 /* ChangesUntrackedDirectoryTests.swift */; };
 		05D055959ECD98B80AC364A0 /* HostTerminalOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEB7627C47322439338006A7 /* HostTerminalOwnership.swift */; };
+		0607BB0BD2F531F7693240A1 /* DroidBackgroundEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCBD71C9FC71C4812C92DA5 /* DroidBackgroundEvent.swift */; };
 		06174C255CA83BED00BA6826 /* HerdrCoreHostSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B25AFAD3E646ABF634F732 /* HerdrCoreHostSessionTests.swift */; };
 		06310A20817632B9E7EF12BF /* RexStagingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FC1ACFA02E5229F28F5E61 /* RexStagingTests.swift */; };
 		06373E7419B8FB1E3A4B28FE /* HostFileCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8681C73E764759AE85E25960 /* HostFileCache.swift */; };
@@ -143,6 +144,7 @@
 		1B5329C75824AA2505A71D55 /* HerdrCoreServerInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66568DF8D18942DB8B51313 /* HerdrCoreServerInfoTests.swift */; };
 		1B58D67A0D92D9F86FE4E360 /* EdgeDockSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B3366BC1B0D37A0C4EE525 /* EdgeDockSettingsTests.swift */; };
 		1B7AF4A1F5D8A97194D07A7D /* WindowsProcessTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE24EB13660C464300E407CE /* WindowsProcessTable.swift */; };
+		1B9C534AEF7D5F4D517A9A1A /* DroidDialogLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE913CBECBBC45868DCAF415 /* DroidDialogLiveTests.swift */; };
 		1BBA57557CCF350FB010782C /* ChatTimelineLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5EC2519FB1CE38922A5C93 /* ChatTimelineLayout.swift */; };
 		1BEAD980FB59182C1809FEDB /* ANSIScreenDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8312DDAA1D7F4763CA3DDA6D /* ANSIScreenDecoderTests.swift */; };
 		1C21AA358DBA860A052AED75 /* HerdrCoreMacOSSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 684625CED7CF2D39D570FF65 /* HerdrCoreMacOSSessionBinderTests.swift */; };
@@ -866,6 +868,7 @@
 		A4693B8221D4D110809D1175 /* SnippetsKeyboardPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51EE6515A20AFA09762788C5 /* SnippetsKeyboardPane.swift */; };
 		A4808A99FD16CBC177DB010E /* ClaudeTranscriptIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF25743E0808461240B38A /* ClaudeTranscriptIndex.swift */; };
 		A4F4E69A83004B52C56C67A2 /* HerdrCoreAgentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6BF7D35D794A652042DED1 /* HerdrCoreAgentsTests.swift */; };
+		A52AEBB767B95C82C3D754CE /* DroidTaskPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C481858425A71201D9DE60 /* DroidTaskPanel.swift */; };
 		A53450D708FB706F6BF5DE55 /* RexChatTypingLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */; };
 		A555F2DD86EC81E37D3A9323 /* NotificationEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A04DBA56C56925B594FF1 /* NotificationEnvelope.swift */; };
 		A596FBD3017D51653EC3B1E9 /* AgentTitleRenameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */; };
@@ -929,6 +932,7 @@
 		B3C490CC3562CC5B4B2EB993 /* PairingCodeVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */; };
 		B40238D34F538B8CDED2BD92 /* HerdrCoreTransportE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B121D75551BD14F5B79A06 /* HerdrCoreTransportE2ETests.swift */; };
 		B4720B610754009B9E30565F /* HeelerWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB43ADC71539AC324F155DD0 /* HeelerWidgetsBundle.swift */; };
+		B517D745B0635390AE20A74F /* DroidDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14EF9D241785D2CE379E01A /* DroidDialog.swift */; };
 		B51B3CD7F2E75EB6DDF6D542 /* LocalNetworkDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */; };
 		B53565934501600195789279 /* HerdrCoreSeenMarkFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3802E75C867D42A1253D53DD /* HerdrCoreSeenMarkFileTests.swift */; };
 		B576F12D3DC209D80E3C0D82 /* TmuxSessionBinderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA204E7F2EAAF1E7401BBD4A /* TmuxSessionBinderTests.swift */; };
@@ -1505,6 +1509,7 @@
 		0F7065C3BE109D2F52AE3BC2 /* HerdrAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrAPITypes.swift; sourceTree = "<group>"; };
 		0F868101495226A8BE768AC9 /* SidebarLayoutVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarLayoutVectorTests.swift; sourceTree = "<group>"; };
 		0F96022102B873697A508C05 /* ChatSubagentPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSubagentPresentationTests.swift; sourceTree = "<group>"; };
+		0FCBD71C9FC71C4812C92DA5 /* DroidBackgroundEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidBackgroundEvent.swift; sourceTree = "<group>"; };
 		0FFEDC607B500316140A4E02 /* AmpRecordSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmpRecordSource.swift; sourceTree = "<group>"; };
 		106E83652B80F0CD35B3FE4F /* TmuxProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxProbe.swift; sourceTree = "<group>"; };
 		107722DE7ECD0406951E6B74 /* ConsoleHostSectionHeaderPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleHostSectionHeaderPresentationTests.swift; sourceTree = "<group>"; };
@@ -2210,6 +2215,7 @@
 		915C9462A4A8AA91C0B91498 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9161AE15FDE3388F1E8BC668 /* HarnessConfigEditStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessConfigEditStore.swift; sourceTree = "<group>"; };
 		91C1AB6694871F354D8617BE /* HerdrCoreComposerStopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreComposerStopTests.swift; sourceTree = "<group>"; };
+		91C481858425A71201D9DE60 /* DroidTaskPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidTaskPanel.swift; sourceTree = "<group>"; };
 		921CA559141776BD0F02FDA7 /* TerminalThemeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemeSettingsTests.swift; sourceTree = "<group>"; };
 		9233DBF4B65A35281C79EDDE /* HerdrCoreLinuxSessionBinderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreLinuxSessionBinderTests.swift; sourceTree = "<group>"; };
 		93417EFE29FA2DC3DD3FAF9F /* AsyncDeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncDeadlineTests.swift; sourceTree = "<group>"; };
@@ -2351,6 +2357,7 @@
 		AE9AF5C6F7066900959E7E10 /* AttachUserMessageIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachUserMessageIndexTests.swift; sourceTree = "<group>"; };
 		AF3756F9860317B60E0D573A /* RemoteFilesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesTests.swift; sourceTree = "<group>"; };
 		AFD631568D2A021F6DF490B8 /* CancellablePhaseGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellablePhaseGate.swift; sourceTree = "<group>"; };
+		B14EF9D241785D2CE379E01A /* DroidDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidDialog.swift; sourceTree = "<group>"; };
 		B156B1E015D9241895BF0798 /* ChatTimelineGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTimelineGeometryTests.swift; sourceTree = "<group>"; };
 		B15A2FF4D71931D46CB1568E /* herdr-core-seen-mark-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "herdr-core-seen-mark-v1.json"; sourceTree = "<group>"; };
 		B18F70A5EBC79510351A79B1 /* ChatFollowLatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFollowLatch.swift; sourceTree = "<group>"; };
@@ -2519,6 +2526,7 @@
 		CDC5FC371E96C4EF1E3F1039 /* SkillSuggestionTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillSuggestionTriggerTests.swift; sourceTree = "<group>"; };
 		CDFC6DF70F79FC87DCC2ECE0 /* HerdrSidebarSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSidebarSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		CE868FFAE7FC91684AF77452 /* TerminalThemePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalThemePreview.swift; sourceTree = "<group>"; };
+		CE913CBECBBC45868DCAF415 /* DroidDialogLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidDialogLiveTests.swift; sourceTree = "<group>"; };
 		CF1E684391B619EEB872E24B /* GitProbe+Patch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbe+Patch.swift"; sourceTree = "<group>"; };
 		CF229E0342585270ECB4EBF7 /* VoiceInputOnDeviceSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOnDeviceSection.swift; sourceTree = "<group>"; };
 		CFB39D40748D247CC747A83D /* AppActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppActivityCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -3389,6 +3397,7 @@
 				A7B0D16DB23D7A4635FFAA87 /* AmpChatLiveTests.swift */,
 				0C739DB030959284BF560FC6 /* DroidBackendChatLiveTests.swift */,
 				1BBCAD0556F138AE6CC7236D /* DroidChatLiveTests.swift */,
+				CE913CBECBBC45868DCAF415 /* DroidDialogLiveTests.swift */,
 				2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */,
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
 				28141EC5F0E9549FE295D83D /* RexInventoryLiveTests.swift */,
@@ -4003,9 +4012,12 @@
 		72B1FC2BD2ED0178B234D54B /* Droid */ = {
 			isa = PBXGroup;
 			children = (
+				0FCBD71C9FC71C4812C92DA5 /* DroidBackgroundEvent.swift */,
 				E51A8113DC8DA8920B9588BC /* DroidChatHook.swift */,
+				B14EF9D241785D2CE379E01A /* DroidDialog.swift */,
 				11A397185BDB5F9185419611 /* DroidHookSheet.swift */,
 				8399E09EC4328F711D84E66B /* DroidInputBox.swift */,
+				91C481858425A71201D9DE60 /* DroidTaskPanel.swift */,
 				0EE29185A53043BADE8C9F32 /* DroidTranscriptLocator.swift */,
 				7DAF3609AFB01D26FCDDB47A /* DroidTranscriptReducer.swift */,
 			);
@@ -4922,6 +4934,7 @@
 				A1D7542246089979FA734D84 /* AmpChatLiveTests.swift in Sources */,
 				D9D685DAA103B942F0A5F0D0 /* DroidBackendChatLiveTests.swift in Sources */,
 				070C3935BD5C41C1EAEA2B0C /* DroidChatLiveTests.swift in Sources */,
+				1B9C534AEF7D5F4D517A9A1A /* DroidDialogLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
 				A53450D708FB706F6BF5DE55 /* RexChatTypingLiveTests.swift in Sources */,
 				0286F429449EFBCEA3F56FE1 /* RexControlWebSocketLiveTests.swift in Sources */,
@@ -5246,9 +5259,12 @@
 				2B08FE9D8EA1192EFCE69A80 /* DiffLineViews.swift in Sources */,
 				C200B60773A2E4E079E08ECF /* DiffPalette.swift in Sources */,
 				C18AC8299E6F26EE9E638A27 /* DiffWordChanges.swift in Sources */,
+				0607BB0BD2F531F7693240A1 /* DroidBackgroundEvent.swift in Sources */,
 				2B8502107EDA1B535AEA667F /* DroidChatHook.swift in Sources */,
+				B517D745B0635390AE20A74F /* DroidDialog.swift in Sources */,
 				67E7C31CC045EBB4B97207A8 /* DroidHookSheet.swift in Sources */,
 				F4541AA9E0492901BAA466BA /* DroidInputBox.swift in Sources */,
+				A52AEBB767B95C82C3D754CE /* DroidTaskPanel.swift in Sources */,
 				E7CB8969C1DB20F5AE251ABB /* DroidTranscriptLocator.swift in Sources */,
 				2ABAAFCCAF8BCC3165BC1C7E /* DroidTranscriptReducer.swift in Sources */,
 				2367DFC863AE982D992BB334 /* EdgeDockLift.swift in Sources */,

@@ -94,6 +94,7 @@ enum ComposerRefusal: Equatable, Sendable {
 /// program, checks the Agent's input box first, and never touches the PTY.
 struct ComposerDeliveryPolicy: Sendable {
     var route: ComposerRoute
+    var requiresSinglePrompt = false
     /// Terminal types a Blocked draft into the Attach PTY without Enter.
     var insertsIntoAttachWhenBlocked: Bool
     /// What `agent.prompt` sends for the typed text.

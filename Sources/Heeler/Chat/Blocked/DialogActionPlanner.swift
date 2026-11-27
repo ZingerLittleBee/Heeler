@@ -23,7 +23,8 @@ enum DialogActionPlanner {
         case .omp: try OMPDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .agy: try AgyDialogPlanner(dialog: dialog).plan(action)
-        case .pi, .droid, .amp: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
+        case .droid: try DroidDialog.plan(action, dialog, callID: toolUseID)
+        case .pi, .amp: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
     }
@@ -434,7 +435,8 @@ private struct CodexDialogPlanner {
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
-            .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
+            .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust,
+            .droidWorkspaceTrust, .droidPermission, .droidQuestion, .droidQuestionReview, .droidSpec, .droidSpecFeedback, .droidSpecAutonomy:
             throw .unsupported(String(localized: "Not a Codex dialog."))
         }
     }

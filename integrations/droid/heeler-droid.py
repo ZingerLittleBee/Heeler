@@ -92,6 +92,8 @@ def tmux_status(record, tty, state, name_session):
     blocked = int(fields.get("blocked", "0"))
     if fields.get("app") == "droid" and fields.get("state") == "working" and state == "done":
         turn += 1
+    if state == "blocked" and fields.get("state") != "blocked":
+        blocked += 1
     status = f"state={state}:app=droid:turn={turn}:blocked={blocked}"
     command = tmux + ["set-option", "-p"] + target + ["@heeler-status", status]
     if name_session:
@@ -199,6 +201,13 @@ def main(event):
     file = Path(event["transcript_path"])
     if not file.is_absolute() or file.name != session + ".jsonl" or file.parent.parent.name != "sessions":
         return
+    # Factory can run a child in the parent process. Its SessionStart and
+    # SessionEnd do not change the main conversation on this terminal.
+    if name == "SessionStart" and file.is_file():
+        with file.open("rb") as handle:
+            header = json.loads(handle.readline(65536))
+        if header.get("callingSessionId"):
+            return
     process = foreground_droid()
     if not process:
         return
@@ -226,6 +235,10 @@ def main(event):
             subprocess.Popen([sys.executable, __file__, "--watch-turn", str(pid), token, str(offset)],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
+        elif name == "Notification" and event.get("notification_type") in ("permission_prompt", "elicitation_dialog") and turn:
+            report(identity, tty, "blocked")
+        elif name == "PostToolUse" and turn:
+            report(identity, tty, "working")
         elif name == "Stop" and turn:
             write_session(path, identity)
             report(identity, tty, "done")

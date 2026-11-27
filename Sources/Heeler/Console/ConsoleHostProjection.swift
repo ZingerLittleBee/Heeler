@@ -217,6 +217,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func writeChatPick(_ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String) async throws
     func dropChatPick(paneID: String, scope: String?, program: ChatProgram)
     func settleChatPick(paneID: String, program: ChatProgram)
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget?
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch?
 }
 
@@ -360,5 +361,6 @@ extension ConsoleHostProjection {
         await revalidate()
     }
 
+    func droidDialogTarget(paneID _: String) async throws -> DroidDialogTarget? { nil }
     func claudePermissionLaunch(paneID _: String) async throws -> ClaudePermissionMode.Launch? { nil }
 }

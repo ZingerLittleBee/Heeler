@@ -1,20 +1,32 @@
 import CryptoKit
 import Foundation
 import Testing
+import SwiftUI
+import UIKit
 
 @testable import Heeler
 
 @MainActor
 @Suite("Droid Chat on a live Herdr TUI Host")
 struct DroidChatLiveTests {
-    private struct Lab: Decodable {
+    struct Scenario: Decodable {
+        let pane, directory: String
+    }
+
+    struct Lab: Decodable {
         let port: Int
         let user, seed, fingerprint, socket, pane, session: String
+        var scenarios: [String: Scenario]?
+        var evidenceDirectory: String?
     }
 
     /// The fixture owns a disposable Droid pane on the specified local server.
     /// Send one plain-text prompt only after checking that pane's session UUID.
     @Test func readsAndRepliesInTheReportedSession() async throws {
+        try await withLab { try await exercise($0, host: $1, projection: $2) }
+    }
+
+    func withLab(_ body: (Lab, Host, HostConsoleProjection) async throws -> Void) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_CHAT_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         let seed = try #require(Data(base64Encoded: lab.seed))
@@ -30,7 +42,7 @@ struct DroidChatLiveTests {
         do {
             let host = Host(name: "Droid Lab", address: "127.0.0.1", port: lab.port, username: lab.user)
             let projection = HostConsoleProjection(host: host, session: link, snapshotRetryDelay: .milliseconds(50), onChange: {})
-            try await exercise(lab, host: host, projection: projection)
+            try await body(lab, host, projection)
         } catch {
             await link.end()
             throw error
@@ -44,10 +56,11 @@ struct DroidChatLiveTests {
         try #require(program == .droid)
         let expected = ConversationReference(program: .droid, sessionID: lab.session)
         try #require(ConversationReference.resolve(agent.agentSession) == .bound(expected))
-        let source = AgentChatSource(
+        var source = AgentChatSource(
             hostID: host.id, socketLocation: .absolutePath(lab.socket), files: projection.chatHostFiles(),
             agentInfo: { try await projection.agentInfo(paneID: lab.pane) }, cache: VolatileChatTranscriptCache(),
             adapter: try #require(ChatTranscriptAdapter.standard(for: program)))
+        source.sessionEvidence = { try await projection.droidSessionEvidence(paneID: lab.pane) }
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: lab.pane), agent: agent, program: program, source: source)
         defer { chat.end() }
         await chat.step()
@@ -63,6 +76,7 @@ struct DroidChatLiveTests {
             activity: { ChatAgentActivity(chat.agent.status) }, readScreen: { try await projection.readAgentScreen(lab.pane) },
             confirmSession: { await chat.confirmSessionBeforeSend() })
         composer.replaceDraft(with: prompt)
+        chat.draftDidChange(to: prompt)
         try #require(await composer.send(policy: policy) == .deliveredViaPrompt)
         let deadline = ContinuousClock.now + .seconds(60)
         while ContinuousClock.now < deadline {

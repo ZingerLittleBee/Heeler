@@ -342,6 +342,10 @@ final class AgentChatStore {
     /// How many of `Timing.unannouncedEvidenceChecks` were taken since a check
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
+    var droidSessionID: String? { program == .droid ? followed?.sessionID : nil }
+    var droidScreen: BlockedScreenIO { source.screen }
+    var droidTaskActionInFlight = false
+    @ObservationIgnored var droidTaskStops: Set<String> = []
     @ObservationIgnored private let source: AgentChatSource
     /// Where this Agent's images are kept, as `source.fileCache` allows.
     @ObservationIgnored private let keptFiles: ChatImagePreviewReader.Kept?
@@ -608,6 +612,22 @@ final class AgentChatStore {
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
+        if program == .droid {
+            blocked.readDroidPatch = { path in
+                guard let size = try? await source.files.status(path)?.size, size > 0, size <= 32 << 10,
+                      let chunk = try? await source.files.read(.init(path: path, offset: 0, maxBytes: Int(size))),
+                      chunk.length == size, chunk.data.count == size, !chunk.data.contains(0),
+                      let patch = String(data: chunk.data, encoding: .utf8),
+                      patch.contains("--- "), patch.contains("\n+++ "), patch.contains("\n@@ ") else { return nil }
+                return patch
+            }
+            blocked.droidCallStillOpen = { [weak self] request, session in
+                guard let self, followed?.sessionID == session, case .following(let file) = conversation.phase,
+                      let offset = conversation.transcript.entries.first(where: { $0.id == request.entryID })?.sourceOffset,
+                      let call = request.callID else { return false }
+                return (try? await DroidTranscriptReducer.stillOpen(call: call, at: offset, file: file, files: source.files)) == true
+            }
+        }
         blocked.update(activity: ChatAgentActivity(agent.status))
         blocked.update(awaitingSession: resolution == .noSession)
         switch ChatAgentActivity(agent.status) {
@@ -1923,6 +1943,7 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        droidTaskStops.removeAll()
         agyRootSessionID = nil
         agySessionFamily = []
         // What was sent went into the last conversation.

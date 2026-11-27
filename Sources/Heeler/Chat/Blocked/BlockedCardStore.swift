@@ -23,6 +23,8 @@ struct BlockedScreenIO: Sendable {
         case paste(String)
     }
 
+    var droidTarget: (@Sendable () async throws -> DroidDialogTarget?)? = nil
+    var hostName: String? = nil
     var readScreen: @Sendable () async throws -> ANSIScreen
     var sendKeys: @Sendable ([String]) async throws -> Void
     var paste: @Sendable (String) async throws -> Void
@@ -63,6 +65,8 @@ struct BlockedCardClock: Sendable {
 
 /// A dialog the parsers know, with the transcript's request for it.
 struct BlockedCard: Equatable, Sendable {
+    var target: DroidDialogTarget? = nil
+    var patch: String? = nil
     let dialog: BlockedDialog
     /// The call the dialog asks about, when the transcript shows it.
     let request: ChatPendingRequest?
@@ -140,6 +144,17 @@ final class BlockedCardStore {
     /// pad, for a program whose prompt would act on the pad's keys (see
     /// `ChatProgram.offersKeysWhenBlockedWithoutDialog`). nil keeps both.
     private(set) var unreadableNote: String?
+    @MainActor @Observable
+    final class DroidRevision {
+        let session: String
+        var text = ""
+        var isSending = false
+        var outcomeUnknown = false
+        var notice: String?
+        init(session: String) { self.session = session }
+    }
+    var droidRevision: DroidRevision?
+    private(set) var droidStartupGuidance: String?
     private(set) var progress: Progress = .ready
     /// Why the last action sent nothing or stopped part way.
     private(set) var notice: String?
@@ -389,6 +404,7 @@ final class BlockedCardStore {
         consecutiveCleanIdleReads = 0
         let readUnknown = readsUnknownTrust
         self.awaitingSession = awaitingSession
+        if !awaitingSession { droidStartupGuidance = nil }
         if !readsScreen, progress != .acting { clear() }
         noteUnknownTrust(wasRead: readUnknown)
         updateWatching()
@@ -426,7 +442,7 @@ final class BlockedCardStore {
     /// program reports a session, so an idle Agent without one is read for
     /// that screen alone (`observe`).
     private var readsIdleTrust: Bool {
-        (program == .codex || program == .agy) && activity == .idle && awaitingSession
+        [.codex, .agy, .droid].contains(program) && activity == .idle && awaitingSession
     }
 
     /// herdr 0.9.5 reports a typed Antigravity CLI 1.5.3 neither idle nor
@@ -437,12 +453,12 @@ final class BlockedCardStore {
     /// Chat would hold a message there anyway, since agy shows no empty
     /// input box under the prompt.
     private var readsUnknownTrust: Bool {
-        program == .agy && activity == .unknown && awaitingSession
+        (program == .agy || program == .droid) && activity == .unknown && awaitingSession
     }
 
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
-        activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
+        (program == .droid && !pendingRequests.isEmpty && activity != .unknown) || activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
             || readsIdleOnce
     }
 
@@ -480,8 +496,23 @@ final class BlockedCardStore {
     /// Answers the card's dialog. After an answer that showed no effect only
     /// Stop goes until the screen changes, so a second tap is never a
     /// resend.
-    func perform(_ action: DialogAction) async {
+    func perform(_ action: DialogAction, shownCard: BlockedCard? = nil) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
+        if program == .droid, shownCard != shown {
+            notice = Self.changedMessage
+            return
+        }
+        if program == .droid {
+            guard actingDroidCard == nil, shown.target != nil else { return }
+            actingDroidCard = shown
+        }
+        defer { actingDroidCard = nil }
+        if program == .droid, let command = shown.dialog.subject.command, let full = shown.request?.summary,
+           command != full, DroidDialog.elidedCommand(command, matches: full),
+           !(await checkDroidApprovalDetails(shown, command: full)) {
+            notice = String(localized: "Review the full command in this Droid terminal. Chat could not verify its approval details.")
+            return
+        }
         var answered: BlockedCard?
         var answerKind: BlockedAnswerKind = .unknown
         let isConfirmed = await act(
@@ -492,6 +523,7 @@ final class BlockedCardStore {
         ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = matchingRequest(for: dialog)
+            if program == .droid, observedDroidTarget != shown.target || request?.callID != shown.request?.callID { throw .unsupported(Self.changedMessage) }
             // Each program's planner decides whether the call's result
             // confirms the answer.
             let plan = try DialogActionPlanner.plan(action, for: dialog, toolUseID: request?.callID)
@@ -499,7 +531,40 @@ final class BlockedCardStore {
             answerKind = Self.answerKind(action, on: dialog, plan: plan)
             return plan
         }
-        if isConfirmed, let answered { record(action, on: answered) }
+        if isConfirmed, let answered {
+            record(action, on: answered)
+            if answered.dialog.kind == .droidSpec, case .choose(ordinal: 5) = action, let session = shown.target?.sessionID {
+                droidRevision = DroidRevision(session: session)
+            }
+        }
+    }
+
+    private func checkDroidApprovalDetails(_ card: BlockedCard, command: String) async -> Bool {
+        guard let target = card.target, let session = target.sessionID, let request = card.request else { return false }
+        let popup: @Sendable (ANSIScreen) -> Bool = { screen in
+            guard let dialog = DroidDialog.parse(screen).dialog else { return false }
+            return dialog.fingerprint == card.dialog.fingerprint && dialog.focus == card.dialog.focus
+        }
+        let details: @Sendable (ANSIScreen) -> Bool = { DroidDialog.details($0, show: command) }
+        func key(_ key: String, on matches: @escaping @Sendable (ANSIScreen) -> Bool) async throws {
+            guard try await io.droidTarget?() == target, await droidCallStillOpen?(request, session) == true,
+                  matches(try await io.readScreen()) else { throw TransportError.cancelled }
+            try await io.type(.keys([key]), whileShowing: matches)
+        }
+        func appears(_ matches: (ANSIScreen) -> Bool) async throws {
+            for _ in 0..<12 {
+                if matches(try await io.readScreen()) { return }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            throw TransportError.cancelled
+        }
+        do {
+            try await key("alt+e", on: popup)
+            try await appears(details)
+            try await key("esc", on: details)
+            try await appears(popup)
+            return true
+        } catch { return false }
     }
 
     /// Keeps what the transcript won't show of an answer that took effect.
@@ -852,6 +917,10 @@ final class BlockedCardStore {
             return false
         }
         await waitOutGrace(for: shown, kind: fresh.result.dialog?.kind)
+        if program == .droid {
+            droidStepFocus = fresh.result.dialog?.focus.focusedOrdinal
+            droidStepText = fresh.result.dialog?.focus.inputText
+        }
         waitingWhenSent = waitingCalls(answering: fresh.result.dialog)
         guard case .sent = await send(plan.steps, to: shown) else { return false }
         await onSent?()
@@ -1066,8 +1135,13 @@ final class BlockedCardStore {
                         return .stopped
                     }
                     checked = check.last
+                    if program == .droid {
+                        droidStepFocus = checked?.result.dialog?.focus.focusedOrdinal
+                        droidStepText = checked?.result.dialog?.focus.inputText
+                    }
                 }
             } catch {
+                if program == .droid { unconfirmedFingerprint = fingerprint }
                 finish(notice: Self.sendFailure(error))
                 return .stopped
             }
@@ -1078,11 +1152,32 @@ final class BlockedCardStore {
     /// Types over the dialog with `fingerprint`, or over a screen that shows none.
     private func type(_ typing: BlockedScreenIO.Typing, over fingerprint: DialogFingerprint?) async throws {
         let program = program
-        try await io.type(typing) { screen in
-            let now = DialogObservation(screen: screen, program: program).result.fingerprint
+        if program == .droid {
+            guard let card = actingDroidCard, let target = card.target, try await io.droidTarget?() == target else {
+                throw TransportError.cancelled
+            }
+            if card.dialog.kind != .droidWorkspaceTrust {
+                guard let request = card.request, let session = target.sessionID,
+                      await droidCallStillOpen?(request, session) == true else { throw TransportError.cancelled }
+                if let path = DroidDialog.patchPath(command: request.summary, directory: target.directory) {
+                    guard let shown = card.patch, await readDroidPatch?(path) == shown else { throw TransportError.cancelled }
+                }
+            }
+        }
+        let expectedFocus = droidStepFocus
+        let expectedText = droidStepText
+        let check: @Sendable (ANSIScreen) -> Bool = { screen in
+            let parsed = DialogObservation(screen: screen, program: program).result
+            if program == .droid {
+                guard let dialog = parsed.dialog, dialog.focus.focusedOrdinal == expectedFocus,
+                      dialog.focus.inputText == expectedText else { return false }
+            }
+            let now = parsed.fingerprint
             guard let fingerprint else { return now == nil }
             return now?.matches(fingerprint) == true
         }
+        if program == .droid, io.typeWhileShowing == nil, try await !check(io.readScreen()) { throw TransportError.cancelled }
+        try await io.type(typing, whileShowing: check)
     }
 
     /// Watches for the plan's effect on the dialog with `fingerprint`, and
@@ -1221,13 +1316,49 @@ final class BlockedCardStore {
     /// herdr has no status for, awaits its session, anything but the trust
     /// screen reads as no dialog: its start screen and lists are no prompt
     /// to answer.
+    @ObservationIgnored private var droidStepFocus: Int?
+    @ObservationIgnored private var droidStepText: String?
+    @ObservationIgnored private var observedDroidTarget: DroidDialogTarget?
+    @ObservationIgnored private var actingDroidCard: BlockedCard?
+    var hostName: String? { io.hostName }
+    @ObservationIgnored private var observedDroidPatch: String?
+    var readDroidPatch: (@MainActor (String) async -> String?)?
+    var droidCallStillOpen: (@MainActor (ChatPendingRequest, String) async -> Bool)?
+
     private func observe() async -> DialogObservation? {
-        guard let screen = try? await io.readScreen() else { return nil }
+        guard let screen = try? await io.readScreen() else {
+            if program == .droid, awaitingSession {
+                droidStartupGuidance = String(localized: "Chat could not read this terminal. Reopen it to check whether Droid has started.")
+            }
+            return nil
+        }
+        if program == .droid, awaitingSession {
+            let hint = DroidInputBox.terminalGuidance(screen.rows.map(\.trimmedText))
+            droidStartupGuidance = hint ?? (DroidInputBox.read(screen).isSendable
+                ? String(localized: "Droid is ready, but its session has not been reported. Check the Droid hook on this Host and resume the session.")
+                : String(localized: "Finish Droid startup in this terminal. Chat is waiting for its session."))
+        }
+        if program == .droid, awaitingSession, DroidInputBox.read(screen).isSendable,
+           let target = try? await io.droidTarget?(), target.userHooksDisabled {
+            droidStartupGuidance = String(localized: "Factory hooks are disabled in this account’s settings. Enable hooks and resume Droid in this terminal.")
+        }
         let observation = DialogObservation(
             screen: screen, program: program, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
+        if program == .droid, let dialog = observation.result.dialog {
+            guard let target = try? await io.droidTarget?(), target.shows(dialog) else {
+                observedDroidTarget = nil
+                return observation.withoutDialog
+            }
+            observedDroidTarget = target
+            if let command = matchingRequest(for: dialog)?.summary,
+               let path = DroidDialog.patchPath(command: command, directory: target.directory) {
+                observedDroidPatch = await readDroidPatch?(path)
+            } else { observedDroidPatch = nil }
+            if dialog.kind == .droidWorkspaceTrust { droidStartupGuidance = nil }
+        }
         guard readsIdleTrust || readsUnknownTrust else { return observation }
         switch observation.result.dialog?.kind {
-        case .codexWorkspaceTrust, .agyWorkspaceTrust: return observation
+        case .codexWorkspaceTrust, .agyWorkspaceTrust, .droidWorkspaceTrust: return observation
         default: return observation.withoutDialog
         }
     }
@@ -1255,7 +1386,7 @@ final class BlockedCardStore {
             } else {
                 let request = matchingRequest(for: dialog)
                 if let id = request?.callID { noteShown(dialog, forCall: id) }
-                next = .card(BlockedCard(dialog: dialog, request: request))
+                next = .card(BlockedCard(target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
             }
         case .unrecognized(let excerpt):
             next = .generic(excerpt)
@@ -1274,6 +1405,11 @@ final class BlockedCardStore {
     /// request, the newest turn's failure, or a likely failed model
     /// request.
     private func whyBlocked(on screen: ANSIScreen?) -> String? {
+        if program == .droid {
+            if let screen, let specific = DroidInputBox.terminalGuidance(screen.rows.map(\.trimmedText)) { return specific }
+            if let latestFailure { return latestFailure }
+            return String(localized: "Open this Agent’s terminal to check the prompt. Chat could not verify a Droid action on this screen.")
+        }
         guard !program.offersKeysWhenBlockedWithoutDialog else { return nil }
         if let screen, OpenCodeScreenReader.read(screen).route == .subagentPanel {
             return String(localized: "OpenCode's subagent panel covers its request. Close the panel in the terminal to answer it.")

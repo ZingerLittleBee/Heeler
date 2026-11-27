@@ -1429,6 +1429,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             .check(HerdrCoreTerminalRecord(tmuxPane: pane), coreCarries: leakedEnvironmentNames)
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead, let active = server,
+              let scope = chatCacheScope else { return nil }
+        let target = try await chatBinder(paneID: paneID, program: .droid, server: active)
+            .droidDialogTarget(.init(tmuxPane: pane), scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead,
             let activeServer = server

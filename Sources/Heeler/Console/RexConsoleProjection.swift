@@ -449,6 +449,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
             .check(chatRecord(at: address, details: details))
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
+              let active = server, let scope = chatCacheScope, agentsByPane[paneID]?.agent.status != .unknown else { return nil }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: active)
+        let target = try await chatBinder(at: address, details: details, program: .droid, server: active)
+            .droidDialogTarget(chatRecord(at: address, details: details), scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID),
             let listed = listedDetails(at: address), let activeServer = server

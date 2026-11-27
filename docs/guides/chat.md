@@ -69,9 +69,15 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 
 ### Droid
 
-On macOS, **New Agent** on herdr-core and tmux supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid, including one in Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses herdr’s own Droid integration.
+On macOS and Linux, **New Agent** on herdr-core and tmux supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid, including one in Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses the built-in Droid integration. Heeler also checks Factory’s foreground process and session lifecycle on the Host. With herdr 0.9.5 the reported ID can survive a desktop session switch. If the foreground UUID cannot be verified, open that Agent’s terminal. Enabling a hook in settings takes effect when Droid starts or resumes.
 
-With Droid, finish any startup prompt in the terminal. Chat can then read earlier messages, show tool results, and send a message when Droid's input box is empty. Wait for a running turn to finish or tap **Stop**. Use the terminal for slash commands and approval dialogs.
+Droid Chat shows the foreground session UUID above its timeline. A verified folder trust card shows the Host, full directory, and both of Droid’s choices before there is a session. On a Rex block whose status is Unknown, finish trust in that block’s terminal. Factory sign-in also happens in the terminal.
+
+Review the command, file changes, permission scope, or proposal in the card before choosing a response. A shortened command is verified against Droid’s approval details before the key goes to the terminal. A two-question AskUser form has a review step. A single question submits when selected. AskUser answers and Spec feedback have separate fields. If the desktop already answered, wait for the next card. An unrecognized request or an unreadable patch has a terminal entry.
+
+Send while Droid’s message box is empty. A desktop draft, a menu, Bash mode, a running turn, or a different foreground session holds Send. Return to the original UUID to recover its draft. A lost acknowledgement stays in the timeline for reconciliation. **Stop** requires a visible interrupt prompt on the active turn. Use the terminal for steering, queue editing, selectors, side chats and Mission Control.
+
+Open the task bar for background commands and sub-Droids. A parent reply can arrive while a task is running. A recorded completion carries its own output. A running command with a verified PID and command line can be inspected and stopped from its details. When Droid has supplied only its last report, Chat shows that report. An interactive `/fork` leaves the original conversation open. Resume the copy in the terminal to switch Chat to its UUID.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 

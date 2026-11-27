@@ -78,7 +78,7 @@ extension ComposerDeliveryPolicy {
             }
         }
         var policy = ComposerDeliveryPolicy(
-            route: .chat,
+            route: .chat, requiresSinglePrompt: program == .droid,
             insertsIntoAttachWhenBlocked: false,
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },

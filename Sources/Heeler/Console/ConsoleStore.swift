@@ -1246,6 +1246,16 @@ final class ConsoleStore {
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
+        if program == .droid {
+            source.screen.hostName = host.name
+            source.screen.droidTarget = { [weak self] in
+                guard let live = await self?.projections[hostID] else { return nil }
+                return try await live.droidDialogTarget(paneID: paneID)
+            }
+        }
+        if program == .droid, let tui = hostProjection as? HostConsoleProjection {
+            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID) }
+        }
         if let amp = files.amp {
             source.sessionEvidence = { try await amp.evidence() }
         }

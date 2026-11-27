@@ -101,7 +101,13 @@ struct ChatBackgroundWorkSheet: View {
     }
 
     private func card(for row: ChatBackgroundWorkPresentation.Row, isDivided: Bool) -> some View {
-        ChatBackgroundWorkActivityCard(row: row, expandedCards: $expandedCards, isDivided: isDivided)
+        let item = chat.backgroundWork.rows.first { $0.id == row.id }?.item
+        let session = chat.droidSessionID
+        return ChatBackgroundWorkActivityCard(row: row, expandedCards: $expandedCards, isDivided: isDivided,
+            inspectDroid: item.flatMap { task in
+                guard isHostConnected, let session, task.kind == .command, task.state == .running else { return nil }
+                return { stop in await chat.inspectDroidTask(task, session: session, stop: stop) }
+            })
     }
 }
 
@@ -115,17 +121,29 @@ struct ChatBackgroundWorkActivityCard: View {
     @Binding var expandedCards: Set<String>
     /// Whether another row of its group stands over it.
     var isDivided = false
+    var inspectDroid: (@MainActor (Bool) async -> String)? = nil
+    @State private var taskOutput: String?
+    @State private var actingOnTask = false
 
     @State private var headlineIsTruncated = false
     @State private var terminalIsTruncated = false
     @ScaledMetric(relativeTo: .callout) private var glyphColumn: CGFloat = 18
 
     private var isExpandable: Bool {
-        row.hasIntrinsicExpandableContent || headlineIsTruncated || terminalIsTruncated
+        inspectDroid != nil || row.reportedOutput != nil || row.hasIntrinsicExpandableContent || headlineIsTruncated || terminalIsTruncated
     }
 
     private var isExpanded: Bool {
         isExpandable && expandedCards.contains(row.id)
+    }
+
+    private func run(_ action: @escaping @MainActor (Bool) async -> String, stop: Bool) {
+        guard !actingOnTask else { return }
+        actingOnTask = true
+        Task {
+            taskOutput = await action(stop)
+            actingOnTask = false
+        }
     }
 
     private func toggleExpand() {
@@ -153,6 +171,21 @@ struct ChatBackgroundWorkActivityCard: View {
                 }
                 if let preview = row.terminalPreview {
                     terminal(shown: isExpanded ? (row.fullTerminalText ?? preview) : preview, preview: preview)
+                        .padding(.top, 8)
+                }
+                if isExpanded, let inspectDroid {
+                    HStack {
+                        Button("View Output") { run(inspectDroid, stop: false) }
+                        Button("Stop Task", role: .destructive) { run(inspectDroid, stop: true) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(actingOnTask)
+                    .padding(.top, 8)
+                }
+                if isExpanded, let output = row.reportedOutput ?? taskOutput, !output.isEmpty {
+                    Text(verbatim: output)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
                         .padding(.top, 8)
                 }
                 if let fraction = row.fraction {

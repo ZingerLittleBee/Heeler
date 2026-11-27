@@ -99,8 +99,8 @@ extension CommandHookSettings {
     }
 
     /// What `--settings` gives a launch: the file an addition would create.
-    static func launchSettings(script: String) -> Data {
-        Data(wholeFile(script: script).utf8)
+    static func launchSettings(script: String, using included: [Entry]? = nil) -> Data {
+        Data(wholeFile(script: script, using: included).utf8)
     }
 
     // MARK: Reading
@@ -174,13 +174,13 @@ extension CommandHookSettings {
         return .change(to: tree.replacing(replacements))
     }
 
-    private static func eventLines(script: String) -> [String] {
-        entries.map { entry in "\(jsonString(entry.event)): [\(group(entry, script: script))]" }
+    private static func eventLines(script: String, using included: [Entry]? = nil) -> [String] {
+        (included ?? entries).map { entry in "\(jsonString(entry.event)): [\(group(entry, script: script))]" }
     }
 
     /// `{ "hooks": { … } }` as a file of its own.
-    private static func wholeFile(script: String) -> String {
-        "{\n  \"hooks\": {\n" + eventLines(script: script).map { "    " + $0 }.joined(separator: ",\n") + "\n  }\n}\n"
+    private static func wholeFile(script: String, using included: [Entry]? = nil) -> String {
+        "{\n  \"hooks\": {\n" + eventLines(script: script, using: included).map { "    " + $0 }.joined(separator: ",\n") + "\n  }\n}\n"
     }
 
     /// The hooks object alone, opening on a line indented by `style.indent`.

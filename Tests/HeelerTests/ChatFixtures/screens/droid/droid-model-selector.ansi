@@ -1,0 +1,26 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Select Model For This Session                                                                                                │
+│                                                                                                                              │
+│ ◉ Main | ○ Spec                                                                                                              │
+│                                                                                                                              │
+│ Filter models...                                                                                                             │
+│                                                                                                                              │
+│   GPT-6.2 Sol                                       (0.8x)                                                                   │
+│   Show (5) more models ...                                                                                                   │
+│                                                                                                                              │
+│ ── Droid Core ──                                                                                                             │
+│   Inkling                                           (0.4x)                                                                   │
+│   Mistral Large 4                                   (0.544x)                                                                 │
+│   Mistral Medium 3.5                                (0.6x)                                                                   │
+│   GLM-5.3-Flash                                     (0.06x)                                                                  │
+│   Show (10) more models ...                                                                                                  │
+│                                                                                                                              │
+│ ── Google ──                                                                                                                 │
+│   Gemini 4 Neon                                     (1.2x)                                                                   │
+│   Gemini 4 Hydrogen                       ★         (0.6x)                                                                   │
+│   Gemini 4 Carbon                                   (0.8x 50% off)                                                           │
+│ ● Gemini 3.8 Flash (Medium)                 LEGACY  (0.3x 50% off)                                                           │
+│                                                                                                                              │
+│ Multipliers represent cost in Standard Credits · Droid Core model inference is US-based                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  Type search   ↑↓ focus list   Enter select   Tab switch   Esc cancel

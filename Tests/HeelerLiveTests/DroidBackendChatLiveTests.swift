@@ -14,6 +14,8 @@ struct DroidBackendChatLiveTests {
         let user, seed, fingerprint, coreName, tmuxSocket, tmuxExecutable, rexSocket, rexSession, rexBlock: String
         let panes, sessions: [String: String]
         let factoryHome, directory: String
+        var directories: [String: String]?
+        var beginsAtTrust: Bool?
     }
 
     @Test(arguments: [ServerKind.herdrCore, .tmux, .rex])
@@ -66,8 +68,14 @@ struct DroidBackendChatLiveTests {
         while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(250))
         }
+        let directory = lab.directories?[kind.rawValue] ?? lab.directory
+        let id: String
+        if lab.beginsAtTrust == true {
+            id = try await firstTrust(projection: projection, pane: pane, directory: directory)
+        } else {
+            id = try #require(lab.sessions[kind.rawValue])
+        }
         let agent = try #require(projection.agentsByPane[pane]?.agent)
-        let id = try #require(lab.sessions[kind.rawValue])
         let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
         guard case .bound(id, _, _) = evidence else {
             Issue.record("The foreground Droid did not bind its fixture UUID: \(evidence)")
@@ -79,6 +87,8 @@ struct DroidBackendChatLiveTests {
             adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)))
         source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
         source.screen = typing.blockedScreen
+        source.screen.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
+        source.screen.hostName = host.name
         source.coreScope = projection.chatCacheScope
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: pane), agent: agent, program: .droid, source: source)
         defer { chat.end() }
@@ -99,18 +109,24 @@ struct DroidBackendChatLiveTests {
             readScreen: typing.blockedScreen.readScreen, confirmSession: { await chat.confirmSessionBeforeSend() })
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with exactly \(token). Do not use tools."
+        try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
         composer.replaceDraft(with: prompt)
+        chat.draftDidChange(to: prompt)
         let sent = await composer.send(policy: policy)
-        try #require(sent == .deliveredViaAttach || sent == .submittedViaAttach || sent == .deliveredViaPrompt)
+        try #require(sent == .deliveredViaAttach || sent == .submittedViaAttach || sent == .deliveredViaPrompt, "Droid send: \(sent)")
         let replyDeadline = ContinuousClock.now + .seconds(75)
         while ContinuousClock.now < replyDeadline {
             await chat.step()
             let transcript = chat.conversation.transcript
             if transcript.entries.contains(where: { $0.content == .assistant(.init(text: token)) }) {
                 #expect(transcript.recordedPrompts.filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == prompt }.count == 1)
+                if ProcessInfo.processInfo.environment["HEELER_DROID_BACKEND_SCENARIOS"] == "1" {
+                    try await checkScopedDialogs(chat: chat, composer: composer, policy: policy, projection: projection,
+                                                 pane: pane, directory: directory)
+                }
                 try await checkDraftAfterNewSession(chat: chat, composer: composer, policy: policy, projection: projection,
                                                     pane: pane, previous: id)
-                try await checkHookSetup(lab: lab, projection: projection, pane: pane, session: id)
+                try await checkHookSetup(lab: lab, projection: projection, pane: pane, session: id, directory: directory)
                 return
             }
             try await Task.sleep(for: .milliseconds(500))
@@ -118,9 +134,137 @@ struct DroidBackendChatLiveTests {
         Issue.record("Droid's answer did not reach the Chat timeline")
     }
 
+    private func waitForEmptyBox(_ io: BlockedScreenIO, projection: any ConsoleHostProjection, pane: String) async throws {
+        let until = ContinuousClock.now + .seconds(20)
+        while ContinuousClock.now < until {
+            let activity = projection.agentsByPane[pane]?.agent.status
+            if activity != .working && activity != .blocked, DroidInputBox.read(try await io.readScreen()).isSendable { return }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
+    }
+
+    private func firstTrust(projection: any ConsoleHostProjection, pane: String, directory: String) async throws -> String {
+        let agent = try #require(projection.agentsByPane[pane]?.agent)
+        let typing = try #require(projection.checkedChatTyping(at: pane))
+        var io = typing.blockedScreen
+        io.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
+        io.hostName = projection.host.name
+        var source = AgentChatSource(hostID: projection.host.id, socketLocation: .namedSession("lab"),
+            files: projection.chatHostFiles(), agentInfo: { try await projection.agentInfo(paneID: pane) },
+            cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)), screen: io)
+        source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
+        source.coreScope = projection.chatCacheScope
+        let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .droid, source: source)
+        defer { chat.end() }
+        await chat.step()
+        await chat.blocked.refresh()
+        let raw = try await io.readScreen()
+        let trust = try #require(DroidDialog.parse(raw).dialog)
+        try #require(trust.kind == .droidWorkspaceTrust && trust.subject.workspacePath == directory)
+        if projection is RexConsoleProjection, agent.status == .unknown {
+            #expect(try await projection.droidDialogTarget(paneID: pane) == nil)
+            if case .card = chat.blocked.content { Issue.record("Unknown Rex offered a native trust card") }
+            // The user continues in this exact terminal block.
+            try await projection.sendAgentKeys(["enter"], to: pane)
+        } else {
+            guard case .card(let card) = chat.blocked.content else {
+                Issue.record("No native trust card on \(projection.host.serverKind), status \(agent.status), \(chat.conversation.phase)")
+                throw TransportError.cancelled
+            }
+            try #require(card.target?.sessionID == nil && card.target?.directory == directory)
+            await chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+        }
+        for _ in 0..<80 {
+            if case .bound(let id, _, _) = try await projection.checkChatSession(paneID: pane, program: .droid) { return id }
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
+    }
+
+    private func checkScopedDialogs(chat: AgentChatStore, composer: AgentComposerStore, policy: ComposerDeliveryPolicy,
+                                    projection: any ConsoleHostProjection, pane: String, directory: String) async throws {
+        let io = try #require(projection.checkedChatTyping(at: pane)).blockedScreen
+        func observe() async throws {
+            chat.agentDidChange(try #require(projection.agentsByPane[pane]?.agent))
+            await chat.step()
+            await chat.blocked.refresh()
+        }
+        func wait(_ condition: () -> Bool) async throws {
+            let until = ContinuousClock.now + .seconds(65)
+            while ContinuousClock.now < until {
+                try await observe()
+                if condition() { return }
+                try await Task.sleep(for: .milliseconds(220))
+            }
+            throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
+        }
+        func card(_ kind: BlockedDialogKind, suffix: String? = nil) async throws -> BlockedCard {
+            var result: BlockedCard?
+            try await wait {
+                guard case .card(let found) = chat.blocked.content, found.dialog.kind == kind,
+                      found.request?.callID != nil && found.target?.sessionID == chat.droidSessionID else { return false }
+                if let suffix, found.request?.summary.hasSuffix(suffix) != true { return false }
+                result = found
+                return true
+            }
+            return try #require(result)
+        }
+        func send(_ text: String) async throws {
+            try await waitForEmptyBox(io, projection: projection, pane: pane)
+            composer.replaceDraft(with: text)
+            chat.draftDidChange(to: text)
+            let result = await composer.send(policy: policy)
+            try #require(result == .submittedViaAttach || result == .deliveredViaPrompt || result == .deliveredViaAttach, "Droid submission: \(result)")
+        }
+        // The disposable fixture uses Droid's own mode selector to ask for every operation.
+        try await waitForEmptyBox(io, projection: projection, pane: pane)
+        var manual = false
+        for _ in 0..<5 {
+            let screen = try await io.readScreen()
+            try #require(DroidInputBox.read(screen).isSendable)
+            if screen.rows.contains(where: { $0.trimmedText.hasPrefix("Auto (Off) · all actions require approval") }) {
+                manual = true
+                break
+            }
+            try await projection.sendAgentKeys(["ctrl+l"], to: pane)
+            try await Task.sleep(for: .milliseconds(350))
+        }
+        try #require(manual)
+        let tag = UUID().uuidString.prefix(8)
+        let a = "approval-a-" + tag + ".txt"
+        let b = "approval-b-" + tag + ".txt"
+        let files = projection.chatHostFiles()
+        try #require(try await files.status(directory + "/" + a) == nil)
+        try #require(try await files.status(directory + "/" + b) == nil)
+        try await send("Use Create to write \(a) with content ALPHA and one newline. After it succeeds use a separate Create call for \(b). If declined, stop. No other tools.")
+        let first = try await card(.droidPermission, suffix: a)
+        await chat.blocked.perform(.choose(ordinal: 1), shownCard: first)
+        let second = try await card(.droidPermission, suffix: b)
+        try #require(first.request?.callID != second.request?.callID)
+        try await projection.sendAgentKeys(["esc"], to: pane)
+        await chat.blocked.perform(.choose(ordinal: 1), shownCard: second)
+        await chat.blocked.perform(.choose(ordinal: 1), shownCard: first)
+        try await wait { chat.conversation.transcript.pendingRequests.isEmpty && chat.agent.status != .working && chat.agent.status != .blocked }
+        let bytes = try await files.read(.init(path: directory + "/" + a, offset: 0, maxBytes: 48))
+        #expect(String(decoding: bytes.data, as: UTF8.self) == "ALPHA\n")
+        #expect(try await files.status(directory + "/" + b) == nil)
+        try await send("Use AskUser to ask one question, 'Which marker?', with options Scarlet or Azure. When I submit, reply with the selected option only.")
+        let ask = try await card(.droidQuestion)
+        let value = try #require(ask.dialog.options.first)
+        await chat.blocked.perform(.choose(ordinal: value.ordinal), shownCard: ask)
+        // Droid submits a single question immediately. A multi-question form has a review page.
+        try await wait {
+            chat.conversation.transcript.entries.contains {
+                if case .assistant(let m) = $0.content { return m.text.localizedCaseInsensitiveContains("scarlet") }
+                return false
+            } && chat.agent.status != .working && chat.agent.status != .blocked
+        }
+    }
+
     /// Only a fixture SSH account may receive setup files from this test.
     private func checkHookSetup(
-        lab: Lab, projection: any ConsoleHostProjection, pane: String, session: String
+        lab: Lab, projection: any ConsoleHostProjection, pane: String, session: String, directory: String
     ) async throws {
         let files = projection.chatHostFiles()
         let home = try await files.home()
@@ -135,7 +279,11 @@ struct DroidBackendChatLiveTests {
             try await rex.configureDroidChatHook(.register, keepingTo: TerminalCorePin(joined: rex.inventoryCore))
             let after = try await readSettings()
             #expect(DroidChatHook.presence(in: after, script: RemoteFilePath.join(home, ".factory", "hooks", DroidChatHook.fileName)) == .on)
-            #expect(String(decoding: after, as: UTF8.self).contains(#""command":"true""#))
+            let json = try #require(JSONSerialization.jsonObject(with: after) as? [String: Any])
+            let hooks = try #require(json["hooks"] as? [String: [[String: Any]]])
+            #expect(hooks["SessionStart"]?.contains { group in
+                (group["hooks"] as? [[String: Any]])?.contains { $0["command"] as? String == "true" } == true
+            } == true)
             try await rex.configureDroidChatHook(.register, keepingTo: TerminalCorePin(joined: rex.inventoryCore))
             #expect(try await readSettings() == after)
             try await rex.configureDroidChatHook(.removeRegistration, keepingTo: TerminalCorePin(joined: rex.inventoryCore))
@@ -143,7 +291,7 @@ struct DroidBackendChatLiveTests {
             return
         }
         let request = AgentLaunchRequest(kind: "droid", name: "droid-lab-" + UUID().uuidString.prefix(8).lowercased(),
-                                        workspaceID: projection.agentsByPane[pane]?.agent.workspaceID, cwd: lab.directory)
+                                        workspaceID: projection.agentsByPane[pane]?.agent.workspaceID, cwd: directory)
         let started: Agent
         if let core = projection as? HerdrCoreConsoleProjection {
             started = try await core.startAgent(request)
@@ -230,8 +378,8 @@ struct DroidBackendChatLiveTests {
         while ContinuousClock.now < stopped {
             await chat.step()
             if chat.conversation.transcript.turns.last?.ending == .interrupted,
-               ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) == .idle {
-                #expect(DroidInputBox.read(try await typing.readScreen()).isSendable)
+               ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) == .idle,
+               DroidInputBox.read(try await typing.readScreen()).isSendable {
                 return
             }
             try await Task.sleep(for: .milliseconds(200))

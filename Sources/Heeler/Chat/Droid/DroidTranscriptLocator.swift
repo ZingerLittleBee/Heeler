@@ -77,3 +77,17 @@ struct DroidTranscriptLocator {
         return found
     }
 }
+
+/// Herdr 0.9.5 can keep the original herdr:droid ID through /new or /resume.
+/// Read Factory's own process-scoped lifecycle records on the Host. Only
+/// the foreground UUID and its validated transcript directory leave the Host.
+struct DroidForegroundSession: Decodable, Sendable {
+    let session, file: String
+
+    static func script(pid: String, start: String, home: String, cwd: String) -> Data {
+        let arguments = [pid, start, home, cwd].map(HostHelperScript.quote).joined(separator: " ")
+        guard let url = Bundle.main.url(forResource: "foreground-session", withExtension: "py", subdirectory: "droid"),
+              let python = try? String(contentsOf: url, encoding: .utf8) else { return Data() }
+        return Data(("exec python3 - " + arguments + " <<'HEELER_DROID'\n" + python + "\nHEELER_DROID\n").utf8)
+    }
+}

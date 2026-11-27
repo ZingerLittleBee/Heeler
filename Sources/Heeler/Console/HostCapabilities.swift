@@ -148,7 +148,7 @@ extension HostCapabilities {
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
-                case HerdrCoreLocator.linuxKernel: Self.rexChatPrograms.subtracting([.droid])
+                case HerdrCoreLocator.linuxKernel: Self.rexChatPrograms
                 case HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
                 case HerdrCoreLocator.windowsKernel: Self.rexWindowsChatPrograms
                 default: nil
@@ -245,7 +245,7 @@ extension HostCapabilities {
     /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New

@@ -1716,6 +1716,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard hasInventory, departedAgentsByPane[paneID] == nil, let scope = chatCacheScope else { return nil }
+        let record = try await inventoryTransport().terminalRecord(paneID)
+        let target = try await chatBinder(paneID: paneID, program: .droid, core: inventoryCore)
+            .droidDialogTarget(record, scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard hasInventory, departedAgentsByPane[paneID] == nil else { return nil }
         let core = inventoryCore

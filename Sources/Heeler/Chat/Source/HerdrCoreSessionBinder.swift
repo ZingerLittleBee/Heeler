@@ -289,6 +289,25 @@ struct HerdrCoreSessionBinder: Sendable {
 
     /// The hook atomically replaces one file per foreground Droid. A label can
     /// wake Chat, but only the process's current record authorizes a send.
+    func droidDialogTarget(_ record: HerdrCoreTerminalRecord, scope: String) async throws -> DroidDialogTarget? {
+        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk),
+              let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
+              case .value(let start) = process.start else { return nil }
+        let id: String?
+        switch try await checkDroid(tree) {
+        case .bound(let session, _, _): id = session
+        case .unavailable(.cannotTellSession(.droid)): id = nil
+        default: return nil
+        }
+        var disabled = false
+        if id == nil, case .value(let home)? = process.variables[Self.homeVariable], RemoteFilePath.isAcceptable(home),
+           let settings = try? await files.read(.init(path: RemoteFilePath.join(home, ".factory", "settings.json"), offset: 0, maxBytes: 256 << 10)) {
+            disabled = DroidChatHook.disabled(in: settings.data)
+        }
+        return .init(scope: scope, pid: pid, start: start, directory: record.foreground?.cwd ?? record.cwd,
+                     sessionID: id, userHooksDisabled: disabled)
+    }
+
     private func checkDroid(_ tree: HerdrCoreTerminalProcesses) async throws -> ChatSessionEvidence {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
               case .value(let start) = process.start,

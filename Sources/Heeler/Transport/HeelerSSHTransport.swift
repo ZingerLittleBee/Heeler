@@ -4639,6 +4639,15 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
             timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
     }
 
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession? {
+        guard Int32(pid).map({ $0 > 0 }) == true, RemoteFilePath.isAcceptable(home), RemoteFilePath.isAcceptable(cwd) else { return nil }
+        let result = try await runBoundedScript(DroidForegroundSession.script(pid: pid, start: start, home: home, cwd: cwd),
+            feature: String(localized: "Droid session"), deadline: .seconds(6), remoteSeconds: 4,
+            timeoutMarkerPrefix: "__HEELER_DROID_SESSION_TIMEOUT_", timedOut: .hostFileTimedOut, priority: .interactive)
+        guard result.exitStatus == 0, result.stdout.count <= 8192 else { return nil }
+        return try? JSONDecoder().decode(DroidForegroundSession.self, from: result.stdout)
+    }
+
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         let platform = try await hostPlatform()
         // A Rex Host's Chat reads a native Windows Host's processes as a core's

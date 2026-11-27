@@ -1,0 +1,12 @@
+
+   Ask User
+
+   Hooks Notification → elicitation_dialog
+    └─ exec python3 $HOME/Documents/worktree/Heeler/droid/integrations/droid/heeler-droid.py (5s timeout) : Exit code 0
+   Which marker?
+
+   1. Scarlet
+   2. Azure
+   Or type your own answer...
+
+   ↑/↓ Navigate • Space/Enter/1–9 Select • ESC stop agent

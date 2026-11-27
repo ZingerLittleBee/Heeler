@@ -458,6 +458,7 @@ struct AgentChatSurfaceView: View {
             guard let generation else { return }
             welcomeModel = nil
             welcomeEffort = nil
+            if program == .droid { composer.bindDroidDraft(to: chat?.droidSessionID) }
             composer.conversationDidChange(to: generation)
         }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in
@@ -842,6 +843,43 @@ struct AgentChatSurfaceView: View {
     private var banners: some View {
         let banners = bannerContent
         return VStack(spacing: 6) {
+            if let id = chat?.droidSessionID {
+                HStack(spacing: 6) {
+                    Image(systemName: "number")
+                    Text(verbatim: id)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .accessibilityLabel(Text("Droid session \(id)"))
+            }
+            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.droidSessionID {
+                @Bindable var draft = revision
+                VStack(alignment: .leading) {
+                    TextField("Spec feedback", text: $draft.text, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                    if let notice = revision.notice { Text(verbatim: notice).font(.caption) }
+                    Button("Send Feedback") {
+                        Task {
+                            if await composer.sendDroidRevision(revision, policy: sendPolicy, readScreen: readAgentScreen),
+                               chat.blocked.droidRevision === revision { chat.blocked.droidRevision = nil }
+                        }
+                    }
+                    .disabled(revision.text.isEmpty || revision.isSending || revision.outcomeUnknown)
+                }
+                .padding(.horizontal, 12)
+            }
+            if let reason = chat?.blocked.droidStartupGuidance, chat?.droidSessionID == nil {
+                Button(action: openTerminal) {
+                    Label {
+                        Text(verbatim: agent.hostName + " · " + agent.agent.paneID + "\n" + reason)
+                            .font(.caption).multilineTextAlignment(.leading)
+                    } icon: { Image(systemName: "terminal") }
+                }
+                .padding(.horizontal, 12)
+            }
             ForEach(banners) { @Sendable banner in
                 MainActorContent {
                     ChatBanner(
@@ -1163,9 +1201,14 @@ struct AgentChatSurfaceView: View {
         guard chat?.confirmsSessionBeforeSend ?? program.confirmsSessionBeforeSend else { return nil }
         let chat = chat
         let program = program
+        let composer = composer
         return {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
-            return await chat.confirmSessionBeforeSend()
+            if let reason = await chat.confirmSessionBeforeSend() { return reason }
+            if program == .droid, !composer.droidDraftMatches(chat.droidSessionID) {
+                return String(localized: "Return to the Droid session that owns this draft before sending it.")
+            }
+            return nil
         }
     }
 
@@ -1948,6 +1991,10 @@ struct AgentChatSurfaceView: View {
         let readScreen = readAgentScreen
         let activity = agentActivity
         return {
+            if program == .droid {
+                guard let chat, let shown = chat.droidSessionID, await chat.confirmSessionBeforeSend() == nil,
+                      chat.droidSessionID == shown else { throw TransportError.cancelled }
+            }
             let screen = try await readScreen()
             return ChatStopContext(screen: screen, activity: activity())
         }

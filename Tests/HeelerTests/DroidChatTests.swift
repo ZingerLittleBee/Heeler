@@ -88,12 +88,70 @@ struct DroidChatTests {
         #expect(await host.files[config] == original)
     }
 
+    @Test func trustReadsTheCompleteFolderBeforeFactoryHasASession() throws {
+        for stem in ["droid-trust", "droid-trust-narrow"] {
+            let screen = try ScreenFixture.screen(stem)
+            let dialog = try #require(DroidDialog.parse(screen).dialog)
+            #expect(dialog.kind == .droidWorkspaceTrust)
+            #expect(dialog.subject.workspacePath == "/tmp/fixture/trust long path 中文 acceptance")
+            #expect(dialog.options.map(\.role) == [.trust, .exitProgram])
+            #expect(try DroidDialog.plan(.choose(ordinal: 2), dialog, callID: nil).keys == ["esc"])
+        }
+    }
+
+    @Test func permissionUsesOnlyTheObservedChoicesAndOneMatchingCall() throws {
+        let dialog = try #require(DroidDialog.parse(ScreenFixture.screen("droid-create")).dialog)
+        #expect(dialog.subject.filePath == "approval-a.txt")
+        #expect(dialog.subject.changeLines.contains { $0.contains("ALPHA-DROID") })
+        #expect(dialog.focus.focusedOrdinal == 1)
+        #expect(try DroidDialog.plan(.choose(ordinal: 1), dialog, callID: "first").keys == ["enter"])
+        #expect(throws: DialogPlanError.self) { try DroidDialog.plan(.choose(ordinal: 1), dialog, callID: nil) }
+        let a = ChatPendingRequest(entryID: .init("a"), callID: "a", kind: .fileWrite, toolName: "Create", summary: "/tmp/fixture/approval-a.txt")
+        var b = a
+        b.callID = "b"
+        #expect(BlockedRequestMatch.request(for: dialog, in: [a, b]) == nil)
+        let command = try #require(DroidDialog.parse(ScreenFixture.screen("droid-execute")).dialog)
+        #expect(command.subject.command == "printf DROID_APPROVAL_COMMAND > command-proof.txt")
+    }
+
+    @Test func questionAndProposalUseTheirOwnPagesAndKeyboardContracts() throws {
+        let first = try #require(DroidDialog.parse(ScreenFixture.screen("droid-ask")).dialog)
+        let second = try #require(DroidDialog.parse(ScreenFixture.screen("droid-ask-next")).dialog)
+        #expect(first.fingerprint != second.fingerprint)
+        #expect(first.body.count == 2)
+        #expect(first.options.last?.role == .otherText)
+        #expect(try DroidDialog.plan(.choose(ordinal: 2), first, callID: "ask").keys == ["2"])
+        let spec = try #require(DroidDialog.parse(ScreenFixture.screen("droid-spec")).dialog)
+        #expect(spec.kind == .droidSpec)
+        #expect(spec.options.count == 5)
+        #expect(try DroidDialog.plan(.choose(ordinal: 3), spec, callID: "plan").keys == ["3"])
+    }
+
+    @Test func lateTaskResultsMergeByIdentityWithoutOpeningUserTurns() throws {
+        let data = Data(try ChatFixture.text("droid/background.jsonl").utf8)
+        let lines = JSONLLineFramer.lines(in: data)
+        var reducer = DroidTranscriptReducer()
+        reducer.append(Array(lines.suffix(4)))
+        reducer.prepend(lines)
+        reducer.append(JSONLLineFramer.lines(in: data, startOffset: UInt64(data.count)))
+        let transcript = reducer.transcript(.init(activity: .idle))
+        #expect(transcript.recordedPrompts.count == 1)
+        #expect(transcript.turns.map(\.ending) == [.completed])
+        #expect(transcript.backgroundWork.count == 3)
+        let byID = Dictionary(uniqueKeysWithValues: transcript.backgroundWork.map { ($0.id, $0) })
+        #expect(byID["call_red"]?.state == .stopped)
+        #expect(byID["call_blue"]?.state == .completed)
+        #expect(byID["call_child"]?.reportedOutput == "DROID_CHILD_742")
+        #expect(byID["call_red"]?.reportedOutput?.contains("ISOLATED_BLUE") == false)
+    }
+
     @Test func sendsOnlyAtAnEmptyDroidPromptAndInterruptsOnlyAWorkingTurn() {
         func screen(_ field: String, above: String = "", footer: String = "MCP ✓ | IDE ◌") -> ANSIScreen {
             ANSIScreenDecoder.decode("\(above)\n╭──────────────────────────────────────╮\n│ > \(field) │\n╰──────────────────────────────────────╯\n\(footer)")
         }
         #expect(DroidInputBox.read(screen("")) == .empty(placeholder: nil))
-        for status in ["MCP ✓ | TMUX ⧉", "MCP ✓ | GHOSTTY ᗣ"] {
+        for status in ["MCP ✓ | TMUX ⧉", "MCP ✓ | GHOSTTY ᗣ", "? for help     TMUX ⧉",
+                       "? for help     GHOSTTY ᗣ", "? for help     IDE ◌", "[⏱ 2s] ? for help     TMUX ⧉"] {
             #expect(DroidInputBox.read(screen("", footer: status)) == .empty(placeholder: nil))
         }
         #expect(DroidInputBox.read(screen("draft")) == .text("draft"))
@@ -103,5 +161,32 @@ struct DroidChatTests {
         #expect(DroidInputBox.read(busy) == .disabled(DroidInputBox.working))
         #expect(DroidInputBox.stop(.init(screen: busy, activity: .working)) == .press)
         #expect(DroidInputBox.stop(.init(screen: screen(""), activity: .working)) != .press)
+    }
+
+    @Test func terminalPagesKeepSendAndStopAwayFromSelections() throws {
+        for page in ["bash-mode", "model-selector", "skills", "mission-control", "btw", "slash-menu", "linux-login", "mcp-approval"] {
+            let screen = try ScreenFixture.screen("droid-" + page)
+            #expect(!DroidInputBox.read(screen).isSendable && !DroidInputBox.read(screen).allowsSendAnyway, "Page: \(page)")
+            #expect(DroidInputBox.stop(.init(screen: screen, activity: .working)) != .press, "Page: \(page)")
+        }
+        let single = try #require(DroidDialog.parse(ScreenFixture.screen("droid-single-ask")).dialog)
+        #expect(single.subject.question == "Which marker?")
+        #expect(single.options.map(\.label) == ["Scarlet", "Azure", "Or type your own answer..."])
+    }
+
+    @MainActor @Test func aLostHerdrPromptReceiptDoesNotReplayTheDraft() async throws {
+        let composer = AgentComposerStore(target: "fixture") { _ in throw TransportError.cancelled }
+        composer.bindDroidDraft(to: session)
+        let screen = try ScreenFixture.screen("droid-01-idle")
+        let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
+            activity: { .idle }, readScreen: { screen })
+        composer.replaceDraft(with: "Do not replay")
+        #expect(await composer.send(policy: policy) == .outcomeUnknown)
+        let message = try #require(composer.messages.first)
+        #expect(message.text == "Do not replay" && message.state == .outcomeUnknown)
+        composer.isConnectionAvailable = false
+        composer.isConnectionAvailable = true
+        #expect(await composer.retry(message.id, policy: policy) == .ignored)
+        #expect(composer.messages.count == 1)
     }
 }
