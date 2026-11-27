@@ -3536,6 +3536,18 @@ final class ConsoleStore {
             })
     }
 
+    func configureDroidChatHook(_ action: DroidChatHook.Action, on hostID: Host.ID, keepingTo pin: TerminalCorePin?) async throws {
+        guard capabilities(for: hostID).offersChat(for: .droid), !hasLeftCore(pin, on: hostID) else {
+            throw leftCoreError(on: hostID)
+        }
+        if let rex = projections[hostID] as? RexConsoleProjection {
+            return try await rex.configureDroidChatHook(action, keepingTo: pin)
+        }
+        let services = try await harnessEditServices(on: hostID)
+        guard !hasLeftCore(pin, on: hostID) else { throw leftCoreError(on: hostID) }
+        _ = try await services.prepareDroidChatHook(action)
+    }
+
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {
         try await projection(for: hostID).withHostServices { $0 }
     }

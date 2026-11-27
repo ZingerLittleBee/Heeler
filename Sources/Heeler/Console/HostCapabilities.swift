@@ -148,7 +148,8 @@ extension HostCapabilities {
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
-                case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
+                case HerdrCoreLocator.linuxKernel: Self.rexChatPrograms.subtracting([.droid])
+                case HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
                 case HerdrCoreLocator.windowsKernel: Self.rexWindowsChatPrograms
                 default: nil
                 }
@@ -253,7 +254,7 @@ extension HostCapabilities {
     /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
     /// bound from its presence lock, sent from Chat and answered its trust prompt,
     /// permissions and questions from cards, and the colored one followed `/clear`.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
 
     /// The programs a Rex Host's Chat opens for (ADRs 0034 and 0056,
     /// rex-compatibility.md): Claude Code and Codex, each bound from its own process
@@ -261,7 +262,7 @@ extension HostCapabilities {
     /// extension, which Chat offers to add where the Agent's extension folder lacks
     /// it. Rex 0.1.0-preview.14 on macOS confirmed nothing for Grok Build or agy, and
     /// OpenCode binds only with Heeler's plugin, so none of those is offered.
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
@@ -275,7 +276,7 @@ extension HostCapabilities {
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
     /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.droid, .amp])
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.amp])
 }
 
 extension Host {

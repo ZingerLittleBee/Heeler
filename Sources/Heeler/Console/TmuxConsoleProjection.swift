@@ -1120,6 +1120,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// way. A root Heeler can't read with certainty gets them too, since one
     /// handler in two settings files runs once.
     private func hookSettings(for request: AgentLaunchRequest) async -> String? {
+        if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: request.arguments, kernel: kernel) {
+            return try? await session.withTransport { try await $0.hostServices.prepareDroidChatHook(.launch) }
+        }
         guard request.kind == SupportedAgentKind.claude.rawValue,
             let locations = try? await placeClaudeCodeHooks()
         else { return nil }

@@ -330,7 +330,7 @@ enum TmuxLaunch {
             return (argv, request.environment)
         }
         var arguments = request.arguments
-        if kind == .claude, let hookSettings { arguments = ["--settings", hookSettings] + arguments }
+        if kind == .claude || kind == .droid, let hookSettings { arguments = ["--settings", hookSettings] + arguments }
         let start = HerdrCoreLaunch.agentStart(
             kind: kind, arguments: arguments, environment: request.environment,
             openCodeVersion: server.openCodeVersion)

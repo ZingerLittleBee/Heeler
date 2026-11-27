@@ -229,6 +229,7 @@
 		2B08FE9D8EA1192EFCE69A80 /* DiffLineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E1A61E71692A04A0B75F4FB /* DiffLineViews.swift */; };
 		2B0A3695E7198E7E0AC017D8 /* HerdrCoreLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAB9931A7E4F047FC4A2C63 /* HerdrCoreLaunchTests.swift */; };
 		2B6AC2CCE69832D077D7CBB7 /* VolcengineSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D91B95AA9BCAC00CB50D9A /* VolcengineSpeech.swift */; };
+		2B8502107EDA1B535AEA667F /* DroidChatHook.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51A8113DC8DA8920B9588BC /* DroidChatHook.swift */; };
 		2BB95237CF7BF07AA2E79D22 /* PiInputBoxDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A4C115B72A618407CA68A2 /* PiInputBoxDetector.swift */; };
 		2C352A2CFB6F73CBA8E6C4F2 /* SettingsLocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6396B0C21407D52FE3BF5B /* SettingsLocalizationTests.swift */; };
 		2CCF49CE1A3D34AEC4D53469 /* LiveInAnotherWindowPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE495B3E9477AF03F551A350 /* LiveInAnotherWindowPresentation.swift */; };
@@ -551,6 +552,7 @@
 		67785474110E0301F5F2DF55 /* GrokBuildProgramStatusEditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 959DEF268883C29917E24AA6 /* GrokBuildProgramStatusEditTests.swift */; };
 		679567AC2DC9AB289ECC94C2 /* ClaudeTextClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8B84917BD7C10317B2E308 /* ClaudeTextClassifierTests.swift */; };
 		67D10ACCFB418C6351F34010 /* AgentRowLayoutResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EE4454BBBF8D354C1360DF /* AgentRowLayoutResolver.swift */; };
+		67E7C31CC045EBB4B97207A8 /* DroidHookSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A397185BDB5F9185419611 /* DroidHookSheet.swift */; };
 		67EA418D152219426F0DCD7A /* ChangesManualSleeper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2594CA106FA6BF61036A50CF /* ChangesManualSleeper.swift */; };
 		682303CF3F95C6A03B86FDF1 /* VoiceInputEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3A1778876395662E0E22EF /* VoiceInputEndpoint.swift */; };
 		6823B01E86A657A7E8EDD726 /* DemoChatSampleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB45FDC4521D47E5B758B68 /* DemoChatSampleTests.swift */; };
@@ -1148,6 +1150,7 @@
 		D91F600F4309A79D102BC4F6 /* HostHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5A5FB02303833EDA1ABFEA /* HostHelper.swift */; };
 		D930DD1F87113E5B2FB0224B /* RexTerminalStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44F865C890D7FA5EDB929036 /* RexTerminalStreamTests.swift */; };
 		D97CE6937DCF527A6538F015 /* GitProbe+Status.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF04F39D24A14981DA0D24B /* GitProbe+Status.swift */; };
+		D9D685DAA103B942F0A5F0D0 /* DroidBackendChatLiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C739DB030959284BF560FC6 /* DroidBackendChatLiveTests.swift */; };
 		D9F6280DFE823FA26E3FA882 /* ChatTimelineProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0AEBCC3240F9CB7D6342AB /* ChatTimelineProjectionTests.swift */; };
 		DA023DA7145F849F6FFF0415 /* HostMonogram.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64CC9A8D3101E26F11F60C2 /* HostMonogram.swift */; };
 		DA0C29B6D3483150987A2BBC /* HangulInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F58F5D2E46C04C137D093F /* HangulInputTests.swift */; };
@@ -1232,6 +1235,7 @@
 		E6D3DCE16CD5B192FD1B9E07 /* SkillsPaneStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9578B0F124B9B77740E8E38F /* SkillsPaneStoreTests.swift */; };
 		E6F8545440DADAAE3BA7C84F /* GitProbeLineCountsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8068A3FE72651D04E13E48A /* GitProbeLineCountsTests.swift */; };
 		E70364D1965B611EB71E6A06 /* TransportErrorPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C74CE585C09A319294FB635B /* TransportErrorPresentationTests.swift */; };
+		E7302EA46A866180EFBF1938 /* droid in Resources */ = {isa = PBXBuildFile; fileRef = 098C31232D2C36F910033723 /* droid */; };
 		E79525882B74F9F84D7478E1 /* GrokBuildProgramStatusEdit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4BDDE3E35D5F52232EB9E23 /* GrokBuildProgramStatusEdit.swift */; };
 		E7A17EE89EFD53E43D8772EF /* HostHelperInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E259928779DCA9972AFB6CC /* HostHelperInstaller.swift */; };
 		E7C47AA513657470FF07044A /* HostUpdatesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 704821F75453C84A6A943354 /* HostUpdatesStore.swift */; };
@@ -1465,6 +1469,7 @@
 		0882D4EC9985979DA989F01B /* LicenseNoticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseNoticeTests.swift; sourceTree = "<group>"; };
 		08B2655F8FDE37EAC2615457 /* AgentRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRouteTests.swift; sourceTree = "<group>"; };
 		08F1AEF22557C71005C85CF1 /* FileChatTranscriptCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileChatTranscriptCache.swift; sourceTree = "<group>"; };
+		098C31232D2C36F910033723 /* droid */ = {isa = PBXFileReference; lastKnownFileType = folder; name = droid; path = integrations/droid; sourceTree = SOURCE_ROOT; };
 		09C8B33506454D0170CEEC11 /* PiTranscriptLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiTranscriptLocator.swift; sourceTree = "<group>"; };
 		09C9FB49251E6D882F895843 /* RexProgramStatusLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RexProgramStatusLiveTests.swift; sourceTree = "<group>"; };
 		0A319930B80D42FB33DC8E42 /* AgentNotificationBannerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentNotificationBannerStoreTests.swift; sourceTree = "<group>"; };
@@ -1481,6 +1486,7 @@
 		0BEA52CA148F77EBDC7BA41F /* AgentTitleRenameStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTitleRenameStore.swift; sourceTree = "<group>"; };
 		0C0F2563FB6362B6322DFEF3 /* AgentUsageScopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageScopeTests.swift; sourceTree = "<group>"; };
 		0C335816709B13280089FD2C /* ChatConversationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConversationEngine.swift; sourceTree = "<group>"; };
+		0C739DB030959284BF560FC6 /* DroidBackendChatLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidBackendChatLiveTests.swift; sourceTree = "<group>"; };
 		0C833B5BA50276247A54258B /* FilePreparerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparerTests.swift; sourceTree = "<group>"; };
 		0CBB19433AC9C494DFDC36FE /* AgentDirectInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDirectInputTests.swift; sourceTree = "<group>"; };
 		0CCDACE4C07BA8A814AA6829 /* NotificationSessionVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSessionVectorTests.swift; sourceTree = "<group>"; };
@@ -1511,6 +1517,7 @@
 		113164E72CAE29FC58226FB5 /* TmuxTurnState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxTurnState.swift; sourceTree = "<group>"; };
 		1142E803F7CA971D3CCDF2EB /* LiveActivityPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityPreferences.swift; sourceTree = "<group>"; };
 		1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalZoomSettingsTests.swift; sourceTree = "<group>"; };
+		11A397185BDB5F9185419611 /* DroidHookSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidHookSheet.swift; sourceTree = "<group>"; };
 		11E0EA7996F618E85BF3B988 /* HeelerPluginInstallation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeelerPluginInstallation.swift; sourceTree = "<group>"; };
 		11E3F17F4D822B687D57A949 /* pairing-code-v3.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pairing-code-v3.json"; sourceTree = "<group>"; };
 		11F7EC7F75CCE0247D02EC9A /* HerdrCoreDoneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrCoreDoneTests.swift; sourceTree = "<group>"; };
@@ -2619,6 +2626,7 @@
 		E4B8CA038484ECB64A060AC6 /* ErrorInk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorInk.swift; sourceTree = "<group>"; };
 		E4EEFA2D98EF9924DD8A6719 /* LocalNetworkDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkDiscoveryTests.swift; sourceTree = "<group>"; };
 		E4F4EF125BAB77F0DE121AAB /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		E51A8113DC8DA8920B9588BC /* DroidChatHook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DroidChatHook.swift; sourceTree = "<group>"; };
 		E57A7C1586A3F12220D14339 /* TmuxPaneAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxPaneAttach.swift; sourceTree = "<group>"; };
 		E698FFDD14AD5A9DB4059B7D /* AgentUsageProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUsageProbe.swift; sourceTree = "<group>"; };
 		E6B66A83331895E8D6B5E85E /* TmuxAttachE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxAttachE2ETests.swift; sourceTree = "<group>"; };
@@ -3379,6 +3387,7 @@
 				E358F8FCF35FCD51358D1D06 /* AgyModelSwitchLiveTests.swift */,
 				13956EB331F485C9DB6FA056 /* AgySwarmLiveTests.swift */,
 				A7B0D16DB23D7A4635FFAA87 /* AmpChatLiveTests.swift */,
+				0C739DB030959284BF560FC6 /* DroidBackendChatLiveTests.swift */,
 				1BBCAD0556F138AE6CC7236D /* DroidChatLiveTests.swift */,
 				2F723208857FB73CC20C9B46 /* RexChatTypingLiveTests.swift */,
 				31EF2244FB7D39DA6BF6CFBC /* RexControlWebSocketLiveTests.swift */,
@@ -3675,6 +3684,7 @@
 			isa = PBXGroup;
 			children = (
 				28784BD392C70E331E4B390A /* amp */,
+				098C31232D2C36F910033723 /* droid */,
 			);
 			path = integrations;
 			sourceTree = "<group>";
@@ -3993,6 +4003,8 @@
 		72B1FC2BD2ED0178B234D54B /* Droid */ = {
 			isa = PBXGroup;
 			children = (
+				E51A8113DC8DA8920B9588BC /* DroidChatHook.swift */,
+				11A397185BDB5F9185419611 /* DroidHookSheet.swift */,
 				8399E09EC4328F711D84E66B /* DroidInputBox.swift */,
 				0EE29185A53043BADE8C9F32 /* DroidTranscriptLocator.swift */,
 				7DAF3609AFB01D26FCDDB47A /* DroidTranscriptReducer.swift */,
@@ -4884,6 +4896,7 @@
 				CAEA10BC9AF3498E5FD73478 /* PrivacyInfo.xcprivacy in Resources */,
 				4207F101D4E271C33E3DD340 /* amp in Resources */,
 				C33954BAEF9FDC6D2CD8076D /* claude-code in Resources */,
+				E7302EA46A866180EFBF1938 /* droid in Resources */,
 				D3AA6DEBDCB6F49674926712 /* helper in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -4907,6 +4920,7 @@
 				AE316A55AC9A52A1D270128D /* AgyModelSwitchLiveTests.swift in Sources */,
 				E1FBAFA6A56BC3A9648FDCE3 /* AgySwarmLiveTests.swift in Sources */,
 				A1D7542246089979FA734D84 /* AmpChatLiveTests.swift in Sources */,
+				D9D685DAA103B942F0A5F0D0 /* DroidBackendChatLiveTests.swift in Sources */,
 				070C3935BD5C41C1EAEA2B0C /* DroidChatLiveTests.swift in Sources */,
 				E1C9EEE1BB4270B6A4638E60 /* RealSSHFixture.swift in Sources */,
 				A53450D708FB706F6BF5DE55 /* RexChatTypingLiveTests.swift in Sources */,
@@ -5232,6 +5246,8 @@
 				2B08FE9D8EA1192EFCE69A80 /* DiffLineViews.swift in Sources */,
 				C200B60773A2E4E079E08ECF /* DiffPalette.swift in Sources */,
 				C18AC8299E6F26EE9E638A27 /* DiffWordChanges.swift in Sources */,
+				2B8502107EDA1B535AEA667F /* DroidChatHook.swift in Sources */,
+				67E7C31CC045EBB4B97207A8 /* DroidHookSheet.swift in Sources */,
 				F4541AA9E0492901BAA466BA /* DroidInputBox.swift in Sources */,
 				E7CB8969C1DB20F5AE251ABB /* DroidTranscriptLocator.swift in Sources */,
 				2ABAAFCCAF8BCC3165BC1C7E /* DroidTranscriptReducer.swift in Sources */,

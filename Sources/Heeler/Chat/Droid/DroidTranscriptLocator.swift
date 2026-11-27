@@ -16,9 +16,30 @@ struct DroidTranscriptLocator {
         return ConversationReference.canonicalUUID(header.id)
     }
 
-    func locate(sessionID: String, directories: [String]) async throws -> String {
+    static func reportedFolder(file: String, sessionID: String) -> String? {
+        let parts = file.split(separator: "/")
+        guard RemoteFilePath.isAcceptable(file), parts.count >= 4, parts[parts.count - 3] == "sessions",
+              parts.last == Substring(sessionID + ".jsonl"), !file.hasSuffix("/") else { return nil }
+        return String(file.dropLast(sessionID.utf8.count + ".jsonl".count + 1))
+    }
+
+    func locate(sessionID: String, directories: [String], reportedFolder: String? = nil) async throws -> String {
         guard let id = ConversationReference.canonicalUUID(sessionID) else {
             throw ChatSourceUnavailable(reason: .unidentifiedSession(.droid))
+        }
+        if let reportedFolder {
+            let path = RemoteFilePath.join(reportedFolder, id + ".jsonl")
+            guard Self.reportedFolder(file: path, sessionID: id) == reportedFolder else {
+                throw ChatSourceUnavailable(reason: .mismatched)
+            }
+            guard let status = try await files.status(path), status.kind == .regular else {
+                throw ChatSourceUnavailable(reason: .notFound(searchedAll: true))
+            }
+            let line = try await files.firstLine(of: path, initialBytes: 1024, limit: 64 << 10)
+            guard case .line(let header)? = line, Self.sessionID(inHead: header) == id else {
+                throw ChatSourceUnavailable(reason: .mismatched)
+            }
+            return path
         }
         let home = try await files.home()
         let roots = try await files.configRoots(for: .droid, defaultRoot: RemoteFilePath.join(home, ".factory"))

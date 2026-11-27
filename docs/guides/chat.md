@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code, Codex, Pi, and Oh My Pi only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). On a Mac or Linux Host running the Herdr TUI, Chat also supports Droid.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid Chat works with all four backends on macOS and with Herdr TUI on Linux.
 
 ## Set up the Host
 
@@ -66,6 +66,10 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
 - **Images and files.** On Herdr TUI, herdr-core, tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+
+### Droid
+
+On macOS, **New Agent** on herdr-core and tmux supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid, including one in Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses herdr’s own Droid integration.
 
 With Droid, finish any startup prompt in the terminal. Chat can then read earlier messages, show tool results, and send a message when Droid's input box is empty. Wait for a running turn to finish or tap **Stop**. Use the terminal for slash commands and approval dialogs.
 

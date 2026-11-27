@@ -3432,6 +3432,20 @@ actor HeelerSSHTransport: Transport {
         return try JSONDecoder().decode(AmpChatReply.self, from: data)
     }
 
+    func prepareDroidChatHook(_ action: DroidChatHook.Action) async throws -> String {
+        let timeout = requestTimeout
+        return try await DroidChatHook.place(on: self, action: action) { folder in
+            try await self.withHostFileClient(path: folder) { client in
+                if try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory { return }
+                do {
+                    try await client.createDirectory(at: folder, permissions: 0o700, timeout: timeout)
+                } catch {
+                    guard try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory else { throw error }
+                }
+            }
+        }
+    }
+
     func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
         let contents = String(decoding: try AmpPluginLocation.bundledContents(), as: UTF8.self)
         let result = try await runBoundedScript(

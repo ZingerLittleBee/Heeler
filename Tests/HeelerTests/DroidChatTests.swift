@@ -66,11 +66,36 @@ struct DroidChatTests {
         #expect(transcript.turns.map(\.ending) == [.completed])
     }
 
+    @Test func hookPlacementPreservesCustomLaunchSettingsAndExistingUserHooks() async throws {
+        let config = "/home/dev/.factory/settings.json"
+        let original = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"user-stop"}]}]},"other":true}"#.utf8)
+        let host = InMemoryHostFiles(files: [config: original])
+        func place(_ action: DroidChatHook.Action) async throws -> String {
+            try await DroidChatHook.place(on: host, action: action) { try await host.createHostFolder(path: $0) }
+        }
+        let launch = try await place(.launch)
+        #expect(await host.files[config] == original)
+        #expect(await host.files[launch] != nil)
+        for arguments in [["--settings", "/custom.json"], ["--settings=/custom.json"]] {
+            #expect(!DroidChatHook.offersLaunchSettings(kind: "droid", arguments: arguments, kernel: HerdrCoreLocator.macOSKernel))
+        }
+        _ = try await place(.register)
+        let added = try #require(await host.files[config])
+        #expect(added != original)
+        _ = try await place(.register)
+        #expect(await host.files[config] == added)
+        _ = try await place(.removeRegistration)
+        #expect(await host.files[config] == original)
+    }
+
     @Test func sendsOnlyAtAnEmptyDroidPromptAndInterruptsOnlyAWorkingTurn() {
         func screen(_ field: String, above: String = "", footer: String = "MCP ✓ | IDE ◌") -> ANSIScreen {
             ANSIScreenDecoder.decode("\(above)\n╭──────────────────────────────────────╮\n│ > \(field) │\n╰──────────────────────────────────────╯\n\(footer)")
         }
         #expect(DroidInputBox.read(screen("")) == .empty(placeholder: nil))
+        for status in ["MCP ✓ | TMUX ⧉", "MCP ✓ | GHOSTTY ᗣ"] {
+            #expect(DroidInputBox.read(screen("", footer: status)) == .empty(placeholder: nil))
+        }
         #expect(DroidInputBox.read(screen("draft")) == .text("draft"))
         #expect(!DroidInputBox.read(screen("", footer: "> 1. Trust this folder\nEnter to confirm")).allowsSendAnyway)
         #expect(!DroidInputBox.read(ANSIScreenDecoder.decode("Trust this folder?\n> 1. Trust this folder")).isSendable)

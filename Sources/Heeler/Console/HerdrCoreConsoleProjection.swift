@@ -941,10 +941,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
+        var arguments = request.arguments
+        if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: arguments, kernel: kernel),
+           let settings = try? await transport.hostServices.prepareDroidChatHook(.launch) {
+            arguments = ["--settings", settings] + arguments
+        }
         let record = try fold(
             runReply: try await transport.runTerminal(
                 params: HerdrCoreLaunch.agentRequest(
-                    kind: kind, name: request.name, arguments: request.arguments,
+                    kind: kind, name: request.name, arguments: arguments,
                     environment: request.environment, shell: shell,
                     openCodeVersion: openCodeVersion, placement: placement)))
         return agent(at: record, kind: kind.rawValue)

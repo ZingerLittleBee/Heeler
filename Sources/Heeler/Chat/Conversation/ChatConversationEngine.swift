@@ -79,6 +79,7 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// pick can stand in for it (ADR 0034).
     var leavesItToAPick: Bool {
         switch self {
+        case .cannotTellSession(.droid): false
         case .cannotTellSession, .extensionNotLoaded: true
         case .multipleSessions(_, let offersPick): offersPick
         default: false
@@ -1583,7 +1584,7 @@ actor ChatConversationEngine {
             }
         case .droid:
             return .found(try await DroidTranscriptLocator(files: files).locate(
-                sessionID: reference.sessionID, directories: directories))
+                sessionID: reference.sessionID, directories: directories, reportedFolder: transcriptRoot))
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
                 sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)

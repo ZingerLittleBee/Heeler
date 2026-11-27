@@ -71,6 +71,7 @@ struct AgentChatSurfaceView: View {
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var extensionFlow: HeelersExtensionFlow?
+    @State private var showsDroidHook = false
     @State private var ampInstall: AmpPluginInstallSheet.Request?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
@@ -799,6 +800,7 @@ struct AgentChatSurfaceView: View {
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
                 addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
+                installDroidHook: { showsDroidHook = true },
                 installAmp: {
                     if let place = chat?.ampConnection?.location {
                         ampInstall = .init(place: place, updating: reason == .amp(.update))
@@ -806,6 +808,11 @@ struct AgentChatSurfaceView: View {
                 })
             .sheet(item: $extensionFlow) { flow in
                 HeelersExtensionSheet(flow: flow)
+            }
+            .sheet(isPresented: $showsDroidHook) {
+                DroidHookSheet(host: agent.hostName) { action in
+                    try await console.configureDroidChatHook(action, on: agent.hostID, keepingTo: session.corePin)
+                }
             }
             .sheet(item: $ampInstall) { request in
                 if let connection = chat?.ampConnection {

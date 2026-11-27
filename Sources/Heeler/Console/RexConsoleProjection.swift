@@ -938,6 +938,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// (`RexHostExtensionPlacing`), for the Agent on the server `corePin`
     /// keeps to, then has its Chat look again. Another server throws
     /// `TransportError.rexServerGone` before anything is written.
+    func configureDroidChatHook(_ action: DroidChatHook.Action, keepingTo pin: TerminalCorePin?) async throws {
+        let (placing, core) = try await session.withConnection { ($0.transport.extensionPlacing, $0.server.coreID) }
+        if let pin { guard admits(pin), pin.admits(core) else { throw TransportError.rexServerGone } }
+        _ = try await placing.prepareDroidChatHook(action)
+    }
+
     func placeChatExtension(_ contents: Data, inFolder folder: String, keepingTo pin: TerminalCorePin?) async throws {
         if let pin { guard admits(pin) else { throw TransportError.rexServerGone } }
         let (placing, core) = try await session.withConnection {

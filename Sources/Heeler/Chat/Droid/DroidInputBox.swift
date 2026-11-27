@@ -22,7 +22,7 @@ enum DroidInputBox {
         // Menus can leave the input frame on screen and replace the status footer.
         let footer = rows[(bottom + 1)...].filter { !$0.isEmpty }
         guard footer.count == 1, let status = footer.first,
-              status.contains("MCP "), status.contains("IDE ") else { return .noComposer(openComposer) }
+              status.contains("MCP "), status.contains("| IDE ") || status.hasSuffix("| TMUX ⧉") || status.hasSuffix("| GHOSTTY ᗣ") else { return .noComposer(openComposer) }
         // The steering hint and the stop instruction appear together during a turn.
         if draft.first?.hasPrefix("Enter to steer") == true,
            rows[max(0, top - 6)..<top].contains(where: { $0.hasSuffix("(Press ESC to stop)") }) {

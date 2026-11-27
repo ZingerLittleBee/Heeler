@@ -37,7 +37,12 @@ struct RexConsoleTests {
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
-            isPOSIX ? [.claude, .codex, .pi, .omp] : kernel == HerdrCoreLocator.windowsKernel ? [.claude] : []
+            switch kernel {
+            case HerdrCoreLocator.macOSKernel: [.claude, .codex, .pi, .omp, .droid]
+            case HerdrCoreLocator.linuxKernel: [.claude, .codex, .pi, .omp]
+            case HerdrCoreLocator.windowsKernel: [.claude]
+            default: []
+            }
         let opensChat = !programs.isEmpty
         for isLocatingCore in [false, true] {
             let offers = HostCapabilities(

@@ -140,7 +140,7 @@ protocol RexHostStaging: Sendable {
 /// one folder when the Agent's directory has none, then writes the file as a
 /// 0600 temporary file it renames into place. Nothing else is reachable from
 /// it: no other file name, no exec, and no read of the Host's files.
-protocol RexHostExtensionPlacing: Sendable {
+protocol RexHostExtensionPlacing: DroidChatHookHost {
     /// `folder` is an `extensions` folder by its absolute path; any other is
     /// refused before anything is written.
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
@@ -475,6 +475,10 @@ private struct RexStagingOnly: RexHostStaging {
 /// A Rex Host connection's placing of Heeler's extension, and nothing else of it.
 private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
     let connection: any RexHostExtensionPlacing
+
+    func prepareDroidChatHook(_ action: DroidChatHook.Action) async throws -> String {
+        try await connection.prepareDroidChatHook(action)
+    }
 
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
         try await connection.placeHeelersExtension(contents, inFolder: folder)
