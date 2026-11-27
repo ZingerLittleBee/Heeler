@@ -367,7 +367,7 @@ struct ChatTimelineGeometryTests {
         let codeHeight = codeRow.extent?.height(textWidth: 358, metrics: .standard) ?? 0
         #expect(codeHeight >= 30 * 22)
 
-        // Image, subagent, and inline file-change tools carry non-nil extents instead of the 28pt tool seed.
+        // Image and inline file-change tools carry non-nil extents instead of the 28pt tool seed.
         let imageTool = ChatRow(
             id: .entry(ChatEntryID("img")),
             content: .tool(
@@ -375,15 +375,6 @@ struct ChatTimelineGeometryTests {
                     kind: .fileRead, name: "Read", title: "shot.png", status: .succeeded, imagePath: "/tmp/shot.png")),
             revision: 1, topSpacing: 8)
         #expect((imageTool.extent?.height(textWidth: 358, metrics: .standard) ?? 0) > 190)
-
-        let subagentTool = ChatRow(
-            id: .entry(ChatEntryID("sub")),
-            content: .tool(
-                ChatToolActivity(
-                    kind: .agent, name: "SubAgent", title: "worker", status: .succeeded,
-                    subagentActivity: ChatSubagentActivity(agentPath: "/a/worker", events: ["started"]))),
-            revision: 1, topSpacing: 8)
-        #expect((subagentTool.extent?.height(textWidth: 358, metrics: .standard) ?? 0) >= 68)
     }
 
     @Test("Reading anchor and controller candidates stay unified on the first unclipped row across passes")

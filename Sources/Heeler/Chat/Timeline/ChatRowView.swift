@@ -622,10 +622,9 @@ struct ChatSubagentPresentation {
 }
 
 private struct ChatSubagentActivityRow: View {
-    @Environment(\.themeColors) private var themeColors
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .title3) private var iconWidth = 24
-    @ScaledMetric(relativeTo: .subheadline) private var titleCapHeight = UIFont.systemFont(ofSize: 15).capHeight
+    @ScaledMetric(relativeTo: .caption) private var historyIconWidth: CGFloat = 18
     let activity: ChatSubagentActivity
     let isExpanded: Bool
     let toggle: () -> Void
@@ -637,28 +636,23 @@ private struct ChatSubagentActivityRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             Button(action: toggle) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        agentIcon.frame(width: displayedIconWidth, height: displayedIconWidth)
-                            .alignmentGuide(.firstTextBaseline) { [titleCapHeight] dimensions in
-                                dimensions[VerticalAlignment.center] + titleCapHeight / 2
-                            }
-                        Text(verbatim: presentation.name)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(isExpanded ? nil : 2)
-                        Spacer(minLength: 4)
-                        if hasExpandableContent {
-                            disclosureIcon
-                        }
+                HStack(alignment: .firstTextBaseline, spacing: ChatTimelineMetrics.inlineIconSpacing) {
+                    ChatToolKindIcon(kind: .agent)
+                    Text(verbatim: [presentation.name, presentation.status, presentation.eventCount]
+                        .joined(separator: " · "))
+                        .lineLimit(isExpanded || dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    if hasExpandableContent {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: isExpanded)
                     }
-                    Text("\(presentation.status) · \(presentation.eventCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.leading, detailIndent)
+                    Spacer(minLength: 0)
                 }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
             }
@@ -686,42 +680,21 @@ private struct ChatSubagentActivityRow: View {
                     }
                     ForEach(presentation.history) { @Sendable event in
                         MainActorContent {
-                            Label(event.label, systemImage: ChatSubagentPresentation.symbol(for: event.kind))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Label {
+                                Text(event.label)
+                            } icon: {
+                                Image(systemName: ChatSubagentPresentation.symbol(for: event.kind))
+                                    .frame(width: historyIconWidth)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
-                .padding(.leading, detailIndent)
+                .padding(.leading, ChatTimelineMetrics.inlineDetailLeadingIndent)
             }
         }
-        .padding(12)
-        .background(themeColors.raised, in: .rect(cornerRadius: 12))
     }
-
-    private var agentIcon: some View {
-        ChatSubagentPresentation.icon
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-    }
-
-    private var displayedIconWidth: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 20 : iconWidth
-    }
-
-    private var detailIndent: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 0 : displayedIconWidth + 10
-    }
-
-    private var disclosureIcon: some View {
-        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
-    }
-
 }
 
 private struct ChatToolRow: View {

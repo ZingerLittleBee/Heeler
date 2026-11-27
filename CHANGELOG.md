@@ -24,6 +24,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Show a Codex subagent in Chat as one line like the Agent's other steps, with its name, latest event and event count, where it was a card. Tap the line to see its path and events. Its robot icon, also shown on other Agents' subagent calls, is now as large as the icons beside it. (PR #869)
 - Speed up the Agents list, switcher, and Chat while scrolling and over high-latency connections: hold scrolled Agent row and Workspace card order steady while updating live statuses in place until you return to Row 1, pre-position newly opened Chats directly to the latest messages instead of sizing top-of-history rows first, hold timeline updates during active drags and momentum scrolling while stabilizing mid-history anchors, precompute Chat row extents, image links, and settled turn projections off the main thread, offload Working arcs to Core Animation, and hold background Chat prefetches and automatic row Changes reads while a foreground Chat loads. (PR #861)
 - Leave out a program from the Usage Limits widget if its Usage Limits are off or if it isn't installed or can't run, unless you choose that program or every program would be left out. (PR #859)
 - Speak Rex API revision 19, the newest Rex 0.1.0-preview.23 offers, and keep working with Rex servers that offer revisions 12 to 18. Heeler worked with revision 12 only. Checked against Rex 0.1.0-preview.23 on macOS and Windows. (PR #846)
