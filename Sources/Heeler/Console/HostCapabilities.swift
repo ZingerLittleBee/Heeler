@@ -163,12 +163,13 @@ extension HostCapabilities {
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
-            if posix { readOnlyChatPrograms = [.opencode] }
+            if posix {
+                readOnlyChatPrograms = [.opencode, .amp]
+                offersAmpPlugin = true
+            }
             if coreKernel == HerdrCoreLocator.linuxKernel {
                 self.chatPrograms?.insert(.agy)
                 requiresBoundAntigravity = true
-                readOnlyChatPrograms.insert(.amp)
-                offersAmpPlugin = true
             }
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix

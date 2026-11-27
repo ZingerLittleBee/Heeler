@@ -1350,11 +1350,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
 }
 
 extension RexConsoleProjection: AmpChatProjection {
-    /// The control link identifies the foreground of this block. Linux supplies its
-    /// birth and configuration directory. Check the block again after the SSH read.
+    /// Rex identifies the foreground process. Recheck the block after reading
+    /// the process birth and configuration directory over SSH.
     func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation {
-        guard kernel == HerdrCoreLocator.linuxKernel, !isAwaitingSnapshot,
-              let address = RexPaneAddress(paneID: pane), let listed = listedDetails(at: address),
+        guard kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel,
+              !isAwaitingSnapshot, let address = RexPaneAddress(paneID: pane), let listed = listedDetails(at: address),
               let currentServer = server else { throw AmpChatProblem.unidentified }
         let before = try await detailsWithCurrentForeground(at: address, listed: listed, server: currentServer)
         guard RexAgentRule.agentKind(in: before) == ChatProgram.amp.rawValue, let pid = before.processID, pid > 0

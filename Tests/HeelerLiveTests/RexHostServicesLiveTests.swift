@@ -453,10 +453,10 @@ struct RexOpenCodeHistoryLiveTests {
     }
 }
 
-/// A real Linux Rex pair. The independent desktop operator reloads the named
+/// A real macOS or Linux Rex pair. The independent desktop operator reloads the named
 /// plugin or switches A only after the test reaches each corresponding step.
 @MainActor
-@Suite("Read-only Amp Chat on a Linux Rex Host", .serialized, .timeLimit(.minutes(5)))
+@Suite("Read-only Amp Chat on a POSIX Rex Host", .serialized, .timeLimit(.minutes(5)))
 struct RexAmpChatLiveTests {
     private struct Steps: Decodable {
         let firstThread: String
@@ -496,7 +496,7 @@ struct RexAmpChatLiveTests {
             }
             throw NSError(domain: "RexAmpChatLive", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
         }
-        try await wait("Linux did not list both Amp terminals") {
+        try await wait("Rex did not list both Amp terminals") {
             [pane, peer].allSatisfy { id in console.agents.contains { $0.agent.paneID == id && console.chatProgram(for: $0) == .amp } }
         }
         let agent = try #require(console.agents.first { $0.agent.paneID == pane })

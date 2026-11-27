@@ -23,7 +23,7 @@ struct AmpChatTests {
         #expect(AmpPluginLocation(pid: pid, facts: facts) == nil)
     }
 
-    @Test func linuxRexReadsAmpPagesAndRejectsPluginInput() async throws {
+    @Test func posixRexReadsAmpPagesAndRejectsPluginInput() async throws {
         struct RecordingHost: AmpChatHost {
             func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
                 .init(binding: nil, page: nil, sent: nil, error: request.op)
@@ -39,10 +39,12 @@ struct AmpChatTests {
                 _ = try await rex.exchangeAmpChat(.init(operation), record: record)
             }
         }
-        let linux = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel)
-        #expect(linux.offersAmpPlugin && linux.offersChat(for: .amp) && linux.readOnlyChatPrograms.contains(.amp))
         #expect(!HostCapabilities.rexChatPrograms.contains(.amp))
-        for kernel in [HerdrCoreLocator.macOSKernel, HerdrCoreLocator.windowsKernel] {
+        for kernel in [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel] {
+            let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+            #expect(host.offersAmpPlugin && host.offersChat(for: .amp) && host.readOnlyChatPrograms.contains(.amp))
+        }
+        for kernel in [nil, HerdrCoreLocator.windowsKernel] {
             let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
             #expect(!host.offersAmpPlugin && !host.offersChat(for: .amp))
         }
