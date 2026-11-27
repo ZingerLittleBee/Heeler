@@ -13,6 +13,9 @@ struct DroidDialogTarget: Equatable, Sendable {
     func shows(_ dialog: BlockedDialog) -> Bool {
         if dialog.kind == .droidWorkspaceTrust {
             guard let path = dialog.subject.workspacePath else { return false }
+            // /cd asks about a new destination while the current session and
+            // process still belong to the old directory.
+            if dialog.options.last?.role == .decline { return sessionID != nil }
             return path == directory || (["/tmp/", "/var/"].contains { directory.hasPrefix($0) } && path == "/private" + directory)
         }
         return sessionID != nil
@@ -22,6 +25,7 @@ struct DroidDialogTarget: Equatable, Sendable {
 /// Factory Droid 1.21.1. Only a complete, active footer can identify a page.
 enum DroidDialog {
     private static let trustFooter = "Enter to confirm · Esc to exit"
+    private static let changeDirectoryFooter = "Enter to confirm · Esc to cancel"
     private static let askFooter = "Tab/⇧Tab or ←/→ Questions • ↑/↓ Navigate • Space/Enter/1–9 Select • ESC stop agent"
     private static let singleAskFooter = "↑/↓ Navigate • Space/Enter/1–9 Select • ESC stop agent"
     private static let fieldFooter = "Tab/⇧Tab Questions • Enter Continue • ⇧Enter newline • ↑ back to options • ESC stop agent"
@@ -32,12 +36,11 @@ enum DroidDialog {
         guard let end = rows.lastIndex(where: { !$0.isBlank }) else { return .none }
         let footer = words(rows[end].trimmedText)
         let dialog: BlockedDialog?
-        if footer == trustFooter {
-            dialog = trust(rows, end)
+        if footer == trustFooter || footer == changeDirectoryFooter {
+            dialog = trust(rows, end, changesDirectory: footer == changeDirectoryFooter)
         } else if [askFooter, singleAskFooter, fieldFooter, reviewFooter].contains(footer) {
             dialog = question(rows, end, footer)
-        } else if footer.hasPrefix("↑↓ navigate Enter select Esc cancel"),
-            (footer.hasSuffix("Alt/Option+E to inspect approval details") || footer == "↑↓ navigate Enter select Esc cancel C…") {
+        } else if approvalFooter(footer) {
             dialog = approval(rows, end)
         } else if footer.contains("Tab reasoning") {
             dialog = spec(rows, end, footer)
@@ -54,6 +57,17 @@ enum DroidDialog {
 
     private static func words(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func approvalFooter(_ text: String) -> Bool {
+        let prefix = "↑↓ navigate Enter select Esc cancel "
+        guard text.hasPrefix(prefix) else { return false }
+        let detail = "Alt/Option+E to inspect approval details"
+        let footers = [prefix + detail, prefix + "Ctrl+O expand diff " + detail]
+        if text.hasSuffix("…"), text.count > prefix.count + 1 {
+            return footers.contains { $0.hasPrefix(text.dropLast()) }
+        }
+        return footers.contains(text)
     }
 
     private static func border(_ text: String, _ left: Character, _ right: Character) -> Bool {
@@ -74,9 +88,9 @@ enum DroidDialog {
         return (top + 1)..<last
     }
 
-    private static func trust(_ rows: [ScreenRow], _ end: Int) -> BlockedDialog? {
+    private static func trust(_ rows: [ScreenRow], _ end: Int, changesDirectory: Bool) -> BlockedDialog? {
         let choices = rows.indices[..<end].filter { !rows[$0].isBlank }.suffix(2)
-        let labels = ["1. Trust this folder", "2. Exit without trusting"]
+        let labels = ["1. Trust this folder", changesDirectory ? "2. Don't trust (cancel)" : "2. Exit without trusting"]
         guard let first = choices.first, choices.count == 2,
               let box = frame(rows, before: first) else { return nil }
         let lines = box.compactMap { inside(rows[$0]) }
@@ -97,7 +111,7 @@ enum DroidDialog {
             let focused = text.hasPrefix("> ")
             guard (focused ? String(text.dropFirst(2)) : text) == labels[offset] else { return nil }
             options.append(.init(ordinal: offset + 1, number: nil, label: String(labels[offset].dropFirst(3)),
-                                 role: offset == 0 ? .trust : .exitProgram, isFocused: focused))
+                                 role: offset == 0 ? .trust : (changesDirectory ? .decline : .exitProgram), isFocused: focused))
         }
         guard options.filter(\.isFocused).count == 1 else { return nil }
         return make(.droidWorkspaceTrust, "Trust this folder?", [path, explanation, warning], options,

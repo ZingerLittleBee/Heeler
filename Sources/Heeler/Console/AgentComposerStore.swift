@@ -153,7 +153,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         droidForeground = session
         guard let session, session != droidDraftOwner else { return }
         if let old = droidDraftOwner {
-            guard !imageAttachments.contains(where: { $0.phase.isPending }), staging?.canBegin != false else { return }
+            guard !imageAttachments.contains(where: { $0.phase.isPending }), queuedFileSelections.isEmpty,
+                  staging?.canBegin != false else { return }
             if !draft.isEmpty || !imageAttachments.isEmpty {
                 droidDrafts[old] = .init(text: draft, selection: draftSelection, attachments: imageAttachments)
             }
@@ -1267,6 +1268,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard let preview else { return }
         let url = preview.fileURL
         let stillReferencedInDraft = imageAttachments.contains { $0.preview?.fileURL == url }
+            || droidDrafts.values.contains { $0.attachments.contains { $0.preview?.fileURL == url } }
         let stillReferencedInMessages = messages.contains { message in
             message.stagedImages.contains { $0.preview?.fileURL == url }
         }

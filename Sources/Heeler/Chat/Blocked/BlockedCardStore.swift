@@ -442,7 +442,8 @@ final class BlockedCardStore {
     /// program reports a session, so an idle Agent without one is read for
     /// that screen alone (`observe`).
     private var readsIdleTrust: Bool {
-        [.codex, .agy, .droid].contains(program) && activity == .idle && awaitingSession
+        activity == .idle && (([.codex, .agy].contains(program) && awaitingSession)
+            || (program == .droid && pendingRequests.isEmpty))
     }
 
     /// herdr 0.9.5 reports a typed Antigravity CLI 1.5.3 neither idle nor

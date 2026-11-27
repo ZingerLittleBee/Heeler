@@ -608,7 +608,8 @@ final class AgentChatStore {
         thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: keptFiles))
         self.timing = timing
         self.now = now
-        let resolution = ConversationReference.resolve(agent.agentSession)
+        let resolution: ConversationReference.Resolution = program == .droid && source.sessionEvidence != nil
+            ? .noSession : ConversationReference.resolve(agent.agentSession)
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
@@ -1150,7 +1151,8 @@ final class AgentChatStore {
         // handed over again is no report: OpenCode changes its conversation
         // without a status change, so the Console's record can be older than
         // the answer herdr gave Chat (`checkStartScreen`).
-        let bindingReturned = isAwaitingSession && staleSession == nil && reported != .noSession
+        let checksDroidProcess = program == .droid && source.sessionEvidence != nil
+        let bindingReturned = !checksDroidProcess && isAwaitingSession && staleSession == nil && reported != .noSession
         let previous = ChatAgentActivity(agent.status)
         agent = next
         // A program started again in the pane changes its status or
@@ -1158,7 +1160,12 @@ final class AgentChatStore {
         if statusChanged || sessionChanged || identityChanged { needsLaunchCheck = true }
         if sessionChanged || identityChanged || bindingReturned {
             sessionRecordRevision += 1
-            adopt(reported, replacingAgent: identityChanged)
+            if checksDroidProcess {
+                if identityChanged { adopt(.noSession, replacingAgent: true) }
+                sessionEvidenceMayHaveChanged()
+            } else {
+                adopt(reported, replacingAgent: identityChanged)
+            }
             wake()
         }
         guard statusChanged else { return }
@@ -2345,7 +2352,7 @@ final class AgentChatStore {
         switch evidence {
         // The message starts the conversation, and the check its turn brings
         // binds it (ADR 0034).
-        case .unavailable(.noConversationYet) where shown == nil:
+        case .unavailable(.noConversationYet) where shown == nil && program != .droid:
             return nil
         case .unavailable(.noConversationYet):
             return String(

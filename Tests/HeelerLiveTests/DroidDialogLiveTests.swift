@@ -42,12 +42,19 @@ extension DroidChatLiveTests {
 
         func send(_ message: String) async throws {
             let deadline = ContinuousClock.now + .seconds(30)
+            var ready = false
             while ContinuousClock.now < deadline {
                 try await poll()
                 let screen = try await projection.readAgentScreen(fixture.pane)
-                if chat.agent.status != .working, chat.agent.status != .blocked, DroidInputBox.read(screen).isSendable { break }
+                if case .following = chat.conversation.phase, chat.agent.status != .working, chat.agent.status != .blocked,
+                   DroidInputBox.read(screen).isSendable, let id = chat.droidSessionID,
+                   try await projection.droidDialogTarget(paneID: fixture.pane)?.sessionID == id {
+                    ready = true
+                    break
+                }
                 try await Task.sleep(for: .milliseconds(300))
             }
+            try #require(ready, "Droid has no confirmed composer for \(fixture.pane), \(chat.conversation.phase)")
             composer.bindDroidDraft(to: chat.droidSessionID)
             composer.replaceDraft(with: message)
             chat.draftDidChange(to: message)
@@ -144,6 +151,38 @@ extension DroidChatLiveTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
+    func changingDirectoryCancelsInPlaceOrFollowsTheAcceptedDestination() async throws {
+        try await withLab { lab, host, projection in
+            let live = try await self.live("directory", lab: lab, host: host, projection: projection)
+            defer { live.chat.end() }
+            try await live.wait { live.chat.droidSessionID != nil }
+            let original = try #require(live.chat.droidSessionID)
+            let next = live.fixture.directory + "/next folder"
+            for accepts in [false, true] {
+                try await desktop("/cd " + next, in: live.fixture.pane, projection: projection)
+                let card = try await live.card(.droidWorkspaceTrust)
+                try #require(card.target?.sessionID == original && card.dialog.subject.workspacePath == next)
+                try #require(card.dialog.options.last?.role == .decline)
+                await live.chat.blocked.perform(.choose(ordinal: accepts ? 1 : 2), shownCard: card)
+                try await live.wait {
+                    if case .card = live.chat.blocked.content { return false }
+                    return live.chat.droidSessionID != nil
+                }
+                if !accepts {
+                    #expect(try await projection.droidDialogTarget(paneID: live.fixture.pane)?.directory == live.fixture.directory)
+                    #expect(live.chat.droidSessionID == original)
+                }
+            }
+            let marker = "AFTER_CD_" + UUID().uuidString.prefix(8)
+            try await live.send("Reply with exactly \(marker). No tools.")
+            try await live.wait { live.reply(marker) }
+            let screen = try await projection.readAgentScreen(live.fixture.pane)
+            #expect(screen.rows.contains { $0.text.contains("next folder") }
+                    || live.chat.agent.foregroundCwd == next)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_SCENARIOS"] == "1"))
     func staleApprovalAfterDesktopDeclinesCannotCreateSecondFile() async throws {
         try await withLab { lab, host, projection in
             let live = try await self.live("approval", lab: lab, host: host, projection: projection)
@@ -177,32 +216,7 @@ extension DroidChatLiveTests {
             let live = try await self.live("work", lab: lab, host: host, projection: projection)
             defer { live.chat.end() }
             try await live.wait { live.chat.droidSessionID != nil }
-            let id = try #require(live.chat.droidSessionID)
-            let tag = UUID().uuidString.prefix(6)
-            try await live.send("Use two Execute calls with fireAndForget true. First run: for i in 1 2 3 4 5 6; do echo RED_\(tag); sleep 12; done. Separately run: for i in 1 2 3 4 5 6; do echo BLUE_\(tag); sleep 7; done. Reply immediately with PARENT_\(tag). No other tools.")
-            try await live.wait { live.reply("PARENT_\(tag)") && live.chat.backgroundWork.rows.filter(\.isRunning).count == 2 }
-            live.chat.suspend()
-            live.chat.resume()
-            try await live.poll()
-            let rows = live.chat.backgroundWork.rows
-            let red = try #require(rows.first { $0.item.title.contains("RED_\(tag)") }?.item)
-            let blue = try #require(rows.first { $0.item.title.contains("BLUE_\(tag)") }?.item)
-            #expect(red.taskID != blue.taskID)
-            let output = await live.chat.inspectDroidTask(red, session: id, stop: false)
-            #expect(output.contains("RED_\(tag)") && !output.contains("BLUE_\(tag)"))
-            let stop = await live.chat.inspectDroidTask(red, session: id, stop: true)
-            try #require(stop.contains("Stop requested"))
-            try await live.wait {
-                let items = live.chat.conversation.transcript.backgroundWork
-                return items.contains { $0.id == red.id && $0.state == .stopped }
-                    && items.contains { $0.id == blue.id && $0.state == .completed }
-            }
-            try await live.send("Use Task to launch an asynchronous worker. It must run sleep 8, then return CHILD_\(tag) only and write no files. Reply with PARENT_CHILD_\(tag) immediately after launch.")
-            try await live.wait { live.reply("PARENT_CHILD_\(tag)") }
-            try await live.wait {
-                live.chat.conversation.transcript.backgroundWork.contains { $0.kind == .subagent && $0.reportedOutput?.contains("CHILD_\(tag)") == true }
-            }
-            #expect(live.chat.conversation.transcript.backgroundWork.filter { $0.kind == .subagent && $0.reportedOutput?.contains("CHILD_\(tag)") == true }.count == 1)
+            try await DroidLiveBackground.exercise(chat: live.chat, send: live.send, poll: live.poll)
         }
     }
 
@@ -418,5 +432,53 @@ extension DroidChatLiveTests {
                 #expect(String(decoding: chunk.data, as: UTF8.self) == value)
             }
         }
+    }
+}
+
+@MainActor
+enum DroidLiveBackground {
+    static func exercise(chat: AgentChatStore, send: (String) async throws -> Void,
+                         poll: () async throws -> Void) async throws {
+        func reply(_ marker: String) -> Bool {
+            chat.conversation.transcript.entries.contains {
+                if case .assistant(let message) = $0.content { return message.text.contains(marker) }
+                return false
+            }
+        }
+        func wait(_ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+            let deadline = ContinuousClock.now + .seconds(75)
+            while ContinuousClock.now < deadline {
+                try await poll()
+                if condition() { return }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            try #require(condition(), "Droid background evidence did not arrive", sourceLocation: sourceLocation)
+        }
+        let id = try #require(chat.droidSessionID)
+        let tag = UUID().uuidString.prefix(6)
+        try await send("Use two Execute calls with fireAndForget true. First run: for i in 1 2 3 4 5 6; do echo RED_\(tag); sleep 12; done. Separately run: for i in 1 2 3 4 5 6; do echo BLUE_\(tag); sleep 7; done. Reply immediately with PARENT_\(tag). No other tools.")
+        try await wait { reply("PARENT_\(tag)") && chat.backgroundWork.rows.filter(\.isRunning).count == 2 }
+        chat.suspend()
+        chat.resume()
+        try await poll()
+        let rows = chat.backgroundWork.rows
+        let red = try #require(rows.first { $0.item.title.contains("RED_\(tag)") }?.item)
+        let blue = try #require(rows.first { $0.item.title.contains("BLUE_\(tag)") }?.item)
+        #expect(red.taskID != blue.taskID)
+        let output = await chat.inspectDroidTask(red, session: id, stop: false)
+        #expect(output.contains("RED_\(tag)") && !output.contains("BLUE_\(tag)"))
+        let stop = await chat.inspectDroidTask(red, session: id, stop: true)
+        try #require(stop.contains("Stop requested"))
+        try await wait {
+            let items = chat.conversation.transcript.backgroundWork
+            return items.contains { $0.id == red.id && $0.state == .stopped }
+                && items.contains { $0.id == blue.id && $0.state == .completed }
+        }
+        try await send("Use Task to launch an asynchronous worker. It must run sleep 8, then return CHILD_\(tag) only and write no files. Reply with PARENT_CHILD_\(tag) immediately after launch.")
+        try await wait { reply("PARENT_CHILD_\(tag)") }
+        try await wait {
+            chat.conversation.transcript.backgroundWork.contains { $0.kind == .subagent && $0.reportedOutput?.contains("CHILD_\(tag)") == true }
+        }
+        #expect(chat.conversation.transcript.backgroundWork.filter { $0.kind == .subagent && $0.reportedOutput?.contains("CHILD_\(tag)") == true }.count == 1)
     }
 }

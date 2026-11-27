@@ -42,32 +42,42 @@ def header(file, sid):
         raise ValueError("header")
     return record
 
-def recent_lines(path):
-    # Bound the read on a busy shared Host and stop as soon as this process
-    # has a complete, current decision. Do not send log contents over SSH.
-    with path.open("rb") as stream:
-        position = stream.seek(0, 2)
-        limit = max(0, position - 12 * 1024 * 1024)
-        partial = b""
-        while position > limit:
-            step = min(128 * 1024, position - limit)
-            stream.seek(position - step)
-            data = stream.read(step) + partial
-            if position == stream.seek(0, 2) and not data.endswith(b"\n"):
+class IncompleteLog(Exception):
+    pass
+
+
+def recent_lines():
+    # Many unrelated turns can follow an idle Droid's last session event.
+    # Bound total local I/O, including rotations. No raw logs cross SSH.
+    log = root / "logs/droid-log-single.log"
+    rotated = sorted(log.parent.glob(log.name + ".????-??-??"), reverse=True)[:2]
+    budget = 128 * 1024 * 1024
+    for path in [log, *rotated]:
+        with path.open("rb") as stream:
+            end = position = stream.seek(0, 2)
+            partial = b""
+            while position and budget:
+                step = min(256 * 1024, position, budget)
+                position -= step
+                stream.seek(position)
+                data = stream.read(step)
+                if len(data) != step or (position + step == end and not data.endswith(b"\n")):
+                    raise IncompleteLog()
+                budget -= step
+                lines = (data + partial).split(b"\n")
+                partial = lines.pop(0)
+                yield from (line for line in reversed(lines) if b"process.pid" in line and pid_bytes in line)
+            if position == 0 and pid_bytes in partial:
+                yield partial
+            if not budget:
                 return
-            position -= step
-            lines = data.split(b"\n")
-            partial = lines.pop(0)
-            yield from reversed(lines)
-        if position == 0:
-            yield partial
 
 
 def active():
     actual, earliest = birth()
     if actual != start:
         return
-    events = recent_lines(root / "logs/droid-log-single.log")
+    events = recent_lines()
     closed = set()
     instance = None
     for line in events:
@@ -96,8 +106,14 @@ def active():
         return
 
 try:
-    result = active()
-    if result:
-        print(json.dumps({"session": result[0], "file": str(result[1])}))
+    pid_bytes = pid.encode("ascii")
+    for attempt in range(3):
+        try:
+            result = active()
+            if result:
+                print(json.dumps({"session": result[0], "file": str(result[1])}))
+            break
+        except IncompleteLog:
+            time.sleep(0.03)
 except (OSError, ValueError, KeyError, IndexError, StopIteration, subprocess.SubprocessError):
     pass

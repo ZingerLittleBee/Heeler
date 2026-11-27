@@ -176,7 +176,10 @@ struct DroidBackendChatLiveTests {
             await chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
         }
         for _ in 0..<80 {
-            if case .bound(let id, _, _) = try await projection.checkChatSession(paneID: pane, program: .droid) { return id }
+            if case .bound(let id, _, _) = try await projection.checkChatSession(paneID: pane, program: .droid) {
+                print("Droid evidence \(projection.host.serverKind) followed the foreground UUID after trust (initial status \(agent.status))")
+                return id
+            }
             try await Task.sleep(for: .milliseconds(250))
         }
         throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
@@ -190,14 +193,14 @@ struct DroidBackendChatLiveTests {
             await chat.step()
             await chat.blocked.refresh()
         }
-        func wait(_ condition: () -> Bool) async throws {
+        func wait(_ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async throws {
             let until = ContinuousClock.now + .seconds(65)
             while ContinuousClock.now < until {
                 try await observe()
                 if condition() { return }
                 try await Task.sleep(for: .milliseconds(220))
             }
-            throw ChatSourceUnavailable(reason: .cannotTellSession(.droid))
+            try #require(condition(), "Droid on \(projection.host.serverKind) did not reach this state (\(chat.agent.status), \(chat.conversation.phase))", sourceLocation: sourceLocation)
         }
         func card(_ kind: BlockedDialogKind, suffix: String? = nil) async throws -> BlockedCard {
             var result: BlockedCard?
@@ -217,20 +220,18 @@ struct DroidBackendChatLiveTests {
             let result = await composer.send(policy: policy)
             try #require(result == .submittedViaAttach || result == .deliveredViaPrompt || result == .deliveredViaAttach, "Droid submission: \(result)")
         }
-        // The disposable fixture uses Droid's own mode selector to ask for every operation.
-        try await waitForEmptyBox(io, projection: projection, pane: pane)
-        var manual = false
-        for _ in 0..<5 {
-            let screen = try await io.readScreen()
-            try #require(DroidInputBox.read(screen).isSendable)
-            if screen.rows.contains(where: { $0.trimmedText.hasPrefix("Auto (Off) · all actions require approval") }) {
-                manual = true
-                break
+        func selectAutonomy(_ name: String) async throws {
+            try await waitForEmptyBox(io, projection: projection, pane: pane)
+            for _ in 0..<5 {
+                let screen = try await io.readScreen()
+                try #require(DroidInputBox.read(screen).isSendable)
+                if screen.rows.contains(where: { $0.trimmedText.hasPrefix("Auto (\(name))") }) { return }
+                try await projection.sendAgentKeys(["ctrl+l"], to: pane)
+                try await Task.sleep(for: .milliseconds(350))
             }
-            try await projection.sendAgentKeys(["ctrl+l"], to: pane)
-            try await Task.sleep(for: .milliseconds(350))
+            try #require(Bool(false), "The fixture could not select \(name) autonomy on \(projection.host.serverKind)")
         }
-        try #require(manual)
+        try await selectAutonomy("Off")
         let tag = UUID().uuidString.prefix(8)
         let a = "approval-a-" + tag + ".txt"
         let b = "approval-b-" + tag + ".txt"
@@ -249,6 +250,7 @@ struct DroidBackendChatLiveTests {
         let bytes = try await files.read(.init(path: directory + "/" + a, offset: 0, maxBytes: 48))
         #expect(String(decoding: bytes.data, as: UTF8.self) == "ALPHA\n")
         #expect(try await files.status(directory + "/" + b) == nil)
+        print("Droid evidence \(projection.host.serverKind) approved A, desktop declined B, stale cards held")
         try await send("Use AskUser to ask one question, 'Which marker?', with options Scarlet or Azure. When I submit, reply with the selected option only.")
         let ask = try await card(.droidQuestion)
         let value = try #require(ask.dialog.options.first)
@@ -260,6 +262,10 @@ struct DroidBackendChatLiveTests {
                 return false
             } && chat.agent.status != .working && chat.agent.status != .blocked
         }
+        print("Droid evidence \(projection.host.serverKind) submitted the selected AskUser answer")
+        try await selectAutonomy("High")
+        try await DroidLiveBackground.exercise(chat: chat, send: send, poll: observe)
+        print("Droid evidence \(projection.host.serverKind) stopped red, blue completed, late child reported once")
     }
 
     /// Only a fixture SSH account may receive setup files from this test.

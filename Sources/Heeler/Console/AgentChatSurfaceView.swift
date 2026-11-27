@@ -455,10 +455,10 @@ struct AgentChatSurfaceView: View {
         }
         // Also on appearing: Chat may have followed another while it was away.
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
+            if program == .droid { composer.bindDroidDraft(to: chat?.droidSessionID) }
             guard let generation else { return }
             welcomeModel = nil
             welcomeEffort = nil
-            if program == .droid { composer.bindDroidDraft(to: chat?.droidSessionID) }
             composer.conversationDidChange(to: generation)
         }
         .onChange(of: chat?.sendStatuses, initial: true) { _, statuses in

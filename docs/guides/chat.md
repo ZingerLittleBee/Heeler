@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid Chat works with all four backends on macOS and with Herdr TUI on Linux.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid Chat supports all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
 
 ## Set up the Host
 
@@ -71,7 +71,7 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 
 On macOS and Linux, **New Agent** on herdr-core and tmux supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid, including one in Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses the built-in Droid integration. Heeler also checks Factory’s foreground process and session lifecycle on the Host. With herdr 0.9.5 the reported ID can survive a desktop session switch. If the foreground UUID cannot be verified, open that Agent’s terminal. Enabling a hook in settings takes effect when Droid starts or resumes.
 
-Droid Chat shows the foreground session UUID above its timeline. A verified folder trust card shows the Host, full directory, and both of Droid’s choices before there is a session. On a Rex block whose status is Unknown, finish trust in that block’s terminal. Factory sign-in also happens in the terminal.
+Droid Chat shows the foreground session UUID above its timeline. When a running session asks to change directories, declining the folder keeps the current session open. A verified folder trust card shows the Host, full directory, and both of Droid’s choices before there is a session. On a Rex block whose status is Unknown, finish trust in that block’s terminal. Factory sign-in also happens in the terminal.
 
 Review the command, file changes, permission scope, or proposal in the card before choosing a response. A shortened command is verified against Droid’s approval details before the key goes to the terminal. A two-question AskUser form has a review step. A single question submits when selected. AskUser answers and Spec feedback have separate fields. If the desktop already answered, wait for the next card. An unrecognized request or an unreadable patch has a terminal entry.
 

@@ -99,6 +99,21 @@ struct DroidChatTests {
         }
     }
 
+    @Test func changingDirectoryRequiresTheBoundProcessAndCancelsInPlace() throws {
+        let dialog = try #require(DroidDialog.parse(ScreenFixture.screen("droid-change-directory")).dialog)
+        #expect(dialog.subject.workspacePath == "/tmp/fixture/next folder")
+        #expect(dialog.options.map(\.role) == [.trust, .decline])
+        let initial = DroidDialogTarget(scope: "server/pane", pid: "42", start: "birth", directory: "/tmp/original")
+        #expect(!initial.shows(dialog))
+        var running = initial
+        running.sessionID = UUID().uuidString
+        #expect(running.shows(dialog))
+        #expect(try DroidDialog.plan(.choose(ordinal: 2), dialog, callID: nil).keys == ["esc"])
+        let file = try #require(DroidDialog.parse(ScreenFixture.screen("droid-create-rex")).dialog)
+        #expect(file.subject.filePath == "approval-a.txt")
+        #expect(file.options.last?.role == .decline)
+    }
+
     @Test func permissionUsesOnlyTheObservedChoicesAndOneMatchingCall() throws {
         let dialog = try #require(DroidDialog.parse(ScreenFixture.screen("droid-create")).dialog)
         #expect(dialog.subject.filePath == "approval-a.txt")
