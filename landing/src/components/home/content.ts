@@ -30,7 +30,7 @@ export const steps = [
     lead: 'Know the second',
     dim: 'it stops.',
     body: 'When an Agent goes Blocked or Done, you get an end-to-end encrypted push. A Live Activity keeps every Agent on your Lock Screen and in the Dynamic Island.',
-    note: 'Notification bodies and per-Agent details stay end-to-end encrypted; the relay sees APNs and request routing metadata plus unencrypted Live Activity counts, events, and timestamps.',
+    note: 'Notification bodies and Agent details stay end-to-end encrypted; Live Activity counts and delivery metadata pass through the relay.',
   },
   {
     screen: 'usage',

@@ -4,19 +4,19 @@
 .lp.home { position: relative; min-height: 100vh; margin-top: -64px; overflow-x: clip; background: var(--bg); }
 .lp.home [id] { scroll-margin-top: 64px; }
 
-/* Reveal on scroll: reveal() adds .is-in and data-rv picks the entrance. Without scripts nothing is hidden. */
-:where(.js) [data-rv] {
+/* Reveal on scroll: reveal() adds html.rv-ready and .is-in, and data-rv picks the entrance. Without reveal() nothing is hidden. */
+:where(.rv-ready) [data-rv] {
   opacity: 0;
   transform: translate3d(0, 28px, 0);
   transition: opacity 0.7s var(--ease-out), transform 0.9s var(--ease-out-expo);
   transition-delay: var(--rv-delay, 0ms);
 }
-:where(.js) [data-rv='fade'] { transform: none; }
-:where(.js) [data-rv='scale'] { transform: scale(0.94); }
-:where(.js) [data-rv='pop'] { transform: scale(0.86); transition: opacity 0.4s var(--ease-out), transform 0.8s var(--spring); transition-delay: var(--rv-delay, 0ms); }
-:where(.js) [data-rv='left'] { transform: translate3d(-36px, 0, 0); }
-:where(.js) [data-rv='right'] { transform: translate3d(36px, 0, 0); }
-:where(.js) [data-rv].is-in { opacity: 1; transform: none; }
+:where(.rv-ready) [data-rv='fade'] { transform: none; }
+:where(.rv-ready) [data-rv='scale'] { transform: scale(0.94); }
+:where(.rv-ready) [data-rv='pop'] { transform: scale(0.86); transition: opacity 0.4s var(--ease-out), transform 0.8s var(--spring); transition-delay: var(--rv-delay, 0ms); }
+:where(.rv-ready) [data-rv='left'] { transform: translate3d(-36px, 0, 0); }
+:where(.rv-ready) [data-rv='right'] { transform: translate3d(36px, 0, 0); }
+:where(.rv-ready) [data-rv].is-in { opacity: 1; transform: none; }
 
 /* iPhone frame. Set the width on .lp-phone; everything else scales from it. */
 .lp-phone { position: relative; width: 300px; container-type: inline-size; flex: none; }

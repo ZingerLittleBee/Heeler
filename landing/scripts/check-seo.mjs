@@ -15,6 +15,12 @@ const decodeEntities = (text) =>
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
+const getAttr = (attrs, name) => {
+  const match = attrs.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'));
+  return match ? decodeEntities(match[1]) : undefined;
+};
+const hasAnchorWithHref = (html, url) =>
+  [...html.matchAll(/<a\b([^>]*)>/gi)].some(([, attrs = '']) => getAttr(attrs, 'href') === url);
 
 for (const [file, route] of [['index.html', '/'], ['ipad.html', '/ipad'], ['404.html', '/404']]) {
   const html = read(file);
@@ -32,7 +38,7 @@ for (const [file, route] of [['index.html', '/'], ['ipad.html', '/ipad'], ['404.
     assert.doesNotMatch(html, /content="noindex"/);
     assert.ok(html.includes(`property="og:url" content="${origin}${route}"`), file);
   }
-  for (const [, src] of html.matchAll(/(?:href|src)="(\/[^"#]*)(?:#[^"]*)?"/g)) {
+  for (const [, src] of html.matchAll(/(?<=\s)(?:href|src)="(\/[^"#]*)(?:#[^"]*)?"/g)) {
     if (src === '/') continue;
     assert.ok(existsSync(new URL(src.slice(1), dist)) || existsSync(new URL(`${src.slice(1)}.html`, dist)), `${file}: ${src}`);
   }
@@ -97,9 +103,9 @@ for (const [btn] of railBlock[1].matchAll(/<button\b[^>]*>/g)) {
 
 // Homepage internal /ipad link outside FAQ and docs guide links.
 const boxSlice = home.slice(home.indexOf('Also in the box.'), home.indexOf('id="faq"'));
-assert.ok(boxSlice.includes('href="/ipad"'), 'Box section must link visibly to /ipad');
+assert.ok(hasAnchorWithHref(boxSlice, '/ipad'), 'Box section must link visibly to /ipad');
 for (const slug of ['pairing', 'herdr-core', 'tmux', 'rex', 'windows-setup', 'overlay-networks']) {
-  assert.ok(home.includes(`href="${docsOrigin}/${slug}"`), `homepage missing guide link ${docsOrigin}/${slug}`);
+  assert.ok(hasAnchorWithHref(home, `${docsOrigin}/${slug}`), `homepage missing guide link ${docsOrigin}/${slug}`);
 }
 
 // /ipad page checks: metadata, CTA, back link, guides, Rex (experimental), and all 7 screenshots.
@@ -108,21 +114,21 @@ const ipadTitle = decodeEntities(ipad.match(/<title>([^<]+)<\/title>/)[1]);
 const ipadDescription = decodeEntities(ipad.match(/<meta name="description" content="([^"]+)"/)[1]);
 checkMetaLength('/ipad <title>', ipadTitle, 60);
 checkMetaLength('/ipad description', ipadDescription, 155);
-const backLink = ipad.match(/<a\b[^>]*class="[^"]*\bback-link\b[^"]*"[^>]*>/);
+const backLink = ipad.match(/<a\b([^>]*\sclass="[^"]*\bback-link\b[^"]*"[^>]*)>/);
 assert.ok(backLink, '/ipad missing .back-link');
-assert.match(backLink[0], /\bhref="\/"/, `/ipad back link must point to /: ${backLink[0]}`);
+assert.equal(getAttr(backLink[1], 'href'), '/', `/ipad back link must point to /: ${backLink[0]}`);
 const ipadMain = ipad.match(/<main\b[^>]*>(.*?)<\/main>/s);
 assert.ok(ipadMain, '/ipad missing <main>');
 const ipadCtaBlock = ipadMain[1].match(/<div\b[^>]*class="[^"]*\bipad-actions\b[^"]*"[^>]*>(.*?)<\/div>/s);
 assert.ok(ipadCtaBlock, '/ipad missing .ipad-actions body CTA block inside <main>');
-const ipadCtaLink = ipadCtaBlock[1].match(/<a\b([^>]*\bclass="[^"]*\bstore-link\b[^"]*"[^>]*)>(.*?)<\/a>/s);
+const ipadCtaLink = ipadCtaBlock[1].match(/<a\b([^>]*\sclass="[^"]*\bstore-link\b[^"]*"[^>]*)>(.*?)<\/a>/s);
 assert.ok(ipadCtaLink, '/ipad .ipad-actions missing .store-link CTA');
-assert.ok(ipadCtaLink[1].includes(`href="${appStoreUrl}"`), `/ipad body CTA must link to ${appStoreUrl}`);
+assert.equal(getAttr(ipadCtaLink[1], 'href'), appStoreUrl, `/ipad body CTA must link to ${appStoreUrl}`);
 assert.match(ipadCtaLink[2], /<img\b[^>]*alt="Download on the App Store"/, '/ipad body CTA must render the App Store badge');
 assert.ok(ipad.includes('Rex (experimental)'), '/ipad must label Rex (experimental)');
 assert.equal([...ipad.matchAll(/<figure\b/g)].length, 7, '/ipad must keep all 7 screenshots');
 for (const slug of ['pairing', 'herdr-core', 'tmux', 'windows-setup', 'rex']) {
-  assert.ok(ipad.includes(`href="${docsOrigin}/${slug}"`), `/ipad missing guide link ${docsOrigin}/${slug}`);
+  assert.ok(hasAnchorWithHref(ipad, `${docsOrigin}/${slug}`), `/ipad missing guide link ${docsOrigin}/${slug}`);
 }
 
 const graph = JSON.parse(home.match(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/s)[1])['@graph'];

@@ -98,6 +98,18 @@ function textOf(fragment) {
 }
 
 /**
+ * Reads an exact HTML attribute value from a tag's attribute string, requiring
+ * start-of-string or whitespace before the name so prefixed attributes like
+ * `data-href` never match `href`.
+ * @param {string} attrs
+ * @param {string} name
+ */
+function getAttr(attrs, name) {
+  const match = attrs.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'));
+  return match ? decodeEntities(match[1] ?? '') : undefined;
+}
+
+/**
  * Checks that the guide's footer container (the container holding the Edit on GitHub link)
  * contains a single <a> element with both the App Store href and the exact localized label.
  * @param {string} html
@@ -111,7 +123,7 @@ function hasGuideFooterAppStoreLink(html, isZhRoute) {
 
   for (const [, inner = ''] of leafDivs) {
     const anchors = [...inner.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].map(([, attrs = '', body = '']) => ({
-      href: decodeEntities(attrs.match(/\bhref="([^"]*)"/i)?.[1] ?? ''),
+      href: getAttr(attrs, 'href') ?? '',
       text: textOf(body),
     }));
     const hasEditLink = anchors.some(
@@ -251,9 +263,8 @@ for (const [route, { html }] of pages) {
   const isZhRoute = route === '/zh' || route.startsWith('/zh/');
   const altTarget = isZhRoute ? en : zh;
   const altLang = isZhRoute ? 'en' : 'zh-CN';
-  const altLangPattern = new RegExp(`\\bhreflang="${altLang}"`, 'i');
-  const hasCrossLocaleLink = [...html.matchAll(/<a\b([^>]*)>/g)].some(([, attrs = '']) =>
-    attrs.includes(`href="${altTarget}"`) && altLangPattern.test(attrs),
+  const hasCrossLocaleLink = [...html.matchAll(/<a\b([^>]*)>/gi)].some(([, attrs = '']) =>
+    getAttr(attrs, 'href') === altTarget && getAttr(attrs, 'hreflang')?.toLowerCase() === altLang.toLowerCase(),
   );
   if (!hasCrossLocaleLink) {
     failures.push(`${route}: missing server-rendered cross-locale <a href="${altTarget}" hreflang="${altLang}">`);

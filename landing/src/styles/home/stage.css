@@ -363,14 +363,14 @@
   @media (max-width: 559px), (max-width: 899px) and (orientation: portrait) {
     .d1 { font-size: min(46px, 10.7vw); }
     .hero-p { max-width: 30em; font-size: 16px; }
-    /* The phone clears the header by 16px. The copy always keeps 196px; on a short screen the phone
+    /* The phone clears the header by 16px. The copy always keeps 240px; on a short screen the phone
        keeps its size instead and up to 30% of it runs under the copy, behind a scrim.
        --ph phone height, --ns copy slot, --hid how far the phone runs under the copy, --gut and --tg
        the viewport gutters in .dev coordinates (for story fragments and the scaled-up hero toasts). */
     .pin-in {
-      --pw: max(150px, min(64vw, 380px, (100svh - 316px) / 1.477));
+      --pw: max(150px, min(64vw, 380px, (100svh - 360px) / 1.477));
       --ph: calc(var(--pw) * 2.11);
-      --ns: max(196px, calc(100svh - 122px - var(--ph)));
+      --ns: max(240px, calc(100svh - 122px - var(--ph)));
       --hid: max(0px, calc(114px + var(--ph) + var(--ns) - 100svh));
       --gut: calc(50% - 50vw + 22px);
       --tg: calc(50% - (50vw - 18px) / 1.2);
@@ -395,7 +395,7 @@
         justify-content: flex-start; padding-top: 10px;
         h2 { margin-top: 8px; font-size: min(28px, 7.2vw); }
         p { margin-top: 8px; font-size: 15px; line-height: 1.45; }
-        small { margin-top: 6px; font-size: 11.5px; }
+        small { margin-top: 6px; font-size: 11.5px; line-height: 1.4; }
       }
       .rl {
         left: 50%; top: auto; bottom: 0; z-index: 5; translate: -50% 0; flex-direction: row;

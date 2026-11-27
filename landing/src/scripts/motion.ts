@@ -115,6 +115,7 @@ export function reveal(root: ParentNode = document) {
     { rootMargin: '0px 0px -12% 0px', threshold: 0.01 },
   );
   for (const el of els) io.observe(el);
+  document.documentElement.classList.add('rv-ready');
 }
 
 /** Run a demo only while it is on screen: the callbacks fire on each crossing. */
