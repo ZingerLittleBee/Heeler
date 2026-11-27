@@ -5247,7 +5247,8 @@ struct AgentChatStoreTests {
         #expect(await composer.send(policy: .terminal) == .deliveredViaPrompt)
         composer.bindChatDraft(to: secondOwner, program: .claude)
         #expect(composer.draft == "another draft for B")
-        #expect(await evidence.writes == ["first message before the host has a session", "only B", "explicit terminal input"])
+        let writes = await evidence.writes
+        #expect(writes == ["first message before the host has a session ", "only B ", "explicit terminal input"])
     }
 
     @Test(arguments: [ChatProgram.droid, .devin])
