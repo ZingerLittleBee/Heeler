@@ -7,8 +7,8 @@ import Foundation
 /// its status does not read Blocked and bracketed paste is on, with the same
 /// process and bracketed paste read again once the lane is held; and it
 /// submits only while that process still holds the terminal, read again in
-/// the lane before Enter, within the submit window. A shell that took over
-/// gets one `0x03`.
+/// the lane before Enter, within the submit window. A change of foreground
+/// leaves the replacement program and its current input alone.
 ///
 /// One Send runs at a time per Agent, and a request that got no answer is
 /// never sent again: the next Send waits for the server to answer a read and
@@ -19,14 +19,9 @@ final class RexComposerSend: CheckedComposerSend {
 
     nonisolated static let submitWindow: Duration = .seconds(2)
 
-    /// Shells seen dropping a pending paste on one `0x03` (ADR 0035).
-    private static let shellsDroppingPasteOnInterrupt: Set<String> = ["bash", "fish", "dash", "zsh"]
-
-    /// Why a step in the lane went no further. `tookOver` is the process that
-    /// leads the foreground now in place of the Agent the paste went to.
+    /// Why a checked step stopped before its next write.
     private struct Halt: Error {
         let outcome: Outcome
-        var tookOver: RexInventoryWire.Process?
     }
 
     private let address: RexPaneAddress
@@ -154,9 +149,7 @@ final class RexComposerSend: CheckedComposerSend {
             return .submitted
         case .success(.notSent): return .refused(.notSubmitted(Self.submitKeyLost))
         case .success(.unknown): return .outcomeUnknown
-        case .failure(let halt):
-            if verifying == nil, let process = halt.tookOver { return await giveUp(after: process, on: requests) }
-            return halt.outcome
+        case .failure(let halt): return halt.outcome
         }
     }
 
@@ -245,8 +238,7 @@ final class RexComposerSend: CheckedComposerSend {
     }
 
     /// In the lane before Enter: the process the paste went to still holds the
-    /// terminal with no question up, within the submit window. A shell that
-    /// took over gets one `0x03` instead, which drops the paste unrun.
+    /// terminal with no question up, within the submit window.
     private func stillHoldsAfterPaste(
         _ held: RexAgentHolder, on requests: RexBlockRequests, in projection: RexConsoleProjection,
         pasteStart: ContinuousClock.Instant
@@ -267,40 +259,8 @@ final class RexComposerSend: CheckedComposerSend {
             }
         case .ended:
             throw Halt(outcome: .refused(.notSubmitted(Self.programEnded)))
-        case .notSampledYet:
+        case .notSampledYet, .holds, .agentLeft:
             throw Halt(outcome: .refused(.notSubmitted(Self.mayRemain)))
-        case .holds(let now):
-            throw Halt(outcome: .refused(.notSubmitted(Self.mayRemain)), tookOver: now.process)
-        case .agentLeft(let process):
-            throw Halt(outcome: .refused(.notSubmitted(Self.mayRemain)), tookOver: process)
-        }
-    }
-
-    /// Nothing is submitted. When a shell now leads the foreground, one raw
-    /// `0x03` drops a pending paste unrun, even where the exited Agent left
-    /// its keyboard flags behind. It goes only while that shell still leads,
-    /// read again in the lane: the Agent back, or another process, gets none.
-    private func giveUp(after process: RexInventoryWire.Process, on requests: RexBlockRequests) async -> Outcome {
-        let name = process.program ?? ""
-        let arguments = [process.argv0 ?? name]
-        guard let shellID = process.processID, HerdrCoreAgentRule.program(arguments: arguments, name: name) == .shell
-        else {
-            return .refused(.notSubmitted(Self.mayRemain))
-        }
-        let interrupt = try? await requests.send([.text("\u{03}")]) { @MainActor in
-            guard case .agentLeft(let now) = try await RexAgentHolder.read(on: requests), now.processID == shellID else {
-                throw Halt(outcome: .refused(.notSubmitted(Self.mayRemain)))
-            }
-        }
-        switch interrupt {
-        case .sent?:
-            let shell = HerdrCoreAgentRule.shellName(arguments: arguments, name: name)
-            return .refused(
-                .notSubmitted(Self.shellsDroppingPasteOnInterrupt.contains(shell) ? Self.dropped : Self.mayRemain))
-        case .unknown?:
-            return .outcomeUnknown
-        case .notSent?, nil:
-            return .refused(.notSubmitted(Self.mayRemain))
         }
     }
 
@@ -377,9 +337,5 @@ final class RexComposerSend: CheckedComposerSend {
     private static let mayRemain = String(
         localized:
             "The Agent left the terminal before the message was submitted, so nothing was submitted. The text may still be in the terminal."
-    )
-    private static let dropped = String(
-        localized:
-            "The Agent left the terminal before the message was submitted, so nothing was submitted, and the text is no longer in the terminal."
     )
 }

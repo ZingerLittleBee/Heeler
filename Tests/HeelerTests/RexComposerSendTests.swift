@@ -7,7 +7,7 @@ import Testing
 /// Composer Send on a Rex Agent (ADR 0055), pinned as tmux's and herdr-core's
 /// are: one paste and one Enter on the control link, each after the Agent is
 /// read again in the block's lane, nothing for a Blocked Agent or a program
-/// with bracketed paste off, one `0x03` for a shell that took over, a request
+/// with bracketed paste off, no keys for a shell that took over, a request
 /// with no answer never sent again, and nothing for another server. Ids,
 /// programs and texts are invented.
 /// A clock whose every reading is three seconds after the last.
@@ -151,49 +151,21 @@ struct RexComposerSendTests {
         #expect(await rig.inputs().isEmpty)
     }
 
-    /// A shell that took over after the paste gets one `0x03`, which drops the
-    /// paste unrun, and no Enter.
-    @Test func aShellAfterThePasteGetsOneInterrupt() async throws {
+    @Test(arguments: [("zsh", 4300), ("bash", 4301), ("claude", 4243)])
+    func aTerminalComposerLeavesTheNewForegroundsInputAlone(program: String, pid: Int) async throws {
         let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.prompt), world: Self.world())
         defer { rig.end() }
-        let send = try rig.composerSend()
+        let sender = try rig.composerSend()
         rig.block.update {
             $0.foregrounds = [
                 FakeRexChatBlock.foreground("claude", pid: 4242), FakeRexChatBlock.foreground("claude", pid: 4242),
-                FakeRexChatBlock.foreground("zsh", pid: 4300), FakeRexChatBlock.foreground("zsh", pid: 4300),
+                FakeRexChatBlock.foreground(program, pid: pid),
             ]
         }
 
-        let outcome = await send.send("hello", route: .chat, attach: nil)
-
+        let outcome = await sender.send("hello", route: .terminal, attach: nil)
         guard case .refused(.notSubmitted(let message)) = outcome else {
-            Issue.record("Expected nothing submitted, got \(outcome)")
-            return
-        }
-        #expect(message.contains("no longer in the terminal"))
-        #expect(await rig.pasted() == ["hello"])
-        #expect(await rig.written() == ["\u{03}"])
-    }
-
-    /// The `0x03` goes only while the shell still leads, read again in the
-    /// lane: the Agent back in the foreground by then would take it as an
-    /// interrupt of its own work.
-    @Test(arguments: [("the agent back", "claude", 4242), ("another shell", "zsh", 4301)])
-    func theInterruptWaitsForTheSameShell(_ who: String, program: String, pid: Int) async throws {
-        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.prompt), world: Self.world())
-        defer { rig.end() }
-        let send = try rig.composerSend()
-        rig.block.update {
-            $0.foregrounds = [
-                FakeRexChatBlock.foreground("claude", pid: 4242), FakeRexChatBlock.foreground("claude", pid: 4242),
-                FakeRexChatBlock.foreground("zsh", pid: 4300), FakeRexChatBlock.foreground(program, pid: pid),
-            ]
-        }
-
-        let outcome = await send.send("hello", route: .chat, attach: nil)
-
-        guard case .refused(.notSubmitted(let message)) = outcome else {
-            Issue.record("Expected nothing submitted for \(who), got \(outcome)")
+            Issue.record("Expected an unsubmitted paste after the foreground changed, got \(outcome)")
             return
         }
         #expect(message.contains("may still be in the terminal"))
