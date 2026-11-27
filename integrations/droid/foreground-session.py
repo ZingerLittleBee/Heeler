@@ -82,7 +82,32 @@ def job(process):
     return subprocess.check_output(["/bin/ps", "-p", process, "-o", fields], text=True, timeout=1).split(None, 4)
 
 
+def darwin_children(process):
+    # libproc returns a count of pids when given a buffer. A full result may
+    # have been truncated, so let the existing process-table query handle it.
+    import ctypes
+
+    library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    children = (ctypes.c_int * 64)()
+    read = library.proc_listchildpids
+    read.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_int)
+    read.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    count = read(int(process), children, ctypes.sizeof(children))
+    if ctypes.get_errno() or not 0 <= count < len(children):
+        return None
+    return [str(child) for child in children[:count]]
+
+
 def direct_children(process):
+    if sys.platform == "darwin":
+        try:
+            children = darwin_children(process)
+            if children is not None:
+                return children
+        except (OSError, AttributeError):
+            # Systems without this libproc entry point still support pgrep.
+            pass
     if sys.platform == "linux":
         # Some runtimes spawn the JSON-RPC child on a worker thread. The
         # kernel exposes direct children per thread, not just per leader.

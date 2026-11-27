@@ -98,6 +98,35 @@ class DroidHookTests(unittest.TestCase):
 
 
 class DroidForegroundTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "darwin", "Darwin process API")
+    def test_darwin_reads_only_the_queried_parents_immediate_children(self):
+        spec = importlib.util.spec_from_file_location("droid_foreground", HOOK.with_name("foreground-session.py"))
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        # The child confirms both grandchildren exist, then owns their cleanup.
+        script = """
+import subprocess, sys
+children = [subprocess.Popen([sys.executable, "-c", "import sys; sys.stdin.buffer.read()"],
+                             stdin=subprocess.PIPE) for _ in range(2)]
+try:
+    print(" ".join(str(child.pid) for child in children), flush=True)
+    sys.stdin.buffer.read()
+finally:
+    for child in children:
+        child.communicate()
+"""
+        with subprocess.Popen([sys.executable, "-c", script], stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, text=True) as parent:
+            try:
+                descendants = parent.stdout.readline().split()
+                self.assertEqual(len(descendants), 2)
+                self.assertEqual(set(probe.darwin_children(str(parent.pid))), set(descendants))
+                own = probe.darwin_children(str(os.getpid()))
+                self.assertIn(str(parent.pid), own)
+                self.assertTrue(set(descendants).isdisjoint(own))
+            finally:
+                parent.communicate()
+
     def test_only_one_direct_rpc_child_in_the_same_foreground_can_own_the_session(self):
         spec = importlib.util.spec_from_file_location("droid_foreground", HOOK.with_name("foreground-session.py"))
         probe = importlib.util.module_from_spec(spec)
