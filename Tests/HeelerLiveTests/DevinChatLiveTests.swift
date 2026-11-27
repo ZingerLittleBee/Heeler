@@ -343,6 +343,105 @@ struct DevinChatLiveTests {
         }
     }
 
+    /// A fresh signed-in client, two fixture commands and a delayed public report.
+    /// The phone initiates all three jobs. The fixture releases the child's file
+    /// only after the parent has returned and Chat still shows that child running.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMPOSER_WORK_LAB"] != nil))
+    func launchesBackgroundWorkFromComposerAndReopensIt() async throws {
+        struct Work: Decodable {
+            let lab: Lab
+            let backend: ServerKind
+            let tag, storeRoot, successCommand, failureCommand: String
+            let childFile, releaseSignal, childReport: String
+        }
+        let config = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMPOSER_WORK_LAB"])
+        let fixtureURL = URL(fileURLWithPath: config)
+        let work = try JSONDecoder().decode(Work.self, from: Data(contentsOf: fixtureURL))
+        let signal = fixtureURL.deletingLastPathComponent().appendingPathComponent(work.releaseSignal)
+        try #require(!work.releaseSignal.contains("/") && !FileManager.default.fileExists(atPath: signal.path))
+        let rules = ChatSendRules(program: .devin, commands: [])
+        let success = "REX_LAB_PHONE_ZERO_" + work.tag
+        let failure = "REX_LAB_PHONE_FAILED_" + work.tag
+        let parent = "REX_LAB_PHONE_PARENT_" + work.tag
+        let session = try #require(work.lab.sessions[work.backend.rawValue])
+        var expected: [String: String] = [:]
+        var childID: String?
+        try await withChat(work.lab, work.backend) { live in
+            for (command, marker, wanted) in [(work.successCommand, success, ChatBackgroundWorkItem.State.completed),
+                                              (work.failureCommand, failure, .failed)] {
+                let prompt = "Use exec with timeout 0, omitting shell_id, to run exactly this command: " + command
+                    + ". Use the returned ID in get_output with a positive timeout to read the terminal exit. Do not edit or rerun the command. Reply only with PHONE_FINISHED_" + marker
+                try await live.send(prompt)
+                let card = try await live.card(.devinPermission)
+                try #require(card.request?.summary == command && card.dialog.options.first?.label == "Allow · Once")
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+                try await live.wait {
+                    let transcript = live.chat.conversation.transcript
+                    guard let job = transcript.backgroundWork.first(where: { $0.title == command }),
+                        job.state == wanted, job.reportedOutput?.contains(marker) == true, let id = job.taskID,
+                        transcript.turns.last?.ending == .completed else { return false }
+                    expected[marker] = id
+                    return true
+                }
+                #expect(live.chat.conversation.transcript.recordedPrompts.filter { $0.text == rules.outgoingText(prompt) }.count == 1)
+            }
+            let title = "Heeler file witness " + work.tag
+            let childPrompt = "Call run_subagent exactly once with is_background true and title '" + title
+                + "'. Give the child this task: read only " + work.childFile
+                + "; if its first line is PENDING, read it again until it changes, without running commands or modifying files. Report exactly the changed first line."
+                + " Once the background launch is acknowledged, immediately finish your own turn with exactly " + parent
+                + ". Do not wait for the child or call another tool."
+            try await live.send(childPrompt)
+            try await live.wait {
+                let transcript = live.chat.conversation.transcript
+                guard transcript.entries.contains(where: { $0.content == .assistant(.init(text: parent)) }),
+                    transcript.turns.last?.ending == .completed,
+                    let child = transcript.backgroundWork.first(where: { $0.kind == .subagent && $0.title == title }),
+                    child.state == .running, let id = child.taskID else { return false }
+                childID = id
+                return true
+            }
+            #expect(live.chat.conversation.transcript.recordedPrompts.filter { $0.text == rules.outgoingText(childPrompt) }.count == 1)
+            try Data(work.tag.utf8).write(to: signal, options: .withoutOverwriting)
+            try await live.wait {
+                live.chat.conversation.transcript.backgroundWork.contains {
+                    $0.taskID == childID && $0.state == .completed && $0.reportedOutput?.contains(work.childReport) == true
+                }
+            }
+        }
+        let child = try #require(childID)
+        let successID = try #require(expected[success])
+        let failureID = try #require(expected[failure])
+        try #require(Set([successID, failureID, child]).count == 3)
+        for _ in 0..<2 {
+            try await withChat(work.lab, work.backend) { live in
+                try await live.wait {
+                    let jobs = live.chat.conversation.transcript.backgroundWork
+                    return jobs.contains { $0.taskID == successID && $0.state == .completed && $0.reportedOutput?.contains(success) == true }
+                        && jobs.contains { $0.taskID == failureID && $0.state == .failed && $0.reportedOutput?.contains(failure) == true }
+                        && jobs.contains { $0.taskID == child && $0.state == .completed && $0.reportedOutput?.contains(work.childReport) == true }
+                }
+                let query = try #require(live.projection.chatHostFiles().queryDevin)
+                var rows: [DevinSessionPage.Row] = []
+                var offset = 0
+                repeat {
+                    let page = try await query(.init(session: session, root: work.storeRoot, offset: offset, limit: 24))
+                    try #require(page.offset == offset && page.total <= 256)
+                    rows.append(contentsOf: page.rows)
+                    offset += page.rows.count
+                    if offset == page.total { break }
+                    try #require(!page.rows.isEmpty)
+                } while true
+                for (id, code) in [(successID, 0), (failureID, 17)] {
+                    let lookup = rows.flatMap(\.calls).filter { $0.name == "get_output" && $0.arguments.shell_id == id }.map(\.id)
+                    #expect(rows.contains { row in
+                        row.isExecutionResult == true && row.shellExit?.code == code && row.resultFor.map(lookup.contains) == true
+                    })
+                }
+            }
+        }
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"] != nil))
     func stopsOnlyTheCurrentlyDisplayedTurn() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"]))
