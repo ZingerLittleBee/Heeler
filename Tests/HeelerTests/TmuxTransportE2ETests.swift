@@ -700,12 +700,6 @@ struct TmuxTransportE2ETests {
         return labels
     }
 
-    /// Where a `uname` that prints `Linux` is first on the exec's PATH.
-    private func linuxUnamePath(_ fixture: TmuxSSHFixture) -> String {
-        let root = URL(fileURLWithPath: fixture.configuration.homePath).deletingLastPathComponent().path
-        return "\(root)/bin/uname"
-    }
-
     private func loginTmpDir(_ fixture: TmuxSSHFixture) -> String {
         URL(fileURLWithPath: fixture.configuration.socketDirectory).deletingLastPathComponent().path
     }
@@ -907,19 +901,16 @@ struct TmuxTransportE2ETests {
         }
     }
 
-    @Test("linux with no server starts one through the login shell")
-    func linuxStartsAServerThroughTheLoginShell() async throws {
+    @Test("New Workspace on a stopped server follows the actual Host kernel")
+    func newWorkspaceOnAStoppedServer() async throws {
         try await TmuxSSHFixture.with { fixture in
-            let uname = linuxUnamePath(fixture)
-            let quoted = GitProbe.singleQuoted(uname)
-            try await fixture.writeProgram(at: uname, "#!/bin/sh\nprintf 'Linux\\n'")
-            do {
-                let directory = try await workDirectory(on: fixture)
-                try await launchOnLinux(fixture, directory: directory)
-                _ = try await fixture.run("rm -f \(quoted)")
-            } catch {
-                _ = try? await fixture.run("rm -f \(quoted)")
-                throw error
+            let kernel = trimmed(try await fixture.require("uname -s"))
+            let directory = try await workDirectory(on: fixture)
+            print("tmux New Workspace on a stopped server: \(kernel)")
+            switch kernel {
+            case "Linux": try await launchOnLinux(fixture, directory: directory)
+            case "Darwin": try await refuseOnMac(fixture, directory: directory)
+            default: Issue.record("Unsupported tmux fixture kernel: \(kernel)")
             }
         }
     }
@@ -942,14 +933,6 @@ struct TmuxTransportE2ETests {
             #expect(environment != "TMUX_TMPDIR=\(execTmp)")
             try await fixture.eventually { await self.labelsInListOrder(store, host: host) == ["started"] }
             #expect(store.hostStatuses[host.id] == .connected)
-        }
-    }
-
-    @Test("macos with no server says to start tmux on the Mac and starts nothing")
-    func macosSaysToStartTmuxOnTheMac() async throws {
-        try await TmuxSSHFixture.with { fixture in
-            let directory = try await workDirectory(on: fixture)
-            try await refuseOnMac(fixture, directory: directory)
         }
     }
 
