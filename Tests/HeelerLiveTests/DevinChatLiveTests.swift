@@ -478,7 +478,10 @@ struct DevinChatLiveTests {
     func declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft() async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-        try await withChat(lab, .herdrTUI) { live in
+        let name = ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_BACKEND"] ?? ServerKind.herdrTUI.rawValue
+        let backend = try #require(ServerKind(rawValue: name))
+        try #require(backend == .herdrTUI || backend == .rex)
+        try await withChat(lab, backend) { live in
             try await live.desktop("/plan")
             try await live.wait { try await DevinInputBox.isPlan(live.io.readScreen()) }
             try await live.send("Propose writing a note.txt in this empty test folder. Write a very short plan with two plain numbered steps and no headings, then call exit_plan_mode to request approval. Make no changes to the workspace.")

@@ -157,7 +157,7 @@ struct RexForegroundChatLiveTests {
         composer.replaceDraft(with: prompt)
         chat.draftDidChange(to: prompt)
         let sent = await composer.send(policy: policy)
-        try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach)
+        try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach, "\(String(describing: sent))")
         // Grok retains the completion-dismissing space in its ACP user chunk.
         let recordedPrompt = program == .grok ? rules.outgoingText(prompt) : prompt
         try await wait(for: "one matching user message and reply in the displayed conversation") {
@@ -208,8 +208,26 @@ struct RexForegroundChatLiveTests {
                 }
             }
         } else if program == .codex {
+            var selectedCurrentWorktree = false
             try await wait(for: "Codex to draw the new empty thread before the desktop types") {
                 let screen = try await typing.blockedScreen.readScreen()
+                // Codex 0.172.0 asks this in a Git checkout. The independent desktop keeps its existing directory.
+                let rows = screen.rows.map(\.trimmedText)
+                if !selectedCurrentWorktree,
+                   let title = rows.lastIndex(of: "Where should the new conversation run?") {
+                    let options = rows.dropFirst(title + 1)
+                    if options.contains(where: { $0.hasPrefix("› 1. Use current Git worktree ") }),
+                       options.contains(where: { $0.hasPrefix("2. Create new Git worktree ") }),
+                       options.contains("enter select · esc back") {
+                        selectedCurrentWorktree = true
+                        let write = JSONValue.object([
+                            "session_id": .string(first.sessionID), "block_id": .string(first.blockID),
+                            "args": .object(["data": .string("\r")]),
+                        ])
+                        _ = try await desktop.call(RexInventoryWire.terminalMethod("write"), payload: write)
+                    }
+                    return false
+                }
                 guard case .empty = InputBoxStateDetector.detect(screen, program: .codex) else { return false }
                 return screen.rows.contains { $0.text.contains("OpenAI Codex") }
                     && !screen.rows.contains { $0.text.contains("REX_LAB_") }
@@ -246,12 +264,29 @@ struct RexForegroundChatLiveTests {
             // Each independent desktop turn must finish before the driver types
             // the next. Codex can otherwise append to or interrupt that turn.
             func waitForDesktopReply(_ marker: String) async throws {
-                let rendered = (program == .claude ? "⏺ " : "• ") + marker
+                let rendered = program == .claude ? ["⏺ " + marker, "● " + marker] : ["• " + marker]
                 try await wait(for: "the independent desktop reply " + marker) {
                     let screen = try await typing.blockedScreen.readScreen()
                     guard let status = projection.agentsByPane[pane]?.agent.status,
                           status == .idle || status == .done else { return false }
-                    return screen.rows.contains { $0.trimmedText == rendered }
+                    guard screen.rows.filter({ rendered.contains($0.trimmedText) }).count == 1 else { return false }
+                    guard program == .claude else { return true }
+                    guard let id = try await binding(first), ConversationReference.lowercaseUUID(id) == id,
+                          id != firstID && id != peerID else { return false }
+                    let file = URL(fileURLWithPath: fixture.firstFile).deletingLastPathComponent()
+                        .appendingPathComponent(id + ".jsonl").path
+                    guard let size = try await files.status(file)?.size, size > 0 && size <= 1 << 20,
+                          let bytes = try await files.read(path: file, from: 0, to: size, chunk: 64 << 10)
+                    else { return false }
+                    let answers = bytes.split(separator: 0x0a).filter { line in
+                        guard let row = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                              row["type"] as? String == "assistant", row["sessionId"] as? String == id,
+                              let message = row["message"] as? [String: Any], message["role"] as? String == "assistant",
+                              let parts = message["content"] as? [[String: Any]]
+                        else { return false }
+                        return parts.contains { $0["type"] as? String == "text" && $0["text"] as? String == marker }
+                    }
+                    return answers.count == 1
                 }
             }
             try await waitForDesktopReply(rotated)
@@ -363,7 +398,7 @@ struct RexForegroundChatLiveTests {
                 guard case .refused = sent else { throw RexLab.LabError.unreadable("the picked history accepted a new draft") }
                 try #require(composer.draft == text)
             } else {
-                try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach)
+                try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach, "\(String(describing: sent))")
                 try await wait(for: "the independent new conversation to receive only its own phone draft") {
                     await chat.step()
                     return chat.conversation.transcript.recordedPrompts.filter { $0.text == text }.count == 1 &&
@@ -552,7 +587,7 @@ private extension RexForegroundChatLiveTests {
         let outgoing = composer.draft
         chat.draftDidChange(to: outgoing)
         let sent = await composer.send(policy: policy)
-        try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach)
+        try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach, "\(String(describing: sent))")
         try await wait(for: "the one recorded attachment path and its reply") {
             await chat.step()
             return chat.conversation.transcript.recordedPrompts.filter { $0.text == outgoing }.count == 1

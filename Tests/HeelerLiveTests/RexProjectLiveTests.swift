@@ -84,8 +84,16 @@ struct RexProjectLiveTests {
         func receipt(_ lab: Lab, pid: Int) async throws -> Receipt {
             let folder = (lab.recorder as NSString).deletingLastPathComponent
             let file = RemoteFileRange(path: "\(folder)/\(pid).json", offset: 0, maxBytes: 32768)
-            let bytes = try await session.withConnection { try await $0.transport.reads.readHostFileRange(file).data }
-            return try JSONDecoder().decode(Receipt.self, from: bytes)
+            // The foreground can be visible before it publishes its per-PID file atomically.
+            let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+            while true {
+                let slice = try await session.withConnection { try await $0.transport.reads.readHostFileRange(file) }
+                if slice.length != nil {
+                    return try JSONDecoder().decode(Receipt.self, from: slice.data)
+                }
+                try #require(ContinuousClock.now < deadline, "The foreground did not publish its launch receipt")
+                try await Task.sleep(for: .milliseconds(100))
+            }
         }
     }
 
