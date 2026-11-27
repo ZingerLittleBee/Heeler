@@ -39,7 +39,7 @@ struct GrokDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .openCodePermission, .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate,
-            .agyQuestion, .agyWorkspaceTrust, .droidWorkspaceTrust, .droidPermission, .droidQuestion,
+            .agyQuestion, .agyWorkspaceTrust, .devinWorkspaceTrust, .devinPermission, .devinQuestion, .devinPlan, .droidWorkspaceTrust, .droidPermission, .droidQuestion,
             .droidQuestionReview, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
             throw Self.notGrok
         }

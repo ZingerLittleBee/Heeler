@@ -166,18 +166,22 @@ struct DroidSendVerification: Sendable {
     let readTarget: @Sendable () async throws -> DroidDialogTarget?
     let readScreen: @MainActor @Sendable () async throws -> ANSIScreen
     let requiresSpec: Bool
+    var program: ChatProgram = .droid
 
     @MainActor func refusal(staged text: String? = nil) async -> ComposerRefusal? {
-        let held = String(localized: "Check this Droid session and its message box before sending.")
-        let afterPaste = String(localized: "The Droid session or its input changed. Check the text in the terminal before sending again.")
+        let held = program == .devin ? String(localized: "Check this Devin session and its message field before sending.") : String(localized: "Check this Droid session and its message box before sending.")
+        let afterPaste = program == .devin
+            ? String(localized: "Devin’s session or input changed. Check the terminal before sending again.")
+            : String(localized: "The Droid session or its input changed. Check the text in the terminal before sending again.")
         guard !Task.isCancelled, (try? await readTarget()) == target,
-              let screen = try? await readScreen(), !Task.isCancelled, !requiresSpec || DroidInputBox.isSpec(screen)
+              let screen = try? await readScreen(), !Task.isCancelled, !requiresSpec || (program == .devin ? DevinInputBox.isPlan(screen) : DroidInputBox.isSpec(screen))
         else { return text == nil ? .inputNotReady(held) : .notSubmitted(afterPaste) }
         if let text {
-            return DroidInputBox.showsPaste(text, on: screen) ? nil : .notSubmitted(afterPaste)
+            let matches = program == .devin ? DevinInputBox.showsPaste(text, on: screen) : DroidInputBox.showsPaste(text, on: screen)
+            return matches ? nil : .notSubmitted(afterPaste)
         }
-        let box = DroidInputBox.read(screen)
+        let box = program == .devin ? DevinInputBox.read(screen) : DroidInputBox.read(screen)
         if case .empty = box { return nil }
-        return .inputNotReady(box.holdReason(for: .droid))
+        return .inputNotReady(box.holdReason(for: program))
     }
 }

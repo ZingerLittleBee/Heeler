@@ -374,6 +374,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
             home: {
                 try await session.withTransport { try await $0.hostHomeDirectory() }
             },
+            queryDevin: { query in try await session.withTransport { try await $0.queryDevin(query) } },
             queryOpenCode: { query in
                 try await session.withTransport { try await $0.queryOpenCode(query) }
             },
@@ -418,13 +419,38 @@ final class HostConsoleProjection: ConsoleHostProjection {
                      sessionID: folder == nil ? nil : active?.session, transcriptFolder: folder)
     }
 
-    func droidSessionEvidence(paneID: String) async throws -> ChatSessionEvidence {
-        guard let target = try await droidDialogTarget(paneID: paneID) else { return .unavailable(.cannotTellSession(.droid)) }
+    func chatInputTarget(paneID: String, program: ChatProgram) async throws -> DroidDialogTarget? {
+        if program == .droid { return try await droidDialogTarget(paneID: paneID) }
+        guard program == .devin else { return nil }
+        let generation = transportGeneration
+        let agent: Agent
+        do { agent = try await agentInfo(paneID: paneID) }
+        catch let error as HerdrAPIError where error.code == "agent_not_found" { return nil }
+        let snapshot = try await processInfo(paneID: paneID)
+        guard agent.kind == "devin", let group = snapshot.foregroundProcessGroupID,
+              let foreground = snapshot.foregroundProcesses,
+              let client = foreground.first(where: { $0.pid == group && $0.name == "devin" }),
+              let cwd = client.cwd ?? agent.foregroundCwd else { return nil }
+        let root = String(group)
+        let facts = try await withHostServices { try await $0.readProcesses(.init(pids: [root],
+            readsStart: true, readsOpenFiles: true, argumentsAmong: DevinSession.arguments, descendantsOf: root)) }
+        let target = try await DevinSession.target(root: root, members: foreground.map { String($0.pid) },
+            facts: facts, directory: cwd, scope: "\(generation)/\(agent.terminalID)", files: chatHostFiles())
+        let current = try await processInfo(paneID: paneID)
+        let clients = foreground.filter { $0.name == "devin" }
+        let currentClients = (current.foregroundProcesses ?? []).filter { $0.name == "devin" }
+        guard generation == transportGeneration, current.foregroundProcessGroupID == group,
+              clients.count == currentClients.count, clients.allSatisfy(currentClients.contains) else { return nil }
+        return target
+    }
+
+    func droidSessionEvidence(paneID: String, program: ChatProgram = .droid) async throws -> ChatSessionEvidence {
+        guard let target = try await chatInputTarget(paneID: paneID, program: program) else { return .unavailable(.cannotTellSession(program)) }
         if let id = target.sessionID {
             return .bound(sessionID: id, transcriptRoot: target.transcriptFolder, directory: target.directory)
         }
         let agent = try await agentInfo(paneID: paneID)
-        return .unavailable(agent.agentSession == nil ? .noSession(.droid) : .cannotTellSession(.droid))
+        return .unavailable(agent.agentSession == nil ? .noSession(program) : .cannotTellSession(program))
     }
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {

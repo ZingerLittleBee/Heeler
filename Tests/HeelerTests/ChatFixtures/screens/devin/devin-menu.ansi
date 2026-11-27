@@ -1,0 +1,15 @@
+[0m[38;2;68;68;68m───────────────────────────────────────────────[0m[48;2;42;42;42m [0m[38;2;176;176;176m[48;2;42;42;42mCreate approval-b.txt containing DEVIN_…[0m[48;2;42;42;42m [0m[38;2;68;68;68m─[0m
+❭ /[0m[38;2;124;124;124mmodel[0m
+[0m[38;2;68;68;68m──────────────────────────────────────────────────────────────────────────────────────────[0m
+SWE-2.1 Medium                            [0m[38;2;124;124;124mtab next · shift+tab[0m [0m[38;2;124;124;124mprev[0m [0m[38;2;124;124;124m·[0m [0m[38;2;124;124;124m→[0m [0m[38;2;124;124;124maccept[0m [0m[38;2;124;124;124m·[0m [0m[38;2;124;124;124mesc[0m [0m[38;2;124;124;124mclose[0m
+[0m[38;2;124;124;124m○ /model [adaptive|swe-2.1|swe… Interactively choose a model, or specify one directly[0m
+[0m[38;2;124;124;124m  /usage                        Show session usage of credits / ACUs[0m
+[0m[38;2;124;124;124m  /clear                        Clear conversation history[0m
+[0m[38;2;124;124;124m  /resume [session-id]          Resume a previous session (opens a picker when no id is g…[0m
+[0m[38;2;124;124;124m  /bypass                       Switch to bypass mode[0m
+[0m[38;2;124;124;124m  /mode [mode]                  Show or switch mode[0m
+[0m[38;2;124;124;124m  /accept-edits                 Switch to accept edits mode[0m
+[0m[38;2;124;124;124m  /add-dir [path]               Add additional workspace directory[0m
+[0m[38;2;124;124;124m  /ask [question]               Switch to Ask mode (read-only)[0m
+[0m[38;2;124;124;124m  /autonomous                   Switch to autonomous mode (sandbox-enforced)[0m
+  [0m[38;2;124;124;124m↓ more[0m

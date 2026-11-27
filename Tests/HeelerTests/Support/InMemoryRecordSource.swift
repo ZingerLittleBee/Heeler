@@ -106,7 +106,7 @@ struct InMemoryRecordSource: ChatTranscriptSource {
         _ store: Store, sessionID: String, limits: Limits = Limits(), wantsFirstLine: Bool = false
     ) -> ChatTranscriptAdapter {
         var adapter = NumberedChatReducer.adapter(wantsFirstLine: wantsFirstLine)
-        adapter.makeRecordSource = { id in
+        adapter.makeRecordSource = { id, _ in
             id == sessionID ? InMemoryRecordSource(store: store, sessionID: id, limits: limits) : nil
         }
         return adapter

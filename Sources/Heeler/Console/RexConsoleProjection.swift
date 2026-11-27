@@ -450,11 +450,16 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
 
     func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
-        guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
-              let active = server, let scope = chatCacheScope, agentsByPane[paneID]?.agent.status != .unknown else { return nil }
+        try await chatInputTarget(paneID: paneID, program: .droid)
+    }
+
+    func chatInputTarget(paneID: String, program: ChatProgram) async throws -> DroidDialogTarget? {
+        guard program.pinsComposerToSession, !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
+              let active = server, let scope = chatCacheScope, (program == .devin || agentsByPane[paneID]?.agent.status != .unknown) else { return nil }
         let details = await detailsWithCurrentForeground(at: address, listed: listed, server: active)
-        let target = try await chatBinder(at: address, details: details, program: .droid, server: active)
+        let target = try await chatBinder(at: address, details: details, program: program, server: active)
             .droidDialogTarget(chatRecord(at: address, details: details), scope: scope + "/" + paneID)
+        if program == .devin, agentsByPane[paneID]?.agent.status == .unknown, target?.sessionID == nil { return nil }
         return chatCacheScope == scope ? target : nil
     }
 
@@ -994,7 +999,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             status: { path in try await Self.reads(session).fileStatus(atPath: path) },
             list: { request in try await Self.reads(session).listFiles(request) },
             read: { range in try await Self.reads(session).readHostFileRange(range) },
-            home: { try await Self.reads(session).hostHomeDirectory() })
+            home: { try await Self.reads(session).hostHomeDirectory() },
+            queryDevin: { try await Self.reads(session).queryDevin($0) })
     }
 
     /// New Terminal starts in the account's home directory and browses with

@@ -423,7 +423,7 @@ enum SupportedAgentKind: String, CaseIterable, Identifiable, Sendable, Equatable
 struct AgentLaunchRequest: Sendable, Equatable {
     let kind: String
     let name: String
-    let arguments: [String]
+    var arguments: [String]
     let workspaceID: String?
     /// Working directory for the fresh tab, carried when the launch starts
     /// from another agent's screen and should land in the same place. Nil

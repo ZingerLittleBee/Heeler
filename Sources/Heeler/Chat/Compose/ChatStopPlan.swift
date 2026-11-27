@@ -41,6 +41,9 @@ struct ChatStopPlan: Sendable {
     static func standard(for program: ChatProgram) -> ChatStopPlan {
         switch program {
         case .claude, .codex, .pi, .omp, .amp: .escape
+        case .devin:
+            ChatStopPlan(keys: ["esc", "esc"], screenGuard: DevinInputBox.stop, wait: .escape,
+                         accessibilityHint: String(localized: "Presses Esc twice to interrupt Devin"))
         case .droid:
             ChatStopPlan(
                 keys: ["esc"], screenGuard: DroidInputBox.stop, wait: .escape,
@@ -150,5 +153,5 @@ struct ChatStopPlan: Sendable {
         }
     }
 
-    static let changedDroidTurn = String(localized: "Droid’s active turn could not be verified. Check the current conversation before stopping it.")
+    static let changedDroidTurn = String(localized: "The active turn could not be verified. Check the current conversation before stopping it.")
 }

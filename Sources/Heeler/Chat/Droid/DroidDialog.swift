@@ -11,7 +11,8 @@ struct DroidDialogTarget: Equatable, Sendable {
     var userHooksDisabled = false
 
     func shows(_ dialog: BlockedDialog) -> Bool {
-        if dialog.kind == .droidWorkspaceTrust {
+        if [.droidWorkspaceTrust, .devinWorkspaceTrust].contains(dialog.kind) {
+            if dialog.kind == .devinWorkspaceTrust, sessionID != nil { return false }
             guard let path = dialog.subject.workspacePath else { return false }
             // /cd asks about a new destination while the current session and
             // process still belong to the old directory.

@@ -425,6 +425,7 @@ struct HerdrCoreMacOSSessionBinderTests {
         case .opencode: openCodeID
         case .amp: "T-0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
         case .pi, .omp: "\(lab)/s/0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11.jsonl"
+        case .devin: "steady-willow"
         case .claude, .codex, .grok, .agy, .droid: "0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
         }
     }

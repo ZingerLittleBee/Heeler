@@ -168,6 +168,10 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
                 case .codex: try await checkCodex(record, tree: tree)
                 case .grok: try await checkGrokBuild(tree)
+                case .devin:
+                    if let target = try await devinTarget(record, tree: tree, scope: ""), let id = target.sessionID {
+                        .bound(sessionID: id, transcriptRoot: target.transcriptFolder, directory: target.directory)
+                    } else { cannotTell }
                 case .droid: try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd)
                 case .amp: .unavailable(.amp(.unidentified))
                 case .opencode: try await checkOpenCode(record, tree: tree)
@@ -241,6 +245,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
+        case .devin: ProcessAsk(arguments: DevinSession.arguments, readsOpenFiles: true)
         case .droid: ProcessAsk(values: [Self.homeVariable])
         case .opencode, .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
@@ -264,6 +269,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok:
             isOnWindows
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
+        case .devin: tree.nearestAgent(isAgent: { $0?.name == "devin" })
         case .droid: tree.agent(isAgent: { $0?.name == "droid" })
         case .amp: nil
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
@@ -282,17 +288,24 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode, .droid, .amp: nil
+        case .opencode, .droid, .devin, .amp: nil
         case .pi, .omp: piFamilySessions(of: process)
         case .agy: antigravityRoot(of: process)
         }
     }
 
+    func devinTarget(_ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses, scope: String) async throws -> DroidDialogTarget? {
+        guard let pid = agentProcess(in: tree) else { return nil }
+        return try await DevinSession.target(root: pid, members: tree.descendants.filter(tree.sharesScope), facts: tree.facts,
+            directory: record.foreground?.cwd ?? record.cwd, scope: scope, files: files)
+    }
+
     /// The hook atomically replaces one file per foreground Droid. A label can
     /// wake Chat, but only the process's current record authorizes a send.
     func droidDialogTarget(_ record: HerdrCoreTerminalRecord, scope: String) async throws -> DroidDialogTarget? {
-        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk),
-              let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
+        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk) else { return nil }
+        if program == .devin { return try await devinTarget(record, tree: tree, scope: scope) }
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
               case .value(let start) = process.start else { return nil }
         let id: String?
         let folder: String?

@@ -9,6 +9,7 @@ import Foundation
 /// errors (`.hostFileTimedOut`, `.hostFileUnreadable`,
 /// `.hostStoreUnreadable`), never a redial.
 struct ChatHostFiles: Sendable {
+    var queryDevin: (@Sendable (DevinSessionQuery) async throws -> DevinSessionPage)?
     var amp: AmpChatConnection?
     /// Stats a path, following symlinks; nil when it does not exist.
     let status: @Sendable (_ path: String) async throws -> RemoteFileStatus?
@@ -33,6 +34,7 @@ struct ChatHostFiles: Sendable {
         list: @escaping @Sendable (_ request: RemoteFileListingRequest) async throws -> RemoteFileListing?,
         read: @escaping @Sendable (_ range: RemoteFileRange) async throws -> RemoteFileSlice,
         home: @escaping @Sendable () async throws -> String,
+        queryDevin: (@Sendable (DevinSessionQuery) async throws -> DevinSessionPage)? = nil,
         queryOpenCode: (@Sendable (_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse)? = nil,
         accountDirectories: @escaping @Sendable (_ kind: SupportedAgentKind) async throws -> [String] = { _ in [] },
         retrySFTP: @escaping @MainActor @Sendable () -> Void = {}
@@ -41,6 +43,7 @@ struct ChatHostFiles: Sendable {
         self.list = list
         self.read = read
         self.home = home
+        self.queryDevin = queryDevin
         self.queryOpenCode = queryOpenCode
         self.accountDirectories = accountDirectories
         self.retrySFTP = retrySFTP

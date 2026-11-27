@@ -64,6 +64,7 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
     /// prompt: `Yes, I trust this folder`, or `No, exit`.
     case agyWorkspaceTrust
 
+    case devinWorkspaceTrust, devinPermission, devinQuestion, devinPlan
     case droidWorkspaceTrust, droidPermission, droidQuestion, droidQuestionReview
     case droidSpec, droidSpecAutonomy, droidSpecFeedback
 
@@ -75,6 +76,7 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
         case .codexExec, .codexPatch, .codexNetwork, .codexQuestion, .codexAsyncCollapsed,
             .codexAsyncQuestion, .codexWorkspaceTrust:
             .codex
+        case .devinWorkspaceTrust, .devinPermission, .devinQuestion, .devinPlan: .devin
         case .droidWorkspaceTrust, .droidPermission, .droidQuestion, .droidQuestionReview, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
             .droid
         case .ompApproval, .ompQuestion, .ompQuestionReview:
@@ -229,6 +231,8 @@ struct DialogSubject: Sendable, Hashable {
     /// Oh My Pi approval: the `Command:` row, its cut-off mark dropped.
     var command: String?
     var commandRows: [String] = []
+    /// The scope currently selected on Devin’s horizontal Allow row.
+    var devinScope: Int?
     /// Claude Bash: the description row above the command.
     var commandDescription: String?
     /// Claude Edit/Write: the file as the dialog names it. Codex patch: the
@@ -432,6 +436,7 @@ enum BlockedDialogParser {
         case .agy: AgyDialogParser.parse(screen)
         // Pi has no dialog parser yet.
         case .droid: DroidDialog.parse(screen)
+        case .devin: DevinDialog.parse(screen)
         case .pi, .amp: .none
         }
     }

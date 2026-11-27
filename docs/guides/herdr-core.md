@@ -119,6 +119,7 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Opens on macOS, Linux, and Windows. Binds at its prompt and follows `/clear` and `/resume`. |
+| Devin CLI | On macOS and Linux, open a [local Devin session](chat.md#devin-cli) with a foreground ACP writer. The Host needs Python 3. |
 | Droid | On macOS and Linux, **New Agent** supplies the [Droid hook](chat.md#droid). Chat follows the conversation in this terminal. |
 | Codex | Opens on macOS and Linux. Binds on the first message when started with `--no-daemon`. |
 | Grok Build | Opens on macOS, Linux, and Windows. Binds while Grok Build's process lists one conversation. After `/new`, restart or use **Choose a Conversation** on macOS and Linux. |

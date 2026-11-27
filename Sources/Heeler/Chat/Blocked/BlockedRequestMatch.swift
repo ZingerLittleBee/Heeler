@@ -8,7 +8,7 @@ import Foundation
 enum BlockedRequestMatch {
     static func request(for dialog: BlockedDialog, in requests: [ChatPendingRequest]) -> ChatPendingRequest? {
         let candidates = requests.filter { matches($0, dialog) }
-        if dialog.program == .droid, candidates.count != 1 { return nil }
+        if dialog.program.pinsComposerToSession, candidates.count != 1 { return nil }
         return candidates.first
     }
 
@@ -23,7 +23,26 @@ enum BlockedRequestMatch {
     private static func matches(_ request: ChatPendingRequest, _ dialog: BlockedDialog) -> Bool {
         let subject = dialog.subject
         switch dialog.kind {
-        case .droidWorkspaceTrust: return false
+        case .devinWorkspaceTrust, .droidWorkspaceTrust: return false
+        case .devinPlan:
+            // Devin renders inline code with padding and wraps the plan at word boundaries.
+            let visible = dialog.body.joined(separator: " ").split(whereSeparator: \.isWhitespace)
+            let rendered = request.summary.replacing(/`([^`\n]+)`/) { " " + $0.1 + " " }
+            let submitted = rendered.split(whereSeparator: \.isWhitespace)
+            return request.toolName == "exit_plan_mode" && !visible.isEmpty && submitted == visible
+        case .devinQuestion:
+            return request.toolName == "ask_user_question" && request.questions.contains { question in
+                let shown = dialog.options.filter { $0.role == .answer }
+                return question.text == subject.question && question.options.count == shown.count
+                    && zip(question.options, shown).allSatisfy { $0.label == $1.label && $0.detail == $1.detail }
+            }
+        case .devinPermission:
+            guard request.toolName == subject.toolName else { return false }
+            if subject.command != nil {
+                return DroidDialog.matchesCommandRows(subject.commandRows, command: request.summary)
+            }
+            guard let path = subject.filePath else { return false }
+            return request.summary == path || (path.hasPrefix("./") && request.summary.hasSuffix(String(path.dropFirst())))
         case .droidPermission:
             if let command = subject.command {
                 guard request.toolName == "Execute" else { return false }

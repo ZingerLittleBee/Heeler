@@ -192,7 +192,7 @@ struct TmuxChatTests {
     @Test func hostCapabilitiesOfferTmuxChatOnlyOnLinuxAndMacOSForConfirmedPrograms() {
         #expect(!HostCapabilities(serverKind: .tmux).chat)
         #expect(!HostCapabilities(serverKind: .tmux, coreKernel: "FreeBSD").chat)
-        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
+        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
         for kernel in ["Linux", "Darwin"] {
             let capabilities = HostCapabilities(serverKind: .tmux, coreKernel: kernel)
             #expect(capabilities.chat)

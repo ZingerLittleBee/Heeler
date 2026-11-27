@@ -42,6 +42,9 @@ extension ChatTranscriptAdapter {
                 },
                 identity: { PiTranscriptLocator.sessionID(inHead: $0) },
                 echoesByEntry: true)
+        case .devin:
+            ChatTranscriptAdapter(revision: 1, joinsCachedHistory: false, makeReducer: { _ in DevinTranscriptReducer() },
+                                  echoesByEntry: true, makeRecordSource: { DevinRecordSource(session: $0, root: $1) })
         case .droid:
             ChatTranscriptAdapter(
                 revision: 1, wantsFirstLine: true, joinsCachedHistory: false,
@@ -58,7 +61,7 @@ extension ChatTranscriptAdapter {
             ChatTranscriptAdapter(
                 revision: AmpTranscriptReducer.revision, joinsCachedHistory: false,
                 makeReducer: { _ in AmpTranscriptReducer() },
-                echoesByEntry: true, makeRecordSource: { AmpRecordSource(thread: $0) },
+                echoesByEntry: true, makeRecordSource: { id, _ in AmpRecordSource(thread: id) },
                 migrateCache: AmpTranscriptReducer.migrateCache)
         }
     }
@@ -73,5 +76,5 @@ extension ChatTranscriptAdapter {
         joinsCachedHistory: false,
         makeReducer: { _ in OpenCodeTranscriptReducer() },
         echoesByEntry: true,
-        makeRecordSource: { OpenCodeSessionID($0).map { OpenCodeRecordSource(session: $0) } })
+        makeRecordSource: { id, _ in OpenCodeSessionID(id).map { OpenCodeRecordSource(session: $0) } })
 }

@@ -56,7 +56,7 @@ struct ChatDeliveryPolicyTests {
 
     /// Each program's idle capture with an empty input box.
     private static let readyScreens: [ChatProgram: String] = [
-        .amp: "amp-01-idle", .droid: "droid-01-idle",
+        .amp: "amp-01-idle", .droid: "droid-01-idle", .devin: "devin-idle",
         .claude: "claude-01-ready", .codex: "codex-00-ready", .pi: "pi-06-empty-editor-119",
         .omp: "omp-08-empty-120-after-first", .grok: "grok-01-idle-empty",
         .opencode: "opencode-02-session-empty-180", .agy: "agy-02-idle-empty-120x40",
@@ -367,7 +367,7 @@ struct ChatDeliveryPolicyTests {
         }
 
         #expect(try ending(await blocked("hello")) == [.idle, .working, .done, .unknown])
-        let compactStates: [AgentStatus] = [.amp, .droid].contains(program) ? [] : [.idle, .done]
+        let compactStates: [AgentStatus] = [.amp, .droid, .devin].contains(program) ? [] : [.idle, .done]
         #expect(try ending(busy.validate("/compact")) == compactStates)
         #expect(try ending(await unreadable("hello")) == statuses)
         for state in [

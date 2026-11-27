@@ -342,7 +342,7 @@ final class AgentChatStore {
     /// How many of `Timing.unannouncedEvidenceChecks` were taken since a check
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
-    var droidSessionID: String? { program == .droid ? followed?.sessionID : nil }
+    var droidSessionID: String? { program.pinsComposerToSession ? followed?.sessionID : nil }
     private(set) var displayedDroidTarget: DroidDialogTarget?
 
     /// A Stop button belongs to the recorded turn on screen, even when the
@@ -631,12 +631,12 @@ final class AgentChatStore {
         thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: keptFiles))
         self.timing = timing
         self.now = now
-        let resolution: ConversationReference.Resolution = program == .droid && source.sessionEvidence != nil
+        let resolution: ConversationReference.Resolution = program.pinsComposerToSession && source.sessionEvidence != nil
             ? .noSession : ConversationReference.resolve(agent.agentSession)
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
-        if program == .droid {
+        if program.pinsComposerToSession {
             blocked.readDroidPatch = { path in
                 guard let size = try? await source.files.status(path)?.size, size > 0, size <= 32 << 10,
                       let chunk = try? await source.files.read(.init(path: path, offset: 0, maxBytes: Int(size))),
@@ -646,11 +646,26 @@ final class AgentChatStore {
                       patch.contains("--- "), patch.contains("\n+++ "), patch.contains("\n@@ ") else { return nil }
                 return patch
             }
+        }
+        if program == .droid {
             blocked.droidCallStillOpen = { [weak self] request, session in
                 guard let self, followed?.sessionID == session, case .following(let file) = conversation.phase,
                       let offset = conversation.transcript.entries.first(where: { $0.id == request.entryID })?.sourceOffset,
                       let call = request.callID else { return false }
                 return (try? await DroidTranscriptReducer.stillOpen(call: call, at: offset, file: file, files: source.files)) == true
+            }
+        }
+        if program == .devin {
+            blocked.droidCallStillOpen = { [weak self] request, session in
+                guard let self, followed?.sessionID == session, let target = displayedDroidTarget,
+                      target.sessionID == session, let root = target.transcriptFolder, let callID = request.callID,
+                      let query = source.files.queryDevin,
+                      let page = try? await query(.init(session: session, root: root, limit: 24)),
+                      let last = page.rows.last, last.role == "assistant",
+                      let call = last.calls.first(where: { $0.id == callID }), call.complete,
+                      call.name == request.toolName, call.subject == request.summary,
+                      call.questions == request.questions, call.activity.fileChanges == request.fileChanges else { return false }
+                return true
             }
         }
         blocked.update(activity: ChatAgentActivity(agent.status))
@@ -1175,7 +1190,7 @@ final class AgentChatStore {
         // handed over again is no report: OpenCode changes its conversation
         // without a status change, so the Console's record can be older than
         // the answer herdr gave Chat (`checkStartScreen`).
-        let checksDroidProcess = program == .droid && source.sessionEvidence != nil
+        let checksDroidProcess = program.pinsComposerToSession && source.sessionEvidence != nil
         let bindingReturned = !checksDroidProcess && isAwaitingSession && staleSession == nil && reported != .noSession
         let previous = ChatAgentActivity(agent.status)
         agent = next
@@ -1559,11 +1574,14 @@ final class AgentChatStore {
             guard let lastAgentRefresh else { return true }
             return now().timeIntervalSince(lastAgentRefresh) >= timing.sessionRecheck
         }
-        guard source.sessionEvidence == nil || (program == .amp && isVisible) else { return false }
+        // Devin can replace the ACP writer during /resume without changing
+        // the pane's status or the last session reported by a hook.
+        let watchesForeground = isVisible && (program == .amp || program == .devin)
+        guard source.sessionEvidence == nil || watchesForeground else { return false }
         let interval: TimeInterval
         if engine == nil || isUnavailable || consecutiveAgentRefreshLinkFailures > 0 {
             interval = timing.sessionRecheck
-        } else if isVisible, program == .amp || ChatAgentActivity(agent.status) == .idle {
+        } else if watchesForeground || (isVisible && ChatAgentActivity(agent.status) == .idle) {
             interval = timing.idleSessionRecheck
         } else {
             return false
@@ -1648,14 +1666,14 @@ final class AgentChatStore {
     /// a herdr record.
     private func readEvidence(_ fallback: @Sendable () async throws -> ChatSessionEvidence) async throws
         -> (ChatSessionEvidence, DroidDialogTarget?) {
-        if program == .droid, let target = try? await source.screen.droidTarget?(), let id = target.sessionID {
+        if program.pinsComposerToSession, let target = try? await source.screen.droidTarget?(), let id = target.sessionID {
             return (.bound(sessionID: id, transcriptRoot: target.transcriptFolder, directory: target.directory), target)
         }
         return (try await fallback(), nil)
     }
 
     private func adoptEvidence(_ evidence: ChatSessionEvidence, droid: DroidDialogTarget? = nil) {
-        if program == .droid { displayedDroidTarget = droid }
+        if program.pinsComposerToSession { displayedDroidTarget = droid }
         if let amp = source.files.amp {
             if let before = ampBinding, let after = amp.current, before != after,
                 before.binding.thread == after.binding.thread {
@@ -2385,7 +2403,7 @@ final class AgentChatStore {
         switch evidence {
         // The message starts the conversation, and the check its turn brings
         // binds it (ADR 0034).
-        case .unavailable(.noConversationYet) where shown == nil && program != .droid:
+        case .unavailable(.noConversationYet) where shown == nil && !program.pinsComposerToSession:
             return nil
         case .unavailable(.noConversationYet):
             return String(
@@ -3442,7 +3460,7 @@ extension ChatProgram {
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
-        case .opencode, .droid, .amp: false
+        case .opencode, .droid, .devin, .amp: false
         }
     }
 
@@ -3455,7 +3473,7 @@ extension ChatProgram {
         case .pi, .omp, .grok, .opencode: true
         // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
         // checkpoint; a refused one was not observed.
-        case .claude, .codex, .agy, .droid, .amp: false
+        case .claude, .codex, .agy, .droid, .devin, .amp: false
         }
     }
 
@@ -3469,7 +3487,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode, .agy, .droid, .amp: false
+        case .claude, .codex, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 
@@ -3482,7 +3500,7 @@ extension ChatProgram {
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy: true
-        case .opencode, .droid, .amp: false
+        case .opencode, .droid, .devin, .amp: false
         }
     }
 
@@ -3495,7 +3513,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy, .droid, .amp: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .droid, .devin, .amp: false
         case .opencode: true
         }
     }
@@ -3508,7 +3526,7 @@ extension ChatProgram {
     var confirmsSessionBeforeSend: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
-        case .opencode, .droid: true
+        case .opencode, .droid, .devin: true
         }
     }
 
@@ -3518,7 +3536,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode, .agy, .droid, .amp: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 }

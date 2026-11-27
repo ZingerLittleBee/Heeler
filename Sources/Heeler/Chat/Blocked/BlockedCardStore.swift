@@ -26,6 +26,7 @@ struct BlockedScreenIO: Sendable {
     var droidTarget: (@Sendable () async throws -> DroidDialogTarget?)? = nil
     var hostName: String? = nil
     var herdrReportsDroidSession = false
+    var holdsDialogsWhileUnknown = false
     var readScreen: @Sendable () async throws -> ANSIScreen
     var sendKeys: @Sendable ([String]) async throws -> Void
     var paste: @Sendable (String) async throws -> Void
@@ -444,7 +445,7 @@ final class BlockedCardStore {
     /// that screen alone (`observe`).
     private var readsIdleTrust: Bool {
         activity == .idle && (([.codex, .agy].contains(program) && awaitingSession)
-            || (program == .droid && pendingRequests.isEmpty))
+            || (program.pinsComposerToSession && pendingRequests.isEmpty))
     }
 
     /// herdr 0.9.5 reports a typed Antigravity CLI 1.5.3 neither idle nor
@@ -455,12 +456,13 @@ final class BlockedCardStore {
     /// Chat would hold a message there anyway, since agy shows no empty
     /// input box under the prompt.
     private var readsUnknownTrust: Bool {
-        (program == .agy || program == .droid) && activity == .unknown && awaitingSession
+        (program == .agy || program.pinsComposerToSession) && activity == .unknown && awaitingSession
     }
 
     /// Whether the screen may show a dialog the card answers.
     private var readsScreen: Bool {
-        (program == .droid && !pendingRequests.isEmpty && activity != .unknown) || activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
+        let canReadPending = activity != .unknown || (program == .devin && !io.holdsDialogsWhileUnknown)
+        return (program.pinsComposerToSession && !pendingRequests.isEmpty && canReadPending) || activity == .blocked || readsIdleQuestion || readsIdleGatedCall || readsIdleTrust || readsUnknownTrust
             || readsIdleOnce
     }
 
@@ -500,11 +502,11 @@ final class BlockedCardStore {
     /// resend.
     func perform(_ action: DialogAction, shownCard: BlockedCard? = nil) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
-        if program == .droid, shownCard != shown {
+        if program.pinsComposerToSession, shownCard != shown {
             notice = Self.changedMessage
             return
         }
-        if program == .droid {
+        if program.pinsComposerToSession {
             guard actingDroidCard == nil, shown.target != nil else { return }
             actingDroidCard = shown
         }
@@ -525,7 +527,7 @@ final class BlockedCardStore {
         ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = matchingRequest(for: dialog)
-            if program == .droid, observedDroidTarget != shown.target || request?.callID != shown.request?.callID { throw .unsupported(Self.changedMessage) }
+            if program.pinsComposerToSession, observedDroidTarget != shown.target || request?.callID != shown.request?.callID { throw .unsupported(Self.changedMessage) }
             // Each program's planner decides whether the call's result
             // confirms the answer.
             let plan = try DialogActionPlanner.plan(action, for: dialog, toolUseID: request?.callID)
@@ -535,7 +537,8 @@ final class BlockedCardStore {
         }
         if isConfirmed, let answered {
             record(action, on: answered)
-            if answered.dialog.kind == .droidSpec, case .choose(ordinal: 5) = action, let session = shown.target?.sessionID {
+            if case .choose(let ordinal) = action, let session = shown.target?.sessionID,
+               (answered.dialog.kind == .droidSpec && ordinal == 5) || (answered.dialog.kind == .devinPlan && ordinal == 3) {
                 droidRevision = DroidRevision(session: session)
             }
         }
@@ -919,7 +922,7 @@ final class BlockedCardStore {
             return false
         }
         await waitOutGrace(for: shown, kind: fresh.result.dialog?.kind)
-        if program == .droid {
+        if program.pinsComposerToSession {
             droidStepFocus = fresh.result.dialog?.focus.focusedOrdinal
             droidStepText = fresh.result.dialog?.focus.inputText
         }
@@ -1137,13 +1140,13 @@ final class BlockedCardStore {
                         return .stopped
                     }
                     checked = check.last
-                    if program == .droid {
+                    if program.pinsComposerToSession {
                         droidStepFocus = checked?.result.dialog?.focus.focusedOrdinal
                         droidStepText = checked?.result.dialog?.focus.inputText
                     }
                 }
             } catch {
-                if program == .droid { unconfirmedFingerprint = fingerprint }
+                if program.pinsComposerToSession { unconfirmedFingerprint = fingerprint }
                 finish(notice: Self.sendFailure(error))
                 return .stopped
             }
@@ -1158,7 +1161,7 @@ final class BlockedCardStore {
         let expectedText = droidStepText
         let check: @Sendable (ANSIScreen) -> Bool = { screen in
             let parsed = DialogObservation(screen: screen, program: program).result
-            if program == .droid {
+            if program.pinsComposerToSession {
                 guard let dialog = parsed.dialog, dialog.focus.focusedOrdinal == expectedFocus,
                       dialog.focus.inputText == expectedText else { return false }
             }
@@ -1166,7 +1169,7 @@ final class BlockedCardStore {
             guard let fingerprint else { return now == nil }
             return now?.matches(fingerprint) == true
         }
-        if program == .droid {
+        if program.pinsComposerToSession {
             guard let card = actingDroidCard else { throw TransportError.cancelled }
             try await typeDroid(typing, on: card, whileShowing: check)
         } else {
@@ -1190,7 +1193,11 @@ final class BlockedCardStore {
 
     private func canStillAnswer(_ card: BlockedCard) async -> Bool {
         guard let target = card.target, (try? await io.droidTarget?()) == target else { return false }
-        if card.dialog.kind == .droidWorkspaceTrust { return true }
+        if [.devinWorkspaceTrust, .droidWorkspaceTrust].contains(card.dialog.kind) { return target.shows(card.dialog) }
+        if program == .devin, let path = card.dialog.subject.filePath {
+            let absolute = path.hasPrefix("./") ? target.directory + "/" + path.dropFirst(2) : path
+            guard absolute == card.request?.summary else { return false }
+        }
         guard let request = card.request, let session = target.sessionID,
               await droidCallStillOpen?(request, session) == true else { return false }
         if card.dialog.subject.command != nil {
@@ -1351,10 +1358,16 @@ final class BlockedCardStore {
 
     private func observe() async -> DialogObservation? {
         guard let screen = try? await io.readScreen() else {
+            if program == .devin, awaitingSession {
+                droidStartupGuidance = String(localized: "Chat could not read this terminal. Open it to check whether Devin has started.")
+            }
             if program == .droid, awaitingSession {
                 droidStartupGuidance = String(localized: "Chat could not read this terminal. Reopen it to check whether Droid has started.")
             }
             return nil
+        }
+        if program == .devin, awaitingSession {
+            droidStartupGuidance = DevinInputBox.guidance(screen) ?? String(localized: "Open this terminal to finish Devin startup. Chat needs the foreground client’s local session lock.")
         }
         if program == .droid, awaitingSession {
             let hint = DroidInputBox.terminalGuidance(screen.rows.map(\.trimmedText))
@@ -1370,7 +1383,7 @@ final class BlockedCardStore {
         }
         let observation = DialogObservation(
             screen: screen, program: program, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
-        if program == .droid, let dialog = observation.result.dialog {
+        if program.pinsComposerToSession, let dialog = observation.result.dialog {
             guard let target = try? await io.droidTarget?(), target.shows(dialog) else {
                 observedDroidTarget = nil
                 return observation.withoutDialog
@@ -1387,14 +1400,14 @@ final class BlockedCardStore {
                     fallthrough
                 case .terminal:
                     return observation.requiringTerminal(Self.excerpt(of: dialog, on: observation.screen,
-                        reason: String(localized: "Open this Agent’s terminal to review the complete patch and answer Droid.")))
+                        reason: String(localized: "Open this Agent’s terminal to review the complete patch and answer.")))
                 }
             }
-            if dialog.kind == .droidWorkspaceTrust { droidStartupGuidance = nil }
+            if [.devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind) { droidStartupGuidance = nil }
         }
         guard readsIdleTrust || readsUnknownTrust else { return observation }
         switch observation.result.dialog?.kind {
-        case .codexWorkspaceTrust, .agyWorkspaceTrust, .droidWorkspaceTrust: return observation
+        case .codexWorkspaceTrust, .agyWorkspaceTrust, .devinWorkspaceTrust, .droidWorkspaceTrust: return observation
         default: return observation.withoutDialog
         }
     }
@@ -1441,6 +1454,10 @@ final class BlockedCardStore {
     /// request, the newest turn's failure, or a likely failed model
     /// request.
     private func whyBlocked(on screen: ANSIScreen?) -> String? {
+        if program == .devin {
+            if let screen, let hint = DevinInputBox.guidance(screen) { return hint }
+            return latestFailure ?? String(localized: "Open this terminal to review Devin’s current prompt.")
+        }
         if program == .droid {
             if let screen, let specific = DroidInputBox.terminalGuidance(screen.rows.map(\.trimmedText)) { return specific }
             if let latestFailure { return latestFailure }

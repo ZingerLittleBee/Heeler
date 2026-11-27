@@ -249,7 +249,7 @@ extension HostCapabilities {
     /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
@@ -258,7 +258,7 @@ extension HostCapabilities {
     /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
     /// bound from its presence lock, sent from Chat and answered its trust prompt,
     /// permissions and questions from cards, and the colored one followed `/clear`.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
 
     /// The programs a Rex Host's Chat opens for (ADRs 0034 and 0056,
     /// rex-compatibility.md): Claude Code and Codex, each bound from its own process
@@ -266,7 +266,7 @@ extension HostCapabilities {
     /// extension, which Chat offers to add where the Agent's extension folder lacks
     /// it. Rex 0.1.0-preview.14 on macOS confirmed nothing for Grok Build or agy, and
     /// OpenCode binds only with Heeler's plugin, so none of those is offered.
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid, .devin]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound

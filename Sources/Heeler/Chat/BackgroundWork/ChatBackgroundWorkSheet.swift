@@ -105,7 +105,7 @@ struct ChatBackgroundWorkSheet: View {
         let session = chat.droidSessionID
         return ChatBackgroundWorkActivityCard(row: row, expandedCards: $expandedCards, isDivided: isDivided,
             inspectDroid: item.flatMap { task in
-                guard isHostConnected, let session, task.kind == .command, task.state == .running else { return nil }
+                guard chat.program == .droid, isHostConnected, let session, task.kind == .command, task.state == .running else { return nil }
                 return { stop in await chat.inspectDroidTask(task, session: session, stop: stop) }
             })
     }

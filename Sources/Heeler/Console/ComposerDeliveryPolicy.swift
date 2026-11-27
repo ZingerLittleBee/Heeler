@@ -96,6 +96,7 @@ struct ComposerDeliveryPolicy: Sendable {
     var route: ComposerRoute
     var requiresSinglePrompt = false
     var droidTarget: (@Sendable () async throws -> DroidDialogTarget?)?
+    var checkedProgram: ChatProgram = .droid
     var displayedDroidTarget: (@MainActor () -> DroidDialogTarget?)?
     var droidScreen: (@MainActor @Sendable () async throws -> ANSIScreen)?
     var requiresSpec = false
@@ -137,9 +138,9 @@ struct ComposerDeliveryPolicy: Sendable {
             guard let session, let droidTarget, let droidScreen,
                   let target = try? await droidTarget(), target.sessionID == session,
                   displayedDroidTarget == nil || shown == target else {
-                return .inputNotReady(String(localized: "Return to the Droid session that owns this draft before sending it."))
+                return .inputNotReady(checkedProgram.draftOwnerGuidance)
             }
-            droidWrite = DroidSendVerification(target: target, readTarget: droidTarget, readScreen: droidScreen, requiresSpec: requiresSpec)
+            droidWrite = DroidSendVerification(target: target, readTarget: droidTarget, readScreen: droidScreen, requiresSpec: requiresSpec, program: checkedProgram)
         }
         return await preflight?(text)
     }

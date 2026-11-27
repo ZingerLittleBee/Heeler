@@ -1717,9 +1717,13 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
-        guard hasInventory, departedAgentsByPane[paneID] == nil, let scope = chatCacheScope else { return nil }
+        try await chatInputTarget(paneID: paneID, program: .droid)
+    }
+
+    func chatInputTarget(paneID: String, program: ChatProgram) async throws -> DroidDialogTarget? {
+        guard program.pinsComposerToSession, hasInventory, departedAgentsByPane[paneID] == nil, let scope = chatCacheScope else { return nil }
         let record = try await inventoryTransport().terminalRecord(paneID)
-        let target = try await chatBinder(paneID: paneID, program: .droid, core: inventoryCore)
+        let target = try await chatBinder(paneID: paneID, program: program, core: inventoryCore)
             .droidDialogTarget(record, scope: scope + "/" + paneID)
         return chatCacheScope == scope ? target : nil
     }
@@ -1937,6 +1941,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             home: {
                 RemoteFilePath.windowsForSFTP(try await session.withTransport { $0 }.homeDirectory())
             },
+            queryDevin: { query in try await session.withTransport { $0.hostServices }.queryDevin(query) },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
             },
