@@ -157,14 +157,18 @@ struct AgentChatStoreTests {
         store.conversation.transcript.entries.map(\.id.rawValue)
     }
 
-    @Test(arguments: [second, nil] as [String?])
-    func droidKeepsTheDraftWhenTheReportedSessionChanges(session: String?) async throws {
+    @Test(arguments: [true, false])
+    func droidKeepsTheDraftWhenTheReportedSessionChanges(isMissing: Bool) async {
         let fixture = Fixture(session: Self.first, program: .droid)
         defer { fixture.store.end() }
         #expect(await fixture.store.confirmSessionBeforeSend() == nil)
-        await fixture.server.set(Self.agent(session: session, program: .droid))
+        let reported = Self.agent(session: isMissing ? nil : Self.second, program: .droid)
+        await fixture.server.set(reported)
 
-        let composer = AgentComposerStore(target: "w1:p1") { _ in Issue.record("Sent to an unconfirmed session") }
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Issue.record("Sent to an unconfirmed session")
+            return reported
+        }
         let policy = ComposerDeliveryPolicy.chat(
             rules: .init(program: .droid, commands: []), activity: { .idle },
             readScreen: {
