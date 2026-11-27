@@ -162,8 +162,8 @@ extension InputBoxState {
             }
         case .noComposer(let reason):
             reason
-        case .unknown:
-            String(localized: "Heeler can't find the Agent's input box on screen.")
+        case .unknown(let reason):
+            reason.isEmpty ? String(localized: "Heeler can't find the Agent's input box on screen.") : reason
         }
     }
 }
