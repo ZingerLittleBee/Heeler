@@ -443,11 +443,11 @@ struct TmuxLaunchConsoleTests {
         TmuxClaudeCodeHooks.storedPathsFile(dataHome: dataHome, paths: ScriptedTmuxHost.paths())
     }
 
-    /// The last launch's program, as tmux parses the exec line's words.
+    /// The last launch's program, as tmux parses its arguments.
     private func launchedProgram(_ tmux: ScriptedTmuxHost) async throws -> [String] {
         let script = try #require(await commandScripts(tmux).last)
-        let line = try #require(script.split(separator: "\n").first { $0.hasPrefix("exec ") })
-        let words = ScriptedTmuxHost.words(of: String(line))
+        let line = try #require(ScriptedTmuxHost.launchLine(in: script))
+        let words = ScriptedTmuxHost.words(of: line)
         let separator = try #require(words.firstIndex(of: "--"))
         return Array(words[(separator + 1)...])
     }

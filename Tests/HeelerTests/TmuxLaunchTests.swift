@@ -161,9 +161,9 @@ struct TmuxLaunchTests {
 
     private static let hookSettings = "/Users/dev/Library/Application Support/heeler/claude-code/hooks.json"
 
-    /// The program after `--`, as tmux parses the exec line's words.
+    /// The program after `--`, as tmux parses the launch arguments.
     private func program(_ command: TmuxLaunch.Command) throws -> [String] {
-        let line = try #require(ScriptedTmuxHost.namedLaunchLine(in: text(command)))
+        let line = try #require(ScriptedTmuxHost.launchLine(in: text(command)))
         let words = ScriptedTmuxHost.words(of: String(line))
         let separator = try #require(words.firstIndex(of: "--"))
         return Array(words[(separator + 1)...])

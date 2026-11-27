@@ -2054,6 +2054,11 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         return String(line.dropFirst(prefix.count).dropLast(suffix.count))
     }
 
+    static func launchLine(in body: String) -> String? {
+        namedLaunchLine(in: body)
+            ?? body.split(separator: "\n").first { $0.hasPrefix("exec ") }.map(String.init)
+    }
+
     /// One `TmuxLaunch` script against the server named in it. With `-N` and no
     /// server, tmux exits. Without `-N`, only `new-session` starts one. The
     /// login wrapper is undone first, the way the probe's answer reads its body.
@@ -2065,11 +2070,8 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         let captureSuffix = ") || exit \"$?\""
         let commandLine: String
         let filtersEnvironmentOnHost: Bool
-        if let launch = Self.namedLaunchLine(in: body) {
+        if let launch = Self.launchLine(in: body) {
             commandLine = launch
-            filtersEnvironmentOnHost = false
-        } else if let execLine = body.split(separator: "\n").first(where: { $0.hasPrefix("exec ") }) {
-            commandLine = String(execLine)
             filtersEnvironmentOnHost = false
         } else if let capturedLine = body.split(separator: "\n").first(where: {
             $0.hasPrefix(capturePrefix) && $0.hasSuffix(captureSuffix)
