@@ -103,6 +103,7 @@ struct DevinSessionPage: Decodable, Sendable {
         var resultFor, finish, timestamp: String?
         var title, model, agentID: String?
         var success: Bool?
+        var isExecutionResult: Bool?
         var childReports: [String: String]?
         var earlierWork: [EarlierWork]?
     }
@@ -111,6 +112,7 @@ struct DevinSessionPage: Decodable, Sendable {
         var id, name: String
         var arguments: Arguments
         var complete: Bool
+        var requestsAutomaticShell: Bool?
     }
 
     struct Question: Codable, Equatable, Sendable {

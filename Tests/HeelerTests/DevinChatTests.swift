@@ -144,6 +144,54 @@ struct DevinChatTests {
         #expect(transcript.turns.count == 1)
     }
 
+    @Test func automaticShellsNeedTheirOwnLaunchAndLookupBeforeShowingOutput() throws {
+        typealias Row = DevinSessionPage.Row
+        typealias Call = DevinSessionPage.Call
+        let first = "123abc", second = "456def", duplicate = "aabbcc"
+        func launch(_ id: String) -> Call {
+            .init(id: id, name: "exec", arguments: .init(command: "echo " + id), complete: true, requestsAutomaticShell: true)
+        }
+        func ack(_ id: String, _ name: String, typed: Bool = true) -> Row {
+            .init(id: "ack-" + id, role: "tool", text: "Command running in background with ID: " + name,
+                  truncated: false, calls: [], resultFor: id, success: true, isExecutionResult: typed)
+        }
+        func lookup(_ name: String) -> Call {
+            .init(id: "get-" + name, name: "get_output", arguments: .init(shell_id: name), complete: true)
+        }
+        let child = Call(id: "child", name: "run_subagent", arguments: .init(title: "Review", is_background: true), complete: true)
+        let foreground = Call(id: "ordinary", name: "exec", arguments: .init(command: "echo imitation"), complete: true)
+        let launches = ["first", "second", "duplicate1", "duplicate2", "spoof"].map(launch)
+        var rows = [Row(id: "launches", role: "assistant", text: "", truncated: false, calls: launches + [child, foreground]),
+                    ack("first", first), ack("second", second), ack("duplicate1", duplicate), ack("duplicate2", duplicate),
+                    ack("spoof", "eeff00", typed: false), ack("ordinary", first), ack("missing-call", "cafe00"),
+                    Row(id: "child-ack", role: "tool", text: "Background subagent started with agent_id=child01.",
+                        truncated: false, calls: [], resultFor: "child", agentID: "child01"),
+                    Row(id: "done", role: "assistant", text: "Done", truncated: false, calls: [], finish: "stop")]
+        var tracker = DevinBackgroundWork()
+        for (index, row) in rows.enumerated() { tracker.observe(row, at: UInt64(index), date: nil) }
+        #expect(tracker.items.compactMap(\.taskID) == ["child01"])
+        rows.append(Row(id: "lookups", role: "assistant", text: "", truncated: false,
+                        calls: [second, duplicate, "eeff00", "cafe00", first].map(lookup)))
+        for (name, code, output) in [(second, 17, "second"), (duplicate, 0, "wrong"), ("eeff00", 0, "spoof"),
+                                     ("cafe00", 0, "orphan"), (first, 0, "first")] {
+            rows.append(Row(id: "result-" + name, role: "tool", text: output, truncated: true,
+                            shellExit: .init(code: code, outputLength: 9000), calls: [], resultFor: "get-" + name,
+                            success: true, isExecutionResult: true))
+        }
+        let earlier = rows.enumerated().map { DevinSessionPage.EarlierWork(offset: UInt64($0.offset), row: $0.element) }
+        let tail = Row(id: "reopen", role: "assistant", text: "", truncated: false, calls: [],
+                       childReports: ["child01": "Late child result"], earlierWork: earlier)
+        var reducer = DevinTranscriptReducer()
+        reducer.append([try ChatLine(offset: UInt64(rows.count), data: JSONEncoder().encode(tail))])
+        let jobs = reducer.transcript(.init()).backgroundWork
+        #expect(Set(jobs.compactMap(\.taskID)) == [first, second, "child01"])
+        #expect(jobs.first { $0.taskID == first }?.title == "echo first")
+        #expect(jobs.first { $0.taskID == first }?.reportedOutput == "first")
+        #expect(jobs.first { $0.taskID == second }?.state == .failed)
+        #expect(jobs.first { $0.taskID == second }?.reportedOutput == "second")
+        #expect(jobs.first { $0.taskID == "child01" }?.reportedOutput == "Late child result")
+    }
+
     @Test func truncatedShellResultsKeepTheirOwnExitStatesAfterReopening() throws {
         typealias Row = DevinSessionPage.Row
         let shells = ["success", "failure", "busy"]

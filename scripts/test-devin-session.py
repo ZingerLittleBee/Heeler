@@ -131,5 +131,32 @@ class DevinSessionRead(unittest.TestCase):
         self.assertEqual(rows[1]["childReports"], {"123abcd": "Late report"})
 
 
+    def test_automatic_launches_keep_their_calls_and_actual_results_across_pages(self):
+        meta = {"extensions": {"chisel/tool_result_meta": {"kind": "execute", "success": True}}}
+        shells = ("123abc", "456def")
+        calls = [dict(id="launch" + shell, name="exec", arguments={"command": "echo " + shell, "timeout": 0})
+                 for shell in shells]
+        calls.append(dict(id="foreground", name="exec", arguments={"command": "echo unrelated", "timeout": 100}))
+        self.put(1, None, "assistant", "", calls=calls)
+        for node, shell in enumerate(shells, 2):
+            self.put(node, node - 1, "tool", "Command running in background with ID: " + shell,
+                     result_for="launch" + shell, meta=meta)
+        self.put(4, 3, "assistant", "", calls=[dict(id="lookup" + shell, name="get_output", arguments={"shell_id": shell})
+                                               for shell in reversed(shells)])
+        self.put(5, 4, "tool", "乙" * 9000 + "\nExit code: 17", result_for="lookup456def", meta=meta)
+        self.put(6, 5, "tool", "A\nExit code: 0", result_for="lookup123abc", meta=meta)
+        self.put(7, 6, "assistant", "tail")
+        self.db.execute("UPDATE sessions SET main_chain_id=7 WHERE id='a'")
+        recent = self.page()["rows"]
+        replay = [e["row"] for e in self.page(limit=1)["rows"][0]["earlierWork"]]
+        for rows in (recent, replay):
+            self.assertEqual([c["id"] for c in rows[0]["calls"] if c.get("requestsAutomaticShell")], ["launch123abc", "launch456def"])
+            by_call = {r["resultFor"]: r for r in rows if r["role"] == "tool"}
+            self.assertTrue(all(r.get("isExecutionResult") for r in by_call.values()))
+            self.assertEqual(by_call["lookup456def"]["shellExit"], dict(code=17, outputLength=9000))
+            self.assertEqual(by_call["lookup123abc"]["shellExit"], dict(code=0, outputLength=1))
+        self.assertNotIn("foreground", {c["id"] for c in replay[0]["calls"]})
+
+
 if __name__ == "__main__":
     unittest.main()

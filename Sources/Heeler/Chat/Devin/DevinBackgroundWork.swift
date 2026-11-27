@@ -7,11 +7,16 @@ struct DevinBackgroundWork {
     private var shells: [String: Int] = [:]
     private var children: [String: Int] = [:]
     private var ambiguousShells: Set<String> = []
+    private var readsRequested: Set<String> = []
+    private var automaticLaunches: [String: (item: ChatBackgroundWorkItem, acknowledgement: UInt64)] = [:]
     private(set) var items: [ChatBackgroundWorkItem] = []
 
     mutating func observe(_ row: DevinSessionPage.Row, at offset: UInt64, date: Date?) {
         if row.role == "assistant" {
-            for call in row.calls { calls[call.id] = (call, offset, date) }
+            for call in row.calls {
+                calls[call.id] = (call, offset, date)
+                if call.name == "get_output", let shell = call.arguments.shell_id { readsRequested.insert(shell) }
+            }
         } else if row.role == "subagent_report", let id = row.agentID, !row.text.isEmpty, let index = children[id] {
             finish(index, .completed, output: row.text, at: offset, date: date)
         } else if row.role == "tool", let id = row.resultFor, let (call, launch, started) = calls[id] {
@@ -29,14 +34,41 @@ struct DevinBackgroundWork {
             case "exec":
                 if let shell = args.shell_id, !shell.isEmpty, let command = args.command, row.success != false, !row.truncated,
                    row.text.hasSuffix("Command running in background with ID: " + shell + ". Run get_output with timeout if you need to wait.") {
+                    automaticLaunches[shell] = nil
                     if let previous = shells[shell], items[previous].state == .running { ambiguousShells.insert(shell) }
                     var item = ChatBackgroundWorkItem(id: id, kind: .command, title: command,
                                                       launchOffset: launch, launchedAt: started)
                     item.taskID = shell
                     shells[shell] = items.count
                     items.append(item)
+                } else if call.complete, call.requestsAutomaticShell == true, args.shell_id == nil, let command = args.command,
+                          row.isExecutionResult == true, row.success == true, !row.truncated,
+                          let match = row.text.wholeMatch(of: /Command running in background with ID: ([0-9a-f]{6})/) {
+                    let shell = String(match.1)
+                    // The short acknowledgement alone cannot create a task. An existing
+                    // name or a second claimant cannot acquire another command's results.
+                    if shells[shell] == nil, !readsRequested.contains(shell), !ambiguousShells.contains(shell) {
+                        if automaticLaunches[shell] == nil {
+                            var item = ChatBackgroundWorkItem(id: id, kind: .command, title: command,
+                                                              launchOffset: launch, launchedAt: started)
+                            item.taskID = shell
+                            automaticLaunches[shell] = (item, offset)
+                        } else {
+                            automaticLaunches[shell] = nil
+                            ambiguousShells.insert(shell)
+                        }
+                    }
                 }
             case "get_output":
+                // Confirm the CLI-assigned name with a later typed lookup and its
+                // own successful tool result, each associated by structured call ID.
+                if call.complete, let shell = args.shell_id, let pending = automaticLaunches[shell],
+                   pending.acknowledgement < launch, shells[shell] == nil, !ambiguousShells.contains(shell),
+                   row.isExecutionResult == true, row.success == true {
+                    shells[shell] = items.count
+                    items.append(pending.item)
+                    automaticLaunches[shell] = nil
+                }
                 if let shell = args.shell_id, !ambiguousShells.contains(shell), let index = shells[shell] {
                     items[index].lastActivityAt = date
                     if !row.truncated, row.success == false, row.text == "This background shell was killed by the user and is no longer running. If you still need to run this command, start a new shell." {

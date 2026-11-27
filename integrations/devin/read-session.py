@@ -63,12 +63,17 @@ def row(message, limit):
         known = options.get(call["name"])
         understood = known is None or all(k in known or (k == "replace_all" and v is False) for k, v in args.items())
         complete = understood and len(json.dumps(inputs, ensure_ascii=False).encode()) <= 16384
-        calls.append(dict(id=call["id"], name=call["name"], arguments=inputs if complete else {}, complete=complete))
+        item = dict(id=call["id"], name=call["name"], arguments=inputs if complete else {}, complete=complete)
+        if call["name"] == "exec" and "shell_id" not in args and type(args.get("timeout")) is int and args["timeout"] == 0:
+            item["requestsAutomaticShell"] = True
+        calls.append(item)
     record = dict(id=message["message_id"], role=role, text=body[:limit], truncated=len(body) > limit,
                   calls=calls, resultFor=message.get("tool_call_id"), finish=meta.get("finish_reason"),
                   timestamp=meta.get("created_at"), agentID=agent,
                   success=(extra.get("chisel/tool_result_meta") or {}).get("success"))
     if role == "tool":
+        if (extra.get("chisel/tool_result_meta") or {}).get("kind") == "execute":
+            record["isExecutionResult"] = True
         # Only the actual final line is evidence. A preview can end on a line
         # printed by the command, or cut through Devin's exit line.
         last = body.rfind("\n") + 1
@@ -90,7 +95,9 @@ def earlier_work(db, session, ids):
             SELECT 1 FROM json_each(m.chat_message,'$.tool_calls') c
             WHERE json_extract(c.value,'$.name') IN ('run_subagent','exec','get_output')
               AND (json_type(c.value,'$.arguments.shell_id')='text'
-                   OR json_extract(c.value,'$.arguments.is_background')=1))
+                   OR json_extract(c.value,'$.arguments.is_background')=1
+                   OR (json_extract(c.value,'$.name')='exec' AND json_type(c.value,'$.arguments.shell_id') IS NULL
+                       AND json_type(c.value,'$.arguments.timeout')='integer' AND json_extract(c.value,'$.arguments.timeout')=0)))
         ORDER BY m.node_id DESC LIMIT 128
     """, (session, ids[-1]))
     for node, raw in launches:
@@ -101,7 +108,8 @@ def earlier_work(db, session, ids):
         for call in event["calls"]:
             args = call["arguments"]
             if not ((call["name"] == "run_subagent" and args.get("is_background") is True)
-                    or (call["name"] in ("exec", "get_output") and args.get("shell_id"))):
+                    or (call["name"] in ("exec", "get_output") and args.get("shell_id"))
+                    or call.get("requestsAutomaticShell")):
                 continue
             call["arguments"] = {k: args[k] for k in ("shell_id", "command", "title", "is_background") if k in args}
             if len(json.dumps(call).encode()) <= 4096 and len(call_ids) < 128:
