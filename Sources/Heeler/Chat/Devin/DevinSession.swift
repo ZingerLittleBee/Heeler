@@ -51,6 +51,7 @@ struct DevinSessionQuery: Encodable, Sendable {
     var offset: Int?
     var limit: Int
     var expanded = false
+    var earlierWork = false
 
     func script() throws -> Data {
         guard DevinSession.id(session) != nil, RemoteFilePath.isAcceptable(root), root.hasSuffix("/devin/cli"),

@@ -136,7 +136,7 @@ struct ComposerDeliveryPolicy: Sendable {
         if requiresSinglePrompt {
             let shown = displayedDroidTarget?()
             guard let session, let droidTarget, let droidScreen,
-                  let target = try? await droidTarget(), target.sessionID == session,
+                  let target = try? await droidTarget(), target.draftID(for: checkedProgram) == session,
                   displayedDroidTarget == nil || shown == target else {
                 return .inputNotReady(checkedProgram.draftOwnerGuidance)
             }

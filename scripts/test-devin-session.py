@@ -37,7 +37,7 @@ class DevinSessionRead(unittest.TestCase):
 
     def page(self, offset=None, limit=8):
         self.db.commit()
-        query = dict(session="a", root=str(self.root), offset=offset, limit=limit)
+        query = dict(session="a", root=str(self.root), offset=offset, limit=limit, earlierWork=True)
         encoded = base64.b64encode(json.dumps(query).encode()).decode()
         return json.loads(subprocess.check_output([sys.executable, READER, encoded]))
 

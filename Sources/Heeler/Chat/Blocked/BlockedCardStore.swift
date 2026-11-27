@@ -537,7 +537,7 @@ final class BlockedCardStore {
         }
         if isConfirmed, let answered {
             record(action, on: answered)
-            if case .choose(let ordinal) = action, let session = shown.target?.sessionID,
+            if case .choose(let ordinal) = action, let session = shown.target?.draftID(for: program),
                (answered.dialog.kind == .droidSpec && ordinal == 5) || (answered.dialog.kind == .devinPlan && ordinal == 3) {
                 droidRevision = DroidRevision(session: session)
             }

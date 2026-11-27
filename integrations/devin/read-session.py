@@ -149,7 +149,7 @@ def read(db, request):
         (raw,) = db.execute("SELECT chat_message FROM message_nodes WHERE session_id=? AND node_id=?",
                             (session, node)).fetchone()
         result.append(row(json.loads(raw), text_limit))
-    if result and offset is None and start:
+    if result and offset is None and start and request.get("earlierWork"):
         result[0]["earlierWork"] = earlier_work(db, session, ids[:start])
     if result and start + len(result) == len(ids):
         # A child can finish after the main turn. Only its final public text

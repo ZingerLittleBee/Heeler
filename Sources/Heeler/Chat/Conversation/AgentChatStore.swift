@@ -343,20 +343,23 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     var droidSessionID: String? { program.pinsComposerToSession ? followed?.sessionID : nil }
+    var composerSessionID: String? {
+        program == .devin ? displayedDroidTarget?.draftID(for: program) : droidSessionID
+    }
     private(set) var displayedDroidTarget: DroidDialogTarget?
 
     /// A Stop button belongs to the recorded turn on screen, even when the
     /// same Droid process opens another conversation or starts another turn.
     func droidStopVerification() -> ChatStopVerification {
-        let session = droidSessionID
+        let session = composerSessionID
         let turn = activeDroidTurn
         return { [weak self] in
-            guard let self, let session, let turn, self.droidSessionID == session,
+            guard let self, let session, let turn, self.composerSessionID == session,
                   self.activeDroidTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
             let previousRead = self.readsBegun
             await self.step()
             return !Task.isCancelled && self.lastAppliedRead > previousRead
-                && self.droidSessionID == session && self.activeDroidTurn == turn
+                && self.composerSessionID == session && self.activeDroidTurn == turn
         }
     }
 
@@ -2068,6 +2071,11 @@ final class AgentChatStore {
         if conversation != next { conversation = next }
     }
 
+    private var transcriptCacheScope: String? {
+        guard program == .devin, let evidenceRoot else { return source.coreScope }
+        return (source.coreScope ?? "") + "/devin-store:" + evidenceRoot
+    }
+
     private func makeEngine(_ reference: ConversationReference) -> ChatConversationEngine {
         var agyLimits = AgyBackgroundWorkFollower.Limits()
         agyLimits.subagentIdleSettle = timing.agySubagentIdleSettle
@@ -2075,7 +2083,7 @@ final class AgentChatStore {
             reference: reference,
             cacheKey: ChatCacheKey(
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
-                coreScope: source.coreScope),
+                coreScope: transcriptCacheScope),
             files: source.files, cache: source.cache, adapter: source.adapter,
             agyBackgroundWorkLimits: agyLimits,
             transcriptRoot: source.sessionEvidence == nil ? nil : evidenceRoot,
@@ -2126,7 +2134,7 @@ final class AgentChatStore {
             reference: reference,
             cacheKey: ChatCacheKey(
                 hostID: source.hostID, socketLocation: source.socketLocation, reference: reference,
-                coreScope: source.coreScope),
+                coreScope: transcriptCacheScope),
             files: source.files, cache: VolatileChatTranscriptCache(), adapter: source.adapter,
             transcriptRoot: list.transcriptRoot, now: now)
         let snapshot = await engine.open(directories: list.directories, context: projectionContext)

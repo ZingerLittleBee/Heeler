@@ -153,7 +153,15 @@ struct DevinChatTests {
         composer.replaceDraft(with: "Draft B")
         composer.bindDroidDraft(to: "a", program: .devin)
         #expect(composer.draft == "Draft A")
-        let first = DroidDialogTarget(scope: "server", pid: "42", start: "old", directory: "/qa", sessionID: "a")
+        let first = DroidDialogTarget(scope: "server", pid: "42", start: "old", directory: "/qa", sessionID: "a", transcriptFolder: "/account-one/devin/cli")
+        composer.bindDroidDraft(to: first.draftID(for: .devin), program: .devin)
+        composer.replaceDraft(with: "Account one's unsent draft")
+        var secondAccount = first
+        secondAccount.transcriptFolder = "/account-two/devin/cli"
+        composer.bindDroidDraft(to: secondAccount.draftID(for: .devin), program: .devin)
+        #expect(composer.draft.isEmpty)
+        composer.bindDroidDraft(to: first.draftID(for: .devin), program: .devin)
+        #expect(composer.draft == "Account one's unsent draft")
         var next = first
         next.start = "new"
         let replacement = next

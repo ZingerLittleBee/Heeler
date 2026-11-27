@@ -25,9 +25,9 @@ struct DevinRecordSource: ChatTranscriptSource {
     var automaticOlderSearch: Int? { 24 }
     var olderSearchExhausted: Bool { olderRead >= 240 }
 
-    private func read(_ files: ChatHostFiles, offset: Int?, count: Int, expanded: Bool = false) async throws -> DevinSessionPage {
+    private func read(_ files: ChatHostFiles, offset: Int?, count: Int, expanded: Bool = false, earlierWork: Bool = false) async throws -> DevinSessionPage {
         guard let query = files.queryDevin else { throw TransportError.hostFeatureUnavailable(feature: String(localized: "Devin Chat")) }
-        let page = try await query(.init(session: session, root: root, offset: offset, limit: count, expanded: expanded))
+        let page = try await query(.init(session: session, root: root, offset: offset, limit: count, expanded: expanded, earlierWork: earlierWork))
         guard page.offset >= 0, page.total >= page.offset, page.rows.count <= count,
               page.rows.count <= page.total - page.offset,
               !page.rows.contains(where: { $0.id.isEmpty }) else { throw TransportError.hostStoreUnreadable(detail: "Invalid Devin page") }
@@ -35,7 +35,7 @@ struct DevinRecordSource: ChatTranscriptSource {
     }
 
     mutating func open(_ files: ChatHostFiles) async throws -> [ChatLine]? {
-        let page = try await read(files, offset: nil, count: 24)
+        let page = try await read(files, offset: nil, count: 24, earlierWork: true)
         first = page.offset
         next = first + page.rows.count
         total = page.total

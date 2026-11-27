@@ -82,7 +82,7 @@ struct DevinChatLiveTests {
             try #require(backend == .herdrTUI)
             return try await projection.promptAgent(message)
         }
-        composer.bindDroidDraft(to: expected, program: .devin)
+        composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .devin, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: io.readScreen, droidTarget: io.droidTarget,
@@ -156,11 +156,11 @@ struct DevinChatLiveTests {
             guard case .refused = await live.composer.send(policy: live.policy) else { Issue.record("The parked draft left the original session"); return }
             try await live.wait { live.chat.droidSessionID == other }
             try #require(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
-            live.composer.bindDroidDraft(to: other, program: .devin)
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             #expect(live.composer.draft.isEmpty)
             try await live.desktop("/resume " + session)
             try await live.wait { live.chat.droidSessionID == session }
-            live.composer.bindDroidDraft(to: session, program: .devin)
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             #expect(live.composer.draft == draft)
         }
     }
@@ -204,7 +204,7 @@ struct DevinChatLiveTests {
                 try await capture(chat.blocked, name: "trust")
                 await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
                 try await live.wait { chat.droidSessionID != nil }
-                composer.bindDroidDraft(to: chat.droidSessionID, program: .devin)
+                composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
                 let token = "TRUST_" + UUID().uuidString.prefix(8)
                 try await live.send("Reply with exactly " + token + ". Do not use tools.")
                 try await live.wait { chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) } }
@@ -250,7 +250,7 @@ struct DevinChatLiveTests {
                 await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
             }
             try await live.wait { live.chat.droidSessionID != nil }
-            live.composer.bindDroidDraft(to: live.chat.droidSessionID, program: .devin)
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             let marker = "FRESH_" + UUID().uuidString.prefix(8)
             try await live.send("Reply with exactly " + marker + ". Do not use tools.")
             try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: marker)) } }

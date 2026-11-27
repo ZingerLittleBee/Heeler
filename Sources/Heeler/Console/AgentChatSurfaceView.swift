@@ -455,7 +455,7 @@ struct AgentChatSurfaceView: View {
         }
         // Also on appearing: Chat may have followed another while it was away.
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
-            if program.pinsComposerToSession { composer.bindDroidDraft(to: chat?.droidSessionID, program: program) }
+            if program.pinsComposerToSession { composer.bindDroidDraft(to: chat?.composerSessionID, program: program) }
             guard let generation else { return }
             welcomeModel = nil
             welcomeEffort = nil
@@ -855,7 +855,7 @@ struct AgentChatSurfaceView: View {
                 .padding(.horizontal, 12)
                 .accessibilityLabel(Text("\(program.chatName) session \(id)"))
             }
-            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.droidSessionID {
+            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.composerSessionID {
                 @Bindable var draft = revision
                 VStack(alignment: .leading) {
                     TextField(program == .devin ? String(localized: "Plan feedback") : String(localized: "Spec feedback"), text: $draft.text, axis: .vertical)
@@ -1206,7 +1206,7 @@ struct AgentChatSurfaceView: View {
         return {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
             if let reason = await chat.confirmSessionBeforeSend() { return reason }
-            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.droidSessionID) {
+            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.composerSessionID) {
                 return program.draftOwnerGuidance
             }
             return nil
