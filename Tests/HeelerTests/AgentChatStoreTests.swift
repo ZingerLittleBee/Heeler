@@ -5165,6 +5165,46 @@ struct AgentChatStoreTests {
                 == .empty)
     }
 
+    @Test func aRexChatStopRequiresTheSameIndependentlyBoundOpenTurn() async throws {
+        actor Evidence {
+            var answer: ChatSessionEvidence
+            init(_ answer: ChatSessionEvidence) { self.answer = answer }
+            func set(_ answer: ChatSessionEvidence) { self.answer = answer }
+        }
+        let path = Self.piPath(.pi)
+        let bound = ChatSessionEvidence.bound(sessionID: path, transcriptRoot: nil, directory: Self.cwd)
+        let evidence = Evidence(bound)
+        let agent = Self.piAgent(.pi, status: .working)
+        let files = VirtualHostFiles()
+        let source = AgentChatSource(hostID: Self.host, socketLocation: .defaultSession, files: files.hostFiles(),
+            agentInfo: { agent }, cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .pi)),
+            sessionEvidence: { await evidence.answer }, requiresIndependentInputSession: true)
+        let store = AgentChatStore(agentID: .init(hostID: Self.host, paneID: agent.paneID), agent: agent, program: .pi, source: source)
+        defer { store.end() }
+        let first = Self.piHeader + "\n" + Self.ompMessage("u1", parent: nil, role: "user", "first turn")
+        await files.write(first, at: path)
+        await store.step()
+        let input = try #require(store.composerSessionInputCheck)
+        try #require(await input())
+        let old = store.rexStopVerification()
+        try #require(await old())
+
+        let next = first + Self.ompMessage("u2", parent: "u1", role: "user", "second turn")
+        await files.write(next, at: path)
+        #expect(!(await old()))
+        let second = store.rexStopVerification()
+        try #require(await second())
+        await evidence.set(.picked(sessionID: path, transcriptRoot: nil))
+        #expect(!(await second()))
+        #expect(!(await input()))
+        #expect(await store.confirmSessionBeforeSend() == AgentChatStore.rexReadOnlyConversation)
+        #expect(store.isReadingPickedConversation)
+        await evidence.set(.unavailable(.multipleSessions(.pi)))
+        #expect(!(await second()))
+        await evidence.set(.bound(sessionID: Self.second, transcriptRoot: nil, directory: Self.cwd))
+        #expect(!(await second()))
+    }
+
     @Test func aProcessBoundSessionCheckFailureRecoversAutomaticallyWithoutManualRetry() async throws {
         actor EvidenceBox {
             var failure: TransportError? = .hostFileUnreadable(status: 3)

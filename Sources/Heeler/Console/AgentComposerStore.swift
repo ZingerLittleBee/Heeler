@@ -896,7 +896,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         do {
             let params = AgentPromptParams(target: target, text: outgoing)
             if policy.requiresSinglePrompt {
-                if let refusal = await policy.droidWrite?.refusal() {
+                if let refusal = await policy.writeVerification?.refusal() {
                     returnToDraft(id)
                     return .refused(refusal)
                 }
@@ -941,7 +941,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach, verifying: policy.droidWrite)
+        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach, verifying: policy.writeVerification)
         return finishChecked(id, outgoing: outgoing, policy: policy, outcome: outcome, success: .submittedViaAttach)
     }
 

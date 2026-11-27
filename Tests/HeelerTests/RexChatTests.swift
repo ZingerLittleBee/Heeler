@@ -365,6 +365,21 @@ struct RexChatTests {
         }
     }
 
+    @Test func anAgentNameSheetDoesNotRenameTheForegroundThatReplacedIt() async throws {
+        let world = FakeRexWorld(sessions: [Self.studioRunningClaude()], platform: "linux_arm64")
+        let server = await served(world)
+        let rig = rig(ScriptedRexHost(control: [.server(server)]))
+        defer { rig.projection.end() }
+        try await waitForClaude(rig)
+        let rename = try #require(rig.projection.renameBlockAction(for: Self.paneID))
+        // The desktop switched programs. The inventory still holds the first report.
+        await server.answer(RexInventoryWire.terminalMethod("process"), using: { _ in
+            .result(["foreground": ["name": "bash", "argv0": "/bin/bash", "pid": 4242]])
+        })
+        await #expect(throws: TransportError.rexServerGone) { try await rename("heeler-lab-old") }
+        #expect(await server.requests.filter { $0.method == "session.set_block_label" }.isEmpty)
+    }
+
     /// The revision moves when a check could answer differently: the
     /// terminal's foreground or Program Status changed. A title, or the same
     /// report made again, leaves it.

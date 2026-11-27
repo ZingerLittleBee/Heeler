@@ -170,3 +170,25 @@ paths typed with the message.
   Card answers, Stop or Send, from Chat or the Composer.
 - A process that replaced the Agent under the same process id and program is
   not told apart.
+
+## Update 2026-11-27: a Stop belongs to its recorded turn
+
+Codex 0.172.0 with its private process and Grok Build 1.0.92 each kept
+two sessions open after a desktop /new on the macOS preview.25 Host. For
+Codex the same PID held both rollout writers. For Grok the two registry
+entries matched the same process start. A PID check can pass for the wrong
+conversation. An active Program Status also spans multiple turns in one
+process.
+
+A conversation selected from matching history can be read. It supplies no authority to type into the active terminal. The Composer repeats the independent binding check in its block lane immediately before paste and Enter. A card for that history cannot answer the active screen. When the active conversation is ambiguous, the picker opens the transcript for reading and the user can continue in the terminal.
+
+A native Stop captures the independently bound conversation and the first
+entry of its open foreground turn. Immediately before the key in the
+existing block input queue, Heeler compares that identity with fresh
+harness evidence and the current root Working record, checks its owner
+and the program-specific Stop screen where applicable, and sends once.
+A finished turn, an ambiguous binding, an Unknown status or a changed
+server sends the user to the terminal. An uncertain receipt leaves the
+result pending for the user to inspect. The same controls and
+protocol range continue to work for a verified current turn.
+[Harness evidence](../agents/rex-chat-parity.md) · [Owner and lifecycle](0054-rex-terminals-running-a-known-agent-are-agents.md).

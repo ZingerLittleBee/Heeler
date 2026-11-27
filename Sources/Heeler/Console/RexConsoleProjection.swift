@@ -9,16 +9,12 @@ import Foundation
 /// A Pane keeps to its server, as a tmux Pane does: another server leaves
 /// every detail open on the last one's terminals, and its Pins go. A server
 /// that restarted and restored its sessions is the same server under another
-/// instance, and keeps them (ADR 0050). A
-/// terminal opens from the server's redraw (ADR 0051) and takes input from its
-/// first paint (ADR 0052), whether it is a Terminal or the Terminal surface of
-/// an Agent's detail. User-initiated project reads and Agent launches on a POSIX Host share
-/// its SSH connection and Rex control link. Chat reads through that same connection (`RexHostReads`), and two things are written there, each only
-/// when the user asks: a file or image staged for a message
-/// (`RexHostStaging`), and Heeler's extension in the folder a Pi or Oh My Pi
-/// Agent loads from (`RexHostExtensionPlacing`, ADR 0056). Chat and the
-/// Composer read a terminal's screen and type into it on the control link,
-/// one checked request at a time (`RexChatTyping`, `RexComposerSend`, ADR
+/// instance, and keeps them (ADR 0050). A terminal opens from the server's
+/// redraw (ADR 0051) and takes input from its first paint (ADR 0052).
+/// Project reads, worktrees, attachments and harness integrations use scoped
+/// services on the existing SSH connection. Agent launches and input use the
+/// Rex control link. Chat reads the block's screen and sends checked input
+/// through RexChatTyping and RexComposerSend (ADR
 /// 0055), the staged paths with the message.
 ///
 /// Done is per device, as on a tmux Host: each terminal's turns and this
@@ -1026,7 +1022,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 return .failed(TransportError.rexServerGone.presentation.message)
             }
             do {
-                try await projection.chatTyping(at: paneID).press(["esc"])
+                try await projection.chatTyping(at: paneID).press(["esc"], checksChatPick: false)
                 return .sent
             } catch let refusal as RexChatTyping.Refusal {
                 return .failed(refusal.message)
@@ -1035,6 +1031,68 @@ final class RexConsoleProjection: ConsoleHostProjection {
             }
         }
         return stop.map(TerminalStopOffer.interrupt) ?? .keepSend
+    }
+
+    /// Chat's Stop verifies the bound turn inside the block's input lane.
+    /// Rex's own records can establish a working foreground, while a process
+    /// can hold several conversations or start a new turn under the same PID.
+    func checkedChatStop(
+        for paneID: String, program: ChatProgram, keepingTo corePin: TerminalCorePin,
+        agentKeys: ChatAgentKeysStore? = nil, followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget: ChatStopVerification? = nil, live: @escaping @MainActor () -> (any ConsoleHostProjection)?
+    ) -> AgentComposerInterrupt? {
+        let plan = ChatStopPlan.standard(for: program)
+        let address = RexPaneAddress(paneID: paneID)
+        let listed = address.flatMap { listedDetails(at: $0) }
+        let report = listed.flatMap { RexAgentRule.report(of: $0, heldBy: program.rawValue) }
+        let perform: @MainActor () async -> AgentInterruptOutcome = { [weak self] in
+            guard let self, let projection = live() as? RexConsoleProjection, projection === self,
+                  self.admits(corePin), let pid = listed?.processID, let report,
+                  HerdrCoreAgentRule.agentStatus(report.state) == .working, let confirmTarget
+            else { return .failed(ChatStopPlan.changedDroidTurn) }
+            do {
+                let typing = try self.chatTyping(at: paneID)
+                try await typing.press(plan.keys, checksChatPick: false, confirming: { requests, holder in
+                    guard holder.pid == pid, holder.kind == program.rawValue, await confirmTarget(),
+                          let active = RexInventoryWire.rootStatus(try await requests.read(.programStatus)),
+                          active.isSameProgram(as: report), HerdrCoreAgentRule.agentStatus(active.state) == .working
+                    else { throw RexChatTyping.Refusal(message: ChatStopPlan.changedDroidTurn) }
+                    if let guardScreen = plan.screenGuard {
+                        let screen = try await RexChatScreen.read(on: requests).screen
+                        if case .refuse(let reason) = guardScreen(.init(screen: screen, activity: .working)) {
+                            throw RexChatTyping.Refusal(message: reason)
+                        }
+                    }
+                })
+                return .sent
+            } catch let refusal as RexChatTyping.Refusal {
+                return .failed(refusal.message)
+            } catch TransportError.coreMutationOutcomeUnknown {
+                return .failed(TransportError.coreMutationOutcomeUnknown.presentation.message)
+            } catch {
+                return .failed(ChatStopPlan.unreachableMessage)
+            }
+        }
+        return AgentComposerInterrupt(wait: plan.wait, accessibilityHint: plan.accessibilityHint) {
+            let after = followThrough?()
+            let outcome = if let agentKeys { await agentKeys.inOrder(perform) } else { await perform() }
+            guard outcome == .sent, let after else { return outcome }
+            let left = if let agentKeys { await agentKeys.afterQueued(after) } else { await after() }
+            return left.map(AgentInterruptOutcome.sentLeavingWork) ?? .sent
+        }
+    }
+
+    /// Keyboard controls have no transcript of their own. If a Chat pick is
+    /// kept for this pane, only independent foreground evidence for that
+    /// exact conversation authorizes typing beside its history.
+    func admitsPickedChatInput(at address: RexPaneAddress, heldBy holder: RexAgentHolder) async -> Bool {
+        guard let pick = memory.rexChatPicks(for: host.id)[address.paneID] else { return true }
+        guard let program = ChatProgram(rawValue: holder.kind), holder.pid == pick.foregroundPID,
+              let expected = HerdrCoreSessionHint(label: pick.label),
+              case .bound(let id, _, _) = try? await checkChatSession(paneID: address.paneID, program: program)
+        else { return false }
+        return ConversationReference(program: program, sessionID: id).namesSameSession(as:
+            ConversationReference(program: program, sessionID: expected.session))
     }
 
     /// Chat's checked typing for this Pane; nil for an id that names no block.

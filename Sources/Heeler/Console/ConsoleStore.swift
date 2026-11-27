@@ -1254,6 +1254,7 @@ final class ConsoleStore {
                     guard let self else { throw TransportError.cancelled }
                     try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
                 }))
+        source.requiresIndependentInputSession = hostProjection is RexConsoleProjection
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
@@ -1353,9 +1354,13 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
-        let verification: ChatStopVerification? = program.pinsComposerToSession
-            ? chatStores[agent.id]?.droidStopVerification() ?? { false }
-            : nil
+        let unverified: ChatStopVerification = { false }
+        let verification: ChatStopVerification?
+        if projections[hostID] is RexConsoleProjection {
+            verification = chatStores[agent.id]?.rexStopVerification() ?? unverified
+        } else {
+            verification = program.pinsComposerToSession ? chatStores[agent.id]?.droidStopVerification() ?? unverified : nil
+        }
         if let stop = projections[hostID]?.checkedChatStop(
             for: agent.agent.paneID,
             program: program,

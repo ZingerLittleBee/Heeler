@@ -51,7 +51,7 @@ final class RexComposerSend: CheckedComposerSend {
 
     /// `attach` is the terminal the user is viewing, which only records what
     /// was submitted: the draft itself goes on the control link either way.
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: ComposerWriteVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
@@ -65,7 +65,7 @@ final class RexComposerSend: CheckedComposerSend {
 
     // MARK: Checked steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: ComposerWriteVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         let requests: RexBlockRequests
@@ -115,6 +115,9 @@ final class RexComposerSend: CheckedComposerSend {
         var pasteStart = clock.now()
         switch await sendInLane([.paste(text)], on: requests, check: { @MainActor in
             try await self.stillHeld(held, on: requests, in: projection)
+            if route == .chat, !(await projection.admitsPickedChatInput(at: self.address, heldBy: held)) {
+                throw Halt(outcome: .refused(.inputNotReady(AgentChatStore.rexReadOnlyConversation)))
+            }
             if let verifying {
                 if let refusal = await verifying.refusal() { throw Halt(outcome: .refused(refusal)) }
                 pasteStart = self.clock.now()
@@ -129,6 +132,9 @@ final class RexComposerSend: CheckedComposerSend {
 
         let submitted = await sendInLane([.text(submit)], on: requests, check: { @MainActor in
             try await self.stillHoldsAfterPaste(held, on: requests, in: projection, pasteStart: pasteStart)
+            if route == .chat, !(await projection.admitsPickedChatInput(at: self.address, heldBy: held)) {
+                throw Halt(outcome: .refused(.notSubmitted(AgentChatStore.rexReadOnlyConversation)))
+            }
             if let verifying {
                 if let refusal = await verifying.refusal(staged: text) { throw Halt(outcome: .refused(refusal)) }
                 guard self.clock.now() - pasteStart < Self.submitWindow else { throw Halt(outcome: .refused(.notSubmitted(Self.windowPassed))) }

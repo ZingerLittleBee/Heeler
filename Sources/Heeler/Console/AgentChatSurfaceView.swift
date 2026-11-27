@@ -913,7 +913,7 @@ struct AgentChatSurfaceView: View {
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
             hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.visibleLaunchNotice,
             departure: console.chatDeparture(of: agent.id))
-        return lines.map { line in
+        var banners = lines.map { line in
             var banner = Banner(
                 id: line.id, systemImage: line.systemImage, text: line.text, showsProgress: line.showsProgress)
             switch line {
@@ -952,6 +952,12 @@ struct AgentChatSurfaceView: View {
             }
             return banner
         }
+        if chat?.isReadingPickedConversation == true {
+            banners.append(Banner(id: "rex-picked-conversation", systemImage: "eye",
+                text: AgentChatStore.rexReadOnlyConversation, actionTitle: AgentDetailSurface.terminal.showTitle,
+                action: { showAgentTerminal() }))
+        }
+        return banners
     }
 
     // MARK: Conversation
@@ -1151,6 +1157,7 @@ struct AgentChatSurfaceView: View {
             displayedDroidTarget: { [chat] in chat?.displayedDroidTarget }, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        policy.sessionWrite = chat?.composerSessionInputCheck
         if program == .amp {
             let connection = chat?.ampConnection
             let displayed = chat?.displayedAmpBinding
@@ -2001,7 +2008,7 @@ struct AgentChatSurfaceView: View {
     /// though the store can keep the card it showed, or read an Antigravity
     /// CLI for its trust prompt as the departure clears its status.
     private var showsBlockedCard: Bool {
-        chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+        chat?.isReadingPickedConversation != true && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
     }
 
     /// A Blocked Agent's dialog, answered in the Composer's place, or a sign

@@ -92,6 +92,8 @@ struct RexBlockRequests: Sendable {
     enum Read: Sendable, Equatable {
         /// The foreground process, as the inventory reads it.
         case process
+        /// The status and owner reported by the program.
+        case programStatus
         /// Its terminal modes and which screen shows.
         case modes
         /// Its grid.
@@ -107,6 +109,7 @@ struct RexBlockRequests: Sendable {
         var name: String {
             switch self {
             case .process: "process"
+            case .programStatus: "program_status"
             case .modes: "modes"
             case .size: "size"
             case .format: "format"
@@ -157,7 +160,7 @@ struct RexBlockRequests: Sendable {
             "session_id": .string(address.sessionID), "block_id": .string(address.blockID),
         ]
         switch read {
-        case .process, .modes, .size:
+        case .process, .programStatus, .modes, .size:
             break
         case .format(let maxBytes, let kittyKeyboard):
             var args: [String: JSONValue] = [

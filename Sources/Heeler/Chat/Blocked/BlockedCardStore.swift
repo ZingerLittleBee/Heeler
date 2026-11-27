@@ -67,6 +67,7 @@ struct BlockedCardClock: Sendable {
 
 /// A dialog the parsers know, with the transcript's request for it.
 struct BlockedCard: Equatable, Sendable {
+    var conversationGeneration: Int? = nil
     var target: DroidDialogTarget? = nil
     var patch: String? = nil
     let dialog: BlockedDialog
@@ -171,6 +172,21 @@ final class BlockedCardStore {
     /// moves, which on OpenCode swaps a permission's lines for its rule's.
     /// The card's identity, so a note or choice made on one dialog's card
     /// never carries to the next.
+    /// A Rex card can show the terminal's current prompt beside an older
+    /// manually selected conversation. Keep the displayed session with it.
+    @ObservationIgnored var captureSessionCheck: (@MainActor () -> ChatSessionInputCheck)?
+    @ObservationIgnored private var shownSessionCheck: ChatSessionInputCheck?
+    @ObservationIgnored private var actingSessionCheck: ChatSessionInputCheck?
+    @ObservationIgnored private var inputConversationGeneration = 0
+
+    func displayedInputSessionChanged() {
+        guard captureSessionCheck != nil else { return }
+        inputConversationGeneration += 1
+        firstSeen = nil
+        shownSessionCheck = nil
+        if progress != .acting { clear() }
+    }
+
     private(set) var dialogGeneration = 0
 
     /// Whether Stop acts: also after an answer that showed no effect, as a
@@ -502,6 +518,10 @@ final class BlockedCardStore {
     /// resend.
     func perform(_ action: DialogAction, shownCard: BlockedCard? = nil) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
+        if let saved = shownCard?.conversationGeneration, saved != inputConversationGeneration {
+            notice = Self.changedMessage
+            return
+        }
         if program.pinsComposerToSession, shownCard != shown {
             notice = Self.changedMessage
             return
@@ -903,6 +923,8 @@ final class BlockedCardStore {
         onSent: (@MainActor () async -> Void)? = nil,
         plan makePlan: (DialogObservation) throws(DialogPlanError) -> DialogActionPlan
     ) async -> Bool {
+        actingSessionCheck = shownSessionCheck
+        defer { actingSessionCheck = nil }
         progress = .acting
         notice = nil
         guard let fresh = await observeBeforeActing() else {
@@ -1173,7 +1195,13 @@ final class BlockedCardStore {
             guard let card = actingDroidCard else { throw TransportError.cancelled }
             try await typeDroid(typing, on: card, whileShowing: check)
         } else {
-            try await io.type(typing, whileShowing: check)
+            let session = actingSessionCheck ?? shownSessionCheck
+            if captureSessionCheck != nil, session == nil { throw TransportError.cancelled }
+            try await io.type(typing, whileShowing: { screen in
+                guard check(screen) else { return false }
+                if let session { return await session() }
+                return true
+            })
         }
     }
 
@@ -1422,6 +1450,7 @@ final class BlockedCardStore {
             firstSeen = (seen.fingerprint.merging(fingerprint), seen.at)
         } else if fingerprint != nil || firstSeen != nil {
             firstSeen = fingerprint.map { ($0, clock.now()) }
+            shownSessionCheck = fingerprint == nil ? nil : captureSessionCheck?()
             dialogGeneration += 1
             if let degraded, fingerprint.map(degraded.fingerprint.matches) != true { self.degraded = nil }
             if fingerprint != nil { isCollapsed = false }
@@ -1435,7 +1464,8 @@ final class BlockedCardStore {
             } else {
                 let request = matchingRequest(for: dialog)
                 if let id = request?.callID { noteShown(dialog, forCall: id) }
-                next = .card(BlockedCard(target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
+                next = .card(BlockedCard(conversationGeneration: captureSessionCheck == nil ? nil : inputConversationGeneration,
+                    target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
             }
         case .unrecognized(let excerpt):
             next = .generic(excerpt)
@@ -1496,6 +1526,7 @@ final class BlockedCardStore {
         if notice != nil { notice = nil }
         isCollapsed = false
         firstSeen = nil
+        shownSessionCheck = nil
         degraded = nil
     }
 

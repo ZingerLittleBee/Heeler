@@ -243,7 +243,7 @@ enum CheckedSendOutcome: Equatable, Sendable {
 @MainActor
 protocol CheckedComposerSend: AnyObject {
     func send(
-        _ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?
+        _ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: ComposerWriteVerification?
     ) async -> CheckedSendOutcome
 }
 

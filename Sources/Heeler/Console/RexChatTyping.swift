@@ -56,6 +56,7 @@ struct RexAgentHolder: Equatable, Sendable {
 @MainActor
 final class RexChatTyping: CheckedChatTyping {
     typealias Refusal = HerdrCoreChatTyping.Refusal
+    typealias InputCheck = @MainActor @Sendable (RexBlockRequests, RexAgentHolder) async throws -> Void
 
     private let address: RexPaneAddress
     private weak var projection: RexConsoleProjection?
@@ -126,7 +127,8 @@ final class RexChatTyping: CheckedChatTyping {
     /// have to arrive together. They are encoded for the program's modes and
     /// kitty keyboard flags as Rex reports them.
     func press(
-        _ keys: [String], heldSinceScreenRead: Bool = false,
+        _ keys: [String], heldSinceScreenRead: Bool = false, checksChatPick: Bool = true,
+        confirming check: InputCheck? = nil,
         whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let (requests, holder) = try await checkedRequests(heldSinceScreenRead: heldSinceScreenRead)
@@ -147,7 +149,7 @@ final class RexChatTyping: CheckedChatTyping {
         guard !bytes.isEmpty, let text = String(validating: bytes, as: UTF8.self) else {
             throw Refusal(message: Self.unknownKey)
         }
-        try await send([.text(text)], on: requests, holder: holder, stillShows: stillShows)
+        try await send([.text(text)], on: requests, holder: holder, checksChatPick: checksChatPick, confirming: check, stillShows: stillShows)
     }
 
     /// Text as one paste, framed by the server as the program's modes say. A
@@ -182,9 +184,16 @@ final class RexChatTyping: CheckedChatTyping {
     /// for a Blocked Card, its screen still shows.
     private func send(
         _ pieces: [RexTerminalInputPiece], on requests: RexBlockRequests, holder: RexAgentHolder,
-        needsBracketedPaste: Bool = false, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
+        needsBracketedPaste: Bool = false, checksChatPick: Bool = true, confirming check: InputCheck? = nil, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
     ) async throws {
         let sending = try await requests.send(pieces) { @MainActor in
+            if checksChatPick {
+                guard let projection else { throw TransportError.cancelled }
+                guard await projection.admitsPickedChatInput(at: address, heldBy: holder) else {
+                    throw Refusal(message: AgentChatStore.rexReadOnlyConversation)
+                }
+            }
+            try await check?(requests, holder)
             let now: RexAgentHolder.Read
             do {
                 now = try await RexAgentHolder.read(on: requests)

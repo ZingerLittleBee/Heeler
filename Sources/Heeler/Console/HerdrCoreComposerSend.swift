@@ -128,7 +128,7 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
     }
 
     /// `attach` is the one the user is viewing, in the window sending. Chat has none.
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: ComposerWriteVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
@@ -142,7 +142,7 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
 
     // MARK: The steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: ComposerWriteVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.coreGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection) }

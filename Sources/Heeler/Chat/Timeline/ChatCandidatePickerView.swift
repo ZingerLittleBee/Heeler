@@ -188,8 +188,11 @@ private struct ChatCandidatePreviewView: View {
     }
 
     private var useButton: some View {
-        Button("Use This Conversation") {
+        Button {
             Task { await chat.confirmCandidate(candidate, keepingTo: corePin) }
+        } label: {
+            if chat.picksAreReadOnly { Text("View This Conversation") }
+            else { Text("Use This Conversation") }
         }
         .buttonStyle(.borderedProminent)
         .accessibilityIdentifier("chat.useConversation")

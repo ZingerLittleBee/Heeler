@@ -30,6 +30,9 @@ struct AgentChatSource: Sendable {
     /// in place of `agentInfo`, and only when Chat opens or an event says the
     /// answer may have changed, never on a timer (ADR 0034).
     var sessionEvidence: (@Sendable () async throws -> ChatSessionEvidence)?
+    /// Rex can read a manually selected rollout while its terminal is showing
+    /// a different conversation held by the same foreground process.
+    var requiresIndependentInputSession = false
     /// The core session and core id, which key the cache beside the Host: nil
     /// on Herdr TUI, whose session the socket location names.
     var coreScope: String?
@@ -352,18 +355,63 @@ final class AgentChatStore {
     /// same Droid process opens another conversation or starts another turn.
     func droidStopVerification() -> ChatStopVerification {
         let session = composerSessionID
-        let turn = activeDroidTurn
+        let turn = activeRecordedTurn
         return { [weak self] in
             guard let self, let session, let turn, self.composerSessionID == session,
-                  self.activeDroidTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
+                  self.activeRecordedTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
             let previousRead = self.readsBegun
             await self.step()
             return !Task.isCancelled && self.lastAppliedRead > previousRead
-                && self.composerSessionID == session && self.activeDroidTurn == turn
+                && self.composerSessionID == session && self.activeRecordedTurn == turn
         }
     }
 
-    private var activeDroidTurn: ChatEntryID? {
+    static let rexReadOnlyConversation = String(localized: "This conversation is open for reading. Use the terminal for input until Rex can verify the active conversation.")
+
+    var composerSessionInputCheck: ChatSessionInputCheck? {
+        source.requiresIndependentInputSession ? independentInputSession(allowFirstPrompt: true) : nil
+    }
+
+    private func independentInputSession(allowFirstPrompt: Bool = false) -> ChatSessionInputCheck {
+        let shown = followed
+        return { [weak self] in
+            guard let self, let read = self.source.sessionEvidence,
+                  let fresh = try? await read(), !Task.isCancelled else { return false }
+            switch fresh {
+            case .bound(let id, _, _):
+                guard let shown, self.followed?.namesSameSession(as: shown) == true else { return false }
+                return ConversationReference(program: self.program, sessionID: id).namesSameSession(as: shown)
+            case .unavailable(.noConversationYet):
+                return allowFirstPrompt && shown == nil && self.followed == nil && !self.program.pinsComposerToSession
+            default:
+                return false
+            }
+        }
+    }
+
+    /// A Rex Stop is addressed to the independently bound conversation and
+    /// its open recorded turn. A manual pick can show either of two rollouts
+    /// the same process is holding, while Esc always goes to its current one.
+    func rexStopVerification() -> ChatStopVerification {
+        let shown = followed
+        let turn = activeRecordedTurn
+        let pinnedSession = composerSessionID
+        return { [weak self] in
+            guard let self, let shown, let turn, let evidence = self.source.sessionEvidence,
+                  self.followed?.namesSameSession(as: shown) == true, self.activeRecordedTurn == turn,
+                  !self.program.pinsComposerToSession || (pinnedSession != nil && self.composerSessionID == pinnedSession)
+            else { return false }
+            let previousRead = self.readsBegun
+            await self.step()
+            guard self.lastAppliedRead > previousRead, self.activeRecordedTurn == turn,
+                  case .bound(let id, _, _) = try? await evidence() else { return false }
+            return !Task.isCancelled && ConversationReference(program: self.program, sessionID: id).namesSameSession(as: shown)
+                && self.followed?.namesSameSession(as: shown) == true && self.activeRecordedTurn == turn
+                && (!self.program.pinsComposerToSession || self.composerSessionID == pinnedSession)
+        }
+    }
+
+    private var activeRecordedTurn: ChatEntryID? {
         guard case .following = conversation.phase, !conversation.isFromCache, !conversation.hasUnreadRecords,
               conversation.readFailure == nil, let last = conversation.transcript.turns.last,
               last.ending == nil else { return nil }
@@ -408,7 +456,9 @@ final class AgentChatStore {
     @ObservationIgnored private var staleSession: ConversationReference?
     @ObservationIgnored private var staleTitle: String?
     /// Whether the last check bound a confirmed pick, which a send guard watches.
-    @ObservationIgnored private var followsPick = false
+    private var followsPick = false
+    var picksAreReadOnly: Bool { source.requiresIndependentInputSession }
+    var isReadingPickedConversation: Bool { picksAreReadOnly && followsPick }
     /// Sends made on the pick, until a turn's end says whether each arrived.
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
@@ -639,6 +689,12 @@ final class AgentChatStore {
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
+        if source.requiresIndependentInputSession, !program.pinsComposerToSession {
+            blocked.captureSessionCheck = { [weak self] in
+                guard let self else { return { false } }
+                return self.independentInputSession()
+            }
+        }
         if program.pinsComposerToSession {
             blocked.readDroidPatch = { path in
                 guard let size = try? await source.files.status(path)?.size, size > 0, size <= 32 << 10,
@@ -2004,6 +2060,7 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        blocked.displayedInputSessionChanged()
         droidTaskStops.removeAll()
         agyRootSessionID = nil
         agySessionFamily = []
@@ -2379,6 +2436,10 @@ final class AgentChatStore {
     /// process has outlived. Never while there is no conversation yet, since the
     /// first Send starts it (ADR 0034).
     func sessionRefusalBeforeCheck() -> String? {
+        if isReadingPickedConversation {
+            sessionEvidenceMayHaveChanged()
+            return Self.rexReadOnlyConversation
+        }
         guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
         else { return nil }
         switch reason {
@@ -2423,6 +2484,8 @@ final class AgentChatStore {
             return String(
                 localized: "\(name) is still starting, so Heeler sent nothing. Send again once it's running.",
                 comment: "Why a Chat send went nowhere: the program's name")
+        case .picked where source.requiresIndependentInputSession:
+            return Self.rexReadOnlyConversation
         case .bound, .picked:
             break
         }
