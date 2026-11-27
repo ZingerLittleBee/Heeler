@@ -74,7 +74,11 @@ struct RexConsoleTests {
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
             #expect(offers.chatPrograms == programs)
-            let histories: Set<ChatProgram> = isPOSIX ? [.opencode] : []
+            let histories: Set<ChatProgram> = switch kernel {
+            case HerdrCoreLocator.linuxKernel: [.opencode, .amp]
+            case HerdrCoreLocator.macOSKernel: [.opencode]
+            default: []
+            }
             #expect(offers.readOnlyChatPrograms == histories)
             for program in ChatProgram.allCases {
                 #expect(offers.offersChat(for: program) == (programs.contains(program) || histories.contains(program)))
