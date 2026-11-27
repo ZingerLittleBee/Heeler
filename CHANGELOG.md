@@ -36,6 +36,7 @@ Entries reference the pull request that made the change.
 ### Fixed
 
 - Send from Chat to an Antigravity CLI that uses another color scheme, such as `tokyo night`. Chat held every message with **Heeler can't find the Agent's input box on screen.**, and showed agy's trust and permission prompts without their buttons. (#863)
+- Send from Chat to a Devin CLI in its light theme. Chat held every message, saying Devin's message field could contain a draft. (#863)
 - Say which Agent's input box Chat can't find, and why, such as **Heeler can't find Antigravity CLI's input box on screen.** or **Codex's composer is not on screen.**, where it said **Heeler can't find the Agent's input box on screen.** for every Agent. (#863)
 - Open large Chat conversations reliably over slow cellular connections and recover cleanly from SFTP timeouts: read transcripts in 256 KiB chunks so multi-megabyte files open within the request deadline at 64 KiB/s, retire timed-out or failed shared SFTP handles immediately so **Retry** and concurrent reads open a fresh channel instead of failing with SFTP status 4, stop status changes from re-arming background Chat prefetches after timeouts or on sessionless panes, clear read-failure banners automatically once the next poll succeeds, and show a quiet canvas rather than **No Messages Yet** under the **Retry** banner when an initial Chat read times out. (PR #861)
 - Name a new worktree's Workspace on a Herdr TUI Host after its branch instead of the new Agent's name (such as `claude-2` or `agy-3`). (PR #860)
