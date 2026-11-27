@@ -1746,7 +1746,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 try await session.withTransport { try await $0.readProcesses(request) }
             },
             foregroundDroid: { pid, start, home, cwd in
-                try await session.withTransport { try await $0.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
+                try await session.withTransport { try await $0.hostServices.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
             },
             files: chatHostFiles(),
             clearLabels: { stale in
