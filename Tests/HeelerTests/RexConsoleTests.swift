@@ -345,6 +345,22 @@ struct RexConsoleTests {
         return studio
     }
 
+    @Test(arguments: [String?.none, "windows_x86_64"])
+    func anUnverifiedOrWindowsRexForegroundCannotReceiveBanners(_ platform: String?) async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")], platform: platform)
+        let console = store(servers: await served(world))
+        let host = rex
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the working foreground and its reported platform") {
+            console.agents.first?.agent.status == .working &&
+                (platform == nil || console.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel)
+        }
+        let row = try #require(console.agents.first)
+        #expect(console.rexBannerRecipient(for: row.id) == nil)
+        await console.suspend()
+    }
+
     @Test func aRexBannerOpensOnlyTheForegroundThatReported() async throws {
         let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
         let server = await served(world)[0]
@@ -356,11 +372,13 @@ struct RexConsoleTests {
             triggers: { preferences.rexBannerTriggers(for: $0) }, playSound: {},
             rexRecipient: { console.rexBannerRecipient(for: $0) },
             verifyRexRecipient: { await console.verifyRexBannerRecipient($1, for: $0) })
-        preferences.setHosts([host])
-        preferences.setRexBannersEnabled(true, for: host.id)
         console.setHosts([host])
         await console.resume()
-        try await waitUntil("working") { console.agents.first?.agent.status == .working }
+        try await waitUntil("working on a known macOS Host") {
+            console.agents.first?.agent.status == .working && console.hostCoreKernels[host.id] == HerdrCoreLocator.macOSKernel
+        }
+        preferences.setHosts([host], rexKernels: console.hostCoreKernels)
+        preferences.setRexBannersEnabled(true, for: host.id)
         let target = try #require(console.agents.first?.id)
         let block = world.sessions[0].windows[0].layers[0].blocks[2]
         func receive(_ state: String, _ status: AgentStatus, second: Int) async throws {

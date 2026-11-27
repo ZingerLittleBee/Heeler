@@ -259,8 +259,10 @@ struct HostOnboardingView: View {
                 }
                 Text("Use the terminal for other programs and unverified prompts. Manage splits and move blocks in Rex on the Host.")
                     .foregroundStyle(.secondary)
-                Text("To see Agent banners while Heeler is open, use Settings → Notifications.")
-                    .foregroundStyle(.secondary)
+                if RexBannerRecipient.isSupported(on: store.host, kernel: kernel) {
+                    Text("To see Agent banners while Heeler is open, use Settings → Notifications.")
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("Connect to see the actions and Chat programs available on this Host.")
             }

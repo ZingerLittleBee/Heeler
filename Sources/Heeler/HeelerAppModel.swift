@@ -242,7 +242,7 @@ final class HeelerAppModel {
 
         Task {
             console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
-            notificationPreferences.setHosts(hostStore.hosts)
+            notificationPreferences.setHosts(hostStore.hosts, rexKernels: console.hostCoreKernels)
             await console.resume()
         }
         // Only a real suspension moves the connections: a backgrounding the
@@ -364,7 +364,7 @@ final class HeelerAppModel {
             guard let self else { return }
             liveActivityHosts.publish(hosts)
             console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
-            notificationPreferences.setHosts(hosts)
+            notificationPreferences.setHosts(hosts, rexKernels: console.hostCoreKernels)
             liveActivities.layoutsDidChange()
             hostUpdates.catalogDidChange()
         }
@@ -375,6 +375,9 @@ final class HeelerAppModel {
             let arrived = new.subtracting(old)
             guard !arrived.isEmpty else { return }
             Task { await hostUpdates.hostsDidConnect(Array(arrived)) }
+        }
+        observe({ console.hostCoreKernels }) { kernels in
+            notificationPreferences.updateRexBannerHosts(hostStore.hosts, kernels: kernels)
         }
         observe({ console.agents }) { [weak self] agents in
             self?.bannerStore.agentsDidChange(agents)

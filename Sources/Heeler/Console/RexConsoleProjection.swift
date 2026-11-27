@@ -667,7 +667,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
 
     func bannerRecipient(for paneID: String) -> RexBannerRecipient? {
-        guard status == .connected, !isAwaitingSnapshot, let server, let address = RexPaneAddress(paneID: paneID),
+        guard RexBannerRecipient.isSupported(on: host, kernel: kernel), status == .connected,
+            !isAwaitingSnapshot, let server, let address = RexPaneAddress(paneID: paneID),
             let details = listedDetails(at: address), let pid = details.processID,
             let kind = RexAgentRule.agentKind(in: details),
             let follow = RexAgentRule.report(of: details, heldBy: kind)?.follow else { return nil }

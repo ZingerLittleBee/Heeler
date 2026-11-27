@@ -71,6 +71,7 @@ final class NotificationPreferencesStore {
 
     private(set) var hosts: [Host] = []
     private(set) var rexBannerHosts: [Host] = []
+    private var catalogRexIDs: Set<Host.ID> = []
     /// An entry enables local banners for this Rex Host; its value includes Done.
     private var rexDoneByHost: [String: Bool]
     private let rexBannerDefaults: UserDefaults?
@@ -131,12 +132,8 @@ final class NotificationPreferencesStore {
     /// Only unchanged Hosts keep confirmed state and in-flight operations. A
     /// Host waiting for its Server Kind has no notifications to offer yet, nor
     /// has one of a kind without a plugin or a Host Helper.
-    func setHosts(_ catalogHosts: [Host]) {
-        let rexHosts = catalogHosts.filter { $0.serverKind == .rex }
-        for old in rexBannerHosts where !rexHosts.contains(where: { $0.id == old.id }) {
-            setRexBannersEnabled(false, for: old.id)
-        }
-        rexBannerHosts = rexHosts
+    func setHosts(_ catalogHosts: [Host], rexKernels: [Host.ID: String] = [:]) {
+        updateRexBannerHosts(catalogHosts, kernels: rexKernels)
         let hosts = catalogHosts.filter(\.serverKind.hasHostIntegrations)
         let unchanged = Set(
             hosts.filter { incoming in
@@ -155,6 +152,21 @@ final class NotificationPreferencesStore {
 
     private func isCurrent(_ operation: UUID, for host: Host) -> Bool {
         operations[host.id] == operation && hosts.contains { Self.isSameNotificationHost($0, host) }
+    }
+
+    func updateRexBannerHosts(_ hosts: [Host], kernels: [Host.ID: String]) {
+        let current = Set(hosts.filter { $0.serverKind == .rex }.map(\.id))
+        for id in catalogRexIDs.subtracting(current) {
+            if rexDoneByHost.removeValue(forKey: id.uuidString) != nil {
+                rexBannerDefaults?.set(rexDoneByHost, forKey: Self.rexBannersKey)
+            }
+        }
+        catalogRexIDs = current
+        let previouslyOffered = Set(rexBannerHosts.map(\.id))
+        rexBannerHosts = hosts.filter { RexBannerRecipient.isSupported(on: $0, kernel: kernels[$0.id]) }
+        for id in previouslyOffered.symmetricDifference(rexBannerHosts.map(\.id)) {
+            onRexBannersChanged?(id)
+        }
     }
 
     func rexBannerTriggers(for hostID: Host.ID) -> NotificationTriggerPreferences? {

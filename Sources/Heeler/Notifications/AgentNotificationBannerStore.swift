@@ -19,6 +19,11 @@ struct RexBannerRecipient: Equatable, Sendable {
     let followID: UUID
     let pid: Int
     let kind: String
+
+    static func isSupported(on host: Host, kernel: String?) -> Bool {
+        host.serverKind == .rex && host.rexSocket?.isWindowsPipe != true &&
+            (kernel == HerdrCoreLocator.macOSKernel || kernel == HerdrCoreLocator.linuxKernel)
+    }
 }
 
 /// Announces foreground Blocked/Error/Done Agent transitions from the Console's
