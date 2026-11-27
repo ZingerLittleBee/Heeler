@@ -561,6 +561,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
         return HerdrCoreSessionBinder(
             program: program,
             processes: { request in try await Self.reads(session).readProcesses(request) },
+            foregroundDroid: { pid, start, home, cwd in
+                try await Self.reads(session).foregroundDroid(pid: pid, start: start, home: home, cwd: cwd)
+            },
             files: chatHostFiles(),
             clearLabels: { stale in await self.clearStalePick(stale, at: paneID, on: core) },
             currentLabels: { await self.pickLabels(at: paneID, on: core) },

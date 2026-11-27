@@ -14,11 +14,11 @@ sessions = root / "sessions"
 os.environ.update(LC_ALL="C", TZ="UTC")
 time.tzset()
 
-def birth():
+def birth(process):
     if sys.platform == "darwin":
-        raw = subprocess.check_output(["/bin/ps", "-o", "lstart=", "-p", pid], text=True, timeout=1).strip()
+        raw = subprocess.check_output(["/bin/ps", "-o", "lstart=", "-p", process], text=True, timeout=1).strip()
         return raw, time.mktime(time.strptime(raw))
-    stat = pathlib.Path("/proc", pid, "stat").read_text().rsplit(")", 1)[1].split()[19]
+    stat = pathlib.Path("/proc", process, "stat").read_text().rsplit(")", 1)[1].split()[19]
     boot = next(x for x in pathlib.Path("/proc/stat").read_text().splitlines() if x.startswith("btime "))
     return stat, int(boot.split()[1]) + int(stat) / os.sysconf("SC_CLK_TCK")
 
@@ -46,9 +46,10 @@ class IncompleteLog(Exception):
     pass
 
 
-def recent_lines():
+def recent_lines(process):
     # Many unrelated turns can follow an idle Droid's last session event.
     # Bound total local I/O, including rotations. No raw logs cross SSH.
+    pid_bytes = process.encode("ascii")
     log = root / "logs/droid-log-single.log"
     rotated = sorted(log.parent.glob(log.name + ".????-??-??"), reverse=True)[:2]
     budget = 128 * 1024 * 1024
@@ -73,11 +74,40 @@ def recent_lines():
                 return
 
 
+def controller():
+    # /cd can move the controller into a direct RPC child. It shares the
+    # interactive Droid's foreground job and terminal, unlike a Task worker.
+    fields = "ppid=,pgid=,tpgid=,tty=,comm="
+    def job(process):
+        return subprocess.check_output(["/bin/ps", "-p", process, "-o", fields], text=True, timeout=1).split(None, 4)
+    _, group, foreground, tty, image = job(pid)
+    if group != pid or group != foreground or tty in ("?", "??") or pathlib.Path(image.strip()).name != "droid":
+        return None
+    children = subprocess.run(["pgrep", "-P", pid, "-x", "droid"], capture_output=True, text=True, timeout=1)
+    if children.returncode not in (0, 1):
+        return None
+    owners = []
+    for child in children.stdout.split():
+        parent, child_group, child_foreground, child_tty, _ = job(child)
+        if (parent, child_group, child_foreground, child_tty) != (pid, group, foreground, tty):
+            continue
+        args = subprocess.check_output(["/bin/ps", "-p", child, "-o", "args="], text=True, timeout=1).strip()
+        entry, separator, arguments = args.partition(" exec ")
+        if separator and pathlib.Path(entry).name == "droid" and arguments == "--input-format stream-jsonrpc --output-format stream-jsonrpc":
+            owners.append(child)
+    if len(owners) > 1:
+        return None
+    return owners[0] if owners else pid
+
+
 def active():
-    actual, earliest = birth()
-    if actual != start:
+    if birth(pid)[0] != start:
         return
-    events = recent_lines()
+    owner = controller()
+    if not owner:
+        return
+    owner_start, earliest = birth(owner)
+    events = recent_lines(owner)
     closed = set()
     instance = None
     for line in events:
@@ -85,7 +115,7 @@ def active():
             continue
         head, payload = line.split(b" | ", 1)
         info = json.loads(payload[payload.index(b"{"):])
-        if str(info.get("process.pid")) != pid:
+        if str(info.get("process.pid")) != owner:
             continue
         timestamp = datetime.datetime.fromisoformat(head[1:head.index(b"]")].decode().replace("Z", "+00:00")).timestamp()
         current = str(uuid.UUID(info["factory.process.instance_id"]))
@@ -101,17 +131,16 @@ def active():
             return
         if header(file, sid).get("callingSessionId"):
             continue
-        if sid not in closed and birth()[0] == start:
-            return sid, file
+        if sid not in closed and birth(pid)[0] == start and controller() == owner and birth(owner)[0] == owner_start:
+            return {"session": sid, "file": str(file), "controller": owner, "controllerStart": owner_start}
         return
 
 try:
-    pid_bytes = pid.encode("ascii")
     for attempt in range(3):
         try:
             result = active()
             if result:
-                print(json.dumps({"session": result[0], "file": str(result[1])}))
+                print(json.dumps(result))
             break
         except IncompleteLog:
             time.sleep(0.03)

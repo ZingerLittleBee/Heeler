@@ -1515,6 +1515,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             processes: { request in
                 try await session.withTransport { try await $0.hostServices.readProcesses(request) }
             },
+            foregroundDroid: { pid, start, home, cwd in
+                try await session.withTransport { try await $0.hostServices.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
+            },
             files: chatHostFiles(),
             clearLabels: { stale in
                 try await self.clearStaleLabels(stale, at: paneID, on: activeServer)

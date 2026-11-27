@@ -38,6 +38,14 @@ def foreground_droid():
             return None
         parent, group, foreground, tty, image = ps(pid, "ppid=,pgid=,tpgid=,tty=,comm=").split(None, 4)
         if Path(image).name == "droid":
+            # /cd restarts the session controller in a direct JSON-RPC child
+            # of the interactive job. Its hooks still belong to that terminal.
+            if parent == group == foreground and int(group) != pid and tty not in ("?", "??"):
+                command = ps(pid, "args=")
+                entry, separator, arguments = command.partition(" exec ")
+                if separator and Path(entry).name == "droid" and arguments == "--input-format stream-jsonrpc --output-format stream-jsonrpc":
+                    pid = int(parent)
+                    continue
             if int(group) != pid or group != foreground or tty in ("?", "??"):
                 return None
             return pid, process_start(pid), "/dev/" + tty

@@ -78,11 +78,19 @@ struct DroidTranscriptLocator {
     }
 }
 
+protocol DroidForegroundReading: Sendable {
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession?
+}
+
+extension DroidForegroundReading {
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession? { nil }
+}
+
 /// Herdr 0.9.5 can keep the original herdr:droid ID through /new or /resume.
 /// Read Factory's own process-scoped lifecycle records on the Host. Only
 /// the foreground UUID and its validated transcript directory leave the Host.
 struct DroidForegroundSession: Decodable, Sendable {
-    let session, file: String
+    let session, file, controller, controllerStart: String
 
     static func script(pid: String, start: String, home: String, cwd: String) -> Data {
         let arguments = [pid, start, home, cwd].map(HostHelperScript.quote).joined(separator: " ")

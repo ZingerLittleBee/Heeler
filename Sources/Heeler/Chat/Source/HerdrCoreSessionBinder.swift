@@ -120,6 +120,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// Facts for each process the request reaches: one exec. An empty answer
     /// is an exec that failed on the Host, which tells nothing.
     var processes: @Sendable (HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
+    var foregroundDroid: (@Sendable (String, String, String, String) async throws -> DroidForegroundSession?)?
     var files: ChatHostFiles
     /// Removes labels from the Terminal, each with the value that was found stale.
     var clearLabels: @Sendable ([String: String]) async throws -> Void
@@ -167,7 +168,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
                 case .codex: try await checkCodex(record, tree: tree)
                 case .grok: try await checkGrokBuild(tree)
-                case .droid: try await checkDroid(tree)
+                case .droid: try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd)
                 case .amp: .unavailable(.amp(.unidentified))
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
@@ -294,7 +295,7 @@ struct HerdrCoreSessionBinder: Sendable {
               let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
               case .value(let start) = process.start else { return nil }
         let id: String?
-        switch try await checkDroid(tree) {
+        switch try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd) {
         case .bound(let session, _, _): id = session
         case .unavailable(.cannotTellSession(.droid)): id = nil
         default: return nil
@@ -308,7 +309,7 @@ struct HerdrCoreSessionBinder: Sendable {
                      sessionID: id, userHooksDisabled: disabled)
     }
 
-    private func checkDroid(_ tree: HerdrCoreTerminalProcesses) async throws -> ChatSessionEvidence {
+    private func checkDroid(_ tree: HerdrCoreTerminalProcesses, directory: String) async throws -> ChatSessionEvidence {
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
               case .value(let start) = process.start,
               case .value(let home)? = process.variables[Self.homeVariable],
@@ -321,6 +322,10 @@ struct HerdrCoreSessionBinder: Sendable {
               let id = ConversationReference.canonicalUUID(hint.session), let file = hint.file,
               let folder = DroidTranscriptLocator.reportedFolder(file: file, sessionID: id)
         else { return cannotTell }
+        if let foregroundDroid {
+            guard let active = try await foregroundDroid(pid, start, home, directory),
+                  active.session == id, active.file == file else { return cannotTell }
+        }
         return .bound(sessionID: id, transcriptRoot: folder, directory: nil)
     }
 

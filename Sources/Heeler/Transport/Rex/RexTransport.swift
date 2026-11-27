@@ -94,7 +94,7 @@ extension RexTransport {
 /// waits on other reads and on stagings (`RexHostStaging`) only. Rex's links
 /// are direct-streamlocal channels, which sshd's `MaxSessions` does not
 /// count (rex-compatibility.md).
-protocol RexHostReads: Sendable {
+protocol RexHostReads: DroidForegroundReading {
     /// A range of a session file, on the SFTP channel Chat keeps open.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
@@ -446,6 +446,10 @@ private struct RexReadsOnly: RexHostReads {
 
     func hostHomeDirectory() async throws -> String {
         try await connection.hostHomeDirectory()
+    }
+
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession? {
+        try await connection.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd)
     }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {

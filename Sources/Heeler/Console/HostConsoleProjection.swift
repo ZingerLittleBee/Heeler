@@ -399,15 +399,22 @@ final class HostConsoleProjection: ConsoleHostProjection {
         guard agent.kind == "droid" else { return nil }
         let foreground = try await processInfo(paneID: paneID)
         let candidates = (foreground.foregroundProcesses ?? []).filter { ($0.name as NSString).lastPathComponent == "droid" }
-        guard candidates.count == 1, let process = candidates.first, let cwd = process.cwd ?? agent.foregroundCwd else { return nil }
+        guard let group = foreground.foregroundProcessGroupID,
+              let process = candidates.first(where: { $0.pid == group }),
+              candidates.filter({ $0.pid != group }).allSatisfy({
+                  $0.argv?.dropFirst().elementsEqual(["exec", "--input-format", "stream-jsonrpc", "--output-format", "stream-jsonrpc"]) == true
+              }), let cwd = process.cwd ?? agent.foregroundCwd else { return nil }
         let pid = String(process.pid)
         let facts = try await withHostServices { try await $0.readProcesses(.init(pids: [pid], readsStart: true, valuesOf: ["HOME"])) }
         guard case .value(let start)? = facts[pid]?.start, case .value(let home)? = facts[pid]?.variables["HOME"] else { return nil }
         let active = try await withHostServices { try await $0.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
         let current = try await processInfo(paneID: paneID)
-        guard generation == transportGeneration, current.foregroundProcesses?.contains(process) == true else { return nil }
+        let currentDroids = (current.foregroundProcesses ?? []).filter { ($0.name as NSString).lastPathComponent == "droid" }
+        guard generation == transportGeneration, current.foregroundProcessGroupID == group,
+              candidates.count == currentDroids.count, candidates.allSatisfy(currentDroids.contains) else { return nil }
         let folder = active.flatMap { DroidTranscriptLocator.reportedFolder(file: $0.file, sessionID: $0.session) }
-        return .init(scope: "\(generation)/\(agent.terminalID)", pid: pid, start: start, directory: cwd,
+        return .init(scope: "\(generation)/\(agent.terminalID)", pid: active?.controller ?? pid,
+                     start: active?.controllerStart ?? start, directory: cwd,
                      sessionID: folder == nil ? nil : active?.session, transcriptFolder: folder)
     }
 
