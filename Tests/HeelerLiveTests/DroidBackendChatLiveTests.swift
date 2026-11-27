@@ -359,8 +359,8 @@ struct DroidBackendChatLiveTests {
         let (projection, pane) = try lab.connection(kind)
         projection.start(isActive: true)
         defer { projection.end() }
-        let deadline = ContinuousClock.now + .seconds(30)
-        while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < deadline {
+        let discoveryDeadline = ContinuousClock.now + .seconds(30)
+        while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < discoveryDeadline {
             try await Task.sleep(for: .milliseconds(250))
         }
         try #require(projection.agentsByPane[pane]?.agent.kind == "droid")
