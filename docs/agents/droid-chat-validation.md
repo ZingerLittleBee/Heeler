@@ -278,3 +278,16 @@ usual `HEELER_DROID_CHAT_LAB` with a `work` scenario. Its `scriptBackground`
 object records the official `sessionID` and the two independent `commands`.
 Each supplies `callID`, `outerID`, `title`, `pid`, `output` and `exitCode` from
 the Factory JSONL. The test reconnects twice and reads both completed commands.
+
+For Rex, select
+`DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()`
+in the live scheme. Set `HEELER_REX_DROID_SCRIPT_LAB` to a private file with
+`lab` (the ordinary backend connection and foreground fixture), `sessionID`,
+`phase` (`running` or `finished`) and two `commands`. For each command use
+the official inner `callID`, the containing Script's `outerID`, its `title`
+and the background `pid` as a string. A finished command also has the
+integer `exitCode` and its exact `reportedOutput`. Compare these fields to
+the same Agent's original Factory records and output files. Execute once with
+both tasks held, release the two lab tasks, then execute with their recorded
+terminal results. Each test opens two fresh Store connections and checks that
+neither row offers the Droid task control.
