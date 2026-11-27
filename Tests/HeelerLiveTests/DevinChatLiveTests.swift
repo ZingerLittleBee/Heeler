@@ -23,6 +23,37 @@ struct DevinChatLiveTests {
         return try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_MAC_REX_WRITERS"] != nil))
+    func keepsSameDirectoryRexWritersSeparateOnMacOS() async throws {
+        struct Writer: Decodable {
+            let lab: Lab
+            let pid, start: String
+        }
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_MAC_REX_WRITERS"])
+        let pair = try JSONDecoder().decode([Writer].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        try #require(pair.count == 2)
+        let a = pair[0], b = pair[1]
+        try #require(a.lab.directory == b.lab.directory && a.lab.rexSocket == b.lab.rexSocket)
+        try #require(a.pid != b.pid && a.lab.rexBlock != b.lab.rexBlock && a.lab.sessions["rex"] != b.lab.sessions["rex"])
+        for (own, other) in [(a, b), (b, a)] {
+            try await withChat(own.lab, .rex) { live in
+                let read = try #require(live.io.droidTarget)
+                let target = try #require(try await read())
+                #expect(target.pid == own.pid && target.start == own.start)
+                #expect(target.directory == own.lab.directory && target.sessionID == own.lab.sessions["rex"])
+                var wrongWriter = target
+                wrongWriter.pid = other.pid
+                wrongWriter.start = other.start
+                let check = DroidSendVerification(target: wrongWriter, readTarget: read, readScreen: live.io.readScreen,
+                                                  requiresSpec: false, program: .devin)
+                guard case .inputNotReady = await check.refusal() else {
+                    Issue.record("The other foreground's ACP writer passed the displayed conversation's input check")
+                    return
+                }
+            }
+        }
+    }
+
     @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], liveChatBackends([ServerKind.herdrTUI, .herdrCore, .tmux, .rex]))
     func opensTheForegroundSessionAndDeliversExactlyOnce(_ platform: String, _ backend: ServerKind) async throws {
         let lab = try config(platform)

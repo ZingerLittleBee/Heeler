@@ -484,7 +484,8 @@ struct HerdrCoreSessionBinder: Sendable {
             readsOpenFiles: ask.readsOpenFiles,
             argumentsAmong: ask.arguments,
             preservesArgumentOrder: ask.preservesArgumentOrder,
-            descendantsOf: root)
+            descendantsOf: root,
+            prefersDarwinChildPIDs: isOnMacOS && program == .devin)
         let facts = try await processes(request)
         guard let rootFacts = facts[root] else { return nil }
         if let name = rootFacts.name {

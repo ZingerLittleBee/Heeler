@@ -31,6 +31,9 @@ enum HostProcessReader {
         /// One of ``pids``: also finds its descendants on the Host and reads
         /// each of them the same way, since nothing can name them beforehand.
         var descendantsOf: String?
+        /// A macOS Rex Devin validates its direct ACP writer between paste and Enter.
+        /// Walk from the foreground PID without asking ps to list unrelated processes.
+        var prefersDarwinChildPIDs = false
 
         var readsEnvironment: Bool {
             !valuesOf.isEmpty || !namesOf.isEmpty || !namesWithPrefix.isEmpty
@@ -320,7 +323,7 @@ enum HostProcessReader {
     /// each one with its macOS version. `ps -o lstart=` for the start,
     /// `KERN_PROCARGS2` through `/usr/bin/perl` for variables (`ps -E` cannot
     /// frame a value holding a space) and arguments, `lsof -F` for descriptors,
-    /// `ps -ax` for the walk, whose `W ok` says the tree is whole. macOS
+    /// a bounded process tree whose `W ok` says the walk is whole. macOS
     /// withholds a platform binary's environment and ends the buffer there, so
     /// no entries read as unavailable, as an empty read does on Linux. Anywhere
     /// else dyld's own `apple` strings follow the environment, so an empty
@@ -334,7 +337,9 @@ enum HostProcessReader {
     /// `NAME=x` the entry, so an asked name among those strings makes the read
     /// unavailable, and neither `unset` nor the wrong value can come of it.
     private static func macOSReads(_ request: Request) -> [String] {
-        [
+        let parents = request.prefersDarwinChildPIDs ? "child_parents \"$1\"" : "/bin/ps -ax -o pid=,ppid= </dev/null"
+        let scopedWalk = request.prefersDarwinChildPIDs ? darwinParentList + "\n" : ""
+        return [
             // In UTC, as Claude Code writes it, and so that a label compared later
             // does not depend on the zone an exec's startup files set.
             "s() {",
@@ -376,8 +381,8 @@ enum HostProcessReader {
             // the kernel's name would still say `node`. Only its last path part is
             // printed, and only when it cannot be taken for anything else: another
             // user's reads `(name)`. An empty listing did not answer: `ps` lists itself.
-            "w() {",
-            "  /bin/ps -ax -o pid=,ppid= </dev/null | awk -v r=\"$1\" -v m=\(processCap) '",
+            scopedWalk + "w() {",
+            "  \(parents) | awk -v r=\"$1\" -v m=\(processCap) '",
             "{P[$1]=$2;K[$2]=K[$2] \" \" $1}",
             "END{if(!NR){print \"W\",r,\"-\";exit}",
             "Q[1]=r;h=1;e=1;",
@@ -421,6 +426,66 @@ enum HostProcessReader {
             "' \"$1\" </dev/null || printf 'B %s -\\n' \"$1\"",
             "}",
         ]
+    }
+
+    /// libproc's parent query returns a count of PIDs. Collect the same bounded tree
+    /// twice and verify the parent of every listed PID. Emit rows only after those
+    /// checks, so the existing parser cannot accept part of a changing tree.
+    private static var darwinParentList: String {
+        #"""
+        child_parents() {
+          rows=$(python3 -I - "$1" \#(processCap) <<'HEELER_DEVIN_CHILDREN'
+        import ctypes
+        import subprocess
+        import sys
+
+        root, cap = map(int, sys.argv[1:])
+        try:
+            children = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True).proc_listchildpids
+        except (AttributeError, OSError):
+            sys.exit(1)
+        children.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_int)
+        children.restype = ctypes.c_int
+        try:
+            def walk():
+                parents = {root: None}
+                queue = [root]
+                buffer = (ctypes.c_int * (cap + 1))()
+                for parent in queue:
+                    ctypes.set_errno(0)
+                    count = children(parent, buffer, ctypes.sizeof(buffer))
+                    if ctypes.get_errno() or count < 0:
+                        raise ValueError("Child PID query unavailable")
+                    if count > cap or len(queue) - 1 + count > cap:
+                        raise ValueError("Process limit exceeded")
+                    for child in buffer[:count]:
+                        if child <= 0 or child in parents:
+                            raise ValueError("Process tree changed")
+                        parents[child] = parent
+                        queue.append(child)
+                return parents
+
+            parents = walk()
+            rows = subprocess.check_output(
+                ["/bin/ps", "-o", "pid=,ppid=", "-p", ",".join(map(str, parents))],
+                stdin=subprocess.DEVNULL).splitlines()
+            current = dict(tuple(map(int, row.split())) for row in rows)
+            if (current.keys() != parents.keys() or len(rows) != len(parents)
+                    or any(current[pid] != ppid for pid, ppid in parents.items() if pid != root)
+                    or walk() != parents):
+                raise ValueError("Process tree changed")
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            sys.exit(3)
+        for pid, ppid in current.items():
+            print(pid, ppid)
+        HEELER_DEVIN_CHILDREN
+          ) && { printf '%s\n' "$rows"; return; }
+          # A changed, oversized or unreadable tree supplies no usable rows.
+          [ "$?" -eq 3 ] && return
+          # Hosts without Python or libproc can still use the complete numeric table.
+          /bin/ps -ax -o pid=,ppid= </dev/null
+        }
+        """#
     }
 
     private static func prefixTest(_ request: Request) -> String {

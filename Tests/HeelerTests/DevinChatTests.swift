@@ -30,6 +30,15 @@ struct DevinChatTests {
         #expect(bound.sessionID == "steady-willow" && bound.transcriptFolder == folder)
         #expect(bound.start == "writer-start" && bound.scope.contains("ui-start"))
         #expect(try await target(["41": ui], members: ["41"])?.sessionID == nil)
+        var peer = acp
+        peer.parent = "99"
+        #expect(try await target(["41": ui, "52": peer], members: ["41", "52"])?.sessionID == nil)
+        await files.failNext(.read, path: lock, with: TransportError.hostFileUnreadable(status: 3))
+        await #expect(throws: TransportError.hostFileUnreadable(status: 3)) {
+            try await target(["41": ui, "52": acp], members: ["41", "52"])
+        }
+        await files.remove(lock)
+        #expect(try await target(["41": ui, "52": acp], members: ["41", "52"]) == nil)
         await files.write("72\n", at: lock)
         #expect(try await target(["41": ui, "52": acp], members: ["41", "52"]) == nil)
         #expect(try await target(["41": ui, "52": acp, "53": acp], members: ["41", "52", "53"]) == nil)
