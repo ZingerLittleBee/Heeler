@@ -232,7 +232,8 @@ struct RexTerminalTakeoverObservation: Codable {
     static func run(path: String) async throws -> Self {
         let lab = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         guard let socket = RexSocket(path: lab.rexSocket), let secret = Data(base64Encoded: lab.seed),
-              lab.directory.hasPrefix("/tmp/heeler-lab-"), lab.phoneText.hasPrefix("REX_LAB_MOBILE_"),
+              ["/tmp/heeler-lab-", "/private/tmp/heeler-lab-"].contains(where: lab.directory.hasPrefix),
+              lab.phoneText.hasPrefix("REX_LAB_MOBILE_"),
               lab.target.session != lab.peer.session, lab.target.block != lab.peer.block else {
             throw Failure(description: "Expected two different private foregrounds")
         }

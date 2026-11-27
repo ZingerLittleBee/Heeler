@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Exercise a Terminal Composer paste whose foreground returns to its shell on Linux.
+"""Exercise a Terminal Composer paste whose foreground returns to its shell on macOS or Linux.
 
 Run prepare, then give fixture.json's fields and the disposable SSH connection to
 RexTerminalTakeoverLiveTests. The app's positive paste receipt is held until a
 separate client has typed into the replacement Bash. read prints the host proof.
-stop shuts down only this fixture. Requires real rex, pi, Bash and Python 3.9+.
+stop shuts down only this fixture. Requires real rex, pi, Bash 4+ and Python 3.9+.
 """
 import argparse
 import asyncio
@@ -39,6 +39,13 @@ def wait(description, probe, seconds=10):
             return value
         time.sleep(.025)
     raise RuntimeError(description)
+
+
+def process_start(pid):
+    if sys.platform == "darwin":
+        return subprocess.check_output(["/bin/ps", "-p", str(pid), "-o", "lstart="],
+                                       env=dict(os.environ, LC_ALL="C", TZ="UTC"), text=True).strip()
+    return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
 
 
 class Lab:
@@ -85,7 +92,7 @@ class Lab:
         current = self.foreground(target)
         if current.get("pid") != pid or current.get("cwd") != config["directory"]:
             raise RuntimeError("The target is no longer the disposable Pi")
-        tick = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        tick = process_start(pid)
         if tick != config["agentStart"]:
             raise RuntimeError("Pi's process identity changed")
         wait("Pi did not display the accepted mobile paste", lambda: config["phoneText"] in self.capture(target))
@@ -115,7 +122,7 @@ class Lab:
         return value
 
 
-def prepare(root, rex, pi):
+def prepare(root, rex, pi, bash):
     root.mkdir(mode=0o700, parents=False, exist_ok=False)
     project = root / "project"
     project.mkdir()
@@ -144,7 +151,7 @@ def prepare(root, rex, pi):
     for side in ("target", "peer"):
         row = json.loads(lab.rex("session", "new", "--json", "--cwd", str(project), "--shell", "none",
                                "heeler-lab-swap-" + side, "--", "/usr/bin/env", "HOME=" + str(home), "HISTFILE=/dev/null",
-                               "OBSERVE=" + str(root / (side + ".readline")), "/bin/bash", "--noprofile", "--rcfile", str(rc), "-i"))
+                               "OBSERVE=" + str(root / (side + ".readline")), bash, "--noprofile", "--rcfile", str(rc), "-i"))
         peer = {"side": side, "session": row["session_id"], "block": row["initial_windows"][0]["block_ids"][0]}
         wait("The new Bash did not display its prompt", lambda: "heeler-lab-shell>" in lab.capture(peer))
         peer["shellPID"] = lab.foreground(peer)["pid"]
@@ -160,7 +167,7 @@ def prepare(root, rex, pi):
         fg = lab.foreground(target)
         return fg.get("pid") if Path(fg.get("argv0", "")).name == "pi" and fg.get("cwd") == str(project) else None
     config["agentPID"] = wait("Pi did not become the foreground", pi_pid, 15)
-    config["agentStart"] = Path(f"/proc/{config['agentPID']}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    config["agentStart"] = process_start(config["agentPID"])
     wait("Pi did not draw its editor", lambda: "local" in lab.capture(target), 15)
     config["evidence"] = str(root / "wire.json")
     write(root / "fixture.json", config)
@@ -252,14 +259,15 @@ if __name__ == "__main__":
     parser.add_argument("root", type=Path)
     parser.add_argument("--rex", default=shutil.which("rex"))
     parser.add_argument("--pi", default=shutil.which("pi"))
+    parser.add_argument("--bash", default=shutil.which("bash"))
     args = parser.parse_args()
     root = args.root.resolve()
-    if not re.fullmatch(r"heeler-lab-[A-Za-z0-9-]+", root.name) or root.parent != Path("/tmp"):
-        parser.error("Use a fresh /tmp/heeler-lab-… directory in a disposable Linux account")
+    if not re.fullmatch(r"heeler-lab-[A-Za-z0-9-]+", root.name) or root.parent != Path("/tmp").resolve():
+        parser.error("Use a fresh /tmp/heeler-lab-… directory in a disposable Host account")
     if args.action == "prepare":
-        if not args.rex or not args.pi:
-            parser.error("Both the official rex and pi executables are required")
-        print(json.dumps(prepare(root, args.rex, args.pi)))
+        if not args.rex or not args.pi or not args.bash:
+            parser.error("The official rex and pi executables and Bash 4+ are required")
+        print(json.dumps(prepare(root, args.rex, args.pi, args.bash)))
     elif args.action == "serve":
         asyncio.run(serve(root))
     elif args.action == "read":
@@ -269,7 +277,13 @@ if __name__ == "__main__":
         if json.loads(lab.rex("api", "call", "server.status"))["instance_id"] != lab.settings["instance"]:
             raise RuntimeError("The server instance changed")
         pid = int((root / "proxy.pid").read_text())
-        if str(root).encode() not in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0"):
+        if sys.platform == "darwin":
+            command = subprocess.check_output(["/bin/ps", "-ww", "-p", str(pid), "-o", "command="], text=True).strip()
+            owns_proxy = command.endswith(f" {Path(__file__).resolve()} serve {root}")
+        else:
+            argv = [os.fsdecode(v) for v in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if v]
+            owns_proxy = argv[-3:] == [str(Path(__file__).resolve()), "serve", str(root)]
+        if not owns_proxy:
             raise RuntimeError("The proxy PID changed")
         os.kill(pid, signal.SIGTERM)
         lab.rex("server", "stop")
