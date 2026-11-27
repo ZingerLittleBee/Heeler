@@ -1,6 +1,18 @@
 # Factory Droid Chat acceptance
 
-The production fixes are in `8c89c78943e2d91fb4fa39bf86277b56be47fb4d`. The tested candidate, `4bf211cf2f5965026e2cd33cf364ba0810d2c0a6`, adds the live regression scenarios on top of that code. Both Hosts ran Factory Droid 1.21.1. The platform tables include the new results for server and foreground replacement and for a desktop edit during Send. Other rows retain their original evidence dates and revisions. The local receipts and simulator captures for this candidate are under `build/droid-fixes/`. The [portable repair record](evidence/droid-chat-repair-4bf211cf.json) preserves the run counts and independent backend observations.
+## Multiline input
+
+Candidate `1f09b9552a6cdfdef18471580f99595bcc88fb56` preserves indentation and empty lines when core, tmux and Rex compare the staged draft with Droid’s input box before Enter. Herdr TUI uses a single `agent.prompt` request.
+
+All 21 focused Droid app tests passed. On Droid 1.21.1, the verifier accepted 40 unchanged terminal captures at 27, 42, 64 and 80 columns. It held five edited captures covering indentation, blank lines and a trailing space at the caret. The [captured input box](../../Tests/HeelerTests/ChatFixtures/screens/droid/droid-multiline-paste.ansi) includes Chinese text, a wrapped indented line and an empty line. A terminal capture cannot distinguish a hard break from an identical soft wrap, or spaces on an inactive line from identical frame padding.
+
+The `HeelerLiveTests` scheme ran `DroidBackendChatLiveTests/bindsSendsAndReadsTheReply(_:)` against core, tmux and Rex on both systems. Each of the six Factory transcripts contained the original two newlines and four spaces before the marker, one user message with that marker and one matching reply. In each live terminal, the final verifier also refused an unsent marker after a desktop edit added four leading spaces. The [multiline verification record](evidence/droid-chat-whitespace-1f09b9552.json) lists the session and message IDs.
+
+All three macOS cases passed. The first Linux run passed on tmux and Rex. Core held the first Send after trust while confirming the foreground target. Its transcript contained zero copies of the marker. Reopening Chat on that same core terminal produced one new prompt and one reply in the original UUID. A separate run from fresh trust prompts passed all three Linux cases.
+
+## Earlier platform acceptance
+
+The broader acceptance run used `4bf211cf2f5965026e2cd33cf364ba0810d2c0a6`, which adds the live regression scenarios to the production fixes in `8c89c78943e2d91fb4fa39bf86277b56be47fb4d`. Both Hosts ran Factory Droid 1.21.1. The platform tables include the new results for server and foreground replacement and for a desktop edit during Send. Other rows retain their original evidence dates and revisions. The local receipts and simulator captures for this candidate are under `build/droid-fixes/`. The [portable repair record](evidence/droid-chat-repair-4bf211cf.json) preserves the run counts and independent backend observations.
 
 - **Send.** After the usual preflight, the real core, tmux and Rex tests staged a desktop draft, then separately ran `/new`. The desktop text survived the first attempt. In the second, the phone retained A’s draft and B’s input field and transcript were empty. The transport also reads the staged payload before Enter. Herdr TUI uses its single `agent.prompt` request. A shared regression changes the foreground between the final reads and another drops the prompt receipt.
 - **Approvals.** On each Host, the TUI test inspected both file diffs for `git apply './two files.patch'`, accepted the card and checked the contents of both created files. A separate regression changes the patch bytes after the card opens. Incomplete reads, multiple patch arguments and shell expressions require the terminal. The four live backend cases exercised two distinct approvals with the same target filename across reconnection. Each time the old card and draft were refused, the replacement file stayed absent and a fresh card could decline the second request.
@@ -63,6 +75,7 @@ Repair candidate `4bf211cf2`
 | Scenario | Herdr TUI | herdr-core | tmux | Rex |
 | --- | --- | --- | --- | --- |
 | Open the running conversation, verify its UUID, send a unique marker, read one reply | N / PASS | N / PASS | N / PASS | N / PASS |
+| Send a marker after an empty line and four spaces, verify exact text and one reply (`1f09b9552`) | N / NOT-RUN | N / PASS | N / PASS | N / PASS |
 | First trust, approve the whole path and bind the new UUID | N / PASS | N / PASS | N / PASS | T / PASS |
 | Open a known trusted directory, locate an existing running conversation | N / PASS | N / PASS | N / PASS | N / NOT-RUN |
 | Distinguish startup, unreadable screen and missing or disabled hook | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN |
@@ -126,6 +139,7 @@ Repair candidate `4bf211cf2`
 | Scenario | Herdr TUI | herdr-core | tmux | Rex |
 | --- | --- | --- | --- | --- |
 | Open the running conversation, verify its UUID, send a unique marker, read one reply | N / PASS | N / PASS | N / PASS | N / PASS |
+| Send a marker after an empty line and four spaces, verify exact text and one reply (`1f09b9552`) | N / NOT-RUN | N / PASS | N / PASS | N / PASS |
 | First trust, approve the whole path and bind the new UUID | N / PASS | N / PASS | N / PASS | T / PASS |
 | Open a known trusted directory, locate an existing running conversation | N / PASS | N / PASS | N / PASS | N / NOT-RUN |
 | Distinguish startup, unreadable screen and missing or disabled hook | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN |
