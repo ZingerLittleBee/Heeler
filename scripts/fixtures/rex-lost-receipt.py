@@ -71,8 +71,12 @@ async def main(args):
                             record["targetWrites"] += 1
                             if record["targetWrites"] == 1:
                                 key = payload.get("args", {}).get("data", "")
-                                if key not in ("1", "\x1b[49u", "\x1b[49;1u"):
+                                # A Rex write can carry one Kitty keypress and its release together.
+                                # A release for another key or a second press must still fail the probe.
+                                press = key.removesuffix("\x1b[49;1:3u")
+                                if press not in ("1", "\x1b[49u", "\x1b[49;1u", "\x1b[49;;49u"):
                                     raise ValueError("The first target write was not option one")
+                                record["optionOneWireHex"] = key.encode("ascii").hex()
                                 pending = message["id"]
                         save()
                     if not approval and from_client and payload.get("block_id") == target:
