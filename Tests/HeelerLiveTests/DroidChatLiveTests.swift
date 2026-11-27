@@ -60,6 +60,7 @@ struct DroidChatLiveTests {
             hostID: host.id, socketLocation: .absolutePath(lab.socket), files: projection.chatHostFiles(),
             agentInfo: { try await projection.agentInfo(paneID: lab.pane) }, cache: VolatileChatTranscriptCache(),
             adapter: try #require(ChatTranscriptAdapter.standard(for: program)))
+        source.screen.droidTarget = { try await projection.droidDialogTarget(paneID: lab.pane) }
         source.sessionEvidence = { try await projection.droidSessionEvidence(paneID: lab.pane) }
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: lab.pane), agent: agent, program: program, source: source)
         defer { chat.end() }
@@ -72,9 +73,10 @@ struct DroidChatLiveTests {
         let answer = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with exactly \(answer). Do not use tools."
         let composer = AgentComposerStore(target: lab.pane) { try await projection.promptAgent($0) }
+        composer.bindDroidDraft(to: chat.droidSessionID)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: program, commands: []),
             activity: { ChatAgentActivity(chat.agent.status) }, readScreen: { try await projection.readAgentScreen(lab.pane) },
-            confirmSession: { await chat.confirmSessionBeforeSend() })
+            droidTarget: chat.droidScreen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
         composer.replaceDraft(with: prompt)
         chat.draftDidChange(to: prompt)
         try #require(await composer.send(policy: policy) == .deliveredViaPrompt)

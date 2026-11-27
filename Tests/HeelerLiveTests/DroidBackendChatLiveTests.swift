@@ -16,52 +16,15 @@ struct DroidBackendChatLiveTests {
         let factoryHome, directory: String
         var directories: [String: String]?
         var beginsAtTrust: Bool?
+        var herdrSocket: String?
     }
 
     @Test(arguments: [ServerKind.herdrCore, .tmux, .rex])
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-        let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: lab.seed)))
-        var ssh = SSHTransportSettings(host: "127.0.0.1", port: lab.port, username: lab.user,
-            credentials: .ed25519(key), hostKeyPolicy: .init(knownHosts: InMemoryKnownHostsStore()) {
-                $0.fingerprint.displayString == lab.fingerprint
-            }, socket: .defaultSession)
-        ssh.serverKind = kind
-        let settings = ssh
-        let host = Host(name: "Droid Lab", address: "127.0.0.1", port: lab.port, username: lab.user, serverKind: kind)
-        let projection: any ConsoleHostProjection
-        let pane: String
-        switch kind {
-        case .herdrCore:
-            let session = HerdrCoreHostSession(connect: {
-                try await HerdrCoreSSHTransport(connection: HeelerSSHTransport.connect(settings: settings), session: lab.coreName)
-            })
-            projection = HerdrCoreConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
-                gitGate: .init(), herdrAppRename: false, isNativeWindows: { false }, onChange: {})
-            pane = try #require(lab.panes[kind.rawValue])
-        case .tmux:
-            let paths = try #require(TmuxPaths(executable: lab.tmuxExecutable, socket: lab.tmuxSocket))
-            let socketName = URL(fileURLWithPath: lab.tmuxSocket).lastPathComponent
-            let session = TmuxHostSession(storedPaths: paths, connect: { saved in
-                try await TmuxSSHTransport(connection: HeelerSSHTransport.connect(settings: settings),
-                                           socketName: socketName, storedPaths: saved)
-            })
-            projection = TmuxConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
-                                               gitGate: .init(), onPathsResolved: { _ in }, onChange: {})
-            pane = try #require(lab.panes[kind.rawValue])
-        case .rex:
-            let socket = try #require(RexSocket(path: lab.rexSocket))
-            let session = RexHostSession(storedSocket: socket) { stored, previous in
-                try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: settings),
-                                                  socket: stored, resuming: previous)
-            }
-            projection = RexConsoleProjection(host: host, session: session, pins: .init(), onChange: {})
-            pane = RexPaneAddress(sessionID: lab.rexSession, blockID: lab.rexBlock).paneID
-        default:
-            Issue.record("Unexpected backend")
-            return
-        }
+        let (projection, pane) = try connection(kind, lab: lab)
+        let host = projection.host
         projection.start(isActive: true)
         defer { projection.end() }
         let deadline = ContinuousClock.now + .seconds(30)
@@ -104,9 +67,10 @@ struct DroidBackendChatLiveTests {
             Issue.record("Droid bypassed this backend's checked sender")
             throw TransportError.cancelled
         }
+        composer.bindDroidDraft(to: chat.droidSessionID)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
-            readScreen: typing.blockedScreen.readScreen, confirmSession: { await chat.confirmSessionBeforeSend() })
+            readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with exactly \(token). Do not use tools."
         try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
@@ -132,6 +96,153 @@ struct DroidBackendChatLiveTests {
             try await Task.sleep(for: .milliseconds(500))
         }
         Issue.record("Droid's answer did not reach the Chat timeline")
+    }
+
+    private func connection(_ kind: ServerKind, lab: Lab) throws -> (any ConsoleHostProjection, String) {
+        let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: lab.seed)))
+        var ssh = SSHTransportSettings(host: "127.0.0.1", port: lab.port, username: lab.user,
+            credentials: .ed25519(key), hostKeyPolicy: .init(knownHosts: InMemoryKnownHostsStore()) {
+                $0.fingerprint.displayString == lab.fingerprint
+            }, socket: lab.herdrSocket.map { .absolutePath($0) } ?? .defaultSession)
+        ssh.serverKind = kind
+        let settings = ssh
+        let host = Host(name: "Droid Lab", address: "127.0.0.1", port: lab.port, username: lab.user, serverKind: kind)
+        let projection: any ConsoleHostProjection
+        let pane: String
+        switch kind {
+        case .herdrCore:
+            let session = HerdrCoreHostSession(connect: {
+                try await HerdrCoreSSHTransport(connection: HeelerSSHTransport.connect(settings: settings), session: lab.coreName)
+            })
+            projection = HerdrCoreConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
+                gitGate: .init(), herdrAppRename: false, isNativeWindows: { false }, onChange: {})
+            pane = try #require(lab.panes[kind.rawValue])
+        case .tmux:
+            let paths = try #require(TmuxPaths(executable: lab.tmuxExecutable, socket: lab.tmuxSocket))
+            let socketName = URL(fileURLWithPath: lab.tmuxSocket).lastPathComponent
+            let session = TmuxHostSession(storedPaths: paths, connect: { saved in
+                try await TmuxSSHTransport(connection: HeelerSSHTransport.connect(settings: settings),
+                                           socketName: socketName, storedPaths: saved)
+            })
+            projection = TmuxConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
+                                               gitGate: .init(), onPathsResolved: { _ in }, onChange: {})
+            pane = try #require(lab.panes[kind.rawValue])
+        case .rex:
+            let socket = try #require(RexSocket(path: lab.rexSocket))
+            let session = RexHostSession(storedSocket: socket) { stored, previous in
+                try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: settings),
+                                                  socket: stored, resuming: previous)
+            }
+            projection = RexConsoleProjection(host: host, session: session, pins: .init(), onChange: {})
+            pane = RexPaneAddress(sessionID: lab.rexSession, blockID: lab.rexBlock).paneID
+        case .herdrTUI:
+            let link = EventsSession(subscriptions: [], connect: { try await HeelerSSHTransport.connect(settings: settings) }, keepalive: nil)
+            projection = HostConsoleProjection(host: host, session: link, snapshotRetryDelay: .milliseconds(50), onChange: {})
+            pane = try #require(lab.panes[kind.rawValue])
+        case .unconfirmed: throw TransportError.cancelled
+        }
+        return (projection, pane)
+    }
+
+    /// The external driver replaces only this dedicated server. Both the old
+    /// and the new Droid must show their own live Create call for the same file.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"] != nil),
+          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+    func staleCardAndDraftCannotWriteToAReplacementServer(_ kind: ServerKind) async throws {
+        let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"]))
+        let directory = root.appendingPathComponent(kind.rawValue)
+        func open(_ name: String) async throws -> (any ConsoleHostProjection, String, AgentChatStore, BlockedCard) {
+            let file = directory.appendingPathComponent(name + ".json")
+            let until = ContinuousClock.now + .seconds(90)
+            while !FileManager.default.fileExists(atPath: file.path), ContinuousClock.now < until {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: file))
+            let (projection, pane) = try connection(kind, lab: lab)
+            projection.start(isActive: true)
+            do {
+                while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < until {
+                    try await Task.sleep(for: .milliseconds(200))
+                }
+                let agent = try #require(projection.agentsByPane[pane]?.agent)
+                var io = projection.checkedChatTyping(at: pane)?.blockedScreen ?? BlockedScreenIO(
+                    readScreen: { try await projection.readAgentScreen(pane) },
+                    sendKeys: { try await projection.sendAgentKeys($0, to: pane) },
+                    paste: { try await projection.pasteIntoAgent($0, paneID: pane) })
+                io.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
+                var source = AgentChatSource(hostID: projection.host.id, socketLocation: .defaultSession,
+                    files: projection.chatHostFiles(), agentInfo: { try await projection.agentInfo(paneID: pane) },
+                    cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)), screen: io)
+                source.sessionEvidence = {
+                    if let tui = projection as? HostConsoleProjection { return try await tui.droidSessionEvidence(paneID: pane) }
+                    return try await projection.checkChatSession(paneID: pane, program: .droid)
+                }
+                let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .droid, source: source)
+                var trusted = false
+                var asked = false
+                while ContinuousClock.now < until {
+                    if let listed = projection.agentsByPane[pane]?.agent { chat.agentDidChange(listed) }
+                    await chat.step()
+                    await chat.blocked.refresh()
+                    if case .card(let card) = chat.blocked.content, card.dialog.kind == .droidPermission,
+                       card.dialog.subject.filePath == "replacement.txt", card.request?.callID != nil,
+                       card.target?.directory == lab.directory, card.target?.sessionID != nil {
+                        return (projection, pane, chat, card)
+                    }
+                    let screen = try await io.readScreen()
+                    if !trusted, let dialog = DroidDialog.parse(screen).dialog, dialog.kind == .droidWorkspaceTrust,
+                       dialog.subject.workspacePath == lab.directory, dialog.focus.focusedOrdinal == 1 {
+                        trusted = true
+                        try await projection.sendAgentKeys(["enter"], to: pane)
+                    } else if !asked, let target = try await projection.droidDialogTarget(paneID: pane),
+                              target.directory == lab.directory, target.sessionID != nil, DroidInputBox.read(screen).isSendable {
+                        asked = true
+                        try await projection.pasteIntoAgent("Use Create once to write replacement.txt with REPLACEMENT. Stop if refused.", paneID: pane)
+                        try await projection.sendAgentKeys(["enter"], to: pane)
+                    }
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+                chat.end()
+                throw TransportError.cancelled
+            } catch {
+                projection.end()
+                throw error
+            }
+        }
+        let (oldProjection, oldPane, oldChat, oldCard) = try await open("before")
+        defer { oldChat.end(); oldProjection.end() }
+        let oldTarget = try #require(oldCard.target)
+        let sender = oldProjection.checkedComposerSend(for: oldPane,
+            keepingTo: TerminalCorePin(joined: oldProjection.inventoryCore), live: { oldProjection })
+        let composer = AgentComposerStore(target: oldPane, checkedSend: sender) { try await oldProjection.promptAgent($0) }
+        let marker = "OLD_DROID_" + UUID().uuidString
+        composer.bindDroidDraft(to: oldTarget.sessionID)
+        composer.replaceDraft(with: marker)
+        let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []), activity: { .idle },
+            readScreen: oldChat.droidScreen.readScreen, droidTarget: oldChat.droidScreen.droidTarget, displayedDroidTarget: { oldTarget })
+        await oldProjection.suspend()
+        try Data().write(to: directory.appendingPathComponent("replace"), options: .atomic)
+        let (fresh, pane, chat, card) = try await open("after")
+        defer { chat.end(); fresh.end() }
+        let newTarget = try #require(card.target)
+        #expect(oldTarget != newTarget && oldTarget.sessionID != newTarget.sessionID)
+        try #require(oldCard.request?.callID != card.request?.callID)
+        await oldProjection.resume()
+        await oldChat.blocked.perform(.choose(ordinal: 1), shownCard: oldCard)
+        guard case .refused = await composer.send(policy: policy) else { Issue.record("Old draft left Heeler"); return }
+        #expect(composer.draft == marker)
+        let after = try await fresh.readAgentScreen(pane)
+        #expect(DroidDialog.parse(after).dialog?.fingerprint == card.dialog.fingerprint)
+        #expect(try await fresh.chatHostFiles().status(newTarget.directory + "/replacement.txt") == nil)
+        #expect(!chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(marker) })
+        await chat.blocked.perform(.choose(ordinal: try #require(card.dialog.options.last?.ordinal)), shownCard: card)
+        let resolved = ContinuousClock.now + .seconds(12)
+        while DroidDialog.parse(try await fresh.readAgentScreen(pane)).dialog?.kind == .droidPermission, ContinuousClock.now < resolved {
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        #expect(DroidDialog.parse(try await fresh.readAgentScreen(pane)).dialog?.kind != .droidPermission)
+        #expect(try await fresh.chatHostFiles().status(newTarget.directory + "/replacement.txt") == nil)
+        print("Droid evidence \(kind) held the old approval and draft across a live server replacement")
     }
 
     private func waitForEmptyBox(_ io: BlockedScreenIO, projection: any ConsoleHostProjection, pane: String) async throws {
@@ -327,42 +438,67 @@ struct DroidBackendChatLiveTests {
         chat.draftDidChange(to: draft)
         let screen = try #require(projection.checkedChatTyping(at: pane)).blockedScreen
         try await waitForEmptyBox(screen, projection: projection, pane: pane)
-        try await projection.pasteIntoAgent("/new", paneID: pane)
-        try await projection.sendAgentKeys(["enter"], to: pane)
-        var confirmed = false
-        let deadline = ContinuousClock.now + .seconds(20)
-        while ContinuousClock.now < deadline {
-            let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
-            // Factory can deliver a late background report just as the
-            // desktop requests /new. Only confirm its exact desktop prompt.
-            if !confirmed, case .bound(let shown, _, _) = evidence, shown == previous {
-                let rows = try await screen.readScreen().rows.map(\.trimmedText)
-                if rows.contains(where: { $0.contains("Droid is still working — stop the current run and run /new?") }),
-                   rows.suffix(5).contains(where: { $0.contains("Enter to confirm, ESC to cancel") }) {
-                    confirmed = true
-                    try await projection.sendAgentKeys(["enter"], to: pane)
-                }
-            }
-            if case .bound(let next, _, _) = evidence, next != previous {
-                let result = await composer.send(policy: policy)
-                guard case .refused = result else {
-                    Issue.record("The draft intended for the previous conversation was not held: \(result)")
-                    return
-                }
-                #expect(composer.draft == draft)
-                await chat.step()
-                guard case .following(let path) = chat.conversation.phase else {
-                    Issue.record("Chat did not follow Droid after /new")
-                    return
-                }
-                #expect(path.hasSuffix("/" + next + ".jsonl"))
-                #expect(chat.conversation.transcript.recordedPrompts.isEmpty)
-                try await checkInterrupt(chat: chat, composer: composer, policy: policy, projection: projection, pane: pane)
-                return
-            }
-            try await Task.sleep(for: .milliseconds(200))
+        // The desktop changes the box after ordinary preflight succeeds, while
+        // the transport still has to acquire its writer.
+        let desktopDraft = "DESKTOP_" + UUID().uuidString.prefix(8)
+        var raced = policy
+        let preflight = policy.preflight
+        raced.preflight = { text in
+            if let refusal = await preflight?(text) { return refusal }
+            do { try await projection.pasteIntoAgent(desktopDraft, paneID: pane) }
+            catch { Issue.record("Could not stage the desktop draft: \(error)") }
+            return nil
         }
-        Issue.record("Droid did not report a new conversation in its fixture terminal")
+        let held = await composer.send(policy: raced)
+        guard case .refused = held else { Issue.record("Desktop draft was submitted: \(held)"); return }
+        try #require(try await DroidInputBox.read(screen.readScreen()) == .text(desktopDraft))
+        #expect(composer.draft == draft)
+        try await projection.sendAgentKeys(["ctrl+u"], to: pane)
+        try await waitForEmptyBox(screen, projection: projection, pane: pane)
+
+        var switched: String?
+        raced.preflight = { text in
+            if let refusal = await preflight?(text) { return refusal }
+            do {
+                try await projection.pasteIntoAgent("/new", paneID: pane)
+                try await projection.sendAgentKeys(["enter"], to: pane)
+                var confirmed = false
+                let deadline = ContinuousClock.now + .seconds(20)
+                while ContinuousClock.now < deadline {
+                    let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+                    if case .bound(let next, _, _) = evidence, next != previous {
+                        switched = next
+                        return nil
+                    }
+                    if !confirmed, case .bound(let shown, _, _) = evidence, shown == previous {
+                        let rows = try await screen.readScreen().rows.map(\.trimmedText)
+                        if rows.contains(where: { $0.contains("Droid is still working — stop the current run and run /new?") }),
+                           rows.suffix(5).contains(where: { $0.contains("Enter to confirm, ESC to cancel") }) {
+                            confirmed = true
+                            try await projection.sendAgentKeys(["enter"], to: pane)
+                        }
+                    }
+                    try await Task.sleep(for: .milliseconds(200))
+                }
+            } catch { Issue.record("Desktop switch failed: \(error)") }
+            return .inputNotReady("The fixture did not open a new conversation")
+        }
+        let result = await composer.send(policy: raced)
+        let next = try #require(switched)
+        guard case .refused = result else { Issue.record("Old draft reached the new session: \(result)"); return }
+        #expect(composer.draft == draft)
+        _ = await chat.confirmSessionBeforeSend()
+        await chat.step()
+        guard case .following(let path) = chat.conversation.phase else {
+            Issue.record("Chat did not follow Droid after /new")
+            return
+        }
+        #expect(path.hasSuffix("/" + next + ".jsonl"))
+        #expect(chat.conversation.transcript.recordedPrompts.isEmpty)
+        try #require(try await DroidInputBox.read(screen.readScreen()).isSendable)
+        composer.bindDroidDraft(to: next)
+        #expect(composer.draft.isEmpty)
+        try await checkInterrupt(chat: chat, composer: composer, policy: policy, projection: projection, pane: pane)
     }
 
     private func checkInterrupt(

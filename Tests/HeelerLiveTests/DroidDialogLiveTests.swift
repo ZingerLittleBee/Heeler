@@ -76,7 +76,7 @@ extension DroidChatLiveTests {
         let agent = try await projection.agentInfo(paneID: pane)
         try #require(agent.kind == "droid")
         try #require(agent.foregroundCwd == fixture.directory || agent.cwd == fixture.directory)
-        let io = BlockedScreenIO(droidTarget: { try await projection.droidDialogTarget(paneID: pane) }, hostName: host.name,
+        let io = BlockedScreenIO(droidTarget: { try await projection.droidDialogTarget(paneID: pane) }, hostName: host.name, herdrReportsDroidSession: true,
             readScreen: { try await projection.readAgentScreen(pane) },
             sendKeys: { try await projection.sendAgentKeys($0, to: pane) },
             paste: { try await projection.pasteIntoAgent($0, paneID: pane) })
@@ -87,7 +87,7 @@ extension DroidChatLiveTests {
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: pane), agent: agent, program: .droid, source: source)
         let composer = AgentComposerStore(target: pane) { try await projection.promptAgent($0) }
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
-            activity: { ChatAgentActivity(chat.agent.status) }, readScreen: io.readScreen,
+            activity: { ChatAgentActivity(chat.agent.status) }, readScreen: io.readScreen, droidTarget: io.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget },
             confirmSession: {
                 if let reason = await chat.confirmSessionBeforeSend() { return reason }
                 return composer.droidDraftMatches(chat.droidSessionID) ? nil : "Session changed"
@@ -518,7 +518,7 @@ extension DroidChatLiveTests {
             for name in ["first.txt", "second.txt"] {
                 try #require(try await files.status(live.fixture.directory + "/" + name) == nil)
             }
-            try await live.send("Execute exactly git apply change.patch. Use no other tools. Then reply PATCH_APPLIED.")
+            try await live.send("Execute exactly git apply './two files.patch'. Use no other tools. Then reply PATCH_APPLIED.")
             let card = try await live.card(.droidPermission)
             let patch = try #require(card.patch)
             #expect(patch.contains("+++ b/first.txt") && patch.contains("+++ b/second.txt") && patch.contains("+SECOND"))
