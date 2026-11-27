@@ -24,7 +24,7 @@ _Avoid_: service, backend, instance
 **Server Kind**:
 Which kind a Server is: Herdr TUI (the original herdr server), herdr-core (the
 vendor's headless terminal runtime, `hc`), a tmux server, or a Rex server. Rex
-is offered in every build and still experimental for users (ADR 0049). They
+is offered in every build (ADR 0049). They
 share no Agents. A herdr-core Server whose core also serves the Herdr desktop
 app is still herdr-core; the app's organization is data it carries, not
 another kind. A Server keeps its kind: neither a connection nor an edit
@@ -57,8 +57,7 @@ a shell in a new window of a Workspace's session, left in the background, and
 New Workspace a new session holding one, the only things Heeler starts on a
 Rex server; it gives the new terminal's size back at once (ADR 0049's update
 of 2026-11-25).
-Every build offers it; the user guide and the changelog call it experimental
-(ADR 0049). One control connection follows the whole server: every session's
+Every build offers it (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
 connection. Another server instance on the socket is another server, as
 with tmux, unless it restored the last one's sessions: one that sees the same
