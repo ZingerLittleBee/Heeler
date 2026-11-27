@@ -570,9 +570,12 @@ enum ChatFileLink: AttributedStringKey {
 
     static func written(_ text: String) -> String? {
         guard let path = path(text) else { return nil }
-        if path.contains("/") || extensionlessNames.contains(path) { return path }
-        guard let dot = path.lastIndex(of: "."), dot != path.startIndex else { return nil }
-        let pathExtension = path[path.index(after: dot)...]
+        if path.hasPrefix("/") { return path.dropFirst().contains("/") ? path : nil }
+        if path.hasPrefix("~/") || path.hasPrefix("./") || path.hasPrefix("../") { return path }
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        if extensionlessNames.contains(name) { return path }
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return nil }
+        let pathExtension = name[name.index(after: dot)...]
         guard pathExtension.first?.isLetter == true,
             pathExtension.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber) })
         else { return nil }
@@ -606,7 +609,7 @@ enum ChatFileLink: AttributedStringKey {
                 while end > token.startIndex, ".;!?".contains(text[text.index(before: end)]) {
                     end = text.index(before: end)
                 }
-                guard let path = path(String(text[token.startIndex..<end])) else { continue }
+                guard let path = written(String(text[token.startIndex..<end])) else { continue }
                 content.append(AttributedString(String(text[start..<token.startIndex]), attributes: attributes))
                 var piece = AttributedString(path, attributes: attributes)
                 piece[Self.self] = path

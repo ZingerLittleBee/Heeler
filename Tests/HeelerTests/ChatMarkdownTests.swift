@@ -668,7 +668,7 @@ struct ChatMarkdownTests {
     @Test("File paths open from prose and code, without turning commands, identifiers or web links into files")
     func codeBlockWithoutImagePaths() throws {
         let source = """
-            Saved out/report.csv, /tmp/log and ~/out/report. See [the report](out/my%20report), `Makefile` or `README.md`. Not report, `PreToolUse`, `String.Index`, `0.1.24` or https://host/out/file.
+            Saved out/report.csv, /tmp/log and ~/out/report. See [the report](out/my%20report), `Makefile` or `README.md`. Not report, 15 KB/s, herdr/tmux, `PreToolUse`, `String.Index`, `0.1.24`, `/compact` or https://host/out/file.
 
             ```swift
             let image = UIImage(named: "a.png")

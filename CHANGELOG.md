@@ -37,7 +37,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Show a name in backticks in an Agent's Chat message, such as `PreToolUse`, as code instead of a link to a file. Code opens in Files only when it looks like a file: a path with a slash, a name with an extension such as `README.md`, or a file like `Makefile`. A line in a code block follows the same rule.
+- Show words such as `PreToolUse`, KB/s or `/compact` in an Agent's Chat message as text instead of links to files. A path opens in Files only when it looks like one: an absolute path with a folder such as `/tmp/log`, a path starting with `~/`, `./` or `../`, a name with an extension such as `docs/README.md`, or a file like `Makefile`.
 - Send from Chat to an Antigravity CLI that uses another color scheme, such as `tokyo night`. Chat held every message with **Heeler can't find the Agent's input box on screen.**, and showed agy's trust and permission prompts without their buttons. (PR #867)
 - Send from Chat to a Devin CLI in its light theme. Chat held every message, saying Devin's message field could contain a draft. (PR #867)
 - Say which Agent's input box Chat can't find, and why, such as **Heeler can't find Antigravity CLI's input box on screen.** or **Codex's composer is not on screen.**, where it said **Heeler can't find the Agent's input box on screen.** for every Agent. (PR #867)
