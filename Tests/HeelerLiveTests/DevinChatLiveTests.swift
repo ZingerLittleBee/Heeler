@@ -387,6 +387,37 @@ struct DevinChatLiveTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"] != nil), arguments: ["mac", "linux"])
+    func approvesTheDisplayedLongCommandOnce(_ platform: String) async throws {
+        let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"])
+        let url = URL(fileURLWithPath: folder).appendingPathComponent("lab-" + platform + ".json")
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
+        try await withChat(lab, .herdrTUI) { live in
+            let marker = "DEVIN_COMMAND_" + UUID().uuidString.prefix(8)
+            let command = "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 " + marker
+            try await live.send("Use exec once with this exact command. Do not touch any files.\n\n" + command)
+            let first = try await live.card(.devinPermission)
+            try #require(first.request?.summary == command && first.dialog.subject.devinScope == 1)
+            try #require(first.dialog.options.prefix(4).map(\.label) == ["Allow · Once", "Allow · Session", "Allow · Project", "Allow · Always"])
+            try await capture(live.chat.blocked, name: "command-" + platform)
+            // Move the terminal cursor to Session, then have the native card
+            // choose Once. No persistent permission is granted in this fixture.
+            try await live.projection.sendAgentKeys(["right"], to: live.pane)
+            try await live.wait {
+                guard case .card(let current) = live.chat.blocked.content else { return false }
+                return current.request?.callID == first.request?.callID && current.dialog.focus.focusedOrdinal == 2
+            }
+            let selected = try await live.card(.devinPermission)
+            await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: selected)
+            try await live.wait {
+                live.chat.conversation.transcript.entries.contains {
+                    guard case .tool(let tool) = $0.content, tool.callID == selected.request?.callID else { return false }
+                    return tool.status == .succeeded && tool.preview?.text.contains(marker) == true
+                }
+            }
+        }
+    }
+
     private func capture(_ store: BlockedCardStore, name: String) async throws {
         guard let dir = ProcessInfo.processInfo.environment["HEELER_DEVIN_SCREENSHOTS"] else { return }
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
