@@ -1222,7 +1222,7 @@ final class ConsoleStore {
             guard hostProjection is any AmpChatProjection else { return nil }
             let readOnly = capabilities(for: hostID).readOnlyChatPrograms.contains(.amp)
             files.amp = AmpChatConnection(pane: paneID, readOnly: readOnly) { [weak self, weak hostProjection] in
-                guard let live = self?.projections[hostID], live === hostProjection,
+                guard let live = self?.projections[hostID], !readOnly || live === hostProjection,
                       let amp = live as? any AmpChatProjection else { throw TransportError.cancelled }
                 return amp
             }

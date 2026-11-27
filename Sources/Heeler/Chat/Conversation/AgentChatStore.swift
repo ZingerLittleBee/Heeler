@@ -1816,8 +1816,8 @@ final class AgentChatStore {
             if program == .agy {
                 source.onAgyConversationBound?(nil, nil)
             }
-            if leavesPick {
-                leavePickedConversation()
+            if leavesPick || (source.files.amp?.isReadOnly == true && followed != nil) {
+                leaveUnconfirmedConversation()
             } else {
                 awaitSession(reason)
             }
@@ -1837,7 +1837,7 @@ final class AgentChatStore {
                 source.onAgyConversationBound?(nil, nil)
             }
             if leavesPick {
-                leavePickedConversation()
+                leaveUnconfirmedConversation()
             } else if resolution != .noSession {
                 adopt(.noSession)
             } else if !isAwaitingSession {
@@ -2295,11 +2295,9 @@ final class AgentChatStore {
         pickGuardTurnEnd = nil
     }
 
-    /// The pick was all that said this is the Agent's conversation, and it no longer
-    /// stands. An exact binding that goes quiet keeps its last document readable, since
-    /// nothing says it was wrong. This one was only ever the user's word, so nothing
-    /// of it stays on screen (ADR 0034).
-    private func leavePickedConversation() {
+    /// A withdrawn pick or an unavailable read-only Amp plugin no longer identifies
+    /// the displayed thread. Release its reader and show the current explanation.
+    private func leaveUnconfirmedConversation() {
         resolution = .noSession
         continuedSession = nil
         followReference()
