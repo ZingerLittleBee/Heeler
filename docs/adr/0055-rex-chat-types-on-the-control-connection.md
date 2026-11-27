@@ -208,3 +208,11 @@ into that shell. The process check identifies the shell but cannot distinguish
 the two input buffers. The Terminal Composer now stops at the same ownership
 boundary as Chat and preserves the draft for the user. This changes no Rex
 wire requirement and applies to all supported revisions.
+
+For Factory Droid and Devin on Rex, the checked input box already needs a
+fresh full foreground target, including the server, process birth, directory
+and official session. Each paste and each Enter takes this reading independently.
+The write also compares it with the displayed conversation and the owner of
+the current draft. Reading the same process tree a second time inside a single
+write consumed part of the two-second submit window on both POSIX Hosts.
+The deadline and the separate read before the next key still apply.
