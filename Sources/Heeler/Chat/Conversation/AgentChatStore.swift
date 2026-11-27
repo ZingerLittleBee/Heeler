@@ -730,10 +730,13 @@ final class AgentChatStore {
             blocked.readRexRequests = { [weak self] in
                 guard let self, let engine, let followed else { return nil }
                 let snapshot = await engine.poll(context: projectionContext)
-                guard !Task.isCancelled, engine === self.engine,
-                      self.followed?.namesSameSession(as: followed) == true,
-                      case .following = snapshot.phase, snapshot.readFailure == nil,
-                      !snapshot.isFromCache, !snapshot.hasUnreadRecords else { return nil }
+                guard case .following(let file) = snapshot.phase, snapshot.readFailure == nil,
+                      !snapshot.isFromCache, !snapshot.hasUnreadRecords, snapshot.readOffset > 0 else { return nil }
+                // A JSONL writer can append a result while the card is open, or leave its newest line incomplete.
+                let end = try? await source.files.read(.init(path: file, offset: snapshot.readOffset - 1, maxBytes: 2))
+                guard end?.length == snapshot.readOffset, end?.data == Data([0x0a]),
+                      !Task.isCancelled, engine === self.engine, self.followed?.namesSameSession(as: followed) == true
+                else { return nil }
                 return snapshot.transcript.pendingRequests
             }
         }
