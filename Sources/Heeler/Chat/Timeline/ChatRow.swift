@@ -148,9 +148,6 @@ struct ChatRow: Identifiable, Sendable {
                 textBytes: echo.text.utf8.count, blocks: 1, chrome: topSpacing + 20 + statusChrome, inset: 76,
                 minimumLines: Self.explicitNewlineLines(in: echo.text))
         case .tool(let tool):
-            if tool.subagentActivity != nil {
-                return ChatRowExtent(textBytes: 0, blocks: 1, chrome: topSpacing + 46)
-            }
             let inlineFileRows: Int
             if let changes = tool.fileChanges, !tool.showsDiffAsOutput {
                 inlineFileRows = changes.soleNote != nil ? 1 : (changes.files.count + changes.notes.count)

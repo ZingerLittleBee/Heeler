@@ -3,26 +3,26 @@ import Foundation
 /// Reads Antigravity CLI's dialogs from a visible-screen read (agy 1.5.3).
 ///
 /// A dialog takes the input box's place at the bottom of the screen: a bold
-/// yellow title at column 0 (`Command`, `Pending edit`, `Create file`,
-/// `Question`, or `Accessing workspace:` for the trust prompt), a full-width
-/// grey rule under every title but the trust prompt's, the request, a bold
-/// question, the options, and a hint row of keys over the footer. Options
-/// are numbered `N. label`, the selected one drawn `> N. label` in blue 12;
-/// a label too long for its row continues at column 0. The trust prompt's
-/// two options have no numbers. Scrollback above keeps past dialogs only
-/// as rows: an answered one becomes a `● Ran …`, `● Edited …` or `?
-/// <question>` row, but a declined one keeps its title at column 0, bold
-/// blue instead of yellow, over `⎿  User declined the tool call` (56, 69,
-/// 83). The frame is the bottom-most bold yellow title with a rule under it
-/// above the last hint row, so such a title is never read as a dialog.
+/// title at column 0 (`Command`, `Pending edit`, `Create file`, `Question`,
+/// or `Accessing workspace:` for the trust prompt), a full-width rule under
+/// every title but the trust prompt's, the request, a bold question, the
+/// options, and a hint row of keys over the footer. Options are numbered
+/// `N. label`, the selected one drawn `> N. label`; a label too long for its
+/// row continues at column 0. The trust prompt's two options have no
+/// numbers. Scrollback above keeps past dialogs only as rows: an answered
+/// one becomes a `● Ran …`, `● Edited …` or `? <question>` row, but a
+/// declined one keeps its bold title at column 0 over `⎿  User declined the
+/// tool call` (56, 69, 83, 143), and a past prompt is a bold row too. No
+/// rule follows a declined title, and the rule over a past prompt is never
+/// the screen's width, so the frame is the bottom-most bold title with a
+/// rule of its palette under it above the last hint row, the screen's
+/// width without colors.
 ///
-/// Under `NO_COLOR` agy 1.5.3 draws the same dialogs without colors: the
-/// title bold, its rule plain, the selected row's `> ` plain. A declined
-/// title and a past prompt's rows are bold too, but no rule follows a
-/// declined title (143) and the rule over a past prompt is never the
-/// screen's width, so there the frame is the bottom-most bold title with a
-/// plain full-width rule under it. Every other row is read by its text, so
-/// both palettes read alike.
+/// agy's color schemes draw the title in a color (yellow 3 in the default
+/// scheme, 24-bit under tokyo night, #863), so a title is never read by
+/// its color. Under `NO_COLOR` agy 1.5.3 draws the same dialogs without
+/// colors: the title bold, its rule plain, the selected row's `> ` plain.
+/// Every other row is read by its text, so all palettes read alike.
 ///
 /// Tab on a command's `Yes` or `No` row turns it into a note field, `> `
 /// under the row, and its label into `Yes, and tell Antigravity CLI what to
@@ -224,7 +224,7 @@ enum AgyDialogParser {
     /// At start in a folder agy doesn't trust yet: the folder in bold,
     /// wrapped over as many rows as it takes, the question, agy's note, and
     /// two unnumbered options, `Yes, I trust this folder` and `No, exit`,
-    /// the unselected one grey (plain under `NO_COLOR`). Trusting writes the
+    /// the unselected one muted (plain under `NO_COLOR`). Trusting writes the
     /// folder into agy's settings; `No, exit` quits agy.
     private static func trust(_ frame: AgyDialogFrame, _ rows: [ScreenRow]) -> BlockedDialog? {
         let content = Array(frame.content)
@@ -314,11 +314,11 @@ private struct AgyDialogFrame {
 
     var content: Range<Int> { contentStart..<hintRow }
 
-    /// The bottom-most title: bold yellow from column 0, with a grey rule
-    /// under it unless it is the trust prompt's, or under `NO_COLOR` bold
-    /// without color over a plain rule the screen's width. A title the
-    /// parser doesn't know still frames the dialog, so its excerpt starts
-    /// at the title.
+    /// The bottom-most title: bold in a color from column 0 over a rule in
+    /// a color, or under `NO_COLOR` bold without color over a plain rule
+    /// the screen's width, with no rule under the trust prompt's. A title
+    /// the parser doesn't know still frames the dialog, so its excerpt
+    /// starts at the title.
     init?(_ rows: [ScreenRow], columns: Int) {
         guard let hint = rows.indices.last(where: { Self.isHint(rows[$0]) }) else { return nil }
         for index in stride(from: hint - 1, through: 0, by: -1) {
@@ -332,7 +332,11 @@ private struct AgyDialogFrame {
                 return
             }
             // A past prompt's rule is never the screen's width, so a bold
-            // row over it never frames a dialog without colors.
+            // row over it never frames a dialog without colors. In colors
+            // the rule can fall short of the screen's width as read, which
+            // a row wider than the pane stretches (48), and the bottom-most
+            // title over a rule is the live one: a declined title has none
+            // under it.
             let ruleWidth = palette == .colored ? 8 : AgyScreen.ruleWidth(columns: columns)
             guard index + 1 < hint, AgyScreen.rulePalette(rows[index + 1], width: ruleWidth) == palette
             else { continue }
@@ -352,12 +356,12 @@ private struct AgyDialogFrame {
         self.edge = edge
     }
 
-    /// A title's palette: a single bold run from column 0, yellow 3 or
-    /// without any color.
+    /// A title's palette: a single bold run from column 0, in a color,
+    /// yellow in agy's default scheme, or without any.
     private static func titlePalette(_ row: ScreenRow) -> AgyScreen.Palette? {
         guard row.visibleRuns.count == 1, let first = row.visibleRuns.first, first.column == 0, first.style.isBold
         else { return nil }
-        if first.style.foreground == .indexed(3) { return .colored }
+        if first.style.foreground != nil { return .colored }
         if row.indent == 0, first.style == ScreenStyle(isBold: true) { return .colorless }
         return nil
     }

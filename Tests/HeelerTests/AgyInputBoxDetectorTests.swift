@@ -5,8 +5,9 @@ import Testing
 
 /// Antigravity CLI's input box, read from agy 1.5.3 captures at 190, 120,
 /// 62, 59 and 40 columns, from captures of agy under `NO_COLOR` at 93, 92
-/// and 45 columns (`nocolor`, herdr 0.9.5), and from synthetic screens laid
-/// out the way agy draws, for states no capture shows.
+/// and 45 columns (`nocolor`, herdr 0.9.5), from agy 1.5.18 under its
+/// `tokyo night` color scheme at 93 columns (#863), and from synthetic
+/// screens laid out the way agy draws, for states no capture shows.
 @Suite("Antigravity CLI input box")
 struct AgyInputBoxDetectorTests {
     /// What a capture reads as, short of its exact text.
@@ -215,6 +216,10 @@ struct AgyInputBoxDetectorTests {
         "agy-185-idle-after-tasks-62x46": .empty,
         // The box above `Resume with -c` is an exited agy's.
         "agy-200-perm-run-command-under-exited-agy-62x46": .dialog,
+        "agy-201-tokyo-night-idle-empty-93x11": .empty,
+        "agy-202-tokyo-night-idle-draft-93x16": .draft,
+        "agy-203-tokyo-night-idle-after-reply-93x16": .empty,
+        "agy-204-tokyo-night-trust-prompt-93x13": .dialog,
     ]
 
     private static func reading(of state: InputBoxState) -> Reading? {
@@ -304,13 +309,17 @@ struct AgyInputBoxDetectorTests {
         // left side.
         ("agy-117-nocolor-idle-draft-45x45", "hello draft"),
         ("agy-129-nocolor-idle-draft-accept-edits-92x47", "hello draft"),
+        // Under tokyo night the draft is in the default color, unlike the
+        // mode's hint.
+        ("agy-202-tokyo-night-idle-draft-93x16", "draft probe"),
     ])
     func readsADraft(stem: String, draft: String) throws {
         #expect(try Self.detect(stem) == .text(draft))
     }
 
-    /// Accept-edits, auto and plan modes set a grey hint in the empty box,
-    /// cut at 40 columns. Under `NO_COLOR` the hint is plain, cut at 45.
+    /// Accept-edits, auto and plan modes set a hint in the empty box, grey
+    /// in agy's default scheme and cut at 40 columns. Under tokyo night it
+    /// is a 24-bit color, and under `NO_COLOR` plain, cut at 45.
     @Test(arguments: [
         ("agy-76-mode-cycle-1-120x40", "Accept-edits mode: file edits auto-approved (shift+tab to cycle)"),
         ("agy-76-mode-cycle-2-120x40", "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)"),
@@ -331,6 +340,9 @@ struct AgyInputBoxDetectorTests {
             "Accept-edits mode: file edits auto-approved (shift+tab to cycle)"
         ),
         ("agy-128-nocolor-idle-accept-edits-92x47", "Accept-edits mode: file edits auto-approved (shift+tab to cycle)"),
+        ("agy-201-tokyo-night-idle-empty-93x11", "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)"),
+        // Over a past prompt's rule in the same color.
+        ("agy-203-tokyo-night-idle-after-reply-93x16", "Auto mode: edits & safe commands auto-approved (shift+tab to cycle)"),
     ])
     func aModesHintIsNotADraft(stem: String, hint: String) throws {
         #expect(try Self.detect(stem) == .empty(placeholder: hint))
@@ -585,6 +597,80 @@ struct AgyInputBoxDetectorTests {
 
         #expect(Self.detect(dialog) == .dialog(title: nil))
         #expect(!Self.detect(boxed).isSendable)
+    }
+
+    // MARK: Color schemes
+
+    /// agy reads alike in any of its color schemes (#863): each capture in
+    /// its default colors, redrawn in 24-bit ones with nothing dim as
+    /// tokyo night draws, reads the same, box, footer and all, and the gate
+    /// decides the same.
+    @Test(arguments: ScreenFixture.agy.filter { !["nocolor", "plain", "tokyo-night"].contains(where: $0.contains) })
+    func aCaptureReadsAlikeInAnotherColorScheme(stem: String) throws {
+        let screen = try ScreenFixture.screen(stem)
+        let recolored = ScreenFixture.recolored(screen)
+        let agy = AgyScreen(screen)
+        let twin = AgyScreen(recolored)
+
+        #expect(Self.detect(recolored) == Self.detect(screen))
+        #expect(twin.composer == agy.composer)
+        #expect(twin.footerHint == agy.footerHint)
+        #expect(twin.footerModel == agy.footerModel)
+        #expect(twin.welcomeModel == agy.welcomeModel)
+        #expect(twin.below == agy.below)
+        #expect(twin.blockingFooter == agy.blockingFooter)
+        #expect(twin.pendingDoublePress == agy.pendingDoublePress)
+        #expect(twin.taskPanel == agy.taskPanel)
+        #expect(twin.runningTaskStripRows == agy.runningTaskStripRows)
+        #expect(twin.showsDialog == agy.showsDialog)
+        for activity in [ChatAgentActivity.idle, .working, .unknown] {
+            #expect(
+                PreSendGate.check(recolored, program: .agy, activity: activity)
+                    == PreSendGate.check(screen, program: .agy, activity: activity))
+        }
+    }
+
+    private static let tokyoRule = SGR.reset + SGR.fg(65, 72, 104) + String(repeating: "─", count: 62) + SGR.reset
+    private static let tokyoMarker = SGR.reset + SGR.fg(122, 162, 247) + ">" + SGR.reset
+    private static let tokyoMuted = SGR.fg(126, 134, 173)
+
+    /// A mode's hint is its known text in a color other than the `>`'s.
+    /// Under tokyo night it is muted and a draft in the default color, so
+    /// the hint's text in the default color or the marker's is typed, and
+    /// so is other muted text.
+    @Test func aColoredModeHintNeedsItsTextInAColorOfItsOwn() {
+        let hint = "Plan mode: research & plan only (shift+tab to cycle)"
+        func box(_ prompt: String) -> ANSIScreen {
+            ScreenFixture.synthetic([
+                Self.tokyoRule, Self.tokyoMarker + " " + prompt, Self.tokyoRule,
+                SGR.reset + Self.tokyoMuted + "? for shortcuts" + SGR.reset,
+            ])
+        }
+
+        #expect(Self.detect(box(Self.tokyoMuted + hint + SGR.reset)) == .empty(placeholder: hint))
+        #expect(Self.detect(box(hint)) == .text(hint))
+        #expect(Self.detect(box(SGR.fg(122, 162, 247) + hint + SGR.reset)) == .text(hint))
+        #expect(Self.detect(box(Self.tokyoMuted + "hello" + SGR.reset)) == .text("hello"))
+        #expect(Self.detect(box(Self.tokyoMuted + "Plan mode..." + SGR.reset)) == .text("Plan mode..."))
+    }
+
+    /// A box's rules share one color: rules of two colors around a colored
+    /// `>` are no box, in agy's default scheme or another.
+    @Test func aBoxOfTwoRuleColorsIsNoBox() {
+        let boxes = [
+            [Self.rule(62), Self.tokyoMarker, Self.tokyoRule],
+            [Self.tokyoRule, Self.blue + ">" + SGR.reset, Self.rule(62)],
+        ]
+        for box in boxes {
+            let state = Self.detect(ScreenFixture.synthetic(box + ["? for shortcuts"]))
+
+            guard case .unknown = state else {
+                Issue.record("read \(box) as the box: \(state)")
+                continue
+            }
+        }
+        let tokyo = ScreenFixture.synthetic([Self.tokyoRule, Self.tokyoMarker, Self.tokyoRule, "? for shortcuts"])
+        #expect(Self.detect(tokyo) == .empty(placeholder: nil))
     }
 
     // MARK: Synthetic screens

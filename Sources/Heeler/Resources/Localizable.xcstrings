@@ -30122,7 +30122,28 @@
         }
       }
     },
-    "Heeler can't find Antigravity CLI's input box on screen." : {},
+    "Heeler can't find Antigravity CLI's input box on screen." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は画面内で Antigravity CLI の入力欄を見つけられません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在屏幕上找不到 Antigravity CLI 的输入框。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 在畫面上找不到 Antigravity CLI 的輸入框。"
+          }
+        }
+      }
+    },
     "Heeler can't find Grok Build's input box on screen." : {
       "localizations" : {
         "ja" : {

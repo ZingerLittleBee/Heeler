@@ -7,21 +7,27 @@ import Foundation
 /// the same terminal its last frame above its resume line, whose box is
 /// never read as the current one.
 ///
-/// agy draws in one of two palettes. By default it uses 256-color indexes,
-/// which stay the same whatever the terminal's theme: rules and hints in 8
-/// (grey), the prompt's `>` in 12 (bright blue), and bash mode's `!` in
-/// bold 4 (blue). Under `NO_COLOR` it draws no color but keeps its text
-/// attributes, bold, dim, italic and underline: plain rules, the prompt's
-/// `>` plain in one run with the draft, a bold `!`, and a mode's hint as
-/// plain as a draft. A box reads only when its rules and marker share one
-/// palette. Past prompts in the scrollback are bold rows (blue 4, or
-/// without color) under a rule at most 60 columns wide, never the full
-/// width, so they never read as the box. Every reader of an agy screen
-/// goes through it, so a rule changes in one place.
+/// agy draws in colors or without them. Its default color scheme uses
+/// 256-color indexes, which stay the same whatever the terminal's theme:
+/// rules and hints in 8 (grey), the prompt's `>` in 12 (bright blue), and
+/// bash mode's `!` in bold 4 (blue). Another scheme, such as `tokyo night`
+/// in agy 1.5.18's `colorScheme` setting, draws the same rows in 24-bit
+/// colors of its own, and draws in a color what the default dims (#863).
+/// Colors are therefore never read by value: a box's two rules share one
+/// color, its `>` is colored and not bold, and a mode's hint is its known
+/// text in a color other than the `>`'s. Under `NO_COLOR` agy draws no
+/// color but keeps its text attributes, bold, dim, italic and underline:
+/// plain rules, the prompt's `>` plain in one run with the draft, a bold
+/// `!`, and a mode's hint as plain as a draft. A box reads only when its
+/// rules and marker share one palette. Past prompts in the scrollback are
+/// bold rows under a rule at most 60 columns wide, never the full width,
+/// so they never read as the box. Every reader of an agy screen goes
+/// through it, so a rule changes in one place.
 struct AgyScreen: Sendable {
-    /// How agy colors what it draws.
+    /// Whether agy colors what it draws.
     enum Palette: Equatable, Sendable {
-        /// agy's 256-color indexes.
+        /// Any of agy's color schemes: its default 256-color indexes, or
+        /// another scheme's 24-bit colors.
         case colored
         /// No color, bold, dim, italic and underline kept: agy 1.5.3
         /// under `NO_COLOR`, as herdr 0.9.5 reads it (2026-11-08).
@@ -44,9 +50,9 @@ struct AgyScreen: Sendable {
         /// the same.
         var draft: String
         /// The mode's hint in an empty box in accept-edits, auto and plan
-        /// modes, which stays until a key is typed: grey, or under
-        /// `NO_COLOR` one of `modeHints` over `? for shortcuts` or a
-        /// running turn's footer.
+        /// modes, which stays until a key is typed: one of `modeHints` in a
+        /// color other than the `>`'s, or under `NO_COLOR` over
+        /// `? for shortcuts` or a running turn's footer.
         var placeholder: String?
         /// The index of the top rule's row.
         var topRule: Int
@@ -293,9 +299,9 @@ struct AgyScreen: Sendable {
             // The active-items tray under the box: background tasks, a swarm
             // summary (`● Swarm(…)` or `● Swarm  Done · …`), running subagents,
             // or future tray items — structurally bounded by a closing
-            // full-width rule in the box's palette, with no selection cursor.
-            if let closing = Self.passiveStatusTrayEnd(
-                in: rows, from: index, palette: box.palette, ruleWidth: ruleWidth)
+            // full-width rule drawn as the box's are, with no selection cursor.
+            if let ink = Self.ruleInk(rows[box.topRule], width: ruleWidth),
+                let closing = Self.passiveStatusTrayEnd(in: rows, from: index, ink: ink, ruleWidth: ruleWidth)
             {
                 for row in rows[index..<closing] where Self.isTaskRow(row) {
                     showsRunningTasks = true
@@ -389,30 +395,34 @@ struct AgyScreen: Sendable {
 
     /// The bottom-most box from row `start` on: a full-width rule with the
     /// prompt's marker right under it, and the next full-width rule below,
-    /// all three in one palette.
+    /// drawn as the first is, all three in one palette.
     private static func composer(in rows: [ScreenRow], from start: Int, ruleWidth: Int) -> Composer? {
         for top in rows.indices.reversed() where top >= start && top + 2 < rows.count {
-            guard let palette = rulePalette(rows[top], width: ruleWidth),
-                let marker = promptMarker(of: rows[top + 1]), marker.palette == palette
+            guard let ink = ruleInk(rows[top], width: ruleWidth),
+                let marker = promptMarker(of: rows[top + 1]), marker.palette == ink.palette
             else { continue }
             let rest = rows.indices[(top + 2)...].prefix(maximumBoxRows)
-            guard let bottom = rest.first(where: { rulePalette(rows[$0], width: ruleWidth) != nil }),
-                rulePalette(rows[bottom], width: ruleWidth) == palette,
+            guard let bottom = rest.first(where: { ruleInk(rows[$0], width: ruleWidth) != nil }),
+                ruleInk(rows[bottom], width: ruleWidth) == ink,
                 rows[(top + 2)..<bottom].allSatisfy({ $0.isBlank || ($0.indent ?? 0) >= 2 })
             else { continue }
-            var typed = ""
-            var grey = ""
-            for run in DialogRowScanner.runs(of: rows[top + 1], from: 2) {
-                if palette == .colored, run.style.foreground == grey8 { grey += run.text } else { typed += run.text }
-            }
-            let first = ScreenRow.normalizedSpaces(typed).trimmingCharacters(in: .whitespaces)
+            let runs = DialogRowScanner.runs(of: rows[top + 1], from: 2)
+            let first = ScreenRow.normalizedSpaces(runs.map(\.text).joined()).trimmingCharacters(in: .whitespaces)
             let more = rows[(top + 2)..<bottom].map(\.trimmedText).filter { !$0.isEmpty }
-            let lines = (first.isEmpty ? [] : [first]) + more
-            let hint = ScreenRow.normalizedSpaces(grey).trimmingCharacters(in: .whitespaces)
+            // In colors a mode's hint is drawn in a color of its own, grey
+            // in agy's default scheme, and a draft in the terminal's own or,
+            // for a known command, the `>`'s. Another scheme can draw a
+            // draft's text in a third color, so only a mode's own hint in
+            // such a color reads as one; any other text stays typed.
+            let inked = runs.filter { !DialogRowScanner.isBlank($0) }
+            let isHint =
+                ink.palette == .colored && more.isEmpty && !inked.isEmpty
+                && inked.allSatisfy { $0.style.foreground != nil && $0.style.foreground != marker.color }
+                && modeHint(first, row: rows[top + 1], ruleWidth: ruleWidth) != nil
+            let lines = isHint || first.isEmpty ? more : [first] + more
             return Composer(
-                mode: marker.mode, draft: lines.joined(separator: "\n"),
-                placeholder: lines.isEmpty && !hint.isEmpty ? hint : nil, topRule: top, bottomRule: bottom,
-                palette: palette)
+                mode: marker.mode, draft: lines.joined(separator: "\n"), placeholder: isHint ? first : nil,
+                topRule: top, bottomRule: bottom, palette: ink.palette)
         }
         return nil
     }
@@ -421,39 +431,55 @@ struct AgyScreen: Sendable {
     /// draft grows.
     private static let maximumBoxRows = 40
 
-    private static let grey8 = ScreenColor.indexed(8)
-
-    /// The palette of a `─` rule from column 0 at least `width` cells wide,
-    /// grey or without any style, or nil for any other row. The box's rules
-    /// span the screen; the rule over a past prompt is at most 60 columns,
-    /// and three short of the width on narrower screens.
-    static func rulePalette(_ row: ScreenRow, width: Int) -> Palette? {
-        guard row.indent == 0, DialogRowScanner.isRule(row, of: "─", minimumWidth: width) else { return nil }
-        let styles = row.visibleRuns.map(\.style)
-        if styles.allSatisfy({ $0.foreground == grey8 }) { return .colored }
-        if styles.allSatisfy({ $0 == .plain }) { return .colorless }
-        return nil
+    /// How a `─` rule is drawn: in which palette and, in colors, in which
+    /// color. A box's two rules and the closing rule of the tray under it
+    /// are drawn alike.
+    struct RuleInk: Equatable, Sendable {
+        let palette: Palette
+        let color: ScreenColor?
     }
 
-    /// The prompt's marker at column 0 and its palette. In agy's colors the
-    /// marker is blue and the draft's blank after it uncolored, so herdr
-    /// reads the marker as a run of its own. herdr-core's first paint sends
-    /// no color for a blank, so there a draft agy colors as blue as the
-    /// marker, such as a known command like `/tasks`, shares its run
-    /// (2026-11-09). A popup's or a dialog's selected row draws `> ` and its
-    /// label in one such run too, so, as without colors, where the prompt's
-    /// `>` and the draft share one plain run, only the rules around it make
-    /// it the box's. A past prompt's `>` is bold in both.
-    private static func promptMarker(of row: ScreenRow) -> (mode: Composer.Mode, palette: Palette)? {
+    /// How a `─` rule from column 0 at least `width` cells wide is drawn:
+    /// in one color throughout, whichever the scheme gives rules, or
+    /// without any style. Nil for any other row. The box's rules span the
+    /// screen; the rule over a past prompt is at most 60 columns, and three
+    /// short of the width on narrower screens.
+    static func ruleInk(_ row: ScreenRow, width: Int) -> RuleInk? {
+        guard row.indent == 0, DialogRowScanner.isRule(row, of: "─", minimumWidth: width) else { return nil }
+        let styles = row.visibleRuns.map(\.style)
+        if styles.allSatisfy({ $0 == .plain }) { return RuleInk(palette: .colorless, color: nil) }
+        guard let color = styles.first?.foreground, styles.allSatisfy({ $0.foreground == color }) else { return nil }
+        return RuleInk(palette: .colored, color: color)
+    }
+
+    /// The palette of a `─` rule from column 0 at least `width` cells wide
+    /// (`ruleInk`).
+    static func rulePalette(_ row: ScreenRow, width: Int) -> Palette? {
+        ruleInk(row, width: width)?.palette
+    }
+
+    /// The prompt's marker at column 0, its palette and its color. In
+    /// agy's colors the marker is colored, blue in its default scheme, and
+    /// the draft's blank after it uncolored, so herdr reads the marker as a
+    /// run of its own. herdr-core's first paint sends no color for a blank,
+    /// so there a draft agy colors as the marker, such as a known command
+    /// like `/tasks`, shares its run (2026-11-09). A popup's or a dialog's
+    /// selected row draws `> ` and its label in one such run too, so, as
+    /// without colors, where the prompt's `>` and the draft share one plain
+    /// run, only the rules around it make it the box's. A past prompt's `>`
+    /// is bold in both, and bash mode's `!` is.
+    private static func promptMarker(of row: ScreenRow)
+        -> (mode: Composer.Mode, palette: Palette, color: ScreenColor?)?
+    {
         guard let first = row.runs.first, first.column == 0 else { return nil }
         let marker = first.text.trimmingCharacters(in: .whitespaces)
         let style = first.style
-        if marker == ">" || first.text.hasPrefix("> "), style.foreground == .indexed(12), !style.isBold {
-            return (.prompt, .colored)
+        if marker == ">" || first.text.hasPrefix("> "), let color = style.foreground, !style.isBold {
+            return (.prompt, .colored, color)
         }
-        if marker == "!", style.foreground == .indexed(4), style.isBold { return (.bash, .colored) }
-        if marker == "!", style == ScreenStyle(isBold: true) { return (.bash, .colorless) }
-        if style == .plain, first.text == ">" || first.text.hasPrefix("> ") { return (.prompt, .colorless) }
+        if marker == "!", let color = style.foreground, style.isBold { return (.bash, .colored, color) }
+        if marker == "!", style == ScreenStyle(isBold: true) { return (.bash, .colorless, nil) }
+        if style == .plain, first.text == ">" || first.text.hasPrefix("> ") { return (.prompt, .colorless, nil) }
         return nil
     }
 
@@ -495,15 +521,16 @@ struct AgyScreen: Sendable {
 
     /// Returns the row index of the closing full-width rule when `rows[from...]`
     /// starts with an unfocused active-items tray (background tasks, Swarm,
-    /// subagents, or future tray rows) bounded by a rule in the box's palette.
-    /// No interactive popup or panel draws a closing full-width rule, and a
-    /// tray row focused by Down (`> `) is excluded because Enter acts on it.
+    /// subagents, or future tray rows) bounded by a rule drawn as the box's
+    /// are (`ink`). No interactive popup or panel draws a closing full-width
+    /// rule, and a tray row focused by Down (`> `) is excluded because Enter
+    /// acts on it.
     private static func passiveStatusTrayEnd(
-        in rows: [ScreenRow], from start: Int, palette: Palette, ruleWidth: Int
+        in rows: [ScreenRow], from start: Int, ink: RuleInk, ruleWidth: Int
     ) -> Int? {
         guard start < rows.count else { return nil }
         let limit = min(rows.count, start + maximumStatusTrayRows + 1)
-        guard let closing = (start..<limit).first(where: { rulePalette(rows[$0], width: ruleWidth) == palette }),
+        guard let closing = (start..<limit).first(where: { ruleInk(rows[$0], width: ruleWidth) == ink }),
             closing > start
         else { return nil }
         let slice = rows[start..<closing]

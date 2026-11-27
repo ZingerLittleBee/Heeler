@@ -460,7 +460,7 @@ struct ChatDeliveryPolicyTests {
         let unknownPolicy = policy(screen: unknown)
         #expect(
             await unknownPolicy.preflight?("hello")
-                == .unconfirmedInputBox("Heeler can't find the Agent's input box on screen."))
+                == .unconfirmedInputBox("Heeler can't find Antigravity CLI's input box on screen."))
         #expect(await unknownPolicy.admittingUnconfirmedInputBox().preflight?("hello") == nil)
 
         // Safety checks still hold under Send Anyway.

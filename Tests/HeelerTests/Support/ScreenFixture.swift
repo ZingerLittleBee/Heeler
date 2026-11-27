@@ -199,6 +199,10 @@ enum ScreenFixture {
         "agy-183-tasks-panel-running-62x46", "agy-184-tasks-panel-after-k-62x46", "agy-185-idle-after-tasks-62x46",
         // A command's dialog from an agy started again where one exited.
         "agy-200-perm-run-command-under-exited-agy-62x46",
+        // agy 1.5.18's `tokyo night` color scheme (herdr 0.9.5, #863): rules,
+        // marker, hints and titles in 24-bit colors, nothing dim.
+        "agy-201-tokyo-night-idle-empty-93x11", "agy-202-tokyo-night-idle-draft-93x16",
+        "agy-203-tokyo-night-idle-after-reply-93x16", "agy-204-tokyo-night-trust-prompt-93x13",
     ]
 
     /// The Claude and Codex captures that the dialog and input-box suites walk.
@@ -259,6 +263,31 @@ enum ScreenFixture {
             stride(from: 0, to: max(line.count, 1), by: columns).map { String(line.dropFirst($0).prefix(columns)) }
         }
         return synthetic(box + wrapped + text.components(separatedBy: "\r\n"))
+    }
+
+    /// `screen` as a 24-bit color scheme such as agy's tokyo night draws
+    /// it: each indexed color a 24-bit one of its own, and dim text in a
+    /// muted color instead, since tokyo night dims nothing (#863).
+    static func recolored(_ screen: ANSIScreen) -> ANSIScreen {
+        func color(_ color: ScreenColor?, dim: Bool) -> ScreenColor? {
+            switch color {
+            case .indexed(let index): .rgb(dim ? 2 : 1, index, 7)
+            case .rgb(let red, let green, let blue): dim ? .rgb(red / 2, green / 2, blue / 2) : .rgb(red, green, blue)
+            case nil: dim ? .rgb(3, 5, 7) : nil
+            }
+        }
+        let rows = screen.rows.map { row in
+            ScreenRow(
+                index: row.index,
+                runs: row.runs.map { run in
+                    var style = run.style
+                    style.foreground = color(style.foreground, dim: style.isDim)
+                    style.background = color(style.background, dim: false)
+                    style.isDim = false
+                    return ScreenRun(text: run.text, style: style, column: run.column, width: run.width)
+                })
+        }
+        return ANSIScreen(rows: rows)
     }
 }
 
