@@ -229,7 +229,7 @@ The first frozen run recorded 69 completed result bundles including retries. Eac
 | --- | --- | --- | --- | --- | --- |
 | Antigravity CLI – Bind the correct active conversation | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
 | Antigravity CLI – Read the identified history | R NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
-| Antigravity CLI – Send multiline text and read one reply | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
+| Antigravity CLI – Send multiline text and read one reply | N NOT-RUN | T NOT-RUN | T PASS (first phone send created A; A 1/1, B unchanged) | T NOT-RUN | S · 1.5.18 · [Fresh terminal without a conversation](evidence/rex-daily/agy-first-unbound-linux-c.json) · [Phone message, official transcript and locks](evidence/rex-daily/agy-phone-after-linux-c.json) |
 | Antigravity CLI – Answer initial directory trust | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
 | Antigravity CLI – Answer a matched tool approval | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
 | Antigravity CLI – Answer a program question | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
@@ -240,7 +240,7 @@ The first frozen run recorded 69 completed result bundles including retries. Eac
 | Antigravity CLI – Stop a selected background job | T NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
 | Antigravity CLI – Refuse stale input after a desktop session switch and recover the draft | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
 | Antigravity CLI – Reopen the same conversation after detaching or reconnecting | N NOT-RUN | T NOT-RUN | T NOT-RUN | T NOT-RUN | S · 1.5.18 · [Chat](rex-chat-parity.md) |
-| Antigravity CLI – Open the sign-in screen on the selected Agent terminal | T NOT-RUN | T PASS (official sign-in entry) | T PASS (iPhone opened the selected CLI sign-in) | T NOT-RUN | S · [Terminal observations by program](rex-chat-parity.md) |
+| Antigravity CLI – Open the sign-in screen on the selected Agent terminal | T NOT-RUN | T PASS (official sign-in entry) | T PASS (official sign-in and terms completed) | T NOT-RUN | S · [Terminal observations by program](rex-chat-parity.md) |
 
 ## Amp 0.0.1795737653-g84af98
 
@@ -267,7 +267,7 @@ A Rex-only Host has no persistent Heeler Usage or remote notification producer. 
 
 The object probes found no conditional close on a foreground epoch at the negotiated revisions. Rex ignored a proposed expected-foreground field and closed the replacement program. Cross-session window transfer needs revision 22, and a move within a session can select an unintended desktop window. Those user actions remain gated. An explicit shell exit in the user's open terminal is recorded separately. [Protocol receipts and requested upstream changes](rex-object-operations.md#foreground-races-and-revision-gates)
 
-For OpenCode 2.0.32 the two clients in one directory shared a database. Choosing a recorded session identifies its history. A native Send, Stop or answer would need an authoritative association between the current foreground and its active OpenCode session. Amp on Debian completed sign-in, returned two distinct official thread IDs and received the iPhone's multiline Terminal message in A. Antigravity CLI offered the vendor sign-in in its disposable home. Sign-in and access to a terminal establish different facts from verified thread identity or an actionable request. [Program-specific findings](rex-chat-parity.md)
+For OpenCode 2.0.32 the two clients in one directory shared a database. Choosing a recorded session identifies its history. A native Send, Stop or answer would need an authoritative association between the current foreground and its active OpenCode session. Amp on Debian completed sign-in, returned two distinct official thread IDs and received the iPhone's multiline Terminal message in A. Antigravity CLI on Debian completed the official account flow, and the phone sent its first terminal message to A. Its new write lock and official reply were distinct from B. Sign-in and access to a terminal establish different facts from verified thread identity or an actionable request. [Program-specific findings](rex-chat-parity.md)
 
 A macOS forwarding refusal exposed a path-spelling difference in the first SSH run. The private daemon listened on a /tmp pathname while the SSH login exposed the same inode under /private/tmp. The real connection worked. On refusal the lsof-based diagnostic called it stopped. A fresh pair of private listeners used the same pathname that the Host reported for discovery and forwarding. All four SSH tests passed there. The first failing result is retained.
 

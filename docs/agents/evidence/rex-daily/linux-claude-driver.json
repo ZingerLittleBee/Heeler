@@ -10,13 +10,10 @@
   ],
   "patchedTestSHA256": "f3229bab0dfcb860e3743550125af2328eee4a35432b5dc3f669fb2ac4fad180",
   "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
-  "xctestrun": "/private/tmp/heeler-lab-linux-claude-driver-qpqvb_mb/Products/HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
   "objectsRelinked": 26,
   "testSourceObjectsRebuilt": 1,
   "signaturesVerified": true,
   "outerAppResealedForEmbeddedTests": true,
   "launcherWithoutSignaturesSHA256": "e4ea1bc85aa88ef05da891063e678f449fed207dbab215d7d7c1b5a4f7f96757",
-  "rawLauncherChangedOnlyInSignature": true,
-  "archivedXctestrun": "/Users/zingerbee/Documents/worktree/Heeler/heeler-lab-rex-daily/build/heeler-lab-evidence/native-chat/final-b8af66cfd-linux-claude-driver-products/HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
-  "archivedPatch": "/Users/zingerbee/Documents/worktree/Heeler/heeler-lab-rex-daily/build/heeler-lab-evidence/native-chat/final-b8af66cfd-linux-claude-driver-products/rex-rotated-claude-linux-test.patch"
+  "rawLauncherChangedOnlyInSignature": true
 }
