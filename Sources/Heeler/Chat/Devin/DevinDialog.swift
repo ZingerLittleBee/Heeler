@@ -140,7 +140,10 @@ enum DevinDialog {
               let title = indices.first(where: { $0 > top }),
               let first = indices.first(where: { $0 > title && (label(lines[$0]).hasPrefix("1 ") || label(lines[$0]).hasPrefix("· ")) }) else { return nil }
         let prompt = indices.filter { $0 >= title && $0 < first }.map { lines[$0] }.joined(separator: " ")
+        // Devin adds a check to the current tab as free text is entered.
+        // The unique question and options in the pending call identify the page.
         let tab = lines[top].trimmingCharacters(in: CharacterSet(charactersIn: "─ "))
+            .replacingOccurrences(of: " ✓", with: "")
         let data = Array(indices.filter { $0 >= first && $0 < bottom })
         var options: [DialogOption] = []
         var pos = 0

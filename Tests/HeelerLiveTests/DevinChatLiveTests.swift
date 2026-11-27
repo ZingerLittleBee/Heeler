@@ -323,6 +323,29 @@ struct DevinChatLiveTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"] != nil))
+    func declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        try await withChat(lab, .herdrTUI) { live in
+            try await live.desktop("/plan")
+            try await live.wait { try await DevinInputBox.isPlan(live.io.readScreen()) }
+            try await live.send("Propose writing a note.txt in this empty test folder. Write a very short plan with two plain numbered steps and no headings, then call exit_plan_mode to request approval. Make no changes to the workspace.")
+            let card = try await live.card(.devinPlan)
+            try #require(card.request?.summary.isEmpty == false && card.dialog.options.count == 3)
+            try await capture(live.chat.blocked, name: "plan")
+            live.composer.replaceDraft(with: "Ordinary message kept apart")
+            await live.chat.blocked.perform(.choose(ordinal: 3), shownCard: card)
+            try await live.wait { live.chat.blocked.droidRevision != nil }
+            let feedback = try #require(live.chat.blocked.droidRevision)
+            feedback.text = "Thank you. End the conversation without changing files. Reply with PLAN_FEEDBACK_RECEIVED."
+            try #require(await live.composer.sendDroidRevision(feedback, policy: live.policy, readScreen: live.io.readScreen))
+            try await live.wait { live.chat.conversation.transcript.recordedPrompts.contains { $0.text == feedback.text } }
+            #expect(live.composer.draft == "Ordinary message kept apart")
+            #expect(try await live.projection.chatHostFiles().status(lab.directory + "/note.txt") == nil)
+        }
+    }
+
     private func capture(_ store: BlockedCardStore, name: String) async throws {
         guard let dir = ProcessInfo.processInfo.environment["HEELER_DEVIN_SCREENSHOTS"] else { return }
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
