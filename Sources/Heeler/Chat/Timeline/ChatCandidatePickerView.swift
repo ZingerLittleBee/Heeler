@@ -74,8 +74,12 @@ struct ChatCandidatePickerView: View {
                         }
                     }
                 } footer: {
-                    Text(
-                        "Chat follows the conversation you choose until the program restarts, or until a message you send from Chat doesn't appear in it.")
+                    if chat.picksAreReadOnly {
+                        Text("Choose a conversation to read its history. Send messages in the Agent terminal.")
+                    } else {
+                        Text(
+                            "Chat follows the conversation you choose until the program restarts, or until a message you send from Chat doesn't appear in it.")
+                    }
                 }
             }
         }
