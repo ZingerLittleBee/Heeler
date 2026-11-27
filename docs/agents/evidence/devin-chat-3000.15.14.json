@@ -1,0 +1,641 @@
+{
+  "base": "354497fb6da76ecb93bb02e6cab4c86250b6c384",
+  "production": "878a25867e5d4f974e5d2ff01e1b7119778123a3",
+  "candidate": "3fbbae2f2b8eff885900bdf52264bb3d592bc04a",
+  "versions": {
+    "devin": "3000.15.14 (cfa79668e1a5)",
+    "herdr": "0.9.5",
+    "herdrCore": "0.1.22",
+    "tmuxMac": "3.7b",
+    "tmuxLinux": "3.3a",
+    "rex": "0.1.0-preview.25 (b070aae645f5)",
+    "rexAPI": 24
+  },
+  "liveRuns": {
+    "mac": {
+      "methods": {
+        "opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": {
+          "\"mac\", .herdrCore": "Passed",
+          "\"mac\", .herdrTUI": "Passed",
+          "\"mac\", .rex": "Passed",
+          "\"mac\", .tmux": "Passed"
+        },
+        "approvalsQuestionsAndStaleDrafts(_:)": {
+          ".herdrCore": "Passed",
+          ".herdrTUI": "Passed",
+          ".rex": "Passed",
+          ".tmux": "Passed"
+        },
+        "firstTrustAndDeclineBeforeTheSessionExists()": "Passed",
+        "firstTrustOverTheBackendTypingPath(_:)": {
+          ".herdrCore": "Passed",
+          ".rex": "Passed",
+          ".tmux": "Passed"
+        },
+        "reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "stopsOnlyTheCurrentlyDisplayedTurn()": "Passed",
+        "declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Passed",
+        "approvesTheDisplayedLongCommandOnce(_:)": "Skipped"
+      },
+      "executedMethods": 7,
+      "failedMethods": 0,
+      "skippedMethods": 1,
+      "passedCases": 15,
+      "failedCases": 0
+    },
+    "linux": {
+      "methods": {
+        "opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": {
+          "\"linux\", .herdrCore": "Passed",
+          "\"linux\", .herdrTUI": "Passed",
+          "\"linux\", .rex": "Passed",
+          "\"linux\", .tmux": "Passed"
+        },
+        "approvalsQuestionsAndStaleDrafts(_:)": {
+          ".herdrCore": "Passed",
+          ".herdrTUI": "Passed",
+          ".rex": "Passed",
+          ".tmux": "Passed"
+        },
+        "firstTrustAndDeclineBeforeTheSessionExists()": "Passed",
+        "firstTrustOverTheBackendTypingPath(_:)": {
+          ".herdrCore": "Passed",
+          ".rex": "Passed",
+          ".tmux": "Passed"
+        },
+        "reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "stopsOnlyTheCurrentlyDisplayedTurn()": "Passed",
+        "declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Passed",
+        "approvesTheDisplayedLongCommandOnce(_:)": {
+          "\"linux\"": "Passed",
+          "\"mac\"": "Passed"
+        }
+      },
+      "executedMethods": 8,
+      "failedMethods": 0,
+      "skippedMethods": 0,
+      "passedCases": 17,
+      "failedCases": 0
+    }
+  },
+  "sessions": {
+    "mac": {
+      "rex": {
+        "session": "deep-lamprey",
+        "marker": "HEELER_DEVIN_325DFF71",
+        "userMessageIDs": [
+          "a224e962-c98f-48e6-9809-b7a6df949961"
+        ],
+        "replyMessageIDs": [
+          "a76a64b2-5ec1-4a40-bbc2-076cd8c3f41a"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "trusting-reference",
+            "messageID": "a623480f-4a0b-4dee-92c1-b73612ab0519"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-3D17B97B.txt": {
+            "call": "write:0#5dac1e23dc614213949150e71b0ec971",
+            "exists": true,
+            "sha256": "9b44c860b996b6fe43811d6c79fb7f120e622d360aca1a333bf0feea36e28f53",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-3D17B97B.txt": {
+            "call": "write:0#17d489005dce4a3dbaaeb89467aa391f",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "herdrCore": {
+        "session": "sable-week",
+        "marker": "HEELER_DEVIN_058F7A99",
+        "userMessageIDs": [
+          "b4722932-a6d6-4d66-b7b7-8adf00a77b22"
+        ],
+        "replyMessageIDs": [
+          "892db8b9-8d13-4ad9-b57b-93e2e0773d49"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "piquant-flannel",
+            "messageID": "2db0c19f-7790-4c67-9d8b-68abc751db8a"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-312ABB5A.txt": {
+            "call": "call_9585232acacca4f6#abba081b8e8e4f18a49f4c372c02dc30",
+            "exists": true,
+            "sha256": "03d5aec2426e16961ecec8fd7948b21e844d815d383bcded90e131933c1bccfc",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-312ABB5A.txt": {
+            "call": "call_b5ee88e1045da92f#e7c34636f8054654a93cb7b2312e05b8",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "tmux": {
+        "session": "brass-flock",
+        "marker": "HEELER_DEVIN_FE3E4C8A",
+        "userMessageIDs": [
+          "a65d4059-60d4-4a1e-8362-942adbc45f5c"
+        ],
+        "replyMessageIDs": [
+          "0ae66fc5-2974-4acd-b166-3e69afa68c62"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "purring-cost",
+            "messageID": "3a1bc8ba-f9f2-456e-9dcf-8a9f74fb057d"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-1EF87FDD.txt": {
+            "call": "call_9f65c63fe599dc3b#45b2034c05334f2583cb896af4c37997",
+            "exists": true,
+            "sha256": "2c4a9fab978934692321a1c7ee597661f5a75559f4f3d6a495d352d051571afb",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-1EF87FDD.txt": {
+            "call": "call_a574b94799cea62c#40a9a6e64aee4aa39cde5246a15a8493",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "herdrTUI": {
+        "session": "circular-limpet",
+        "marker": "HEELER_DEVIN_C3BC96EA",
+        "userMessageIDs": [
+          "f14d3d4f-8dac-4a6c-a709-37a88873f42d"
+        ],
+        "replyMessageIDs": [
+          "a4e6556a-a417-492c-8419-6e28eebfd35e"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "lying-education",
+            "messageID": "8ed33f2b-f37c-4815-bc0f-c1ca0707dbe9"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-26BBB43D.txt": {
+            "call": "call_a2828dab74be465a#4f6bc29e20ef407eada377a74eece880",
+            "exists": true,
+            "sha256": "95b363e26c284de3f67d409deaf34d4de39dc24bc537a1c5bcc74ea99f029dde",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-26BBB43D.txt": {
+            "call": "call_a4002ed529ee4b7e#bff3ad01272343c98a8c1193ddbde51c",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      }
+    },
+    "linux": {
+      "rex": {
+        "session": "noon-papyrus",
+        "marker": "HEELER_DEVIN_5CF99B6A",
+        "userMessageIDs": [
+          "7b584b13-9637-4cec-a18f-ee25e1cf6337"
+        ],
+        "replyMessageIDs": [
+          "07402123-6b98-4c3d-9b02-5926037e467b"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "speckle-myrtle",
+            "messageID": "8dc360f0-0e2d-44ad-91dd-39e8f4489f69"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-15967992.txt": {
+            "call": "write:0#b7e2800259094bcfbc55ba676de8105d",
+            "exists": true,
+            "sha256": "38ae0128016daf5f81c9ba38e44a92b9c19d42237dc26a27a1ecedd2e6087539",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-15967992.txt": {
+            "call": "write:0#ca3e2ab161524bd6ae02e70e2bc6fa7b",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "herdrCore": {
+        "session": "polar-justice",
+        "marker": "HEELER_DEVIN_5A19B38B",
+        "userMessageIDs": [
+          "04d45d5c-e1ff-4790-afa1-541e38ba937b"
+        ],
+        "replyMessageIDs": [
+          "a36b5b2c-ac1c-4135-b2cd-9f198d33f26d"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "bottled-cuckoo",
+            "messageID": "b9276ef5-c866-421c-8c55-155e543d23e9"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-7508BB48.txt": {
+            "call": "write:0#7e0fbb2b6140426986317ddcc3f9ea07",
+            "exists": true,
+            "sha256": "2283523e28666dadea041a9cbfb2fa2ad1e9ac20915b8d84cab3eb9043fdb124",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-7508BB48.txt": {
+            "call": "write:1#cf5b565c4ce64fb4a3904be5f997af79",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "tmux": {
+        "session": "debonair-serpent",
+        "marker": "HEELER_DEVIN_B4481526",
+        "userMessageIDs": [
+          "813e3441-f6c3-4396-a921-058fe04d4665"
+        ],
+        "replyMessageIDs": [
+          "29175399-270d-4786-a163-003167241942"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "numerous-carnation",
+            "messageID": "ef313afc-28e7-4439-b09f-3e107e19daed"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-12EBEF72.txt": {
+            "call": "write:0#66a7a5f3e50142a88dc97ee27a1848aa",
+            "exists": true,
+            "sha256": "93726cca7ae32cc1d5afbb28be1d5850c2852968690c8e8d2507a3fb1f7b296d",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-12EBEF72.txt": {
+            "call": "write:1#6d81372a32964b8ebe6e6037cc6e5b97",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      },
+      "herdrTUI": {
+        "session": "atom-eggplant",
+        "marker": "HEELER_DEVIN_2D53909C",
+        "userMessageIDs": [
+          "c1a7c9ea-2136-49d9-bace-3706d011864e"
+        ],
+        "replyMessageIDs": [
+          "fd112ae8-f37f-4988-9cb1-ee92d96a3604"
+        ],
+        "parkedDraftUserMessages": 0,
+        "peerMarkerUserMessages": [
+          {
+            "session": "elegant-gong",
+            "messageID": "7ea83180-ebff-41bb-a7ad-b9aaab47c207"
+          }
+        ],
+        "approvalFiles": {
+          "approval-a-1B59BCC9.txt": {
+            "call": "write:0#17736a8271934292a7aace939201036f",
+            "exists": true,
+            "sha256": "7fbdc16bff9d92bcd75d8fc8681932d9ea8f2148c7ffc3bf71f032c27aea62e2",
+            "explicitlyDeclined": false,
+            "expectedContent": true
+          },
+          "approval-b-1B59BCC9.txt": {
+            "call": "write:1#72b4c1963c494736aa82a12a60a47160",
+            "exists": false,
+            "sha256": null,
+            "explicitlyDeclined": true
+          }
+        }
+      }
+    }
+  },
+  "startup": {
+    "mac": {
+      "herdrTUI": {
+        "marker": "TRUST_6F4FD65E",
+        "session": "sunset-particle",
+        "prompts": [
+          "e3859dcd-4584-4161-a4e7-19f10e861d24"
+        ],
+        "replies": [
+          "7469ac03-6060-48d0-81f7-318f03088976"
+        ]
+      },
+      "herdrCore": {
+        "marker": "FRESH_8FCB43EF",
+        "session": "similar-knuckle",
+        "prompts": [
+          "75356ca8-9378-4fe3-9f56-19596181a139"
+        ],
+        "replies": [
+          "809e1608-e1b2-4ab0-a4ff-e2268e910a2e"
+        ]
+      },
+      "tmux": {
+        "marker": "FRESH_75FB372B",
+        "session": "puzzling-nutria",
+        "prompts": [
+          "0d118bcc-b0b1-4b8d-b3bd-2e730b664658"
+        ],
+        "replies": [
+          "c4c02166-d0ab-4c49-a875-e206143e9d44"
+        ]
+      },
+      "rex": {
+        "marker": "FRESH_DAA54BB0",
+        "session": "periwinkle-flare",
+        "prompts": [
+          "3547e2db-2d81-44d4-8507-51d53d9105d8"
+        ],
+        "replies": [
+          "f5e76026-0404-4bff-9d56-ae0eda57db39"
+        ]
+      },
+      "declinedTrustObserver": {
+        "started": true,
+        "complete": true,
+        "bytes": 0
+      }
+    },
+    "linux": {
+      "herdrTUI": {
+        "marker": "TRUST_8AF75335",
+        "session": "cyan-utensil",
+        "prompts": [
+          "05b4f62c-3ce7-4ad8-975a-5f74d526d826"
+        ],
+        "replies": [
+          "59485aca-f0f8-4967-b207-54fa27c9a56e"
+        ]
+      },
+      "herdrCore": {
+        "marker": "FRESH_EC643507",
+        "session": "modern-angora",
+        "prompts": [
+          "c3dc5e62-16df-4adf-8c04-f166efe90939"
+        ],
+        "replies": [
+          "dfcaad12-32a3-4a63-b35e-9e5789d4c596"
+        ]
+      },
+      "tmux": {
+        "marker": "FRESH_F247403F",
+        "session": "smoggy-guide",
+        "prompts": [
+          "6b3aa87e-02ac-4807-9a41-ee4512cebdee"
+        ],
+        "replies": [
+          "bf2e39ae-f7e9-4b94-98c5-e1ba7a7c114d"
+        ]
+      },
+      "rex": {
+        "marker": "FRESH_9F1D3468",
+        "session": "dark-polyanthus",
+        "prompts": [
+          "a6038300-0363-44e0-ba04-1c92cd029db2"
+        ],
+        "replies": [
+          "87021c28-347c-4b76-b184-ffa3fbbeb865"
+        ]
+      },
+      "declinedTrustObserver": {
+        "started": true,
+        "complete": true,
+        "bytes": 0
+      }
+    }
+  },
+  "scopedCommands": {
+    "mac": {
+      "session": "pewter-aardvark",
+      "callID": "call_85d157f98057b1ef#d482588a83014f5cbee659c2b1572797",
+      "marker": "DEVIN_COMMAND_90E9427E",
+      "reviewedCommand": "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 DEVIN_COMMAND_90E9427E",
+      "resultMessageID": "4dcf9230-18fc-4dcc-8bf4-a7791ab46f74"
+    },
+    "linux": {
+      "session": "four-citrine",
+      "callID": "call_a91a8d9182177af4#68dc2ea91561483d980570c9b26f0ddf",
+      "marker": "DEVIN_COMMAND_462DC8F4",
+      "reviewedCommand": "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 DEVIN_COMMAND_462DC8F4",
+      "resultMessageID": "01b93465-6d9f-4a3b-852e-7a4691e9757f"
+    }
+  },
+  "forks": {
+    "mac": {
+      "original": "serious-basil",
+      "afterFork": "serious-basil",
+      "afterResume": "quaint-turn",
+      "receipts": {
+        "serious-basil": {
+          "shared": [
+            "27f32ffd-c07b-4695-97f3-d5a7ececa1d7"
+          ],
+          "originalOnly": [
+            "cb795703-eb74-483a-95d4-6fae94face15"
+          ],
+          "copyOnly": []
+        },
+        "quaint-turn": {
+          "shared": [
+            "27f32ffd-c07b-4695-97f3-d5a7ececa1d7"
+          ],
+          "originalOnly": [],
+          "copyOnly": [
+            "729ead0d-f7aa-4443-aaef-05840780aed7"
+          ]
+        }
+      }
+    },
+    "linux": {
+      "original": "spiky-scaffold",
+      "afterFork": "spiky-scaffold",
+      "afterResume": "careful-garment",
+      "receipts": {
+        "spiky-scaffold": {
+          "shared": [
+            "343468c8-0c3a-4518-b420-1085051dd60d"
+          ],
+          "originalOnly": [
+            "ecf3e373-994b-4b94-b634-d4768a0b0e16"
+          ],
+          "copyOnly": []
+        },
+        "careful-garment": {
+          "shared": [
+            "343468c8-0c3a-4518-b420-1085051dd60d"
+          ],
+          "originalOnly": [],
+          "copyOnly": [
+            "48d25778-e585-4362-ab31-e30b64ec4e36"
+          ]
+        }
+      }
+    }
+  },
+  "backgroundWork": {
+    "mac": {
+      "session": "carnation-stetson",
+      "children": {
+        "411d47d9": {
+          "node": 67,
+          "messageID": "fe53dc74-150f-4a26-9582-64632d851bf9",
+          "at": "2026-11-27T09:27:35.257883Z",
+          "reportSha256": "ba5cf271dfd3ad6299c9cdfd6bf28a73850e6a30fe98cd9e457a6b5b43ed8e94"
+        }
+      },
+      "parentReplies": [
+        {
+          "node": 75,
+          "messageID": "283cc7e2-fac7-42ec-8f20-ddce2a57b36f",
+          "at": "2026-11-27T09:29:25.161809Z"
+        }
+      ],
+      "shellResults": {
+        "qa-one": {
+          "call": "call_82802cbfb7fdb6c0#f1fced4f00f24cb78bf16a24d0e355fe",
+          "result": "9279cc72-f9f8-44b3-8e3e-20b9bb61fbef",
+          "exit": 0,
+          "killed": false,
+          "expectedMarkerFound": true
+        },
+        "qa-two": {
+          "call": "call_8b08b47e4d52b412#49f8f1f9631149cea9ed6ee26215a8bd",
+          "result": "e9ade58c-b089-499e-b069-a26e889be5f0",
+          "exit": 0,
+          "killed": false,
+          "expectedMarkerFound": true
+        },
+        "devin-qa-stop": {
+          "call": "call_ba73add611585101#77ca856b21824342b9cf7467df47c149",
+          "result": "5307fa38-3132-4e7e-888b-7cf901fef078",
+          "exit": null,
+          "killed": true,
+          "expectedMarkerFound": false
+        },
+        "devin-qa-keep": {
+          "call": "call_8ec70cbdafa92dea#ba41b48c31944eda8b21377091b79fbd",
+          "result": "eb96d114-cd66-4660-b857-e161802deafd",
+          "exit": 0,
+          "killed": false,
+          "expectedMarkerFound": false
+        }
+      },
+      "relayed": {
+        "411d47d9": {
+          "node": 70,
+          "messageID": "3cfae4e5-9642-4811-9f37-7e581e515777",
+          "at": "2026-11-27T09:27:35.259387Z"
+        }
+      }
+    },
+    "linux": {
+      "session": "chalk-sphynx",
+      "children": {
+        "cc5ee252": {
+          "node": 60,
+          "messageID": "ff9bf7b8-bba6-4400-aee8-138d0a288c0d",
+          "at": "2026-11-27T10:17:42.910493226Z",
+          "reportSha256": "b703edf50ae0c12baa86a147e5b7ce0644de985bc2e5ff4a4264164ccc5115d8"
+        }
+      },
+      "parentReplies": [
+        {
+          "node": 55,
+          "messageID": "68082276-edb5-4712-9009-3e24899a2082",
+          "at": "2026-11-27T10:17:24.837147847Z"
+        }
+      ],
+      "shellResults": {
+        "lab-amber": {
+          "call": "call_afab90166df9addc#5e352a4c700b4bef81d36c16dccbaf34",
+          "result": "946005b1-fd6e-4a19-8211-0412e2bbf1da",
+          "exit": 0,
+          "killed": false,
+          "expectedMarkerFound": true
+        },
+        "lab-jade": {
+          "call": "call_af38de80e4f6f3e5#74ebdb9ce9fc4cf6ba1d7d18afbcc5c6",
+          "result": "02c5a6f6-10fb-4e9a-a86e-f2ee3dd75e40",
+          "exit": 0,
+          "killed": false,
+          "expectedMarkerFound": true
+        },
+        "lab-stopped": {
+          "call": "call_ac26b74a4d01ce32#f3bcb5766f0543ddbe9dce9769b36051",
+          "result": "6090ab00-ae7a-4019-a3b1-465777a9e917",
+          "exit": null,
+          "killed": true,
+          "expectedMarkerFound": false
+        }
+      },
+      "relayed": {
+        "cc5ee252": {
+          "node": 61,
+          "messageID": "77c3d54e-f536-47c4-b71a-842b343c5bbb",
+          "at": "2026-11-27T10:17:42.911272102Z"
+        }
+      }
+    }
+  },
+  "rexStartupStatus": {
+    "mac": {
+      "records": []
+    },
+    "linux": {
+      "records": []
+    }
+  },
+  "regressions": {
+    "focused": 30,
+    "sharedExecuted": 363,
+    "sharedFailed": 1,
+    "sharedFailure": "HerdrCoreChatTests/statusTurnAndForegroundEventsEachCheckAgain()",
+    "upstreamBaselineExecuted": 45,
+    "toolChecks": 37,
+    "sqliteReaderTests": 4,
+    "focusedCandidate": "3fbbae2f2b8eff885900bdf52264bb3d592bc04a",
+    "sharedCandidate": "878a25867e5d4f974e5d2ff01e1b7119778123a3",
+    "upstreamBaselinePassed": 43,
+    "upstreamBaselineFailed": 2
+  },
+  "testedOn": "2026-11-27",
+  "cleanup": {
+    "linuxContainerRemoved": true,
+    "worktreePanePreserved": true,
+    "macTestSessionsRemaining": 0,
+    "macTrustEntriesRemoved": 1,
+    "testSimulatorsShutdown": 3
+  }
+}
