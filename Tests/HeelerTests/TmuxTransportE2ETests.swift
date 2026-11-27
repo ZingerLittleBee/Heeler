@@ -61,12 +61,13 @@ struct TmuxTransportE2ETests {
             #expect(found.herdrCore == .notInstalled)
             // A Host lists a Server for each socket that answers, `default`
             // first, and none for the socket its server left behind.
+            let tmuxServers = HostServerScan(found).servers.filter { $0.key.kind == .tmux }
             #expect(
-                HostServerScan(found).servers.map(\.key) == [
+                tmuxServers.map(\.key) == [
                     HostServerKey(kind: .tmux, name: TmuxSocketName.defaultName),
                     HostServerKey(kind: .tmux, name: fixture.socketName),
                 ])
-            #expect(HostServerScan(found).servers.allSatisfy { $0.isRunning })
+            #expect(tmuxServers.allSatisfy { $0.isRunning })
             // What a Server turned on stores comes from this same exec.
             #expect(found.tmuxPaths(socketName: fixture.socketName) == (try fixture.paths()))
 

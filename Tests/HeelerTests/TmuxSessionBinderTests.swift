@@ -142,6 +142,24 @@ struct TmuxSessionBinderTests {
         #expect(!scope.matches(socket: Self.socketPath, pid: Self.serverPID + 1, macOS: true))
     }
 
+    @Test func droidReadsFactoryLifecycleFromTheForegroundProcessesOverride() async throws {
+        let table = ScriptedProcessTable()
+        var environment = Self.tmuxEnvironment()
+        environment["FACTORY_HOME_OVERRIDE"] = "/tmp/factory-profile"
+        await table.add(.init(pid: 4000, name: "droid", start: Self.start, environment: environment))
+        let files = VirtualHostFiles(home: Self.home)
+        let folder = "/tmp/factory-profile/.factory/sessions/-work-app"
+        let file = "\(folder)/\(Self.first).jsonl"
+        let hint = try #require(HerdrCoreSessionHint.pickLabelValue(session: Self.first, file: file, pid: 4000, start: Self.start))
+        await files.write(hint, at: "\(Self.home)/.factory/heeler-session/4000.json")
+        let binder = HerdrCoreSessionBinder(program: .droid, processes: { try await table.read($0) },
+            foregroundDroid: { pid, start, home, _ in
+                guard home == "/tmp/factory-profile" else { return nil }
+                return DroidForegroundSession(session: Self.first, file: file, controller: pid, controllerStart: start)
+            }, files: files.hostFiles(), clearLabels: { _ in }, hostSystem: .macOS, processScope: Self.tmuxScope)
+        #expect(try await binder.check(Self.record(name: "droid", argv: ["droid"])) == .bound(sessionID: Self.first, transcriptRoot: folder, directory: nil))
+    }
+
     @Test func bindsProcessMatchingTmuxPaneSocketAndServerPIDIncludingCommaSocket() async throws {
         let commaSocket = "/private/tmp/work,dir/default"
         let table = ScriptedProcessTable()
