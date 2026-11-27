@@ -245,8 +245,21 @@ suite("the extension in a Rex terminal", () => {
     });
   }
 
+  test("a block without REX_SESSION reports the foreground process's own conversation", async () => {
+    delete process.env.REX_SESSION;
+    const { sessions, heelerSession, settled } = await loadExtension();
+    const program = fakeProgram();
+    await heelerSession(program.api);
+    await program.emit("session_start");
+    await settled();
+
+    const report = JSON.parse(readFileSync(join(sessions, String(process.pid) + ".json"), "utf8"));
+    assert.equal(report.session, program.sessionId);
+    assert.equal(report.pid, process.pid);
+    assert.equal(report.start, startOfThisProcess());
+  });
+
   for (const [name, change] of [
-    ["without REX_SESSION", () => delete process.env.REX_SESSION],
     ["without REX_BLOCK", () => delete process.env.REX_BLOCK],
     ["in a tmux Pane inside the terminal", () => (process.env.TMUX = "/tmp/tmux-501/other,4242,0")],
   ]) {
