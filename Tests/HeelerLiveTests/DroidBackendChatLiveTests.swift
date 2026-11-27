@@ -55,7 +55,14 @@ struct DroidBackendChatLiveTests {
             id = try #require(lab.sessions[kind.rawValue])
         }
         let agent = try #require(projection.agentsByPane[pane]?.agent)
-        let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+        var evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+        if projection is RexConsoleProjection {
+            let until = ContinuousClock.now + .seconds(20)
+            while case .unavailable(.cannotTellSession(.droid)) = evidence, ContinuousClock.now < until {
+                try await Task.sleep(for: .milliseconds(250))
+                evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+            }
+        }
         guard case .bound(id, _, _) = evidence else {
             Issue.record("The foreground Droid did not bind its fixture UUID: \(evidence)")
             return
@@ -488,8 +495,10 @@ struct DroidBackendChatLiveTests {
         for tag in ["first", "second"] {
             composer.replaceDraft(with: "List the numbers from one to two thousand on separate lines. Begin with " + tag + ". Do not use tools.")
             chat.draftDidChange(to: composer.draft)
-            let result = await composer.send(policy: policy)
-            try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt)
+            var current = policy
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
+            let result = await composer.send(policy: current)
+            try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt, "Droid send before Stop: \(result)")
             let deadline = ContinuousClock.now + .seconds(25)
             var pressed = false
             while ContinuousClock.now < deadline {
