@@ -126,3 +126,19 @@ enum OpenCodeStoreProblem: Equatable, Sendable {
     /// Tables or columns Chat reads are missing (`table.column`).
     case layout(missing: [String])
 }
+
+/// The same bounded, read-only session query on any SSH backend that serves OpenCode history.
+protocol OpenCodeReading: Sendable {
+    /// Reads one OpenCode session from OpenCode's own database on the Host
+    /// (ADR 0025): one read-only script over one exec, one query at a time
+    /// per connection. A query past its deadline throws `.hostFileTimedOut`
+    /// and never redials the Host; a reader failure that is no store problem
+    /// Chat can name throws `.hostStoreUnreadable`.
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse
+}
+
+extension OpenCodeReading {
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
+    }
+}

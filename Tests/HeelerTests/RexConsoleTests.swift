@@ -74,8 +74,10 @@ struct RexConsoleTests {
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
             #expect(offers.chatPrograms == programs)
+            let histories: Set<ChatProgram> = isPOSIX ? [.opencode] : []
+            #expect(offers.readOnlyChatPrograms == histories)
             for program in ChatProgram.allCases {
-                #expect(offers.offersChat(for: program) == programs.contains(program))
+                #expect(offers.offersChat(for: program) == (programs.contains(program) || histories.contains(program)))
             }
             #expect(offers.terminalsShowInOneWindow)
             #expect(

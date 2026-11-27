@@ -2198,7 +2198,9 @@ final class AgentChatStore {
     /// Codex on its shared daemon reads as another reason and gets no list, and
     /// Herdr TUI has no picks to make (ADR 0034).
     var offersCandidates: Bool {
-        guard acceptsPicks, case .unavailable(let reason) = conversation.phase else { return false }
+        guard acceptsPicks else { return false }
+        if isReadingPickedConversation { return true }
+        guard case .unavailable(let reason) = conversation.phase else { return false }
         return reason.leavesItToAPick
     }
 

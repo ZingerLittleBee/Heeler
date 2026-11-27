@@ -47,6 +47,10 @@ loopback. Pi, Oh My Pi and Grok used the loopback responder. Devin used an inter
 | Amp 0.0.1795737653-g84af98 | The executable requested an Amp API key in two disposable terminals. A separate real `amp login` displayed the vendor device authorization URL. The CLI requires the authorization receipt in its private home before it can open a thread. | Native identity, Send, Stop, attachments and jobs **NOT-RUN**. [Amp's active-thread API](https://ampcode.com/docs/plugin-api). |
 | Claude Code 2.1.332 and Codex 0.172.0 | Two real clients of each program used a dedicated loopback Anthropic- or Responses-compatible provider and recorded independently seeded files. Claude used `--bare` and Codex used `--no-daemon`. The new Codex thread can leave its foreground process holding both the old and new root rollouts and writer locks. | The foreground suite exercises checked input and a deliberate read selection after the switch. Its optional `nativeControls` uses real tool calls and an intentionally delayed local endpoint for permissions, attachments and Stop. [Foreground suite](../../Tests/HeelerLiveTests/RexForegroundChatLiveTests.swift), [local provider](../../scripts/fixtures/rex-chat-provider.py). |
 
+### Selecting an OpenCode history
+
+OpenCode 2.0.32 kept the two root sessions in a shared SQLite database on both POSIX Hosts. Its Mac and Debian clients used the same directory within each Host. The Debian artifact was the SHA-512-checked platform dependency of @opencode/cli 2.0.32. Heeler's normal Chat Store listed the candidates, previewed both and read one chosen conversation. The refused mobile send retained its draft. A fresh read of each session's rows returned the same contents. The selected session identifies which history to display. The terminal remains the input surface. This read uses the existing bounded, read-only OpenCode query on the Host's SSH connection. The final acceptance matrix records the candidate and platforms.
+
 ### Private foreground Chat live test
 
 `RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()`

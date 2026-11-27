@@ -127,6 +127,10 @@ In **Terminals**, tap the pencil beside a Workspace to **Rename Workspace**. Its
 
 **Chat** works for Claude Code, Codex, Pi, Oh My Pi, Grok Build, Droid and Devin CLI in Rex on macOS and Linux, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
 
+Chat keeps a draft and staged attachments with the conversation where you prepared them. If you switch on the desktop, open the original conversation to recover them. A permission button applies to one identified request. If a request has changed, or Heeler cannot confirm the result, open **Terminal** to see what the program is asking before answering again.
+
+For **OpenCode** on macOS and Linux, open **Chat → Choose a Conversation**, preview a saved thread, then select **View This Conversation**. Use the banner to choose another history or open the live terminal for input. The same directory can contain conversations from several blocks. The Rex Server page lists this separately under **Read-Only Chat**.
+
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Binds from the running Claude Code itself, on Windows too. After `/clear` or `/resume`, Chat checks again before it sends your next message. |

@@ -33,6 +33,7 @@ struct HostCapabilities: Equatable, Sendable {
     var desktopAppNaming: HerdrAppNaming?
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
+    var readOnlyChatPrograms: Set<ChatProgram> = []
     /// A core on a native Windows machine. Its Terminals start in directories of that
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
@@ -73,7 +74,7 @@ struct HostCapabilities: Equatable, Sendable {
     }
 
     func offersChat(for program: ChatProgram) -> Bool {
-        chat && (program != .amp || offersAmpPlugin) && chatPrograms?.contains(program) != false
+        chat && (program != .amp || offersAmpPlugin) && (readOnlyChatPrograms.contains(program) || chatPrograms?.contains(program) != false)
     }
 
     func renameWorkspace(id: String) -> Bool {
@@ -159,6 +160,7 @@ extension HostCapabilities {
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
+            if posix { readOnlyChatPrograms = [.opencode] }
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel

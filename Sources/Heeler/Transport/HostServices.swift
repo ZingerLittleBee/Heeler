@@ -63,7 +63,7 @@ protocol HostWorktreeAccess: Sendable {
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032). Its gh runs are
 /// `GitHubHostCLI`'s (ADR 0065).
-protocol HostServices: HostProjectReading, HostWorktreeAccess, GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
+protocol HostServices: OpenCodeReading, HostProjectReading, HostWorktreeAccess, GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive
     /// permissions, partial-file handling, and atomic completion (ADR 0006).
@@ -105,13 +105,6 @@ protocol HostServices: HostProjectReading, HostWorktreeAccess, GitHubHostCLI, Dr
 
     /// One absolute Host path's subdirectories, for the remote directory browser.
     func listDirectories(at path: String) async throws -> RemoteDirectoryListing
-
-    /// Reads one OpenCode session from OpenCode's own database on the Host
-    /// (ADR 0025): one read-only script over one exec, one query at a time
-    /// per connection. A query past its deadline throws `.hostFileTimedOut`
-    /// and never redials the Host; a reader failure that is no store problem
-    /// Chat can name throws `.hostStoreUnreadable`.
-    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse
 
     /// The Host's operating system family, known once the transport has
     /// resolved the remote environment.
@@ -199,10 +192,6 @@ extension HostServices {
 
     func listDirectories(at path: String) async throws -> RemoteDirectoryListing {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Browsing directories"))
-    }
-
-    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
-        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat"))
     }
 
     func hostPlatform() async throws -> HostPlatform { .posix }

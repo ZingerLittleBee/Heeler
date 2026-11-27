@@ -337,6 +337,8 @@ extension HerdrCoreSessionBinder {
     func checkOpenCode(
         _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
     ) async throws -> ChatSessionEvidence {
+        // Rex can read this account's database, but supplies no OpenCode route for this block.
+        if case .rex = processScope { return cannotTell }
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
             case .value(let start) = process.start
         else { return cannotTell }

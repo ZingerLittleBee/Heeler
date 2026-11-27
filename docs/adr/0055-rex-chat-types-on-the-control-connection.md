@@ -192,3 +192,11 @@ server sends the user to the terminal. An uncertain receipt leaves the
 result pending for the user to inspect. The same controls and
 protocol range continue to work for a verified current turn.
 [Harness evidence](../agents/rex-chat-parity.md) · [Owner and lifecycle](0054-rex-terminals-running-a-known-agent-are-agents.md).
+
+### Drafts and repeated permission prompts
+
+A second tap after a desktop session switch builds a new Composer policy. The previous policy's refusal cannot protect that tap. Rex Chat binds a draft and its staged files to the retained Rex server identity, program and conversation. Moving to another verified conversation parks the old draft. Returning to the original conversation restores it. A process with no conversation yet can start its own first prompt. A manual history selection is read-only. The existing server continuity check determines whether a reconnection can reuse those identities.
+
+A real Claude Code 2.1.332 Bash prompt and a Codex 0.172.0 command prompt on Debian each had a unique open call in the foreground conversation's official record. Repeating the same command produced an identical visible request with a different call ID. The action keeps the call that generated its button, checks the current conversation and screen, then reads the record to its current end inside the block input queue. Each step of a question form repeats the check. Heeler holds the call after an uncertain acknowledgement. When it cannot identify one open request, the card opens the terminal. The same rule applies after a desktop answer. Droid and Devin retain their own target checks.
+
+These are client-side observations on revision 19. Rex terminal input has no condition on the displayed dialog or harness call ID. A program can change between the last read and processing a key. A protocol-level guarantee across independent desktop writers would require Rex or the harness to accept an input together with its expected foreground and prompt identity, then check and consume both atomically.

@@ -799,7 +799,7 @@ struct AgentChatSurfaceView: View {
                 retry: { startCheckAgain() },
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
-                reviewEdit: reviewOpenCodeEdit,
+                reviewEdit: openCodeEditAction,
                 addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
                 installDroidHook: console.capabilities(for: agent.hostID).offersDroidChatHook ? { showsDroidHook = true } : nil,
                 installAmp: {
@@ -827,6 +827,11 @@ struct AgentChatSurfaceView: View {
                 "Not Connected", systemImage: "wifi.slash",
                 description: Text("Chat shows the conversation once this Agent's Host connects."))
         }
+    }
+
+    private var openCodeEditAction: (() -> Void)? {
+        guard !console.capabilities(for: agent.hostID).readOnlyChatPrograms.contains(.opencode) else { return nil }
+        return { reviewOpenCodeEdit() }
     }
 
     private func reviewOpenCodeEdit() {
@@ -932,9 +937,9 @@ struct AgentChatSurfaceView: View {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }
-                if reason.offersOpenCodePluginEdit {
+                if reason.offersOpenCodePluginEdit, let openCodeEditAction {
                     banner.secondaryActionTitle = OpenCodePluginEdit.offerTitle
-                    banner.secondaryAction = reviewOpenCodeEdit
+                    banner.secondaryAction = openCodeEditAction
                 }
             case .departure:
                 banner.actionTitle = AgentDetailSurface.terminal.showTitle
@@ -955,9 +960,14 @@ struct AgentChatSurfaceView: View {
             return banner
         }
         if chat?.isReadingPickedConversation == true {
-            banners.append(Banner(id: "rex-picked-conversation", systemImage: "eye",
+            var banner = Banner(id: "rex-picked-conversation", systemImage: "eye",
                 text: AgentChatStore.rexReadOnlyConversation, actionTitle: AgentDetailSurface.terminal.showTitle,
-                action: { showAgentTerminal() }))
+                action: { showAgentTerminal() })
+            if offersCandidates {
+                banner.secondaryActionTitle = ChatCandidatePickerView.title
+                banner.secondaryAction = { isChoosingConversation = true }
+            }
+            banners.append(banner)
         }
         return banners
     }

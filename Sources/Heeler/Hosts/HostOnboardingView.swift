@@ -252,10 +252,13 @@ struct HostOnboardingView: View {
                 if capabilities.readsProjects {
                     Text("Open Files and Changes from an Agent. Open Skills from its keyboard.")
                 }
-                let names = ChatProgram.allCases.filter { capabilities.offersChat(for: $0) }
+                let names = ChatProgram.allCases.filter { capabilities.offersChat(for: $0) && !capabilities.readOnlyChatPrograms.contains($0) }
                     .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }
                 if !names.isEmpty {
                     LabeledContent("Native Chat", value: names.formatted(.list(type: .and)))
+                }
+                if capabilities.readOnlyChatPrograms.contains(.opencode) {
+                    LabeledContent("Read-Only Chat", value: "OpenCode")
                 }
                 Text("Use the terminal for other programs and unverified prompts. Manage splits and move blocks in Rex on the Host.")
                     .foregroundStyle(.secondary)

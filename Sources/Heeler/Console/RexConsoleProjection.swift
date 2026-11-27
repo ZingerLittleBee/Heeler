@@ -1276,7 +1276,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             list: { request in try await Self.reads(session).listFiles(request) },
             read: { range in try await Self.reads(session).readHostFileRange(range) },
             home: { try await Self.reads(session).hostHomeDirectory() },
-            queryDevin: { try await Self.reads(session).queryDevin($0) })
+            queryDevin: { try await Self.reads(session).queryDevin($0) },
+            queryOpenCode: { try await Self.reads(session).queryOpenCode($0) })
     }
 
     /// New Terminal starts in the account's home directory and browses with

@@ -169,7 +169,7 @@ struct RexChatTests {
         #expect(try await chatFiles.list(RemoteFileListingRequest(directory: folder))?.entries.count == 1)
         #expect(try await chatFiles.read(range).data == line)
         #expect(try await rig.projection.sessionFileReader()(range).data == line)
-        #expect(chatFiles.queryOpenCode == nil)
+        #expect(chatFiles.queryOpenCode != nil)
         #expect(try await rig.projection.modelContextWindowResolver()("gpt-5.5") == nil)
 
         let reads = try await rig.projection.session.withConnection { $0.transport.reads }
