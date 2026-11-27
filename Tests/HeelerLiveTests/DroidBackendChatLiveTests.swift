@@ -107,7 +107,6 @@ struct DroidBackendChatLiveTests {
                 }
                 try await checkDraftAfterNewSession(chat: chat, composer: composer, policy: policy, projection: projection,
                                                     pane: pane, previous: id)
-                try await checkHookSetup(lab: lab, projection: projection, pane: pane, session: id, directory: directory)
                 return
             }
             try await Task.sleep(for: .milliseconds(500))
@@ -353,10 +352,20 @@ struct DroidBackendChatLiveTests {
         print("Droid evidence \(projection.host.serverKind) stopped red, blue completed, late child reported once")
     }
 
-    /// Only a fixture SSH account may receive setup files from this test.
-    private func checkHookSetup(
-        lab: Lab, projection: any ConsoleHostProjection, pane: String, session: String, directory: String
-    ) async throws {
+    @Test(arguments: liveChatBackends([ServerKind.herdrCore, .tmux, .rex]))
+    func keepsExistingSettingsWhenRegisteringTheHookOrLaunchingDroid(_ kind: ServerKind) async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let (projection, pane) = try lab.connection(kind)
+        projection.start(isActive: true)
+        defer { projection.end() }
+        let deadline = ContinuousClock.now + .seconds(30)
+        while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        try #require(projection.agentsByPane[pane]?.agent.kind == "droid")
+        let session = try #require(lab.sessions[kind.rawValue])
+        let directory = lab.directories?[kind.rawValue] ?? lab.directory
         let files = projection.chatHostFiles()
         let home = try await files.home()
         try #require(URL(fileURLWithPath: home).standardizedFileURL.path == lab.factoryHome)
