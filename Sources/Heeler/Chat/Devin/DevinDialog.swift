@@ -141,7 +141,6 @@ enum DevinDialog {
               let first = indices.first(where: { $0 > title && (label(lines[$0]).hasPrefix("1 ") || label(lines[$0]).hasPrefix("· ")) }) else { return nil }
         let prompt = indices.filter { $0 >= title && $0 < first }.map { lines[$0] }.joined(separator: " ")
         let tab = lines[top].trimmingCharacters(in: CharacterSet(charactersIn: "─ "))
-            .replacingOccurrences(of: " ✓", with: "")
         let data = Array(indices.filter { $0 >= first && $0 < bottom })
         var options: [DialogOption] = []
         var pos = 0

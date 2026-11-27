@@ -38,8 +38,8 @@ struct DevinChatLiveTests {
         }
     }
 
-    private func withChat(_ lab: Lab, _ backend: ServerKind, body: (Live) async throws -> Void) async throws {
-        let expected = try #require(lab.sessions[backend.rawValue])
+    private func withChat(_ lab: Lab, _ backend: ServerKind, startsAtTrust: Bool = false, body: (Live) async throws -> Void) async throws {
+        let expected = lab.sessions[backend.rawValue]
         let (projection, pane) = try lab.connection(backend)
         projection.start(isActive: true)
         defer { projection.end() }
@@ -49,13 +49,18 @@ struct DevinChatLiveTests {
         }
         let agent = try #require(projection.agentsByPane[pane]?.agent, "No Agent in \(backend), \(projection.status)")
         try #require(agent.kind == "devin")
-        let binding = try #require(try await projection.chatInputTarget(paneID: pane, program: .devin), "Missing foreground process on \(backend)")
-        try #require(binding.sessionID == expected && binding.directory == lab.directory)
+        let binding = try await projection.chatInputTarget(paneID: pane, program: .devin)
+        if startsAtTrust {
+            try #require(binding?.sessionID == nil)
+        } else {
+            try #require(expected != nil && binding?.sessionID == expected && binding?.directory == lab.directory)
+        }
         let typing = projection.checkedChatTyping(at: pane)
         var io = typing?.blockedScreen ?? .init(
             readScreen: { try await projection.readAgentScreen(pane) },
             sendKeys: { try await projection.sendAgentKeys($0, to: pane) },
             paste: { try await projection.pasteIntoAgent($0, paneID: pane) })
+        io.hostName = projection.host.name
         io.droidTarget = { try await projection.chatInputTarget(paneID: pane, program: .devin) }
         var source = AgentChatSource(hostID: projection.host.id, socketLocation: .namedSession("lab"), files: projection.chatHostFiles(),
             agentInfo: { try await projection.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
@@ -69,7 +74,9 @@ struct DevinChatLiveTests {
         defer { chat.end() }
         await chat.step()
         chat.show()
-        try #require(chat.displayedDroidTarget == binding && chat.droidSessionID == expected, "Chat did not follow \(expected): \(chat.conversation.phase)")
+        if !startsAtTrust {
+            try #require(chat.displayedDroidTarget == binding && chat.droidSessionID == expected, "Chat failed to bind: \(chat.conversation.phase)")
+        }
         let sender = projection.checkedComposerSend(for: pane, keepingTo: TerminalCorePin(joined: projection.inventoryCore), live: { projection })
         let composer = AgentComposerStore(target: pane, checkedSend: sender) { message in
             try #require(backend == .herdrTUI)
@@ -216,6 +223,40 @@ struct DevinChatLiveTests {
         }
     }
 
+    /// A fresh account-data directory keeps each startup independent. Rex
+    /// Unknown owns no Chat keys, including at trust.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"] != nil),
+          arguments: [ServerKind.herdrCore, .tmux, .rex])
+    func firstTrustOverTheBackendTypingPath(_ backend: ServerKind) async throws {
+        let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"])
+        let path = URL(fileURLWithPath: folder).appendingPathComponent(backend.rawValue + ".json")
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: path))
+        try await withChat(lab, backend, startsAtTrust: true) { live in
+            try await live.wait { try await DevinDialog.parse(live.io.readScreen()).dialog?.subject.workspacePath == lab.directory }
+            if backend == .rex, live.chat.agent.status == .unknown {
+                #expect(live.chat.displayedDroidTarget == nil)
+                if case .card = live.chat.blocked.content { Issue.record("Unknown Rex offered a trust choice") }
+                // The user confirms the displayed directory from the terminal.
+                let screen = try await live.io.readScreen()
+                let dialog = try #require(DevinDialog.parse(screen).dialog)
+                try #require(dialog.subject.workspacePath == lab.directory && dialog.focus.focusedOrdinal == 1)
+                try await live.projection.sendAgentKeys(["enter"], to: live.pane)
+            } else {
+                try await live.wait {
+                    guard case .card(let card) = live.chat.blocked.content else { return false }
+                    return card.dialog.kind == .devinWorkspaceTrust && card.target?.directory == lab.directory
+                }
+                guard case .card(let card) = live.chat.blocked.content else { throw TransportError.cancelled }
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+            }
+            try await live.wait { live.chat.droidSessionID != nil }
+            live.composer.bindDroidDraft(to: live.chat.droidSessionID, program: .devin)
+            let marker = "FRESH_" + UUID().uuidString.prefix(8)
+            try await live.send("Reply with exactly " + marker + ". Do not use tools.")
+            try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: marker)) } }
+        }
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"] != nil))
     func reopensTheSameBackgroundShellsAndChildOverSSH() async throws {
         struct Fixture: Decodable {
@@ -270,7 +311,8 @@ struct DevinChatLiveTests {
                 try await live.send("Count to 1000 in words, on individual lines, without using tools. Begin with " + UUID().uuidString.prefix(8) + ".")
                 try await live.wait {
                     let turn = live.chat.conversation.transcript.turns.last
-                    let verdict = try await check(context())\n                    return turn != nil && turn?.ending == nil && verdict == .press
+                    let verdict = try await check(context())
+                    return turn != nil && turn?.ending == nil && verdict == .press
                 }
                 if let previous { try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn)) }
                 let stop = plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())

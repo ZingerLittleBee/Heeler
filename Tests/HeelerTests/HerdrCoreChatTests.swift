@@ -289,7 +289,7 @@ struct HerdrCoreChatTests {
             #expect(capabilities.chat)
             for program in ChatProgram.allCases {
                 #expect(capabilities.offersChat(for: program) == offered.contains(program), "\(program) on \(kernel)")
-                #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
+                #expect(HostCapabilities(serverKind: .herdrTUI, platform: .posix).offersChat(for: program))
             }
         }
     }

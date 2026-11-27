@@ -31,11 +31,12 @@ enum BlockedRequestMatch {
             let submitted = rendered.split(whereSeparator: \.isWhitespace)
             return request.toolName == "exit_plan_mode" && !visible.isEmpty && submitted == visible
         case .devinQuestion:
-            return request.toolName == "ask_user_question" && request.questions.contains { question in
+            guard request.toolName == "ask_user_question" else { return false }
+            return request.questions.filter { question in
                 let shown = dialog.options.filter { $0.role == .answer }
                 return question.text == subject.question && question.options.count == shown.count
                     && zip(question.options, shown).allSatisfy { $0.label == $1.label && $0.detail == $1.detail }
-            }
+            }.count == 1
         case .devinPermission:
             guard request.toolName == subject.toolName else { return false }
             if subject.command != nil {

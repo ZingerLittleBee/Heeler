@@ -85,11 +85,18 @@ private struct BlockedDialogCard: View {
             && ([.devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind) || card.request?.callID != nil)))
     }
     private var hasText: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var headerDetail: String? {
+        if dialog.kind == .devinQuestion, let questions = card.request?.questions, questions.count > 1,
+           let index = questions.firstIndex(where: { $0.text == dialog.subject.question }) {
+            return String(localized: "\(index + 1) of \(questions.count)")
+        }
+        return dialog.positionLabel ?? dialog.pageLabel
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                symbol: dialog.symbol, title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
+                symbol: dialog.symbol, title: dialog.cardTitle, detail: headerDetail,
                 isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: scrollingMaxHeight) {
@@ -668,7 +675,7 @@ private struct BlockedDialogCard: View {
             noteEntry
         case .claudeQuestion where dialog.subject.showsPreviews:
             previewAnswer
-        case .claudeQuestion, .agyQuestion, .droidQuestion, .droidSpecFeedback:
+        case .claudeQuestion, .agyQuestion, .devinQuestion, .droidQuestion, .droidSpecFeedback:
             // agy's `Write-in...` names a row, not what to type: its fields
             // say what the form's pages say. Claude's card keeps the row
             // label Claude draws.
@@ -683,7 +690,7 @@ private struct BlockedDialogCard: View {
             {
                 HStack(spacing: 8) {
                     BlockedTextField(
-                        placeholder: dialog.kind == .agyQuestion
+                        placeholder: [.agyQuestion, .devinQuestion].contains(dialog.kind)
                             ? String(localized: "Type your own answer") : field.label,
                         text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
@@ -953,7 +960,7 @@ private extension BlockedDialog {
     var cardTitle: String {
         switch kind {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
-            .agyQuestion:
+            .agyQuestion, .devinQuestion:
             String(localized: "Question")
         case .codexAsyncCollapsed: String(localized: "Questions")
         case .ompApproval: subject.toolName.map { String(localized: "Allow \($0)") } ?? String(localized: "Allow Tool")
@@ -1029,6 +1036,7 @@ extension BlockedDialog {
         case .ompApproval, .grokPermission: String(localized: "Deny")
         case .openCodePermission: String(localized: "Reject")
         case .openCodeQuestion: String(localized: "Dismiss")
+        case .devinQuestion: String(localized: "Cancel Question")
         case .agyQuestion:
             String(localized: "Skip", comment: "On an Antigravity CLI question card: skips the question shown")
         default: String(localized: "Stop")
