@@ -131,3 +131,23 @@ the answer reaches Heeler. Its public evidence file records the paste,
 Enter and dropped-response counts. The private fixture contains an SSH
 credential. The test checks Edit Draft, both staged attachments, the actual
 Pi conversation, the unaffected peer and both desktop size owners.
+
+### Repeated approval with a lost response
+
+Use a separate disposable macOS or Linux Claude Code or Codex A/B fixture. Both clients must
+have different official transcripts in the same working directory. Seed A with one
+`REX_LAB_APPROVE_<8 uppercase hex digits>` prompt through the existing loopback Chat provider.
+While its command approval is on screen, read the call ID from A's official transcript.
+Claude records `message.content[].id` on the matching `tool_use`. Codex records
+`payload.call_id` on the matching `response_item` with type `function_call`.
+
+Run `scripts/fixtures/rex-lost-receipt.py` on the Host with `--fixture <private fixture>`,
+`--output <new private directory>`, `--approval-marker <marker>` and `--call-id <ID>`.
+Give the Simulator the resulting private `fixture.json` through `HEELER_REX_APPROVAL_RECEIPT_LAB`
+and select `HeelerLiveTests/RexApprovalReceiptLiveTests`. The first Store action answers A’s
+card. The proxy forwards the option, suppresses its successful response and keeps the other
+requests on that connection live. The test repeats the same card while the first invocation is
+acting, then uses the same card once more after the transport deadline. It counts the actual
+Rex writes to each block and the official tool results for that call ID, reads the command's
+output file and checks both desktop size owners. The proxy's `evidence.json` contains counts
+and block IDs. Only the private fixture contains the SSH credential.

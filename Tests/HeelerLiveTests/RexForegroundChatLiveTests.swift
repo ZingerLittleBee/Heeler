@@ -10,6 +10,10 @@ import Testing
 @MainActor
 @Suite("Foreground Chat on a private Rex Host", .serialized, .timeLimit(.minutes(3)))
 struct RexForegroundChatLiveTests {
+    private struct ApprovalReceipt: Decodable {
+        let evidence, marker, callID: String
+    }
+
     private struct Fixture: Decodable {
         let port: Int
         let user, seed, fingerprint, rexSocket, rexSession, rexBlock: String
@@ -18,6 +22,7 @@ struct RexForegroundChatLiveTests {
         let firstID, peerID: String?
         let nativeControls, nativePermissions: Bool?
         let receiptFaultBlock: String?
+        let approvalReceipt: ApprovalReceipt?
 
         func connect() async throws -> RexSSHTransport {
             let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: seed)))
@@ -35,7 +40,7 @@ struct RexForegroundChatLiveTests {
         try await run(fixtureKey: "HEELER_REX_FOREGROUND_CHAT_LAB", loseReceipt: false)
     }
 
-    fileprivate func run(fixtureKey: String, loseReceipt: Bool) async throws {
+    fileprivate func run(fixtureKey: String, loseReceipt: Bool, loseApprovalReceipt: Bool = false) async throws {
         let path = try #require(ProcessInfo.processInfo.environment[fixtureKey])
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         try #require([ChatProgram.pi, .omp, .grok, .claude, .codex].contains(fixture.program))
@@ -46,7 +51,7 @@ struct RexForegroundChatLiveTests {
         }
         let observer = try await fixture.connect()
         do {
-            try await check(fixture, desktop: observer.control, loseReceipt: loseReceipt)
+            try await check(fixture, desktop: observer.control, loseReceipt: loseReceipt, loseApprovalReceipt: loseApprovalReceipt)
             await observer.close()
         } catch {
             await observer.close()
@@ -54,7 +59,7 @@ struct RexForegroundChatLiveTests {
         }
     }
 
-    private func check(_ fixture: Fixture, desktop: RexControlLink, loseReceipt: Bool) async throws {
+    private func check(_ fixture: Fixture, desktop: RexControlLink, loseReceipt: Bool, loseApprovalReceipt: Bool) async throws {
         let first = RexPaneAddress(sessionID: fixture.rexSession, blockID: fixture.rexBlock)
         let peer = RexPaneAddress(sessionID: fixture.peerSession, blockID: fixture.peerBlock)
         _ = try await desktop.call("session.attach_all", payload: JSONValue.object(["event_scope": .string("all")]))
@@ -125,6 +130,14 @@ struct RexForegroundChatLiveTests {
         await chat.step()
         let followingFirst = chat.conversation.phase == .following(path: fixture.firstFile)
         try #require(followingFirst)
+        if loseApprovalReceipt {
+            let probe = try #require(fixture.approvalReceipt)
+            try #require((program == .claude || program == .codex) && fixture.receiptFaultBlock == fixture.rexBlock)
+            try await checkRepeatedApproval(probe, fixture: fixture, chat: chat, projection: projection, pane: pane)
+            let firstSize = try await size(first), peerSize = try await size(peer)
+            #expect(firstSize == before && peerSize == peerBefore)
+            return
+        }
         let checked = projection.checkedComposerSend(for: pane, keepingTo: TerminalCorePin(joined: projection.inventoryCore), live: { projection })
         let sender = try #require(checked)
         let composer = AgentComposerStore(target: pane, checkedSend: sender) { _ in
@@ -735,5 +748,94 @@ private extension RexForegroundChatLiveTests {
 struct RexLostReceiptLiveTests {
     @Test func editDraftRecoversTheUploadedFilesAfterRexAcceptedEnter() async throws {
         try await RexForegroundChatLiveTests().run(fixtureKey: "HEELER_REX_RECEIPT_LAB", loseReceipt: true)
+    }
+}
+
+@MainActor
+@Suite("Rex approval with a lost response", .timeLimit(.minutes(2)),
+       .enabled(if: ProcessInfo.processInfo.environment["HEELER_REX_APPROVAL_RECEIPT_LAB"] != nil))
+struct RexApprovalReceiptLiveTests {
+    @Test func repeatingOneCardSendsOneAnswerWhenRexLosesItsResponse() async throws {
+        try await RexForegroundChatLiveTests().run(
+            fixtureKey: "HEELER_REX_APPROVAL_RECEIPT_LAB", loseReceipt: false, loseApprovalReceipt: true)
+    }
+}
+
+private extension RexForegroundChatLiveTests {
+    private struct ApprovalWireCounts: Decodable {
+        let targetWrites, peerWrites, successfulTargetResponses, droppedResponses: Int
+    }
+
+    private func checkRepeatedApproval(
+        _ probe: ApprovalReceipt, fixture: Fixture, chat: AgentChatStore,
+        projection: RexConsoleProjection, pane: String
+    ) async throws {
+        let files = projection.chatHostFiles()
+        func read(_ path: String) async throws -> Data {
+            let size = try #require(try await files.status(path)?.size)
+            try #require(size > 0 && size <= 2 << 20)
+            return try #require(try await files.read(path: path, from: 0, to: size, chunk: 64 << 10))
+        }
+        func counts() async throws -> ApprovalWireCounts {
+            let data = try await read(probe.evidence)
+            return try JSONDecoder().decode(ApprovalWireCounts.self, from: data)
+        }
+        let effect = fixture.directory + "/heeler-lab-" + probe.marker.lowercased() + ".txt"
+        let existed = try await files.status(effect)
+        try #require(existed == nil)
+        chat.blocked.show()
+        defer { chat.blocked.hide() }
+        var displayed: BlockedCard?
+        try await wait(for: "the official pending tool call on the native card") {
+            if let agent = projection.agentsByPane[pane]?.agent { chat.agentDidChange(agent) }
+            await chat.step()
+            await chat.blocked.refresh()
+            guard case .card(let card) = chat.blocked.content,
+                  card.request?.callID == probe.callID, card.request?.summary.contains(probe.marker) == true
+            else { return false }
+            displayed = card
+            return true
+        }
+        let card = try #require(displayed)
+        let choice = try #require(card.dialog.options.first { $0.role == .approve && $0.number == 1 })
+        let action = DialogAction.choose(ordinal: choice.ordinal)
+        let first = Task { @MainActor in await chat.blocked.perform(action, shownCard: card) }
+        defer { first.cancel() }
+        try await wait(for: "the real Rex server to accept the answer and the proxy to suppress its response") {
+            try await counts().droppedResponses == 1
+        }
+        // The first action still awaits its real transport deadline. This second
+        // invocation receives the very same stored snapshot from the UI.
+        try #require(chat.blocked.progress == .acting)
+        await chat.blocked.perform(action, shownCard: card)
+        await first.value
+        // A third use of the captured card follows the missing acknowledgement.
+        await chat.blocked.perform(action, shownCard: card)
+        try await wait(for: "the approved command's independently readable effect") {
+            try await files.read(path: effect, from: 0, to: UInt64(probe.marker.utf8.count), chunk: 256) == Data(probe.marker.utf8)
+        }
+        func resultCount(_ data: Data) throws -> Int {
+            var completions = 0
+            for line in data.split(separator: 10) {
+                guard let row = try JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
+                if fixture.program == .codex, row["type"] as? String == "response_item", let item = row["payload"] as? [String: Any],
+                   item["type"] as? String == "function_call_output", item["call_id"] as? String == probe.callID { completions += 1 }
+                if fixture.program == .claude, row["type"] as? String == "user", let message = row["message"] as? [String: Any],
+                   let items = message["content"] as? [[String: Any]] {
+                    completions += items.filter { $0["type"] as? String == "tool_result" && $0["tool_use_id"] as? String == probe.callID }.count
+                }
+            }
+            return completions
+        }
+        try await wait(for: "the official result bearing that one call ID") {
+            try await resultCount(read(fixture.firstFile)) > 0
+        }
+        let completions = try await resultCount(read(fixture.firstFile))
+        let peerFile = try await read(fixture.peerFile)
+        let wire = try await counts()
+        #expect(completions == 1)
+        #expect(wire.targetWrites == 1 && wire.successfulTargetResponses == 1 && wire.droppedResponses == 1)
+        #expect(wire.peerWrites == 0 && peerFile.range(of: Data(probe.marker.utf8)) == nil)
+        #expect(peerFile.range(of: Data(probe.callID.utf8)) == nil)
     }
 }

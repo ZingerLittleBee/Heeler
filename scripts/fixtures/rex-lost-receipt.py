@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drop one real Enter response on a disposable Rex control socket."""
+"""Drop one accepted Enter or approval response on a disposable Rex control socket."""
 import argparse
 import asyncio
 import json
@@ -29,14 +29,25 @@ async def main(args):
     config = json.loads(args.fixture.read_text())
     target = config["rexBlock"]
     record = {"target": target, "peer": config["peerBlock"], "matchingPastes": 0, "enterRequests": 0, "droppedResponses": 0}
-    assert target != record["peer"] and config["program"] == "pi"
+    approval = args.approval_marker is not None
+    assert target != record["peer"]
+    if approval:
+        assert config["program"] in ("claude", "codex")
+        assert re.fullmatch(r"REX_LAB_APPROVE_[0-9A-F]{8}", args.approval_marker)
+        assert re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", args.call_id or "")
+        record = {"target": target, "peer": config["peerBlock"], "targetWrites": 0, "peerWrites": 0,
+                  "successfulTargetResponses": 0, "droppedResponses": 0}
+    else:
+        assert config["program"] == "pi" and args.call_id is None
     source = Path(config["rexSocket"])
     assert any(part.startswith("heeler-lab-") for part in source.parts)
     args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
     socket = args.output / "receipt.sock"
 
     def save():
-        (args.output / "evidence.json").write_text(json.dumps(record, indent=2) + "\n")
+        scratch = args.output / "evidence.tmp"
+        scratch.write_text(json.dumps(record, indent=2) + "\n")
+        scratch.replace(args.output / "evidence.json")
 
     async def serve(client, to_client):
         upstream, to_server = await asyncio.open_unix_connection(source)
@@ -52,7 +63,19 @@ async def main(args):
                 while True:
                     data, message = await frame(reader)
                     payload = message.get("payload", {}) or {}
-                    if from_client and payload.get("block_id") == target:
+                    if approval and from_client and message.get("method", "").endswith(".write"):
+                        block = payload.get("block_id")
+                        if block == record["peer"]:
+                            record["peerWrites"] += 1
+                        elif block == target:
+                            record["targetWrites"] += 1
+                            if record["targetWrites"] == 1:
+                                key = payload.get("args", {}).get("data", "")
+                                if key not in ("1", "\x1b[49u", "\x1b[49;1u"):
+                                    raise ValueError("The first target write was not option one")
+                                pending = message["id"]
+                        save()
+                    if not approval and from_client and payload.get("block_id") == target:
                         method = message.get("method", "")
                         if method == "block.event":
                             event = payload.get("event", {})
@@ -68,8 +91,14 @@ async def main(args):
                             save()
                     if not from_client and pending and message.get("id") == pending and message.get("type") == "response":
                         if message.get("error") is not None:
-                            raise ValueError("Rex did not accept the test Enter")
+                            raise ValueError("Rex did not accept the test input")
                         record["droppedResponses"] += 1
+                        if approval:
+                            record["successfulTargetResponses"] += 1
+                            pending = None
+                            save()
+                            # Keep the control link live while Heeler's input deadline expires.
+                            continue
                         save()
                         return
                     writer.write(data)
@@ -92,7 +121,11 @@ async def main(args):
     os.chmod(socket, 0o600)
     save()
     path = args.output / "fixture.json"
-    path.write_text(json.dumps(dict(config, rexSocket=str(socket), receiptFaultBlock=target)) + "\n")
+    config.update(rexSocket=str(socket), receiptFaultBlock=target)
+    if approval:
+        config["approvalReceipt"] = {"evidence": str(args.output / "evidence.json"),
+                                     "marker": args.approval_marker, "callID": args.call_id}
+    path.write_text(json.dumps(config) + "\n")
     path.chmod(0o600)
     async with listener:
         await listener.serve_forever()
@@ -102,4 +135,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--approval-marker", help="unique marker already pending on an isolated Claude or Codex client")
+    parser.add_argument("--call-id", help="independent call ID of that official pending request")
     asyncio.run(main(parser.parse_args()))
