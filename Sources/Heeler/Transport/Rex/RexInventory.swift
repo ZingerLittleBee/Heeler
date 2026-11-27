@@ -261,12 +261,21 @@ struct RexInventory: Sendable, Equatable {
         var detached: [Terminal]
 
         var terminals: [Terminal] { windows.flatMap(\.terminals) + detached }
+
+        /// A launch with no directory inherits the selected terminal in the active window.
+        var launchDirectory: String? {
+            let active = windows.first { $0.id == activeWindowID }
+            let focused = active?.terminals.first { $0.blockID == active?.focusedBlockID }
+            return focused?.details.directory ?? active?.terminals.compactMap(\.details.directory).first
+                ?? terminals.compactMap(\.details.directory).first
+        }
     }
 
     struct Window: Sendable, Equatable {
         let id: String
         /// Nil when the window carries the label Rex gives every new window.
         var label: String?
+        var focusedBlockID: String?
         var terminals: [Terminal]
     }
 
@@ -360,6 +369,7 @@ enum RexInventoryWire {
     struct ViewWindow: Sendable, Equatable {
         let id: String
         let label: String?
+        var focusedBlockID: String?
         /// The window's blocks in reading order.
         let blocks: [BlockFacts]
 
@@ -528,8 +538,10 @@ enum RexInventoryWire {
 
     private static func window(_ value: JSONValue) -> ViewWindow? {
         guard let id = value["window_id"]?.stringValue else { return nil }
+        let label = value["label"]?.stringValue
+        let focusedBlock = value["focused_block_id"]?.stringValue
         guard case .array(let layers)? = value["layers"] else {
-            return ViewWindow(id: id, label: value["label"]?.stringValue, blocks: [])
+            return ViewWindow(id: id, label: label, focusedBlockID: focusedBlock, blocks: [])
         }
         // The tiled layout reads first, then each floating layer as listed.
         let ordered =
@@ -549,7 +561,7 @@ enum RexInventoryWire {
                 blocks.append(block)
             }
         }
-        return ViewWindow(id: id, label: value["label"]?.stringValue, blocks: blocks)
+        return ViewWindow(id: id, label: label, focusedBlockID: focusedBlock, blocks: blocks)
     }
 
     /// A layout tree's blocks, the part before each split ahead of the part after.

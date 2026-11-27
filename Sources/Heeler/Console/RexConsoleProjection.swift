@@ -824,10 +824,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
         if !asked.isEmpty { return asked }
-        guard let workspace = inventory?.sessions.first(where: { $0.id == workspaceID }) else { return "" }
-        let active = workspace.windows.first { $0.id == workspace.activeWindowID }
-        return (active?.terminals ?? []).compactMap(\.details.directory).first
-            ?? workspace.terminals.compactMap(\.details.directory).first ?? ""
+        return inventory?.sessions.first { $0.id == workspaceID }?.launchDirectory ?? ""
     }
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
