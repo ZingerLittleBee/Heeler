@@ -497,9 +497,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func antigravityForeground(in paneID: String) -> Int? {
         guard kernel == HerdrCoreLocator.linuxKernel, status == .connected, !isAwaitingSnapshot,
               let address = RexPaneAddress(paneID: paneID), let details = listedDetails(at: address),
-              RexAgentRule.agentKind(in: details) == ChatProgram.agy.rawValue,
-              RexAgentRule.status(of: details, heldBy: ChatProgram.agy.rawValue) != .unknown else { return nil }
-        return details.processID
+              RexAgentRule.agentKind(in: details) == ChatProgram.agy.rawValue else { return nil }
+        switch RexAgentRule.status(of: details, heldBy: ChatProgram.agy.rawValue) {
+        case .idle, .done, .working: return details.processID
+        default: return nil
+        }
     }
 
     /// One exec from the foreground Rex names, then the program's own files.

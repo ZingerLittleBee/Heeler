@@ -2579,6 +2579,14 @@ final class ConsoleStore {
     }
 
     private func rebuild() {
+        for (id, binding) in rexAntigravityBindings {
+            guard let rex = projections[id.hostID] as? RexConsoleProjection,
+                  rex.server?.instanceID == binding.instance,
+                  rex.antigravityForeground(in: id.paneID) == binding.pid else {
+                rexAntigravityBindings.removeValue(forKey: id)
+                continue
+            }
+        }
         rebuildCoalesceTask?.cancel()
         rebuildCoalesceTask = nil
         #if DEBUG

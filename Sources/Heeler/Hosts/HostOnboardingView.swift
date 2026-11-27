@@ -252,10 +252,16 @@ struct HostOnboardingView: View {
                 if capabilities.readsProjects {
                     Text("Open Files and Changes from an Agent. Open Skills from its keyboard.")
                 }
-                let names = ChatProgram.allCases.filter { capabilities.offersChat(for: $0) && !capabilities.readOnlyChatPrograms.contains($0) }
+                let names = ChatProgram.allCases.filter {
+                    capabilities.offersChat(for: $0) && !capabilities.readOnlyChatPrograms.contains($0)
+                        && !($0 == .agy && capabilities.requiresBoundAntigravity)
+                }
                     .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }
                 if !names.isEmpty {
                     LabeledContent("Native Chat", value: names.formatted(.list(type: .and)))
+                }
+                if capabilities.requiresBoundAntigravity {
+                    Text("Antigravity opens text Chat after its first conversation is recorded. Use its terminal for the first message, commands, attachments and approval dialogs.")
                 }
                 let readOnly = ChatProgram.allCases.filter(capabilities.readOnlyChatPrograms.contains)
                     .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }
