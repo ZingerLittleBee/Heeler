@@ -142,6 +142,20 @@ struct DroidChatTests {
         #expect(try DroidDialog.plan(.choose(ordinal: 3), spec, callID: "plan").keys == ["3"])
     }
 
+    @Test func anOfflineProviderReportsItsReasonWithoutAcknowledgingAnotherPrompt() throws {
+        let lines = JSONLLineFramer.lines(in: Data(try ChatFixture.text("droid/offline.jsonl").utf8))
+        var reducer = DroidTranscriptReducer()
+        reducer.append(lines)
+        let transcript = reducer.transcript(.init())
+        #expect(transcript.turns.map(\.ending) == [.failed])
+        #expect(transcript.recordedPrompts.map(\.text) == ["Reply with LOCAL_OFFLINE_MARKER. No tools."])
+        guard case .notice(let notice) = transcript.entries.last?.content else {
+            Issue.record("Missing Factory's visible provider notice")
+            return
+        }
+        #expect(notice.title.hasPrefix("Unable to reach the server."))
+    }
+
     @Test func lateTaskResultsMergeByIdentityWithoutOpeningUserTurns() throws {
         let data = Data(try ChatFixture.text("droid/background.jsonl").utf8)
         let lines = JSONLLineFramer.lines(in: data)

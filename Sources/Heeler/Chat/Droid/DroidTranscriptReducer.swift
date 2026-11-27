@@ -14,6 +14,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
         var role: String
         var blocks: [ClaudeContentBlock]
         var model, effort: String?
+        var systemNotice: String?
         var background: DroidBackgroundEvent?
         var arguments: [String: Arguments] = [:]
 
@@ -45,20 +46,29 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
         }
 
         enum CodingKeys: String, CodingKey {
-            case role, visibility, hookEventName, content, modelId, reasoningEffort
+            case role, visibility, hookEventName, content, modelId, reasoningEffort, systemNotice
         }
 
         init(from decoder: any Decoder) throws {
             let fields = try decoder.container(keyedBy: CodingKeys.self)
             role = try fields.decode(String.self, forKey: .role)
-            if role == "user", (try? fields.decode(String.self, forKey: .visibility)) == "llm_only",
+            let visibility = try fields.decodeIfPresent(String.self, forKey: .visibility)
+            if role == "user", (try? fields.decode(Bool.self, forKey: .systemNotice)) == true,
+               !fields.contains(.hookEventName), visibility == "user_only" || visibility == nil {
+                let parts = try fields.decode([Arguments].self, forKey: .content)
+                let text = parts.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n")
+                if !text.isEmpty { systemNotice = text }
+                blocks = []
+                return
+            }
+            if role == "user", visibility == "llm_only",
                !fields.contains(.hookEventName), let notes = try? fields.decode([Arguments].self, forKey: .content),
                notes.count == 1, notes[0].type == "text", let note = notes[0].text {
                 background = DroidBackgroundEvent(note)
             }
             // Startup hooks and injected context are separate user-role records.
             guard role == "user" || role == "assistant",
-                  try fields.decodeIfPresent(String.self, forKey: .visibility) == nil,
+                  visibility == nil,
                   !fields.contains(.hookEventName) else {
                 blocks = []
                 return
@@ -105,7 +115,7 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
             case "session_start" where line.offset == 0:
                 title = record.title
                 directory = record.cwd
-            case "message" where record.message?.blocks.isEmpty == false || record.message?.background != nil,
+            case "message" where record.message?.blocks.isEmpty == false || record.message?.background != nil || record.message?.systemNotice != nil,
                  "agent_turn_outcome" where record.turnId != nil:
                 records[line.offset] = (record, line.length)
             default: continue
@@ -133,13 +143,18 @@ struct DroidTranscriptReducer: ChatTranscriptReducer {
                     switch record.reason {
                     case "completed": transcript.turns[index].ending = .completed
                     case "cancelled": transcript.turns[index].ending = .interrupted
-                    case "error", "failed": transcript.turns[index].ending = .failed
+                    case "error", "failed", "model_provider_unreachable": transcript.turns[index].ending = .failed
                     default: break
                     }
                 }
                 continue
             }
             guard let message = record.message, let id = record.id, seenMessages.insert(id).inserted else { continue }
+            if let notice = message.systemNotice {
+                transcript.entries.append(.init(id: .init("droid:" + id), sourceOffset: offset,
+                                                content: .notice(.init(kind: .system, title: notice))))
+                continue
+            }
             if let event = message.background {
                 let index = work.firstIndex { item in
                     switch event.target {
