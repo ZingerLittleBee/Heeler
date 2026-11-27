@@ -56,8 +56,9 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   Agent create a background window or a new session. Only a visible terminal
   claims the block's size, then returns it when the terminal leaves. Chat
   reads over SSH and types through the control link (ADRs 0049 to 0056).
-  For project operations, per-platform Chat support and unavailable
-  operations, consult [Rex compatibility](docs/agents/rex-compatibility.md).
+  For versioned protocol behavior, consult [Rex compatibility](docs/agents/rex-compatibility.md).
+  For project operations, Chat controls and Host services on each system,
+  use the [daily acceptance matrix](docs/agents/rex-daily-acceptance.md).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

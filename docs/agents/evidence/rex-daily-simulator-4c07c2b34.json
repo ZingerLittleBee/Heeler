@@ -1,0 +1,1913 @@
+{
+  "baseline": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "appDebugDylibSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+  "recordedAt": "2026-11-28T00:14:38.325+08:00",
+  "archivedAt": "2026-11-28T00:17:20.461+08:00",
+  "evidenceTimeRange": [
+    "2026-11-27T23:50:11.500+08:00",
+    "2026-11-28T00:14:38.325+08:00"
+  ],
+  "runStatus": "paused by request",
+  "devices": {
+    "phone": {
+      "source": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "dylibSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+      "shortVersion": "0.1.18",
+      "bundleVersion": "43",
+      "runtime": "27.0",
+      "runtimeBuild": "24A434",
+      "signatureVerified": true,
+      "installedDigestVerified": true,
+      "startedAt": "2026-11-27T23:50:11.500+08:00",
+      "completedAt": "2026-11-27T23:52:46.394+08:00"
+    },
+    "pad": {
+      "source": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "dylibSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+      "shortVersion": "0.1.18",
+      "bundleVersion": "43",
+      "runtime": "27.0",
+      "runtimeBuild": "24A434",
+      "signatureVerified": true,
+      "installedDigestVerified": true,
+      "startedAt": "2026-11-27T23:50:11.508+08:00",
+      "completedAt": "2026-11-27T23:52:45.406+08:00"
+    }
+  },
+  "versions": {
+    "date": "2026-11-27",
+    "xcode": "27.2 (27B52)",
+    "macOS": "27.0.1 (26A434)",
+    "darwinRex": "0.1.0-preview.25",
+    "rexSource": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+    "rexServerAPI": 24,
+    "darwinHerdrTUI": "0.9.5",
+    "debian": "12.15 bookworm arm64",
+    "linuxKernel": "7.2.12-orbstack-00394-gbecdd6130068",
+    "linuxRex": "0.1.0-preview.25",
+    "linuxHerdrTUI": "0.9.5",
+    "linuxOpenSSH": "9.2",
+    "bannerPi": "1.5.2",
+    "observationDates": [
+      "2026-11-27",
+      "2026-11-28"
+    ]
+  },
+  "priorCandidateReceipt": "rex-daily-simulator-86f260495.json",
+  "method": "User-visible Heeler controls on two assigned Simulators with previously trusted SSH Device Keys. The lab-only Rex inventory, terminal grid, repository and launch recorder supplied independent observations. Each PASS is one completed end-to-end action on its named Host. Interrupted acceptance rows retain their completed substeps.",
+  "observations": [
+    {
+      "id": "phone-host",
+      "case": "Reconnect the saved Host and inspect the negotiated capability screen",
+      "device": "phone",
+      "host": "Heeler Lab Rex Only (Debian, Rex only)",
+      "status": "PASS",
+      "observation": "The saved Rex Server connected with all four successful checks and negotiated revision 19. OpenCode and Amp were displayed under Read-Only Chat. The 390 pt iPhone also displayed the Antigravity guidance.",
+      "actionTimeRange": [
+        "2026-11-28T00:03:49.550+08:00",
+        "2026-11-28T00:05:11.723+08:00"
+      ],
+      "receipts": {
+        "negotiatedRevision": 19,
+        "preflight": [
+          "SSH connection",
+          "Rex installed",
+          "Rex server running",
+          "protocol compatible"
+        ],
+        "system": "Host System, Linux",
+        "visibleCapabilities": [
+          {
+            "text": "Native Chat, Claude Code, Codex, Pi, OMP, Grok Build, Droid, and Devin CLI",
+            "frame": [
+              16,
+              309.3,
+              358,
+              96.7
+            ]
+          },
+          {
+            "text": "Read-Only Chat, OpenCode and Amp",
+            "frame": [
+              16,
+              522.3,
+              358,
+              52
+            ]
+          }
+        ]
+      },
+      "localSources": [
+        {
+          "path": "phone/e-4c07c2b3-linux-reconnect.json",
+          "sha256": "c02c639cf331e2fd957a539a52db6825896879bf6ec2b49a8532a24880ed9373"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-features-receipt.json",
+          "sha256": "90360e7802b71308a0f5c8b284f45d47edb8432a21a39cbab04f5c5bf7748917"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-features-visible.png",
+          "sha256": "a4fbf4f5c36e70cb1a8ca054c6392a78b04eed5a655a25e219ab3dea9023845a"
+        }
+      ]
+    },
+    {
+      "id": "phone-original-shell",
+      "case": "Open the original shell, verify a new marker with pwd and return its size",
+      "device": "phone",
+      "host": "Heeler Lab Rex Only (Debian, Rex only)",
+      "status": "PASS",
+      "observation": "The device sent one unique marker and pwd to the original shell. Independent Rex capture matched the marker and following process directory. The same PID had no size owner when the device left.",
+      "actionTimeRange": [
+        "2026-11-28T00:05:40.744+08:00",
+        "2026-11-28T00:08:28.683+08:00"
+      ],
+      "receipts": {
+        "before": {
+          "at": "2026-11-28T00:05:40.744+08:00",
+          "target": {
+            "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "program": "bash",
+            "pid": 86,
+            "size": {
+              "columns": 60,
+              "rows": 50,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": []
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          },
+          "marker": "HEELER_E_4C07C2B3_LINUX"
+        },
+        "opened": {
+          "at": "2026-11-28T00:08:02.138+08:00",
+          "target": {
+            "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "program": "bash",
+            "pid": 86,
+            "size": {
+              "columns": 60,
+              "rows": 50,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+              "desired": [
+                {
+                  "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                  "columns": 60,
+                  "rows": 50,
+                  "updated_at": "2026-11-27T16:06:44.43106757Z"
+                }
+              ]
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          },
+          "inventoryRow": "heeler-lab-only-terminal",
+          "visibleExpandedTerminalControls": [
+            "Back",
+            "Terminal Appearance",
+            "Show keyboard"
+          ]
+        },
+        "input": {
+          "at": "2026-11-28T00:08:11.533+08:00",
+          "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+          "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+          "pid": 86,
+          "marker": "HEELER_E_4C07C2B3_LINUX",
+          "matchedWholeMarkerAndNextLinePWD": true
+        },
+        "left": {
+          "at": "2026-11-28T00:08:28.683+08:00",
+          "target": {
+            "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "program": "bash",
+            "pid": 86,
+            "size": {
+              "columns": 60,
+              "rows": 31,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": [
+                {
+                  "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                  "columns": 60,
+                  "rows": 31,
+                  "updated_at": "2026-11-27T16:08:27.314538516Z"
+                }
+              ]
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          }
+        }
+      },
+      "localSources": [
+        {
+          "path": "phone/e-4c07c2b3-linux-anchor-before.json",
+          "sha256": "b96342d87aa1110af3c02d352884ad612795c358ae12eacc63b3672f3dbc661d"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-anchor-opened.json",
+          "sha256": "994d63068b0bb8c6152b618f0d78d82a168befd809da491eba220f87ecacdba7"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-anchor-input.json",
+          "sha256": "a15f0a47fec1b0e3181ec5080d521f19f87528821905c29ec7a8ff437c2ac2f3"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-anchor-left.json",
+          "sha256": "37f477db86239188a249151f67fe37303a93e5b79073b31d2e911e84c967d833"
+        },
+        {
+          "path": "phone/e-4c07c2b3-linux-anchor.png",
+          "sha256": "4841fd0f79e73d24869c8016081aa312a72839b8b0fec1742be7272810f60323"
+        }
+      ]
+    },
+    {
+      "id": "pad-host",
+      "case": "Reconnect the saved Host and inspect the negotiated capability screen",
+      "device": "pad",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "PASS",
+      "observation": "The saved Rex Server connected with all four successful checks and negotiated revision 19. OpenCode and Amp were displayed under Read-Only Chat. The left iPadOS window occupied 561.5 × 744 pt on a 1133 × 744 pt display.",
+      "actionTimeRange": [
+        "2026-11-27T23:55:31.382+08:00",
+        "2026-11-28T00:05:44.826+08:00"
+      ],
+      "receipts": {
+        "negotiatedRevision": 19,
+        "preflight": [
+          "SSH connection",
+          "Rex installed",
+          "Rex server running",
+          "protocol compatible"
+        ],
+        "system": "Host System, macOS",
+        "visibleCapabilities": [
+          {
+            "text": "Native Chat, Claude Code, Codex, Pi, OMP, Grok Build, Droid, and Devin CLI",
+            "frame": [
+              20,
+              375,
+              521.5,
+              75
+            ]
+          },
+          {
+            "text": "Read-Only Chat, OpenCode and Amp",
+            "frame": [
+              20,
+              450,
+              521.5,
+              52
+            ]
+          }
+        ],
+        "iPadOSWindow": {
+          "observedAt": "2026-11-27T23:55:31.382+08:00",
+          "displayPoints": [
+            1133,
+            744
+          ],
+          "windowFrames": {
+            "dev.bybee.heeler": [
+              0.0,
+              0.0,
+              561.5,
+              744.0
+            ]
+          }
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-mac-reconnect.json",
+          "sha256": "01cc9b0fddfea97a4567eb8acdc57c14a73deb584cd42a801ef4bec9d7726b55"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-features-receipt.json",
+          "sha256": "3ec2d8062bc86f7b06bf6d57dc84ff20ce9efd30187d92e4483a4b21caae43a5"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-features-visible.png",
+          "sha256": "1864a9dc205771f0c372ed8b7dd86d31f0f0795b9faf94e236f206823529dbd4"
+        },
+        {
+          "path": "pad/e-4c07c2b3-host-half-window-frames.json",
+          "sha256": "59c339a4310c0f0a59a93c15bf06144fe7130a695dd2bb4f24eb389e163e1142"
+        },
+        {
+          "path": "pad/e-4c07c2b3-after-host-os-full-window-frames.json",
+          "sha256": "0f9edd3d7501a8739c4cb70c6b919a436f123d91e0420e254c7013338f350012"
+        }
+      ]
+    },
+    {
+      "id": "pad-original-shell",
+      "case": "Open the original shell, verify a new marker with pwd and return its size",
+      "device": "pad",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "PASS",
+      "observation": "The device sent one unique marker and pwd to the original shell. Independent Rex capture matched the marker and following process directory. The same PID had no size owner when the device left.",
+      "actionTimeRange": [
+        "2026-11-28T00:02:13.230+08:00",
+        "2026-11-28T00:06:39.486+08:00"
+      ],
+      "receipts": {
+        "before": {
+          "at": "2026-11-28T00:02:13.230+08:00",
+          "target": {
+            "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+            "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+            "pid": 20747,
+            "program": "fish",
+            "size": {
+              "columns": 124,
+              "rows": 18,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": []
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          },
+          "marker": "HEELER_E_4C07C2B3_MAC"
+        },
+        "opened": {
+          "at": "2026-11-28T00:03:12.018+08:00",
+          "target": {
+            "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+            "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+            "pid": 20747,
+            "program": "fish",
+            "size": {
+              "columns": 85,
+              "rows": 39,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": "client:01a21db8-566a-785c-a426-5796cd318613",
+              "desired": [
+                {
+                  "client_id": "client:01a21db8-566a-785c-a426-5796cd318613",
+                  "columns": 85,
+                  "rows": 39,
+                  "updated_at": "2026-11-28T00:03:06.007526+08:00"
+                }
+              ]
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          },
+          "inventoryRow": "/p/t/h/m/project"
+        },
+        "input": {
+          "at": "2026-11-28T00:03:41.356+08:00",
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+          "pid": 20747,
+          "marker": "HEELER_E_4C07C2B3_MAC",
+          "matchedWholeMarkerAndNextLinePWD": true
+        },
+        "left": {
+          "at": "2026-11-28T00:06:39.485+08:00",
+          "target": {
+            "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+            "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "focusedBlock": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+            "activeWindow": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+            "pid": 20747,
+            "program": "fish",
+            "size": {
+              "columns": 124,
+              "rows": 18,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": null,
+              "desired": [
+                {
+                  "client_id": "client:01a21db8-566a-785c-a426-5796cd318613",
+                  "columns": 124,
+                  "rows": 18,
+                  "updated_at": "2026-11-28T00:06:30.332115+08:00"
+                }
+              ]
+            },
+            "hasTypedPWD": true,
+            "hasPWDResult": true
+          }
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-mac-anchor-before.json",
+          "sha256": "e92bdaf6c47e26341d113d742a8bc98ad86916c2553e4f5c024a8c44ca02c21e"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-anchor-opened.json",
+          "sha256": "affe56f79b715c69557bbf91755ea40d4effce80d81779bd8302c3ee3d60606c"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-anchor-input.json",
+          "sha256": "267459ad82760aa22badc7e6f36d030db085d3a8f81ba8f5f8168ade96b91e47"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-anchor-left.json",
+          "sha256": "86506ddc2f92634d2dfb995747a2989779aa0d24e37e9a00547ca1628ccde921"
+        },
+        {
+          "path": "pad/e-4c07c2b3-mac-anchor.png",
+          "sha256": "46f1ee7b6e600dd7588e651575f9166569294ffe13f1c2b9f5e73dab9ff8f9fc"
+        }
+      ]
+    },
+    {
+      "id": "phone-contextual-tab-exit",
+      "case": "Start a Tab from the existing Workspace card and exit that Tab",
+      "device": "phone",
+      "host": "Heeler Lab Rex Only (Debian, Rex only)",
+      "status": "PASS",
+      "observation": "The filtered Workspace footer opened a background window. The original desktop window remained active and PID 86 retained its released dimensions. Closing the added Bash by typing exit removed only its block across ten session records.",
+      "actionTimeRange": [
+        "2026-11-28T00:10:26.061+08:00",
+        "2026-11-28T00:10:37.294+08:00"
+      ],
+      "receipts": {
+        "beforeExit": {
+          "at": "2026-11-28T00:10:26.061+08:00",
+          "route": "The New Terminal footer on the filtered Workspace card, centered at 195, 310.7 pt. It created a background window in this existing Workspace and opened it on the phone.",
+          "beforeExit": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [
+                      {
+                        "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                        "columns": 60,
+                        "rows": 31,
+                        "updated_at": "2026-11-27T16:08:27.314538516Z"
+                      }
+                    ],
+                    "owner": null,
+                    "rows": 31
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                },
+                {
+                  "block": "block:01a21dc4-0f88-7c8c-b5d9-9443498bda42",
+                  "focusedBlock": "block:01a21dc4-0f88-7c8c-b5d9-9443498bda42",
+                  "name": "bash",
+                  "pid": 10936,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [
+                      {
+                        "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                        "columns": 60,
+                        "rows": 50,
+                        "updated_at": "2026-11-27T16:08:38.512985376Z"
+                      }
+                    ],
+                    "owner": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                    "rows": 50
+                  },
+                  "window": "window:01a21dc4-0f91-7185-a1ef-55f3c5484dc1",
+                  "windowLabel": "Window c5484dc1"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            },
+            {
+              "activeWindow": null,
+              "blocks": [],
+              "label": "heeler-lab-gui-exit-b8af66",
+              "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+            },
+            {
+              "activeWindow": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+              "blocks": [
+                {
+                  "block": "block:01a21d4b-771e-7d02-ba84-44bc1d5d915f",
+                  "focusedBlock": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "name": "bash",
+                  "pid": 3323,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+                  "windowLabel": "Window 7a6ecab9"
+                },
+                {
+                  "block": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "focusedBlock": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "name": "bash",
+                  "pid": 3327,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+                  "windowLabel": "Window 7a6ecab9"
+                },
+                {
+                  "block": "block:01a21d4b-86e0-7ee2-82cd-ceaebdb82b94",
+                  "focusedBlock": "block:01a21d4b-86e0-7ee2-82cd-ceaebdb82b94",
+                  "name": "claude",
+                  "pid": 3331,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-86e5-7ca6-bad1-d9a1e5102a8c",
+                  "windowLabel": "Window e5102a8c"
+                }
+              ],
+              "label": "heeler-lab-focus-42a63d23-936b-4532-9021-eb40eab4d02f",
+              "session": "session:01a21d4b-771e-76be-bb97-b8e950f98fb8"
+            },
+            {
+              "activeWindow": "window:01a21d4e-5f07-7baf-8578-c5815bb2dfca",
+              "blocks": [
+                {
+                  "block": "block:01a21d4e-5efc-7360-a36b-0941aef590d1",
+                  "focusedBlock": "block:01a21d4e-5efc-7360-a36b-0941aef590d1",
+                  "name": "node",
+                  "pid": 3884,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4e-5f07-7baf-8578-c5815bb2dfca",
+                  "windowLabel": "Window 5bb2dfca"
+                }
+              ],
+              "label": "heeler-lab-integrated-pi-a",
+              "session": "session:01a21d4e-5ef9-7df7-8ab6-949f66f9eaf6"
+            },
+            {
+              "activeWindow": "window:01a21d4e-5fc3-763f-af24-fd24ad37692f",
+              "blocks": [
+                {
+                  "block": "block:01a21d4e-5fbf-776e-b019-68abf010469c",
+                  "focusedBlock": "block:01a21d4e-5fbf-776e-b019-68abf010469c",
+                  "name": "node",
+                  "pid": 3905,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4e-5fc3-763f-af24-fd24ad37692f",
+                  "windowLabel": "Window ad37692f"
+                }
+              ],
+              "label": "heeler-lab-integrated-pi-b",
+              "session": "session:01a21d4e-5fbf-7558-824c-b9f5f45417fa"
+            },
+            {
+              "activeWindow": null,
+              "blocks": [],
+              "label": "heeler-lab-gui-exit-d-86f26049",
+              "session": "session:01a21d82-d115-718d-b316-8b9e99b7cfd0"
+            },
+            {
+              "activeWindow": "window:01a21da0-5531-7b1a-af16-df6ea499b011",
+              "blocks": [
+                {
+                  "block": "block:01a21da0-551e-74dc-9eb9-a72e8336aff6",
+                  "focusedBlock": "block:01a21da0-551e-74dc-9eb9-a72e8336aff6",
+                  "name": "node",
+                  "pid": 9247,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21da0-5531-7b1a-af16-df6ea499b011",
+                  "windowLabel": "Window a499b011"
+                }
+              ],
+              "label": "heeler-lab-enext1-pi-a",
+              "session": "session:01a21da0-551d-72f3-b909-e9a5d9f15a14"
+            },
+            {
+              "activeWindow": "window:01a21da0-5607-725c-8d77-a3aca85f4167",
+              "blocks": [
+                {
+                  "block": "block:01a21da0-55ef-72b0-8612-ef7e6f322e09",
+                  "focusedBlock": "block:01a21da0-55ef-72b0-8612-ef7e6f322e09",
+                  "name": "node",
+                  "pid": 9267,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21da0-5607-725c-8d77-a3aca85f4167",
+                  "windowLabel": "Window a85f4167"
+                }
+              ],
+              "label": "heeler-lab-enext1-pi-b",
+              "session": "session:01a21da0-55ee-768a-abc6-c7fe9c8d7866"
+            }
+          ],
+          "target": {
+            "block": "block:01a21dc4-0f88-7c8c-b5d9-9443498bda42",
+            "focusedBlock": "block:01a21dc4-0f88-7c8c-b5d9-9443498bda42",
+            "name": "bash",
+            "pid": 10936,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [
+                {
+                  "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                  "columns": 60,
+                  "rows": 50,
+                  "updated_at": "2026-11-27T16:08:38.512985376Z"
+                }
+              ],
+              "owner": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+              "rows": 50
+            },
+            "window": "window:01a21dc4-0f91-7185-a1ef-55f3c5484dc1",
+            "windowLabel": "Window c5484dc1"
+          }
+        },
+        "afterExit": {
+          "at": "2026-11-28T00:10:37.293+08:00",
+          "afterExit": [
+            {
+              "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+              "blocks": [
+                {
+                  "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+                  "name": "bash",
+                  "pid": 86,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 60,
+                    "desired": [
+                      {
+                        "client_id": "client:01a21db7-296f-7507-924f-bd03ee629f3a",
+                        "columns": 60,
+                        "rows": 31,
+                        "updated_at": "2026-11-27T16:08:27.314538516Z"
+                      }
+                    ],
+                    "owner": null,
+                    "rows": 31
+                  },
+                  "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+                  "windowLabel": "heeler-lab-only-terminal"
+                }
+              ],
+              "label": "heeler-lab-only-workspace",
+              "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+                  "name": "node",
+                  "pid": 926,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+                  "windowLabel": "Window abaab7ce"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-a",
+              "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+            },
+            {
+              "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+              "blocks": [
+                {
+                  "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+                  "name": "node",
+                  "pid": 944,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+                  "windowLabel": "Window 57741d67"
+                }
+              ],
+              "label": "heeler-lab-pure-pi-b",
+              "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+            },
+            {
+              "activeWindow": null,
+              "blocks": [],
+              "label": "heeler-lab-gui-exit-b8af66",
+              "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+            },
+            {
+              "activeWindow": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+              "blocks": [
+                {
+                  "block": "block:01a21d4b-771e-7d02-ba84-44bc1d5d915f",
+                  "focusedBlock": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "name": "bash",
+                  "pid": 3323,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+                  "windowLabel": "Window 7a6ecab9"
+                },
+                {
+                  "block": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "focusedBlock": "block:01a21d4b-777c-7551-aece-77c7dd765dd9",
+                  "name": "bash",
+                  "pid": 3327,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-7726-7dcb-b408-52527a6ecab9",
+                  "windowLabel": "Window 7a6ecab9"
+                },
+                {
+                  "block": "block:01a21d4b-86e0-7ee2-82cd-ceaebdb82b94",
+                  "focusedBlock": "block:01a21d4b-86e0-7ee2-82cd-ceaebdb82b94",
+                  "name": "claude",
+                  "pid": 3331,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4b-86e5-7ca6-bad1-d9a1e5102a8c",
+                  "windowLabel": "Window e5102a8c"
+                }
+              ],
+              "label": "heeler-lab-focus-42a63d23-936b-4532-9021-eb40eab4d02f",
+              "session": "session:01a21d4b-771e-76be-bb97-b8e950f98fb8"
+            },
+            {
+              "activeWindow": "window:01a21d4e-5f07-7baf-8578-c5815bb2dfca",
+              "blocks": [
+                {
+                  "block": "block:01a21d4e-5efc-7360-a36b-0941aef590d1",
+                  "focusedBlock": "block:01a21d4e-5efc-7360-a36b-0941aef590d1",
+                  "name": "node",
+                  "pid": 3884,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4e-5f07-7baf-8578-c5815bb2dfca",
+                  "windowLabel": "Window 5bb2dfca"
+                }
+              ],
+              "label": "heeler-lab-integrated-pi-a",
+              "session": "session:01a21d4e-5ef9-7df7-8ab6-949f66f9eaf6"
+            },
+            {
+              "activeWindow": "window:01a21d4e-5fc3-763f-af24-fd24ad37692f",
+              "blocks": [
+                {
+                  "block": "block:01a21d4e-5fbf-776e-b019-68abf010469c",
+                  "focusedBlock": "block:01a21d4e-5fbf-776e-b019-68abf010469c",
+                  "name": "node",
+                  "pid": 3905,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21d4e-5fc3-763f-af24-fd24ad37692f",
+                  "windowLabel": "Window ad37692f"
+                }
+              ],
+              "label": "heeler-lab-integrated-pi-b",
+              "session": "session:01a21d4e-5fbf-7558-824c-b9f5f45417fa"
+            },
+            {
+              "activeWindow": null,
+              "blocks": [],
+              "label": "heeler-lab-gui-exit-d-86f26049",
+              "session": "session:01a21d82-d115-718d-b316-8b9e99b7cfd0"
+            },
+            {
+              "activeWindow": "window:01a21da0-5531-7b1a-af16-df6ea499b011",
+              "blocks": [
+                {
+                  "block": "block:01a21da0-551e-74dc-9eb9-a72e8336aff6",
+                  "focusedBlock": "block:01a21da0-551e-74dc-9eb9-a72e8336aff6",
+                  "name": "node",
+                  "pid": 9247,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21da0-5531-7b1a-af16-df6ea499b011",
+                  "windowLabel": "Window a499b011"
+                }
+              ],
+              "label": "heeler-lab-enext1-pi-a",
+              "session": "session:01a21da0-551d-72f3-b909-e9a5d9f15a14"
+            },
+            {
+              "activeWindow": "window:01a21da0-5607-725c-8d77-a3aca85f4167",
+              "blocks": [
+                {
+                  "block": "block:01a21da0-55ef-72b0-8612-ef7e6f322e09",
+                  "focusedBlock": "block:01a21da0-55ef-72b0-8612-ef7e6f322e09",
+                  "name": "node",
+                  "pid": 9267,
+                  "size": {
+                    "cell_height_px": 16,
+                    "cell_width_px": 8,
+                    "columns": 80,
+                    "desired": [],
+                    "owner": null,
+                    "rows": 24
+                  },
+                  "window": "window:01a21da0-5607-725c-8d77-a3aca85f4167",
+                  "windowLabel": "Window a85f4167"
+                }
+              ],
+              "label": "heeler-lab-enext1-pi-b",
+              "session": "session:01a21da0-55ee-768a-abc6-c7fe9c8d7866"
+            }
+          ],
+          "onlyTargetRemoved": true,
+          "retainedAnchorPID": 86
+        }
+      },
+      "localSources": [
+        {
+          "path": "phone/e-4c07c2b3-contextual-shell-open.json",
+          "sha256": "8622f11aaa08f80841e8b355c786740b3a784458704d55efe876c78f39aa337c"
+        },
+        {
+          "path": "phone/e-4c07c2b3-contextual-shell-closed.json",
+          "sha256": "3a4bda912faae9cc7c25b8ba121155a217cc56d7e9cda0f0cffc5032ef4aaf25"
+        }
+      ]
+    },
+    {
+      "id": "pad-preset-worktree",
+      "case": "Start the saved preset in a new linked Git worktree",
+      "device": "pad",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "PASS",
+      "observation": "The original Git Workspace launched the preset in a new clean checkout. The controlled recorder received the requested argument boundary and environment value.",
+      "actionTimeRange": [
+        "2026-11-28T00:06:39.867+08:00",
+        "2026-11-28T00:07:57.737+08:00"
+      ],
+      "receipts": {
+        "source": {
+          "session": "session:01a21d8b-f3f3-7874-82bd-a04827a9655b",
+          "label": "heeler-lab-only-project",
+          "active": "window:01a21d8b-f437-7806-984b-8c53e453327e",
+          "windows": [
+            {
+              "window": "window:01a21d8b-f437-7806-984b-8c53e453327e",
+              "label": "Window e453327e",
+              "focused": "block:01a21d8b-f3f6-7399-82f7-e8e583534025",
+              "blocks": [
+                {
+                  "block": "block:01a21d8b-f3f6-7399-82f7-e8e583534025",
+                  "label": "shell",
+                  "program": "fish",
+                  "pid": 23843,
+                  "cwd": "<mac-rex-only-fixture>/home/heeler-lab-only-project"
+                }
+              ]
+            }
+          ]
+        },
+        "neighbor": {
+          "session": "session:01a21cfd-13e0-75e3-a536-6d663364fc43",
+          "label": "heeler-lab-macos-only",
+          "active": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+          "windows": [
+            {
+              "window": "window:01a21cfd-142b-78f4-9296-7ec29bc1161a",
+              "label": "Window 9bc1161a",
+              "focused": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+              "blocks": [
+                {
+                  "block": "block:01a21cfd-13e0-7dde-a6bb-8f76f7c375ce",
+                  "label": "shell",
+                  "program": "fish",
+                  "pid": 20747,
+                  "cwd": "<mac-rex-only-fixture>/project"
+                }
+              ]
+            }
+          ]
+        },
+        "launch": {
+          "at": "2026-11-28T00:07:57.002+08:00",
+          "server": {
+            "session": "session:01a21dc3-6c5f-7a44-8be5-7eba6bae1d47",
+            "label": "heeler-lab-wt-e-4c07c2b3",
+            "active": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+            "windows": [
+              {
+                "window": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+                "label": "Window f755f7d5",
+                "focused": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+                "blocks": [
+                  {
+                    "block": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+                    "label": "claude",
+                    "program": "claude",
+                    "pid": 9979,
+                    "cwd": "<mac-rex-only-fixture>/home/.heeler/worktrees/heeler-lab-only-project/heeler-lab-wt-e-4c07c2b3"
+                  }
+                ]
+              }
+            ]
+          },
+          "argv": [
+            "claude",
+            "--session-id",
+            "a68bc580-a434-42c2-833b-20b1aa863418",
+            "--heeler-lab-gui",
+            "two words"
+          ],
+          "selectedEnvironment": {
+            "HEELER_LAB_MARKER": "fixture gui two words"
+          },
+          "git": {
+            "branch": "heeler-lab-wt-e-4c07c2b3",
+            "head": "22e5f7b9622cf9608d8b822c1e9e4c5693bdb5aa",
+            "status": "",
+            "isLinkedWorktree": true
+          }
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-source-existing.json",
+          "sha256": "f30573bd72fedc0224001780d01a78cf88c54710125e7a7b7ad57b08a586e693"
+        },
+        {
+          "path": "pad/e-4c07c2b3-worktree-before.json",
+          "sha256": "4e5e6aa0bc4e727ba3a43abc7dbe584d9bcbc76082fd2dd74b4249d650f4aa2c"
+        },
+        {
+          "path": "pad/e-4c07c2b3-worktree-preset-form.png",
+          "sha256": "dc58e210e57f2cc08de58a74762309b15a035f7fe075dc1e058310039e68808a"
+        },
+        {
+          "path": "pad/e-4c07c2b3-worktree-opened.json",
+          "sha256": "e89e2f21712b189a1e481d6171efe46637733a36c6956e5af94d36c327078b3a"
+        }
+      ]
+    },
+    {
+      "id": "pad-worktree-changes",
+      "case": "Open Changes on the new Agent",
+      "device": "pad",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "PASS",
+      "observation": "The displayed branch and clean linked checkout matched Git.",
+      "actionTimeRange": [
+        "2026-11-28T00:07:57.002+08:00",
+        "2026-11-28T00:09:13.224+08:00"
+      ],
+      "receipts": {
+        "visible": [
+          "Checkout ~/.heeler/worktrees/heeler-lab-only-project/heeler-lab-wt-e-4c07c2b3, linked Worktree. Branch heeler-lab-wt-e-4c07c2b3. Latest commit: fixture, 2 hours ago. 0 files changed. 0 lines added, 0 lines removed in tracked files. 0 untracked items.",
+          "No uncommitted changes"
+        ],
+        "git": {
+          "branch": "heeler-lab-wt-e-4c07c2b3",
+          "head": "22e5f7b9622cf9608d8b822c1e9e4c5693bdb5aa",
+          "status": "",
+          "isLinkedWorktree": true
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-worktree-opened.json",
+          "sha256": "e89e2f21712b189a1e481d6171efe46637733a36c6956e5af94d36c327078b3a"
+        },
+        {
+          "path": "pad/e-4c07c2b3-worktree-changes.json",
+          "sha256": "924e519dc2a52fcfa6695dbbf48e0b449c791d3cae9cd4ee078463c99fa60064"
+        },
+        {
+          "path": "pad/e-4c07c2b3-worktree-changes.png",
+          "sha256": "00c86e082185c206fa3d5b1d08585d95e6f0ce7039f33383f387b674a87687c6"
+        }
+      ]
+    },
+    {
+      "id": "pad-managed-label",
+      "case": "Rename the same running Agent",
+      "device": "pad",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "PASS",
+      "observation": "Rename Agent updated the existing block label, retaining PID 9979, the active window and focused block.",
+      "actionTimeRange": [
+        "2026-11-28T00:09:28.235+08:00",
+        "2026-11-28T00:09:49.218+08:00"
+      ],
+      "receipts": {
+        "from": "2026-11-28T00:09:28.235+08:00",
+        "through": "2026-11-28T00:09:49.217+08:00",
+        "before": {
+          "session": "session:01a21dc3-6c5f-7a44-8be5-7eba6bae1d47",
+          "label": "heeler-lab-wt-e-4c07c2b3",
+          "active": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+          "windows": [
+            {
+              "window": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+              "label": "Window f755f7d5",
+              "focused": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+              "blocks": [
+                {
+                  "block": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+                  "label": "claude",
+                  "program": "claude",
+                  "pid": 9979,
+                  "cwd": "<mac-rex-only-fixture>/home/.heeler/worktrees/heeler-lab-only-project/heeler-lab-wt-e-4c07c2b3"
+                }
+              ]
+            }
+          ]
+        },
+        "after": {
+          "session": "session:01a21dc3-6c5f-7a44-8be5-7eba6bae1d47",
+          "label": "heeler-lab-wt-e-4c07c2b3",
+          "active": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+          "windows": [
+            {
+              "window": "window:01a21dc3-6c86-704e-873f-5327f755f7d5",
+              "label": "Window f755f7d5",
+              "focused": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+              "blocks": [
+                {
+                  "block": "block:01a21dc3-6c5f-7e73-95a6-9292fd17aed4",
+                  "label": "heeler-lab-agent-e-4c07c2b3",
+                  "program": "claude",
+                  "pid": 9979,
+                  "cwd": "<mac-rex-only-fixture>/home/.heeler/worktrees/heeler-lab-only-project/heeler-lab-wt-e-4c07c2b3"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "localSources": [
+        {
+          "path": "e-4c07c2b3-agent-rename.json",
+          "sha256": "199b758f0ea5735e22ca19a2bf5ffe7cadd50a8facb748663064b507331e9159"
+        },
+        {
+          "path": "pad/e-4c07c2b3-agent-renamed.png",
+          "sha256": "856d0d9ce6c7dbd6dde0bf12210712b2f7c5fd978154965a810e96d49bd3c93d"
+        }
+      ]
+    },
+    {
+      "id": "pad-banner-off",
+      "case": "Keep the Host disabled during a genuine Blocked transition",
+      "device": "pad",
+      "host": "Heeler Lab Debian (mixed Host, Rex route)",
+      "status": "PASS",
+      "observation": "The real Pi reached Blocked. No banner appeared in 29 samples through 23.54 seconds. The detail remained empty.",
+      "actionTimeRange": [
+        "2026-11-28T00:10:30.267+08:00",
+        "2026-11-28T00:10:57.574+08:00"
+      ],
+      "receipts": {
+        "startedAt": "2026-11-28T00:10:30.267+08:00",
+        "mode": "off",
+        "initialStatus": {
+          "observed": "2026-11-27T16:10:31.406+00:00",
+          "action": "status",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T15:28:16.595096048Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T16:10:32.074+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T16:10:56.395+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:10:34.911591106Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "trigger": "blocked",
+        "triggerStartedAtSeconds": 0.49,
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T16:10:34.231+00:00",
+            "action": "blocked",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T15:28:16.595096048Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T16:10:35.522+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:10:34.911591106Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 0,
+        "appearanceSeconds": [],
+        "completedAt": "2026-11-28T00:10:56.424+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T16:10:57.014+00:00"
+        },
+        "details": {
+          "noAgentSelected": true,
+          "workspaceTerminals": false,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        },
+        "numberOfSamples": 29,
+        "lastSample": {
+          "s": 23.54,
+          "visible": false
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-off.json",
+          "sha256": "81f9dd097f83739d63f55cde3c7a701bb3becab5024be7125bdff17d166d52b8"
+        }
+      ]
+    },
+    {
+      "id": "pad-banner-repeat",
+      "case": "Keep one banner for two genuine Blocked events and refresh",
+      "device": "pad",
+      "host": "Heeler Lab Debian (mixed Host, Rex route)",
+      "status": "PASS",
+      "observation": "Two distinct native event timestamps produced one visible banner at 8.03 seconds. The pull-to-refresh did not display a second banner.",
+      "actionTimeRange": [
+        "2026-11-28T00:11:35.528+08:00",
+        "2026-11-28T00:12:02.734+08:00"
+      ],
+      "receipts": {
+        "startedAt": "2026-11-28T00:11:35.528+08:00",
+        "mode": "repeat",
+        "initialStatus": {
+          "observed": "2026-11-27T16:11:35.889+00:00",
+          "action": "status",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:10:58.318513618Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T16:11:36.241+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T16:11:50.459+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:45.119087547Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 5105243651"
+          },
+          {
+            "observed": "2026-11-27T16:12:01.090+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:45.119087547Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 5105243651"
+          }
+        ],
+        "trigger": "blocked",
+        "triggerStartedAtSeconds": 0.24,
+        "repeatTriggeredAtSeconds": 8.03,
+        "bannerLabel": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+        "bannerValue": null,
+        "refreshAtSeconds": 17.43,
+        "nativeRepeatEvents": [
+          {
+            "observed": "2026-11-27T16:11:38.595+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:38.436012659Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          },
+          {
+            "observed": "2026-11-27T16:11:44.942+00:00",
+            "action": "repeat",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:38.436012659Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          },
+          {
+            "observed": "2026-11-27T16:11:45.332+00:00",
+            "action": "repeat",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:45.119087547Z",
+            "pid": 15211,
+            "message": "Heeler lab repeat 5105243651"
+          }
+        ],
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T16:11:37.883+00:00",
+            "action": "blocked",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:10:58.318513618Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T16:11:38.595+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:11:38.436012659Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 1,
+        "appearanceSeconds": [
+          8.03
+        ],
+        "completedAt": "2026-11-28T00:12:01.108+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T16:12:01.698+00:00"
+        },
+        "details": {
+          "noAgentSelected": true,
+          "workspaceTerminals": false,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        },
+        "numberOfSamples": 31,
+        "lastSample": {
+          "s": 23.41,
+          "visible": false
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-repeat.json",
+          "sha256": "0bed11cd6da0a148b04b080f5e5ef0858c40b4afd8b0f8f4bbd71e6daa1463d0"
+        },
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-repeat.png",
+          "sha256": "8a5ca32b04045cb7657807cb5bfbb009d545af7c69c1f6fe68f552e201df196d"
+        }
+      ]
+    },
+    {
+      "id": "pad-banner-tap",
+      "case": "Open the precise Debian Pi from a Blocked banner",
+      "device": "pad",
+      "host": "Heeler Lab Debian (mixed Host, Rex route)",
+      "status": "PASS",
+      "observation": "The banner appeared at 7.01 seconds and was tapped at 7.03. Rex identified the same block and PID 15211 on a 124 × 35 grid with an active size owner.",
+      "actionTimeRange": [
+        "2026-11-28T00:12:45.446+08:00",
+        "2026-11-28T00:13:22.663+08:00"
+      ],
+      "receipts": {
+        "startedAt": "2026-11-28T00:12:45.446+08:00",
+        "mode": "tap",
+        "initialStatus": {
+          "observed": "2026-11-27T16:12:46.571+00:00",
+          "action": "status",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:12:04.669593379Z",
+          "pid": 15211,
+          "message": null
+        },
+        "blockBefore": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": null,
+            "desired": []
+          },
+          "pid": 15211,
+          "state": "done",
+          "observed": "2026-11-27T16:12:48.049+00:00"
+        },
+        "statusProbes": [
+          {
+            "observed": "2026-11-27T16:13:05.076+00:00",
+            "action": "status",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:12:50.586921199Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "trigger": "blocked",
+        "triggerStartedAtSeconds": 0.33,
+        "bannerLabel": "heeler-lab-notification-pi · Pi, Blocked — waiting for input",
+        "bannerValue": null,
+        "tappedAtSeconds": 7.03,
+        "directSystemTouchAcknowledgedAfterSeconds": 0.735,
+        "triggerStates": [
+          {
+            "observed": "2026-11-27T16:12:49.881+00:00",
+            "action": "blocked",
+            "state": "done",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:12:04.669593379Z",
+            "pid": 15211,
+            "message": null
+          },
+          {
+            "observed": "2026-11-27T16:12:51.139+00:00",
+            "action": "blocked",
+            "state": "blocked",
+            "effectiveApp": "pi",
+            "updatedAt": "2026-11-27T16:12:50.586921199Z",
+            "pid": 15211,
+            "message": "Heeler lab confirmation A"
+          }
+        ],
+        "risingEdges": 1,
+        "appearanceSeconds": [
+          7.01
+        ],
+        "completedAt": "2026-11-28T00:13:12.887+08:00",
+        "blockAfter": {
+          "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+          "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+          "size": {
+            "columns": 124,
+            "rows": 35,
+            "cell_width_px": 8,
+            "cell_height_px": 16,
+            "owner": "client:01a21dc7-6bc6-7454-8e2d-a7a62102ddfb",
+            "desired": [
+              {
+                "client_id": "client:01a21dc7-6bc6-7454-8e2d-a7a62102ddfb",
+                "columns": 124,
+                "rows": 35,
+                "updated_at": "2026-11-27T16:12:58.445218387Z"
+              }
+            ]
+          },
+          "pid": 15211,
+          "state": "blocked",
+          "observed": "2026-11-27T16:13:05.591+00:00"
+        },
+        "details": {
+          "noAgentSelected": false,
+          "workspaceTerminals": true,
+          "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+        },
+        "initialReceiptAfterTap": {
+          "details": {
+            "noAgentSelected": false,
+            "workspaceTerminals": true,
+            "targetAgentRow": "Pi, Blocked, π - project, Heeler Lab Debian, heeler-lab-notification-pi"
+          },
+          "size": {
+            "session": "session:01a21ce8-c9c7-77c4-a644-2fb0e5eb7d3f",
+            "block": "block:01a21ce8-c9c7-7a16-98a5-6c180c4f54ae",
+            "size": {
+              "columns": 124,
+              "rows": 35,
+              "cell_width_px": 8,
+              "cell_height_px": 16,
+              "owner": "client:01a21dc7-6bc6-7454-8e2d-a7a62102ddfb",
+              "desired": [
+                {
+                  "client_id": "client:01a21dc7-6bc6-7454-8e2d-a7a62102ddfb",
+                  "columns": 124,
+                  "rows": 35,
+                  "updated_at": "2026-11-27T16:12:58.445218387Z"
+                }
+              ]
+            },
+            "pid": 15211,
+            "state": "blocked",
+            "observed": "2026-11-27T16:13:05.591+00:00"
+          }
+        },
+        "numberOfSamples": 11,
+        "lastSample": {
+          "s": 7.01,
+          "visible": true
+        }
+      },
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-tap.json",
+          "sha256": "3cfd85996132444bf35733e202a403ea844f1d58ae8f5b28a92ee0ac031a716c"
+        },
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-tap.png",
+          "sha256": "2b5c8ebdbc9aef345e696caa7dc0f8133281b92b58cf4cb355429bc9c1226e09"
+        },
+        {
+          "path": "pad/e-4c07c2b3-linux-tap-recipient.png",
+          "sha256": "18af7701df22806106aca0f20dc6f838c8769294db608ac3ae175ff83a885e98"
+        },
+        {
+          "path": "pad/e-4c07c2b3-linux-tap-recipient.json",
+          "sha256": "91cd98b7d17f0ddbfae37a0c2de7f34658395b36165d04ab0e124c849ec506a2"
+        }
+      ]
+    },
+    {
+      "id": "phone-named-workspace",
+      "case": "Submit the globally named Workspace, check the new shell and exit it",
+      "device": "phone",
+      "host": "Heeler Lab Rex Only (Debian, Rex only)",
+      "status": "NOT-RUN",
+      "observation": "The global toolbar and directory browser were used. The named directory and the Tab name were visible. The Workspace field was blank when testing stopped. Open was never submitted. No named Workspace or target PID was observed.",
+      "actionTimeRange": [
+        "2026-11-28T00:14:03.633+08:00",
+        "2026-11-28T00:14:03.633+08:00"
+      ],
+      "progress": "interrupted",
+      "receipts": {
+        "directory": "/home/heeleronly/heeler-lab-e-4c07c2b3 GUI folder",
+        "tabDraft": "heeler-lab-tab-e-4c07c2b3",
+        "workspaceSubmitted": false
+      },
+      "localSources": [
+        {
+          "path": "phone/e-draft-back.png",
+          "sha256": "58e24bdc49adbb25abefcc8314a546731a3a2a591df608dd640dc70c22c837bc"
+        }
+      ]
+    },
+    {
+      "id": "pad-banner-done-recipient",
+      "case": "Confirm the Done banner opens the same current Pi",
+      "device": "pad",
+      "host": "Heeler Lab Debian (mixed Host, Rex route)",
+      "status": "NOT-RUN",
+      "observation": "Include Done was enabled and the saved screenshot shows the expected Done banner above No Agent Selected. The interaction did not produce a completed target or terminal-size receipt before testing stopped.",
+      "actionTimeRange": [
+        "2026-11-28T00:14:28.506+08:00",
+        "2026-11-28T00:14:28.506+08:00"
+      ],
+      "progress": "interrupted",
+      "localSources": [
+        {
+          "path": "pad/e-4c07c2b3-linux-banner-done.png",
+          "sha256": "ee36ab22fbd4bf7024b9801887c257f2a1a6ce14f6406420b1e78ebeb70c3949"
+        }
+      ]
+    },
+    {
+      "id": "pad-banner-disabled-again",
+      "case": "Disable the Host after navigation and prove a fresh event is silent",
+      "device": "pad",
+      "host": "Heeler Lab Debian (mixed Host, Rex route)",
+      "status": "NOT-RUN",
+      "observation": "The final opt-out and fresh-event observation were deferred at the pause.",
+      "localSources": []
+    },
+    {
+      "id": "phone-pi-block-label",
+      "case": "Rename the pre-existing real Pi and compare its official session file to its neighbor",
+      "device": "phone",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "NOT-RUN",
+      "observation": "The designated same-directory pair was reserved. No management or title change was submitted on this candidate.",
+      "localSources": []
+    },
+    {
+      "id": "phone-pi-official-title",
+      "case": "Change the official Pi session title through the exact visible Terminal",
+      "device": "phone",
+      "host": "Heeler Lab Mac Only (macOS, Rex only)",
+      "status": "NOT-RUN",
+      "observation": "The official /name command was not sent before the pause.",
+      "localSources": []
+    },
+    {
+      "id": "pad-and-phone-final-state",
+      "case": "Restore the remaining preferences and clean the newly created fixtures",
+      "device": "both",
+      "host": "All assigned fixtures",
+      "status": "NOT-RUN",
+      "observation": "The simulator scenes, fixture data and pure Debian writer reservation were preserved on request. The contextual Debian Tab had already been individually closed and verified.",
+      "localSources": []
+    }
+  ],
+  "images": [
+    {
+      "path": "rex-daily/e-4c07c2b3-iphone-debian-capabilities.png",
+      "sha256": "6945650af359a172c6d7f96b584d113f8f03c297b53564151fd34882ab8726c4",
+      "sourceSHA256": "a4fbf4f5c36e70cb1a8ca054c6392a78b04eed5a655a25e219ab3dea9023845a",
+      "width": 508,
+      "height": 1100,
+      "caption": "The saved pure Debian Host on the 390 pt iPhone."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-iphone-debian-workspace-draft.png",
+      "sha256": "ab65d33b9e6ebbfdaa4fc0648252559ca382b80e7ec8a4d7dffd363df5575fc1",
+      "sourceSHA256": "58e24bdc49adbb25abefcc8314a546731a3a2a591df608dd640dc70c22c837bc",
+      "width": 462,
+      "height": 1000,
+      "caption": "The selected directory and named Tab in the unsubmitted global New Terminal sheet."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-ipad-half-macos.png",
+      "sha256": "ed2bd3fe6e71b1946460f160c1185bf6258716c79ebd49b91a9803887548bc0b",
+      "sourceSHA256": "1864a9dc205771f0c372ed8b7dd86d31f0f0795b9faf94e236f206823529dbd4",
+      "width": 1450,
+      "height": 952,
+      "caption": "The saved pure macOS Host in its actual iPadOS left half-window."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-ipad-worktree.png",
+      "sha256": "4bb28f906b0d3b6970e8a82623e91bb5c662f0412187db31cd5e2611d1d3c8b1",
+      "sourceSHA256": "00c86e082185c206fa3d5b1d08585d95e6f0ce7039f33383f387b674a87687c6",
+      "width": 1350,
+      "height": 886,
+      "caption": "The iPad Changes page for the new clean linked worktree."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-ipad-pi-blocked.png",
+      "sha256": "2eef6aca4c7f1a8514f1098487cddc1bed1909869cd9ccd7a75f92507af7b16e",
+      "sourceSHA256": "2b5c8ebdbc9aef345e696caa7dc0f8133281b92b58cf4cb355429bc9c1226e09",
+      "width": 1450,
+      "height": 952,
+      "caption": "The Debian Pi Blocked banner over No Agent Selected."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-ipad-pi-recipient.png",
+      "sha256": "f6fcf09f16d1de859714b24c307c1666aa49de0a07110daabb3af2ad414ca290",
+      "sourceSHA256": "18af7701df22806106aca0f20dc6f838c8769294db608ac3ae175ff83a885e98",
+      "width": 1450,
+      "height": 952,
+      "caption": "The same Pi in its own Terminal after the Blocked tap."
+    },
+    {
+      "path": "rex-daily/e-4c07c2b3-ipad-pi-done-visible.png",
+      "sha256": "92513bd04a6889b287fa64d15dd5da03b29858fb1b28f656488a2c80d9703378",
+      "sourceSHA256": "ee36ab22fbd4bf7024b9801887c257f2a1a6ce14f6406420b1e78ebeb70c3949",
+      "width": 1450,
+      "height": 952,
+      "caption": "The visible Done banner. Its destination had no completed receipt on this candidate."
+    }
+  ],
+  "notificationSettings": [
+    {
+      "from": "2026-11-28T00:10:11.320+08:00",
+      "through": "2026-11-28T00:10:12.081+08:00",
+      "requested": "observe",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-28T00:11:20.323+08:00",
+      "through": "2026-11-28T00:11:24.498+08:00",
+      "requested": "blocked",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-28T00:12:29.968+08:00",
+      "through": "2026-11-28T00:12:30.947+08:00",
+      "requested": "blocked",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ]
+    },
+    {
+      "from": "2026-11-28T00:13:51.107+08:00",
+      "through": "2026-11-28T00:13:55.277+08:00",
+      "requested": "done",
+      "host": "Heeler Lab Debian",
+      "before": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": false
+        }
+      ],
+      "after": [
+        {
+          "label": "Heeler Lab Debian",
+          "identifier": "settings.notifications.rexBanners.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        },
+        {
+          "label": "Include Done",
+          "identifier": "settings.notifications.rexDone.F40ACE58-1C61-4C94-A2F7-DCD5DB75E064",
+          "on": true
+        }
+      ]
+    }
+  ],
+  "stop": {
+    "at": "2026-11-28T00:14:38.325+08:00",
+    "drivers": {
+      "phone": {
+        "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+        "cancelledPendingAction": null,
+        "administrativeStopResponse": "stopped",
+        "at": "2026-11-28T00:14:38.325+08:00"
+      },
+      "pad": {
+        "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+        "cancelledPendingAction": null,
+        "administrativeStopResponse": "stopped",
+        "at": "2026-11-28T00:14:38.196+08:00"
+      }
+    },
+    "pureDebianWriterRetained": true,
+    "devicesPreserved": true
+  },
+  "limitations": [
+    "Both devices reused their trusted Host entries. There was no repeated first-use Host key confirmation.",
+    "The half-width observation used one Heeler window on an iPadOS display. A second interactive app was not used.",
+    "The Claude process in the new worktree was the task-owned launch recorder. The foreground notification came from real Pi 1.5.2."
+  ],
+  "counts": {
+    "PASS": 11,
+    "FAIL": 0,
+    "NOT-RUN": 6,
+    "interruptedWithinNotRun": 2
+  }
+}

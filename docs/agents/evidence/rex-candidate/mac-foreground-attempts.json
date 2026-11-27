@@ -1,0 +1,78 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "device": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+  "stoppedAtUserRequest": true,
+  "completedFirstAttempts": [
+    {
+      "scenario": "amp",
+      "result": "PASS",
+      "executed": 1,
+      "receipt": "native-chat/macos-amp-readonly/4c07c2b34-mac-amp-readonly-candidate-runner.json"
+    },
+    {
+      "scenario": "claude",
+      "result": "FAIL",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-claude-e-runner.json"
+    },
+    {
+      "scenario": "codex",
+      "result": "FAIL",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-codex-e-runner.json"
+    },
+    {
+      "scenario": "pi",
+      "result": "FAIL",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-pi-e-runner.json"
+    },
+    {
+      "scenario": "omp",
+      "result": "FAIL",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-omp-e-runner.json"
+    },
+    {
+      "scenario": "grok",
+      "result": "PASS",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-grok-e-runner.json"
+    },
+    {
+      "scenario": "aclaude",
+      "result": "FAIL",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-aclaude-e-runner.json"
+    },
+    {
+      "scenario": "acodex",
+      "result": "PASS",
+      "executed": 1,
+      "receipt": "native-chat/4c07c2b34-mac-acodex-e-runner.json"
+    },
+    {
+      "scenario": "gstop",
+      "result": "PASS",
+      "executed": 1,
+      "receipt": "chat/4c07c2b34-mac-grok-stop-visible-e-host.json"
+    }
+  ],
+  "executed": 9,
+  "passed": 4,
+  "failed": 5,
+  "skipped": 0,
+  "cancelled": [
+    {
+      "scenario": "claude",
+      "attempt": "eretry",
+      "completed": false,
+      "logSHA256": "7ba148e22d3cc64ed8712694774ad82176d0bd440d5b3476355124e1f870bf29",
+      "partialBundle": "native-chat/4c07c2b34-mac-claude-eretry.xcresult"
+    }
+  ],
+  "retrySchedulersAlive": [],
+  "otherRetriesStarted": false,
+  "entrySourceSHA256": "10c71fae7e991556bbfdd0c0e3bbcac2c20e8ee13da2d14ad2cf502676f5c912",
+  "receiptScope": "Only completed XCTest or UI-driver results are counted."
+}

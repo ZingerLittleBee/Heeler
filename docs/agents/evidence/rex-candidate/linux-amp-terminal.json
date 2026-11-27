@@ -1,0 +1,59 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "appHash": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+  "origin": "Two genuine iPhone read-only screens; one addressed ordinary Terminal Send",
+  "payloadSHA256": "fed9c816e553c34e8b675fcbd6c96b0303e53f20fb456ae883763916b696cccc",
+  "before": {
+    "threeOfficialExports": {
+      "prior": {
+        "messageHash": "0d3b7ca41f6736ef309cc00e6ce09fe719a1754e842bbdbcb07da04d185988db",
+        "uniqueThread": true
+      },
+      "current": {
+        "messageHash": "cc6cf08f7f3df4caa99393363a68f1ab538b7e5a6f283f220fa5166dc1beb130",
+        "uniqueThread": true
+      },
+      "peer": {
+        "messageHash": "b222ace00c7f256bdc1761b4c6a029a3735f6142bd1575f699965bfea73e492a",
+        "uniqueThread": true
+      }
+    },
+    "verifiedForegroundAndPluginForBoth": true
+  },
+  "after": {
+    "threeOfficialExports": {
+      "prior": {
+        "messageHash": "0d3b7ca41f6736ef309cc00e6ce09fe719a1754e842bbdbcb07da04d185988db",
+        "uniqueThread": true,
+        "markerCounts": {
+          "user": 0,
+          "assistant": 0
+        },
+        "exactUser": 0,
+        "exactAssistant": 0
+      },
+      "current": {
+        "messageHash": "51a9b12ac62417eb63187e00d470f827dcad69bd2537327689bc864948b068b7",
+        "uniqueThread": true,
+        "markerCounts": {
+          "user": 1,
+          "assistant": 1
+        },
+        "exactUser": 1,
+        "exactAssistant": 1
+      },
+      "peer": {
+        "messageHash": "b222ace00c7f256bdc1761b4c6a029a3735f6142bd1575f699965bfea73e492a",
+        "uniqueThread": true,
+        "markerCounts": {
+          "user": 0,
+          "assistant": 0
+        },
+        "exactUser": 0,
+        "exactAssistant": 0
+      }
+    },
+    "verifiedForegroundAndPluginForBoth": true
+  },
+  "priorAndPeerUnchanged": true
+}

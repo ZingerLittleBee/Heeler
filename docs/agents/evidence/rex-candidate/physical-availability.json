@@ -1,0 +1,23 @@
+{
+  "observedAt": "2026-11-27T23:39:00+08:00",
+  "source": "xcrun devicectl list devices --json-output (paired physical devices, Simulator rows excluded)",
+  "devices": [
+    {
+      "model": "iPad Air (5th generation)",
+      "system": "27.2",
+      "transport": null,
+      "tunnel": "unavailable",
+      "pairing": "paired",
+      "developerServicesAvailable": false
+    },
+    {
+      "model": "iPhone 17 Pro Max",
+      "system": "27.3",
+      "transport": "localNetwork",
+      "tunnel": "disconnected",
+      "pairing": "paired",
+      "developerServicesAvailable": false
+    }
+  ],
+  "pushLiveActivityWidget": "NOT-RUN. No attached physical device with developer services available. Rex-only background publication is a separate missing Host capability."
+}

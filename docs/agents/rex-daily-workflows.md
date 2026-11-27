@@ -8,7 +8,7 @@ commit. The Xcode project builds Heeler 0.1.18 (43). The test Hosts run Rex
 macOS 27.0.1 (26A434) or Debian 12.15 arm64 selects API 19. The older end of
 Heeler's range was exercised by a separately pinned client at API 12.
 Herdr TUI reports protocol 22. Xcode 27.2 (27B52) built the iOS 27.0
-Simulator app. The [daily acceptance matrix](rex-daily-acceptance.md) records results by Host, backend and running program.
+Simulator app. The [daily acceptance matrix](rex-daily-acceptance.md) records results by Host, backend and running program for the November 27–28, 2026 runs.
 
 ## Trace from the user entry
 

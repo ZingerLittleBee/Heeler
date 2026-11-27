@@ -1,0 +1,35 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "backend": "rex",
+  "platform": "Debian 12.15",
+  "distinctMobileRequests": 3,
+  "jobs": {
+    "success": {
+      "shellID": "037ff2",
+      "launchCallID": "exec:0#549421119aa94f428da5021d776e535c",
+      "lookupCallID": "get_output:1#78d1e15c568c43dc9e76be89b8e59885",
+      "exitCode": 0,
+      "retainedToolContentCharacters": 46,
+      "independentMarkedOutput": true
+    },
+    "failure": {
+      "shellID": "69834d",
+      "launchCallID": "exec:2#e66b1ec5d70844d587b505b9ebcd1b81",
+      "lookupCallID": "get_output:3#04be869ac680481eac29452250166dce",
+      "exitCode": 17,
+      "retainedToolContentCharacters": 2232,
+      "independentMarkedOutput": true,
+      "originalSubprocessBytes": 12323,
+      "originalSubprocessSHA256": "6a1251add4994481d45f4a1928ef37e5dfddadd07af8cf3ebe0dc39916c4169e"
+    }
+  },
+  "child": {
+    "agentID": "131ed12d",
+    "launchCallID": "run_subagent:4#cc6e5f990c4448fc8bca3ecd523148c2",
+    "acknowledgementDatabaseRow": 2438,
+    "parentFinalDatabaseRow": 2441,
+    "matchingChildRelayDatabaseRow": 2450,
+    "independentReleaseWitness": true
+  },
+  "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+}

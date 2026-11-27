@@ -1,0 +1,49 @@
+{
+  "oldPublicFingerprint": "SHA256:apswPY9QtdpQ4qLkmtW2rfx1yjFoRCXgNoofgSatoUE",
+  "newPublicFingerprint": "SHA256:NgS/+VslfEKGNgmHz80O9zGSIAqrQYce6KSKo5ghVjI",
+  "listeners": {
+    "mixed": {
+      "port": 32771,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true,
+      "allOtherPublicKeysPreserved": true
+    },
+    "pure": {
+      "port": 32775,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true,
+      "allOtherPublicKeysPreserved": true
+    },
+    "refusingForward": {
+      "port": 32772,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    },
+    "herdrReference": {
+      "port": 54726,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    },
+    "grokReference": {
+      "port": 55084,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    },
+    "readOnlyGH": {
+      "port": 60978,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    },
+    "writeGH": {
+      "port": 51963,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    },
+    "droidScript": {
+      "port": 53194,
+      "newPublicKeyAuthorized": true,
+      "oldPublicKeyDenied": true
+    }
+  },
+  "verifiedAt": "2026-11-27T16:09:11.702482+00:00"
+}
