@@ -4,7 +4,7 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI on macOS and Linux Hosts. On a herdr-core (native Windows included) or tmux Host, [herdr-core](herdr-core.md#chat) and [tmux](tmux.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, and Amp (with Heeler's Amp plugin, installed from Chat and reloaded in Amp; Heeler 0.1.24 or newer). On a herdr-core (native Windows included), tmux, or experimental Rex (native Windows included) Host, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
 
 ## Waiting for Conversation
 
@@ -38,7 +38,8 @@ On [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat
 
 ## Conversation Not Found
 
-- A Claude Code, Codex, or Grok Build Agent started with its own configuration folder (such as `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or `GROK_HOME`), or an OpenCode Agent using another database (such as `OPENCODE_DB`), can't show in Chat. Chat reads only their default locations.
+- If an Agent was started with a custom configuration directory (such as `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or `GROK_HOME`), add that directory as an Account in **Settings > Agents & Accounts** so Chat searches it for Transcripts, then tap **Check Again**.
+- Rex Hosts have no Accounts file, and an OpenCode Agent using another database (such as `OPENCODE_DB`) is not found—Chat reads only OpenCode's default database.
 
 ## Chat says the terminal shows another conversation
 

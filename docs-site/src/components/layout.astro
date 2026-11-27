@@ -6,6 +6,8 @@ import '@/styles/global.css';
 interface Props {
   title: string;
   description: string;
+  seoTitle?: string;
+  seoDescription?: string;
   isGuide?: boolean;
   /** For the 404 page: Workers also serves it with status 200 at /404, so keep it out of search engines. */
   noindex?: boolean;
@@ -16,8 +18,11 @@ const path = Astro.url.pathname.replace(/(\/index)?\.html$/, '') || '/';
 const locale = localeFromPath(path);
 const lang = htmlLang(locale);
 const siteName = locale === 'zh' ? 'Heeler 文档' : 'Heeler Docs';
-const { title, description, isGuide = false, noindex = false } = Astro.props;
-const fullTitle = title === siteName ? siteName : `${title} | ${siteName}`;
+const { title, description, seoTitle, seoDescription, isGuide = false, noindex = false } = Astro.props;
+const fullTitle = seoTitle
+  ? (seoTitle.includes(siteName) ? seoTitle : `${seoTitle} | ${siteName}`)
+  : (title === siteName ? siteName : `${title} | ${siteName}`);
+const metaDescription = seoDescription ?? description;
 const ogLocale = locale === 'zh' ? 'zh_CN' : 'en_US';
 const ogAlternateLocale = locale === 'zh' ? 'en_US' : 'zh_CN';
 const canonical = new URL(path, Astro.site);
@@ -42,7 +47,7 @@ const structuredData = {
       {
         '@type': 'TechArticle',
         headline: title,
-        description,
+        description: metaDescription,
         url: canonical.href,
         mainEntityOfPage: canonical.href,
         inLanguage: lang,
@@ -66,7 +71,7 @@ const structuredData = {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
-    <meta name="description" content={description} />
+    <meta name="description" content={metaDescription} />
     {
       noindex ? (
         <meta name="robots" content="noindex" />
@@ -91,7 +96,7 @@ const structuredData = {
     <meta property="og:locale" content={ogLocale} />
     <meta property="og:locale:alternate" content={ogAlternateLocale} />
     <meta property="og:title" content={fullTitle} />
-    <meta property="og:description" content={description} />
+    <meta property="og:description" content={metaDescription} />
     {!noindex && <meta property="og:url" content={canonical} />}
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:type" content="image/jpeg" />
@@ -100,7 +105,7 @@ const structuredData = {
     <meta property="og:image:alt" content={imageAlt} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
-    <meta name="twitter:description" content={description} />
+    <meta name="twitter:description" content={metaDescription} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={imageAlt} />
     <meta name="generator" content={Astro.generator} />

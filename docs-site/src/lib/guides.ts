@@ -59,5 +59,18 @@ export function sidebarTitle(slug: string, locale: Locale = defaultLocale): stri
   return sidebarTitles[locale][slug];
 }
 
+export interface SeoOverride {
+  seoTitle?: string;
+  seoDescription?: string;
+}
+
+/** Optional per-locale HTML title and meta description overrides, keyed by slug. */
+export const seoOverrides: Readonly<Record<Locale, Readonly<Record<string, SeoOverride>>>> = config.seo;
+
+/** A page's SEO title/description overrides in `locale`, if configured in `src/guides.json`. */
+export function seoMeta(slug: string, locale: Locale = defaultLocale): SeoOverride | undefined {
+  return seoOverrides[locale][slug];
+}
+
 /** Lucide icon name for each page (the index and every guide), keyed by slug. */
 export const pageIcons: Readonly<Record<string, string>> = config.icons;

@@ -245,13 +245,29 @@ export function plainText(node: MdastNodes): string {
   return '';
 }
 
-/** Collapses whitespace and trims to `max` characters on a word boundary. */
+/**
+ * Collapses whitespace and trims to `max` characters, preferring a complete
+ * sentence boundary (`. ` / `。`) before falling back to a word or clause cut.
+ */
 export function summarize(text: string, max = 160): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   if (flat.length <= max) return flat;
+
+  const window = flat.slice(0, max);
+  const windowPlusOne = flat.slice(0, max + 1);
+  const enEnd = Math.max(
+    windowPlusOne.lastIndexOf('. '),
+    windowPlusOne.lastIndexOf('! '),
+    windowPlusOne.lastIndexOf('? '),
+  );
+  const zhEnd = Math.max(window.lastIndexOf('。'), window.lastIndexOf('！'), window.lastIndexOf('？'));
+  const sentenceEnd = Math.max(enEnd < max ? enEnd : -1, zhEnd);
+  const minSentence = Math.min(20, Math.floor(max * 0.25));
+  if (sentenceEnd >= minSentence) return flat.slice(0, sentenceEnd + 1);
+
   const cut = flat.slice(0, max - 1);
-  const lastSpace = cut.lastIndexOf(' ');
-  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:，。；：、]+$/, '')}…`;
+  const lastBreak = Math.max(cut.lastIndexOf(' '), cut.lastIndexOf('，'), cut.lastIndexOf('；'));
+  return `${(lastBreak > 0 ? cut.slice(0, lastBreak) : cut).replace(/[\s,.;:，。；：、]+$/, '')}…`;
 }
 
 /**
