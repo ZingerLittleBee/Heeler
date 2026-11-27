@@ -597,12 +597,16 @@ enum ChatFileLink: AttributedStringKey {
     }
 
     static func destination(_ url: URL) -> String? {
-        if url.isFileURL {
-            return ChatImagePath.resolve(url.absoluteString, cwd: nil).flatMap { path(withoutLocation($0), allowsSpaces: true) }
+        guard url.query == nil, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.fragment = nil
+        guard let target = components.url else { return nil }
+        if target.isFileURL {
+            return ChatImagePath.resolve(target.absoluteString, cwd: nil).flatMap { path(withoutLocation($0), allowsSpaces: true) }
         }
-        guard url.scheme == nil, url.host == nil, url.query == nil, url.fragment == nil,
-            let decoded = url.relativeString.removingPercentEncoding else { return nil }
-        return path(withoutLocation(decoded), allowsSpaces: true)
+        guard target.host == nil, let decoded = target.relativeString.removingPercentEncoding else { return nil }
+        let plain = withoutLocation(decoded)
+        if target.scheme != nil, plain.contains(":") || !plain.contains(".") { return nil }
+        return path(plain, allowsSpaces: true)
     }
 
     /// In prose only a complete token containing a slash looks enough like a

@@ -665,10 +665,10 @@ struct ChatMarkdownTests {
         #expect(ChatImageLink.paths(in: block.content) == ["/tmp/a.png", "shots/relative.png"])
     }
 
-    @Test("File paths open from prose and code, with a line number or not, without turning words, commands or web links into files")
+    @Test("File paths open from prose, code and links, with a line number or anchor or not, without turning words, commands or web links into files")
     func codeBlockWithoutImagePaths() throws {
         let source = """
-            Saved out/report.csv, /tmp/log and ~/out/report. See [the report](out/my%20report), `scripts/Makefile`, Sources/App.swift:12 or `Sources/App.swift:12:5`. Not report, `README.md`, `self.view`, 15 KB/s, herdr/tmux, `PreToolUse`, `0.1.24`, `/compact` or https://host/out/file.
+            Saved out/report.csv, /tmp/log and ~/out/report. See [the report](out/my%20report), `scripts/Makefile`, Sources/App.swift:12 or `Sources/App.swift:12:5`. Links: [a](src/a.ts#L12), [b](file:///tmp/x/Faqs.tsx#L65-L75), [c](CONTEXT.md:11) and [d](docs/guide.md#install), not [e](tel:123). Not report, `README.md`, `self.view`, 15 KB/s, herdr/tmux, `PreToolUse`, `0.1.24`, `/compact` or https://host/out/file.
 
             ```swift
             let image = UIImage(named: "a.png")
@@ -690,7 +690,10 @@ struct ChatMarkdownTests {
             }
         }
         #expect(links.map { $0.map { $0.1 } } == [
-            ["out/report.csv", "/tmp/log", "~/out/report", "out/my report", "scripts/Makefile", "Sources/App.swift", "Sources/App.swift"],
+            [
+                "out/report.csv", "/tmp/log", "~/out/report", "out/my report", "scripts/Makefile", "Sources/App.swift", "Sources/App.swift",
+                "src/a.ts", "/tmp/x/Faqs.tsx", "CONTEXT.md", "docs/guide.md",
+            ],
             [], ["/tmp/report.pdf", "docs/README.md", "Sources/App.swift"],
         ])
         #expect(links.flatMap { $0.map { $0.0 } }.filter { $0.contains(":") } == ["Sources/App.swift:12", "Sources/App.swift:12:5", "Sources/App.swift:40-52"])
