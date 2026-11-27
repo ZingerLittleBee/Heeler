@@ -38,6 +38,7 @@ struct RexSSHLiveTests {
         let socketPath: String
         let missingSocketPath: String
         let inactiveSocketPaths: [String]?
+        let equivalentSocketPaths: [String]?
     }
 
     private struct Sessions: Decodable {
@@ -143,14 +144,7 @@ struct RexSSHLiveTests {
     /// listens, which the socket check tells from a stopped server.
     @Test func anSSHServerThatForbidsForwardingIsNamed() async throws {
         let configuration = try configuration()
-        let path = configuration.socketPath
-        var paths = [path]
-        if path.hasPrefix("/private/tmp/") {
-            paths.append(String(path.dropFirst("/private".count)))
-        } else if path.hasPrefix("/tmp/") {
-            paths.append("/private" + path)
-        }
-        for spelling in paths {
+        for spelling in [configuration.socketPath] + (configuration.equivalentSocketPaths ?? []) {
             let error = await failure(try settings(configuration, port: configuration.refusingPort, socketPath: spelling))
             #expect(error as? TransportError == .rexForwardingRefused(socketPath: spelling))
         }
