@@ -294,6 +294,43 @@ struct RexProjectLiveTests {
         try await link.removeLabSession(first.sessionID, named: label)
     }
 
+    /// The user can remove a clean checkout from another Terminal after its Agent exits.
+    /// Git refuses dirty checkouts and the branch stays in the original repository.
+    private func removeCheckoutInTerminal(
+        _ checkout: String, branch: String, in shell: RexPaneAddress, project: String, link: Connection
+    ) async throws {
+        let before = try await link.foreground(shell)
+        try #require(before.processID != nil && before.directory == project)
+        let attach = AttachTerminalStore(target: .terminal(shell.paneID),
+            runTerminal: link.console.terminalRunner(for: link.host.id, keepingTo: link.console.corePin(on: link.host.id)))
+        let files = link.console.chatHostFiles(for: link.host.id)
+        let tag = "REMOVED_" + UUID().uuidString.prefix(8)
+        let git = "git -C " + HostHelperScript.quote(project)
+        let command = git + " worktree remove " + HostHelperScript.quote(checkout)
+            + " && " + git + " show-ref --verify --quiet " + HostHelperScript.quote("refs/heads/" + branch)
+            + " && echo " + tag
+        let original = try await link.console.readChanges(.init(directory: project), on: link.host.id).changes
+        do {
+            attach.viewDidResize(cols: 100, rows: 32)
+            try await wait("the selected shell is open in Terminal") { attach.status == .live }
+            try #require(try await link.foreground(shell).processID == before.processID)
+            let block = try await link.session.blockRequests(at: shell, readDeadline: .sharedLinkRead)
+            attach.send(Data((command + "\r").utf8))
+            try await wait("Git removed the checkout and verified its original branch") {
+                let rows = try await RexChatScreen.read(on: block).screen.rows
+                return rows.contains { $0.trimmedText == tag }
+            }
+            try #require(try await files.status(checkout) == nil)
+            let remaining = try await link.console.readChanges(.init(directory: project), on: link.host.id).changes
+            #expect(remaining.head == original.head && remaining.files == original.files)
+        } catch {
+            await attach.stop()
+            throw error
+        }
+        await attach.stop()
+        #expect(try await link.foreground(shell).processID == before.processID)
+    }
+
     @Test func launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop() async throws {
         let lab = try Lab.configured()
         let link = try Connection(lab)
@@ -349,6 +386,7 @@ struct RexProjectLiveTests {
         let linked = try await console.startAgentInNewWorktree(request, worktree: .init(branch: branch), on: id)
         #expect(started.workspaceID == anchor.sessionID)
         #expect(started.paneID != linked.paneID && linked.workspaceID != started.workspaceID)
+        var checkoutPath: String?
         for agent in [started, linked] {
             let address = try #require(RexPaneAddress(paneID: agent.paneID))
             try await wait("the real recorder holds the selected block") {
@@ -364,7 +402,8 @@ struct RexProjectLiveTests {
             let changes = try await console.readChanges(.init(directory: receipt.cwd), on: id).changes
             if agent.paneID == linked.paneID {
                 #expect(changes.checkout.isLinkedWorktree && changes.head.branch == .named(branch))
-                #expect(changes.isClean)
+                try #require(changes.isClean && changes.checkout.isLinkedWorktree)
+                checkoutPath = receipt.cwd
             } else {
                 #expect(!changes.checkout.isLinkedWorktree && !changes.isClean)
             }
@@ -389,7 +428,13 @@ struct RexProjectLiveTests {
         }
         let after = try await link.view(anchor.sessionID)
         #expect(after["active_window_id"]?.stringValue == activeWindow)
+        let checkout = try #require(checkoutPath)
+        try #require((checkout as NSString).lastPathComponent == branch)
         try await link.removeLabSession(linked.workspaceID, named: branch)
+        try await removeCheckoutInTerminal(checkout, branch: branch, in: anchor, project: lab.project, link: link)
+        let neighbor = try #require(RexPaneAddress(paneID: started.paneID))
+        #expect(try await link.foreground(neighbor).program == "claude")
+        #expect(try await link.view(anchor.sessionID)["active_window_id"]?.stringValue == activeWindow)
         try await link.removeLabSession(anchor.sessionID, named: name)
         let desktop = try await link.view(lab.rexSession)
         #expect(desktop["active_window_id"] == original["active_window_id"])
