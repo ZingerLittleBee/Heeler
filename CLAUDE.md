@@ -42,7 +42,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   the stored tmux executable and `-S <socket>` over SSH exec: `-N` on every
   command except Linux New Workspace, a polling loop for inventory, per-Pane
   control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
-  from Claude Code hooks, Droid hooks on macOS, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
+  from Claude Code and Droid hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
   readers (ADRs 0044, 0045, and 0046).
 - Rex Hosts (experimental; one Rex Server per Host, listed by a look) target
   one running Rex server, API revisions 12 to 19: one WebSocket control link
@@ -58,8 +58,8 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   once; a block's size is taken only for a terminal
   on screen, before its first paint, and given back when it leaves (ADRs 0049
   to 0053). Rex Chat reads over SSH and types through the control link.
-  Claude Code, Codex, Pi and Oh My Pi open Chat on Linux and macOS. macOS
-  also supports Droid. Native Windows supports Claude Code. Attachments,
+  Claude Code, Codex, Pi, Oh My Pi and Droid open Chat on Linux and macOS.
+  Native Windows supports Claude Code. Attachments,
   Heeler's Pi extension and the Droid hook the user installs from Chat are
   scoped writes (ADRs 0054 to 0056).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.

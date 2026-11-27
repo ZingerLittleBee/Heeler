@@ -10,9 +10,11 @@ On macOS and Linux Herdr TUI Hosts, Chat supports Claude Code, Codex, Pi, Oh My 
 
 herdr hasn't told Heeler which conversation the Agent is in yet.
 
-1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there. For Droid, finish the folder trust prompt in the terminal.
+1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there. For Droid, check the Host and full directory on the folder trust card. If Chat directs you to the terminal, finish trust in that Agent’s terminal.
 2. On the Host, run `herdr integration status` and install the program's integration if it isn't `current` ([Set up the Host](chat.md#set-up-the-host)), then restart the Agent.
 3. Tap **Check Again**.
+
+For an externally started Droid on herdr-core, tmux or Rex, use **Install Droid Hook…** if Chat reports a missing hook, then resume Droid in that terminal. [Droid setup](chat.md#droid)
 
 If Codex still waits after you have sent prompts, it was probably started without `--no-daemon`: see the next section.
 

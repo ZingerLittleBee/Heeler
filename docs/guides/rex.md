@@ -121,12 +121,12 @@ To start an Agent, open a New Terminal and start it there. It moves to **Agents*
 
 ## Chat
 
-**Chat** works for Claude Code, Codex, Pi, and Oh My Pi in Rex on macOS and Linux, for Droid on macOS, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
+**Chat** works for Claude Code, Codex, Pi, Oh My Pi and Droid in Rex on macOS and Linux, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
 
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Binds from the running Claude Code itself, on Windows too. After `/clear` or `/resume`, Chat checks again before it sends your next message. |
-| Droid | On macOS, [install the Droid hook](chat.md#droid) and resume Droid in this terminal. Chat checks its current session before sending. |
+| Droid | On macOS and Linux, [install the Droid hook](chat.md#droid) and resume Droid in this terminal. Chat checks its current session before sending. |
 | Codex | Binds once it holds its conversation file, after the first message. Start it with `--no-daemon` ([why](chat.md#set-up-the-host)); without it, Chat shows [**Codex Started Without --no-daemon**](chat-troubleshooting.md#codex-started-without---no-daemon) instead of the conversation. |
 | Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Pi starts. After `/new`, Chat checks again before it sends your next message. |
 | Oh My Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Oh My Pi starts. Without the extension, Chat follows the conversation after its first message. After `/new`, Chat checks again before it sends your next message. |

@@ -57,8 +57,8 @@ server has been observed yet.
 - A Rex Agent opens the Agent detail, with its Chat and Terminal surfaces
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)):
   `HostCapabilities` offers Composer Send and Stop, and Chat for Claude
-  Code, Codex, Pi and Oh My Pi once `server.version` named a Linux or macOS
-  kernel. A macOS Rex Host also opens Droid Chat. The Terminal
+  Code, Codex, Pi, Oh My Pi and Droid once `server.version` names a Linux or macOS
+  kernel. See the [Droid acceptance matrix](droid-chat-validation.md) for the tested controls. The Terminal
   surface takes the size under ADR 0053's rule and Chat takes none; the
   terminal pool holds no Agent's block, and windows take turns with a Rex
   Host's Agent terminals (`terminalsShowInOneWindow`).

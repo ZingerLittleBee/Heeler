@@ -1,0 +1,681 @@
+{
+  "productCandidate": "e433870600d26395bf7d1d4842a9416957bdab06",
+  "testOnlyRevision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+  "startingRevision": "f858cee5b30890352d3cea267ef228147992e587",
+  "versions": {
+    "macOS": {
+      "os": "27.0.1",
+      "kernel": "27.0.0",
+      "architecture": "arm64",
+      "factory": "1.21.1",
+      "herdr": "herdr 0.9.5",
+      "herdr-core": "hc 0.1.22",
+      "tmux": "tmux 3.7b",
+      "rex": {
+        "rex_version": "0.1.0-preview.25",
+        "platform": "darwin_arm64",
+        "commit": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+        "built_at": "2026-11-25T21:59:11Z",
+        "dirty": false,
+        "api_revision": 24
+      }
+    },
+    "Linux": {
+      "os": "13.7",
+      "kernel": "7.2.12-orbstack-00394-gbecdd6130068",
+      "architecture": "aarch64",
+      "factory": "1.21.1",
+      "herdr": "herdr 0.9.5",
+      "herdr-core": "hc 0.1.22",
+      "tmux": "tmux 3.5a",
+      "rex": {
+        "rex_version": "0.1.0-preview.25",
+        "platform": "linux_arm64",
+        "commit": "b070aae645f5cbfac65d65d031a8b712b2ebca36",
+        "built_at": "2026-11-25T21:59:11Z",
+        "dirty": false,
+        "api_revision": 24
+      }
+    },
+    "simulatorToolchain": "Xcode 27.2, Build version 27B52"
+  },
+  "cleanup": {
+    "temporaryLinuxContainerRemoved": true,
+    "linuxContainerPersistentMounts": 0,
+    "remainingScopedDroidProcesses": 0,
+    "rex-serverStopped": true,
+    "sshd-ownedStopped": true,
+    "tuiStopped": true,
+    "fixtureSshPortsClosed": true,
+    "scopedCoreStopped": true,
+    "survivingScopedTmuxServers": 0,
+    "macGeneratedTranscriptDirectoriesRemoved": 152,
+    "ambiguousMacTranscriptDirectoriesKept": 0,
+    "macGeneratedProcessHintsRemoved": 0,
+    "testSimulatorsShutdown": {
+      "iPhone": true,
+      "iPad": true
+    },
+    "reachableCoreFixtureSockets": []
+  },
+  "verification": {
+    "focused": {
+      "revision": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "receipt": "focused-e43387060.txt",
+      "executed": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "mac-tui-ipad": {
+      "revision": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "receipt": "mac-tui-ipad-e43387060.txt",
+      "executed": 15,
+      "passed": 13,
+      "failed": 2,
+      "skipped": 0,
+      "failedMethods": [
+        "aSpecHandoffFollowsTheNewForegroundSession",
+        "anOldStopCannotInterruptANewDroidConversation"
+      ]
+    },
+    "linux-tui": {
+      "revision": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "receipt": "linux-tui-e43387060.txt",
+      "executed": 15,
+      "passed": 14,
+      "failed": 1,
+      "skipped": 0,
+      "failedMethods": [
+        "anOldStopCannotInterruptANewDroidConversation"
+      ]
+    },
+    "mac-backends": {
+      "revision": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "receipt": "mac-backends-e43387060.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "backendCases": [
+        "herdrCore",
+        "tmux",
+        "rex"
+      ]
+    },
+    "linux-backends-final": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "linux-backends-final-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "backendCases": [
+        "herdrCore",
+        "tmux",
+        "rex"
+      ]
+    },
+    "stop-mac": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "stop-mac-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "stop-linux": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "stop-linux-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "handoff-mac": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "handoff-mac-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "focused-proof": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "focused-proof-686a2c07f.txt",
+      "executed": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    "rex-transport": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "rex-transport-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "transport-targeted": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "transport-targeted-686a2c07f.txt",
+      "executed": 80,
+      "passed": 80,
+      "failed": 0,
+      "skipped": 0
+    },
+    "transport-complete": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "transport-complete-686a2c07f.txt",
+      "executed": 125,
+      "passed": 123,
+      "failed": 2,
+      "skipped": 0,
+      "failedMethods": [
+        "hostCapabilitiesOfferChatOnlyWhereItReads",
+        "statusTurnAndForegroundEventsEachCheckAgain"
+      ]
+    },
+    "owner-linux": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "owner-linux-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "backendCases": [
+        "herdrCore",
+        "tmux",
+        "rex"
+      ]
+    },
+    "owner-mac": {
+      "revision": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "receipt": "owner-mac-686a2c07f.txt",
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "backendCases": [
+        "herdrCore",
+        "tmux",
+        "rex"
+      ]
+    },
+    "regression-baseline": {
+      "revision": "f858cee5b30890352d3cea267ef228147992e587",
+      "receipt": "regression-baseline-f858cee5b.txt",
+      "executed": 2,
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "failedMethods": [
+        "hostCapabilitiesOfferChatOnlyWhereItReads",
+        "statusTurnAndForegroundEventsEachCheckAgain"
+      ]
+    }
+  },
+  "demonstrations": {
+    "mac": {
+      "candidate": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "platform": "mac",
+      "trustReplies": [
+        {
+          "foregroundSession": "7bd01d58-b979-414d-bac0-263380dcf358",
+          "assistantMessageID": "2da0232d-435d-4ae2-9af9-90e1203a81f2",
+          "reply": "DROID_TRUST_6D47EA65"
+        }
+      ],
+      "exitObserver": "ready",
+      "approvals": {
+        "firstBytes": "ALPHA-DROID",
+        "secondExists": false,
+        "requests": [
+          {
+            "file": "approval-a.txt",
+            "call": "call_decd9028e7392c04_0",
+            "session": "b46d583f-6add-4ea6-878a-2b9144ba2c6c"
+          },
+          {
+            "file": "approval-b.txt",
+            "call": "call_9c10b805a72b3490_0",
+            "session": "b46d583f-6add-4ea6-878a-2b9144ba2c6c"
+          }
+        ]
+      },
+      "backgroundCommands": [
+        {
+          "marker": "RED_1E9C45",
+          "call": "call_3f3ea6cac9b0aaf3_0",
+          "session": "b5eec777-c966-44e8-a04a-59e3e5befc0a",
+          "pid": 79295,
+          "terminalStatus": "signal SIGTERM",
+          "userStopped": true
+        },
+        {
+          "marker": "BLUE_1E9C45",
+          "call": "call_3f3ea6cac9b0aaf3_1",
+          "session": "b5eec777-c966-44e8-a04a-59e3e5befc0a",
+          "pid": 79315,
+          "terminalStatus": "code 0",
+          "userStopped": false
+        }
+      ],
+      "lateChildReports": [
+        {
+          "childID": "d422be9f-c23c-4c53-a502-5e828660caea",
+          "parentSession": "b5eec777-c966-44e8-a04a-59e3e5befc0a",
+          "messageID": "task-completion:79097035-0ee4-4c2f-9234-4fe64c03cda6",
+          "result": "CHILD_1E9C45"
+        }
+      ],
+      "sameDirectoryTranscripts": [
+        {
+          "session": "6c4f93f8-cc5b-4f6a-9109-454cf3005fce",
+          "assistantMarkers": [
+            "A_A7C9F250"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "f513cac9-5fa0-410b-a55d-32ef7f58d1f6",
+          "assistantMarkers": [
+            "A_A7C9F250"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "8b1ad269-5e38-455d-a132-6f8788a0982f",
+          "assistantMarkers": [
+            "B_A7C9F250"
+          ],
+          "unsentDraftRecords": 0
+        }
+      ]
+    },
+    "linux": {
+      "candidate": "e433870600d26395bf7d1d4842a9416957bdab06",
+      "platform": "linux",
+      "trustReplies": [
+        {
+          "foregroundSession": "6e2f3d2a-2251-4cb8-96f9-cd9f28b4a44f",
+          "assistantMessageID": "83fc367e-f647-4d46-8c80-ab0c039dcd75",
+          "reply": "DROID_TRUST_BCAB251B"
+        }
+      ],
+      "exitObserver": "ready",
+      "approvals": {
+        "firstBytes": "ALPHA-DROID",
+        "secondExists": false,
+        "requests": [
+          {
+            "file": "approval-a.txt",
+            "call": "call_b802891078ad72ba_0",
+            "session": "b6034c0d-aef4-43fe-94f9-00239ceaedb7"
+          },
+          {
+            "file": "approval-b.txt",
+            "call": "call_79a18f5b3bb6c337_0",
+            "session": "b6034c0d-aef4-43fe-94f9-00239ceaedb7"
+          }
+        ]
+      },
+      "backgroundCommands": [
+        {
+          "marker": "RED_EE1A6D",
+          "call": "call_a571a83c1bfc6a50_0",
+          "session": "820b40d2-6ac6-4a7e-8b50-c9a1f6c1a385",
+          "pid": 174761,
+          "terminalStatus": "signal SIGTERM",
+          "userStopped": true
+        },
+        {
+          "marker": "BLUE_EE1A6D",
+          "call": "call_a571a83c1bfc6a50_1",
+          "session": "820b40d2-6ac6-4a7e-8b50-c9a1f6c1a385",
+          "pid": 174765,
+          "terminalStatus": "code 0",
+          "userStopped": false
+        }
+      ],
+      "lateChildReports": [
+        {
+          "childID": "2d2eaff9-6ad7-409e-a133-c823b2dc26c0",
+          "parentSession": "820b40d2-6ac6-4a7e-8b50-c9a1f6c1a385",
+          "messageID": "task-completion:400ee819-5a7e-4c74-bce7-5dbeb7aee37b",
+          "result": "CHILD_EE1A6D"
+        }
+      ],
+      "sameDirectoryTranscripts": [
+        {
+          "session": "270ea45d-dd7e-4770-964e-524a2b3ca999",
+          "assistantMarkers": [
+            "A_D808131E"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "70078a66-6682-4689-a92e-4d27c9e2c395",
+          "assistantMarkers": [
+            "B_D808131E"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "af21c63a-cae8-4c36-9139-5caca557cce7",
+          "assistantMarkers": [
+            "A_D808131E"
+          ],
+          "unsentDraftRecords": 0
+        }
+      ]
+    }
+  },
+  "hookLifecycle": {
+    "upgrade": {
+      "previousFileWasEdited": true,
+      "editedFileWasPreserved": true,
+      "expectedFinalByte": 10,
+      "oldNotificationMatcher": "permission_prompt",
+      "newNotificationMatcher": "permission_prompt|elicitation_dialog"
+    },
+    "disabledAndResumed": {
+      "platform": "Linux",
+      "droid": "1.21.1",
+      "disabledHookFile": "absent",
+      "enabledSessionStart": true,
+      "resumedSameUUID": true,
+      "newProcess": true
+    }
+  },
+  "sessionCommands": [
+    {
+      "command": "/cd (cancel)",
+      "before": "38650dae-2597-43ef-9acd-d13e2a70c849",
+      "after": "38650dae-2597-43ef-9acd-d13e2a70c849",
+      "ready": true
+    },
+    {
+      "command": "/compress",
+      "before": "ff722a0f-3cdd-476d-86b9-3a52c63936f5",
+      "after": "ff722a0f-3cdd-476d-86b9-3a52c63936f5",
+      "ready": true
+    },
+    {
+      "command": "/clear",
+      "before": "ff722a0f-3cdd-476d-86b9-3a52c63936f5",
+      "after": "b0680ea3-7ef7-4ee9-90c9-2a38c9dcaef0",
+      "ready": true
+    }
+  ],
+  "linuxTmux": {
+    "permissionScope": {
+      "choice": "Yes, and always allow low impact commands (file edits and read-only commands)",
+      "changedFile": true,
+      "returnedToComposer": true,
+      "returnedAutonomy": "Low",
+      "userSettingsEqual": true,
+      "defaultBefore": "off",
+      "defaultAfter": "off"
+    },
+    "enforcedPolicy": {
+      "Droid": "1.21.1",
+      "platform": "Linux",
+      "backend": "tmux",
+      "rule": "heeler/fixture-block",
+      "reason": "Heeler fixture policy blocked this marker.",
+      "markerCreated": false,
+      "transcriptRecords": [
+        {
+          "session": "43914809-3358-4ee5-aa35-1e0681221a5c",
+          "id": "repl-tool-result:93b054f5-8816-43b4-8e36-1d0807aa248b-1",
+          "role": "user",
+          "includesRule": true,
+          "includesReason": true,
+          "toolResult": true
+        },
+        {
+          "session": "43914809-3358-4ee5-aa35-1e0681221a5c",
+          "id": "a1252406-8d6a-4cc1-bf2a-2ec0bcf3377b",
+          "role": "user",
+          "includesRule": true,
+          "includesReason": true,
+          "toolResult": true
+        },
+        {
+          "session": "43914809-3358-4ee5-aa35-1e0681221a5c",
+          "id": "c06fb876-43bd-4334-a274-d6f7ae443129",
+          "role": "assistant",
+          "includesRule": true,
+          "includesReason": true,
+          "toolResult": false
+        }
+      ]
+    },
+    "steer": {
+      "platform": "Linux",
+      "Droid": "1.21.1",
+      "access": "tmux terminal",
+      "scenario": "steer",
+      "draftEcho": true,
+      "associatedRecords": [
+        {
+          "recordType": "message",
+          "role": "user",
+          "messageID": "c3fa4d0d-f49f-4938-bc02-5b42b10ad714",
+          "turnID": null
+        },
+        {
+          "recordType": "message",
+          "role": "assistant",
+          "messageID": "87476348-6d47-42d7-80ee-c08c4ba0342b",
+          "turnID": null
+        }
+      ],
+      "idleAfterwards": true,
+      "verifiedCancellation": false
+    },
+    "queue": {
+      "platform": "Linux",
+      "droid": "1.21.1",
+      "session": "ddbc4601-eb01-4b12-92eb-1bbdba9fdff8",
+      "twoMarkersInQueue": true,
+      "offeredClearEntireQueue": true,
+      "clearRemovedBoth": true,
+      "parentFinished": true,
+      "firstRecorded": false,
+      "secondRecorded": false,
+      "stableQueueItemIDs": false
+    }
+  },
+  "desktopFocus": {
+    "mac": {
+      "platform": "mac",
+      "candidate": "e43387060",
+      "pane": "%118",
+      "before": {
+        "window": "125x31",
+        "activePane": "%118",
+        "desktopClient": "125x32 DroidQAdf49a9d"
+      },
+      "after": {
+        "window": "125x31",
+        "activePane": "%118",
+        "desktopClient": "125x32 DroidQAdf49a9d"
+      },
+      "sameWindowAndFocus": true,
+      "suiteFinished": true
+    },
+    "linux": {
+      "platform": "linux",
+      "candidate": "686a2c07f",
+      "pane": "%12",
+      "before": {
+        "window": "125x31",
+        "activePane": "%12",
+        "desktopClient": "125x32 DroidQA0ef62f8"
+      },
+      "after": {
+        "window": "125x31",
+        "activePane": "%12",
+        "desktopClient": "125x32 DroidQA0ef62f8"
+      },
+      "sameWindowAndFocus": true,
+      "suiteFinished": true
+    }
+  },
+  "failedBackgroundCommands": {
+    "mac": {
+      "session": "b67fa9a0-2cd7-43bf-a081-774b8a7f740a",
+      "parentReply": "56799171-ec0c-4841-8f05-c7d4d05310e5",
+      "event": {
+        "call": "call_31aedb1c40d80a57_0",
+        "status": "code 7",
+        "stoppedBy": "process",
+        "event": "execute-completion:call_31aedb1c40d80a57_0"
+      },
+      "marker": "FAIL_EE2F5365",
+      "runInBackground": true,
+      "platform": "mac",
+      "backend": "tmux",
+      "Droid": "1.21.1"
+    },
+    "linux": {
+      "session": "a00be832-aa1f-4202-a883-2ccf885e1802",
+      "parentReply": "55d89344-0a57-4e23-9d9f-e2f022c1bc08",
+      "event": {
+        "call": "call_b27f97e104b2d609_0",
+        "status": "code 7",
+        "stoppedBy": "process",
+        "event": "execute-completion:call_b27f97e104b2d609_0"
+      },
+      "marker": "FAIL_64A9F4AD",
+      "runInBackground": true,
+      "platform": "linux",
+      "backend": "tmux",
+      "Droid": "1.21.1"
+    }
+  },
+  "nestedTmux": {
+    "mac": {
+      "platform": "mac",
+      "Droid": "1.21.1",
+      "outer": {
+        "server": "37020:1795760196",
+        "pane": "%0",
+        "pid": "37021",
+        "command": "tmux"
+      },
+      "inner": {
+        "server": "37014:1795760196",
+        "pane": "%0",
+        "pid": "37016",
+        "command": "droid"
+      },
+      "completeDroidFrameInBoth": true,
+      "outerIsTmuxClient": true,
+      "innerIsDroid": true,
+      "sameNumber": true,
+      "separateServers": true,
+      "inputSent": false
+    },
+    "linux": {
+      "platform": "linux",
+      "Droid": "1.21.1",
+      "outer": {
+        "server": "241097:1795760323",
+        "pane": "%0",
+        "pid": "241098",
+        "command": "tmux"
+      },
+      "inner": {
+        "server": "241082:1795760323",
+        "pane": "%0",
+        "pid": "241083",
+        "command": "droid"
+      },
+      "completeDroidFrameInBoth": true,
+      "outerIsTmuxClient": true,
+      "innerIsDroid": true,
+      "sameNumber": true,
+      "separateServers": true,
+      "inputSent": false
+    }
+  },
+  "rexBlockWithNoOwner": {
+    "mac": {
+      "candidate": "e43387060",
+      "platform": "mac",
+      "before": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "after": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "startedDuringSuite": true,
+      "sameSizeAndOwner": true
+    },
+    "linux": {
+      "candidate": "686a2c07f",
+      "platform": "linux",
+      "before": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "after": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "startedDuringSuite": true,
+      "sameSizeAndOwner": true
+    }
+  },
+  "rexBlockWithAnOwner": {
+    "mac": {
+      "testCandidate": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "platform": "mac",
+      "program": "Droid",
+      "controlClient": "independent terminal client",
+      "revision": 19,
+      "ownerBefore": "client:01a21ba3-cb1f-7bea-8d76-ba9cf9a428ae",
+      "ownerAfter": "client:01a21ba3-cb1f-7bea-8d76-ba9cf9a428ae",
+      "columns": 80,
+      "rows": 24,
+      "samples": 282,
+      "wholeSizeAndOwnerEqual": true,
+      "verifiedCheckedSendAndStop": true
+    },
+    "linux": {
+      "testCandidate": "686a2c07f0a82029439f89f06e8147a304f255cf",
+      "platform": "linux",
+      "program": "Droid",
+      "controlClient": "independent terminal client",
+      "revision": 19,
+      "ownerBefore": "client:01a21ba0-df44-7cc8-83e5-10fcddaace8d",
+      "ownerAfter": "client:01a21ba0-df44-7cc8-83e5-10fcddaace8d",
+      "columns": 80,
+      "rows": 24,
+      "samples": 271,
+      "wholeSizeAndOwnerEqual": true,
+      "verifiedCheckedSendAndStop": true
+    }
+  }
+}
