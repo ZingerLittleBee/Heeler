@@ -1,0 +1,13 @@
+[39m [38;2;255;209;102m● [39mStarting implementation
+ [38;2;68;68;68m│[39m Two-step plan:
+ [38;2;68;68;68m│[39m   [38;2;124;124;124m1.[39m Create [38;2;220;220;170m[48;2;0;43;54m /tmp/heeler-qa/plan-qa.txt [39m[49m with a short temporary note (e.g. "Temporary
+ [38;2;68;68;68m│[39m      QA note — safe to delete.").
+ [38;2;68;68;68m│[39m   [38;2;124;124;124m2.[39m Verify it exists and print its contents with [38;2;220;220;170m[48;2;0;43;54m ls -l [39m[49m and [38;2;220;220;170m[48;2;0;43;54m cat [39m[49m.
+ [38;2;68;68;68m│[39m No source code or configuration is touched — it's just a small temp note in the current test folder.
+ [38;2;68;68;68m└[39m Plan file: ~/.devin/plans/plan-example.md
+
+[1m[38;2;94;196;255m[48;2;31;31;31m❭[0m[39m[48;2;31;31;31m [38;2;124;124;124m1[39m [1m[38;2;94;196;255mYes, switch to accept edits mode[0m[39m[48;2;31;31;31m  [38;2;124;124;124m(Auto-approve edits in workspace dirs)
+[39m[49m  [38;2;124;124;124m2[39m Yes, switch to bypass mode
+  [38;2;124;124;124m3[39m No
+
+[38;2;124;124;124m↑↓[39m [38;2;124;124;124mselect[39m [38;2;124;124;124m·[39m [38;2;124;124;124m↵[39m [38;2;124;124;124mconfirm[39m [38;2;124;124;124m·[39m [38;2;124;124;124mesc[39m [38;2;124;124;124mcancel

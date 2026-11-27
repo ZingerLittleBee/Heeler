@@ -1447,9 +1447,13 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
-        guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead, let active = server,
+        try await chatInputTarget(paneID: paneID, program: .droid)
+    }
+
+    func chatInputTarget(paneID: String, program: ChatProgram) async throws -> DroidDialogTarget? {
+        guard program.pinsComposerToSession, !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead, let active = server,
               let scope = chatCacheScope else { return nil }
-        let target = try await chatBinder(paneID: paneID, program: .droid, server: active)
+        let target = try await chatBinder(paneID: paneID, program: program, server: active)
             .droidDialogTarget(.init(tmuxPane: pane), scope: scope + "/" + paneID)
         return chatCacheScope == scope ? target : nil
     }
@@ -1656,6 +1660,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             home: {
                 try await session.withTransport { $0.hostServices }.hostHomeDirectory()
             },
+            queryDevin: { query in try await session.withTransport { $0.hostServices }.queryDevin(query) },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
             },

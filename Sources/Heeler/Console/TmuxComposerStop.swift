@@ -120,7 +120,7 @@ final class TmuxComposerStop {
     private func runStopPlan(
         on send: TmuxAttachSend, in projection: TmuxConsoleProjection
     ) async -> AgentInterruptOutcome {
-        if case .chat = seat, program == .droid {
+        if case .chat = seat, program.pinsComposerToSession {
             guard let confirmTarget, await confirmTarget() else { return .failed(ChatStopPlan.changedDroidTurn) }
         }
         if let screenGuard = plan.screenGuard {

@@ -78,6 +78,7 @@ final class RexChatTyping: CheckedChatTyping {
     /// its answers, so `recordAnswer` stays nil.
     var blockedScreen: BlockedScreenIO {
         var screen = BlockedScreenIO.unavailable
+        screen.holdsDialogsWhileUnknown = true
         screen.readScreen = { [weak self] in
             guard let self else { throw TransportError.cancelled }
             return try await self.readScreen()

@@ -119,6 +119,8 @@ extension ChatProgram {
             ChatSessionNaming(
                 source: "herdr:claude", agent: "claude", sessionID: ConversationReference.canonicalUUID,
                 acceptsTranscriptPath: false)
+        case .devin:
+            ChatSessionNaming(source: "herdr:devin", agent: "devin", sessionID: DevinSession.id, acceptsTranscriptPath: false)
         case .droid:
             ChatSessionNaming(
                 source: "herdr:droid", agent: "droid", sessionID: ConversationReference.canonicalUUID,

@@ -12,6 +12,7 @@ struct ChatCandidatePickerView: View {
     static func emptyListDescription(for program: ChatProgram) -> String {
         switch program {
         case .amp: AmpChatProblem.noThread.explanation
+        case .devin: String(localized: "Open the terminal to select a local Devin session. Chat follows the session held by its foreground client.")
         case .agy:
             String(localized: "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither.")
         case .claude, .codex, .pi, .omp, .grok, .opencode, .droid:

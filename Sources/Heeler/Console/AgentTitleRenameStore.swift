@@ -6,14 +6,14 @@ enum AgentTitleNaming {
     static func supportsRename(_ program: ChatProgram) -> Bool {
         switch program {
         case .claude, .codex, .pi, .omp, .grok, .opencode, .agy: true
-        case .droid, .amp: false
+        case .droid, .devin, .amp: false
         }
     }
 
     static func supportsGeneration(_ program: ChatProgram) -> Bool {
         switch program {
         case .claude, .codex, .omp: true
-        case .pi, .grok, .opencode, .agy, .droid, .amp: false
+        case .pi, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 
@@ -21,7 +21,7 @@ enum AgentTitleNaming {
         var title = agent.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let directory = (agent.foregroundCwd ?? agent.cwd).split(separator: "/").last.map(String.init) ?? ""
         switch program {
-        case .claude, .agy, .droid, .amp: break
+        case .claude, .agy, .droid, .devin, .amp: break
         case .codex:
             if !directory.isEmpty, let separator = title.range(of: " | ", options: .backwards) {
                 let suffix = String(title[separator.upperBound...])

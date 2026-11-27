@@ -453,9 +453,12 @@ struct AgentChatSurfaceView: View {
         .onChange(of: composer.composedDraft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
-        // Also on appearing: Chat may have followed another while it was away.
+        // The writer's lock can become readable after Chat has loaded the
+        // session. Bind when the verified draft owner becomes available.
+        .onChange(of: chat?.composerSessionID, initial: true) { _, session in
+            if program.pinsComposerToSession { composer.bindDroidDraft(to: session, program: program) }
+        }
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
-            if program == .droid { composer.bindDroidDraft(to: chat?.droidSessionID) }
             guard let generation else { return }
             welcomeModel = nil
             welcomeEffort = nil
@@ -853,12 +856,12 @@ struct AgentChatSurfaceView: View {
                 }
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
-                .accessibilityLabel(Text("Droid session \(id)"))
+                .accessibilityLabel(Text("\(program.chatName) session \(id)"))
             }
-            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.droidSessionID {
+            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.composerSessionID {
                 @Bindable var draft = revision
                 VStack(alignment: .leading) {
-                    TextField("Spec feedback", text: $draft.text, axis: .vertical)
+                    TextField(program == .devin ? String(localized: "Plan feedback") : String(localized: "Spec feedback"), text: $draft.text, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                     if let notice = revision.notice { Text(verbatim: notice).font(.caption) }
                     Button("Send Feedback") {
@@ -1206,8 +1209,8 @@ struct AgentChatSurfaceView: View {
         return {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
             if let reason = await chat.confirmSessionBeforeSend() { return reason }
-            if program == .droid, !composer.droidDraftMatches(chat.droidSessionID) {
-                return String(localized: "Return to the Droid session that owns this draft before sending it.")
+            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.composerSessionID) {
+                return program.draftOwnerGuidance
             }
             return nil
         }

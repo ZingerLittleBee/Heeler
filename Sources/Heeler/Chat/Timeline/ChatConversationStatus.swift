@@ -41,6 +41,8 @@ extension ChatUnavailableReason {
         case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
             String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
+        case .noSession(.devin), .unidentifiedSession(.devin), .cannotTellSession(.devin):
+            String(localized: "Open this Devin terminal. Finish directory trust or sign-in there. For a shared daemon, resume the session with devin --process-model in-process -r SESSION.")
         case .noSession(.droid):
             String(localized: "Droid has not reported its session ID. Finish startup in the terminal and check the Droid integration on the Host if this persists.")
         case .unidentifiedSession(.droid):
@@ -634,6 +636,7 @@ extension ChatProgram {
     var chatName: String {
         switch self {
         case .amp: "Amp"
+        case .devin: "Devin"
         case .droid: "Droid"
         case .claude: "Claude Code"
         case .codex: "Codex"
@@ -649,6 +652,7 @@ extension ChatProgram {
     /// where the evidence is what the Host shows of its process (ADR 0034).
     fileprivate var sessionEvidenceHelp: String {
         switch self {
+        case .devin: return String(localized: "Open the local Devin session in this terminal. If it uses a shared daemon, resume it with devin --process-model=in-process --resume SESSION.")
         case .amp: return AmpChatProblem.unidentified.explanation
         case .codex, .grok:
             return String(localized: "Send a first message in the terminal.")

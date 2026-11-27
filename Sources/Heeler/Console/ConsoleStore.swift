@@ -1246,16 +1246,16 @@ final class ConsoleStore {
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
-        if program == .droid {
+        if program.pinsComposerToSession {
             source.screen.hostName = host.name
             source.screen.herdrReportsDroidSession = host.serverKind == .herdrTUI
             source.screen.droidTarget = { [weak self] in
                 guard let live = await self?.projections[hostID] else { return nil }
-                return try await live.droidDialogTarget(paneID: paneID)
+                return try await live.chatInputTarget(paneID: paneID, program: program)
             }
         }
-        if program == .droid, let tui = hostProjection as? HostConsoleProjection {
-            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID) }
+        if program.pinsComposerToSession, let tui = hostProjection as? HostConsoleProjection {
+            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID, program: program) }
         }
         if let amp = files.amp {
             source.sessionEvidence = { try await amp.evidence() }
@@ -1326,7 +1326,7 @@ final class ConsoleStore {
     /// it presses the Template's stop key (ADR 0035).
     func chatStopPlan(for agent: ConsoleAgent, program: ChatProgram) -> ChatStopPlan {
         let plan = ChatStopPlan.standard(for: program)
-        guard let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
+        guard program != .devin, let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
             let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
         else { return plan }
         return plan.pressing(templateStopKey: stopKey)
@@ -1342,7 +1342,7 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
-        let verification: ChatStopVerification? = program == .droid
+        let verification: ChatStopVerification? = program.pinsComposerToSession
             ? chatStores[agent.id]?.droidStopVerification() ?? { false }
             : nil
         if let stop = projections[hostID]?.checkedChatStop(
@@ -1437,6 +1437,10 @@ final class ConsoleStore {
             home: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await liveChatHostFiles(for: hostID).home()
+            },
+            queryDevin: { [weak self] query in
+                guard let self, let read = try await liveChatHostFiles(for: hostID).queryDevin else { throw TransportError.cancelled }
+                return try await read(query)
             },
             queryOpenCode: { [weak self] query in
                 guard let self else { throw TransportError.cancelled }
@@ -1646,6 +1650,7 @@ final class ConsoleStore {
         _ request: AgentLaunchRequest,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgent(request)
         flushScheduledRebuild()
         return agent
@@ -1709,6 +1714,7 @@ final class ConsoleStore {
         worktree: WorktreeSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgentInNewWorktree(
             request, worktree: worktree)
         flushScheduledRebuild()
@@ -1721,6 +1727,7 @@ final class ConsoleStore {
         workspace: NewWorkspaceSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgentInNewWorkspace(
             request, workspace: workspace)
         flushScheduledRebuild()

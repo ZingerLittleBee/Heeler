@@ -80,7 +80,7 @@ extension ComposerDeliveryPolicy {
             }
         }
         var policy = ComposerDeliveryPolicy(
-            route: .chat, requiresSinglePrompt: program == .droid,
+            route: .chat, requiresSinglePrompt: program.pinsComposerToSession,
             insertsIntoAttachWhenBlocked: false,
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },
@@ -101,7 +101,7 @@ extension ComposerDeliveryPolicy {
         policy.conversation = conversation
         policy.droidTarget = droidTarget
         policy.displayedDroidTarget = displayedDroidTarget
-        if program == .droid { policy.droidScreen = readScreen }
+        if program.pinsComposerToSession { policy.droidScreen = readScreen; policy.checkedProgram = program }
         return policy
     }
 
@@ -123,7 +123,7 @@ extension InputBoxState {
             String(localized: "The Agent's input box is ready.")
         case .text:
             switch program {
-            case .claude, .droid:
+            case .claude, .droid, .devin:
                 String(localized: "The Agent's input box already has text. Send or clear it in the terminal first.")
             case .codex:
                 // Codex 0.162.1's Esc puts follow-ups queued with Tab back

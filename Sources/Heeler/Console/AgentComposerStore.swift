@@ -148,7 +148,10 @@ final class AgentComposerStore: ComposerDraftOperations {
     /// Keep terminal input and staged files with the Factory conversation that
     /// owned the Composer when they were picked. Let active upload callbacks
     /// settle on that draft before parking it.
-    func bindDroidDraft(to session: String?) {
+    private var draftProgram: ChatProgram = .droid
+
+    func bindDroidDraft(to session: String?, program: ChatProgram? = nil) {
+        if let program { draftProgram = program }
         tracksDroidSession = true
         droidForeground = session
         guard let session, session != droidDraftOwner else { return }
@@ -175,14 +178,15 @@ final class AgentComposerStore: ComposerDraftOperations {
         revision.isSending = true
         defer { revision.isSending = false }
         let sender = AgentComposerStore(target: target, initialStatus: agentStatus, checkedSend: checkedSend, prompt: prompt)
-        sender.bindDroidDraft(to: revision.session)
+        sender.bindDroidDraft(to: revision.session, program: draftProgram)
         sender.replaceDraft(with: revision.text)
         var delivery = policy
         delivery.requiresSpec = true
         delivery.prependingPreflight { _ in
-            guard let screen = try? await readScreen(), DroidInputBox.isEmptySpec(screen),
+            guard let screen = try? await readScreen(),
+                  self.draftProgram == .devin ? DevinInputBox.isPlan(screen) && DevinInputBox.read(screen).isSendable : DroidInputBox.isEmptySpec(screen),
                   self.droidDraftMatches(revision.session) else {
-                return .inputNotReady(String(localized: "Open this proposal’s empty Spec message box in the Droid terminal."))
+                return .inputNotReady(String(localized: "Open this proposal’s empty message field in the terminal."))
             }
             return nil
         }
@@ -190,16 +194,16 @@ final class AgentComposerStore: ComposerDraftOperations {
         case .deliveredViaPrompt, .deliveredViaAttach, .submittedViaAttach: return true
         case .outcomeUnknown, .failed:
             revision.outcomeUnknown = true
-            revision.notice = String(localized: "Check this terminal to see whether Droid received your feedback.")
+            revision.notice = String(localized: "Check the terminal to see whether your feedback arrived.")
         default:
-            revision.notice = String(localized: "Droid is not ready for feedback. Check the Spec message box in this terminal.")
+            revision.notice = String(localized: "Check the proposal’s message field in the terminal before sending feedback.")
         }
         return false
     }
 
     private func droidRefusal(owner: String?, route: ComposerRoute) -> SendResult? {
         guard tracksDroidSession, route == .chat, owner == nil || owner != droidForeground else { return nil }
-        return .refused(.inputNotReady(String(localized: "Return to the Droid session that owns this draft before sending it.")))
+        return .refused(.inputNotReady(draftProgram.draftOwnerGuidance))
     }
 
     /// Recovery keeps the draft editable, but never queues it for delivery.

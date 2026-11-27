@@ -105,7 +105,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .droid, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 
@@ -114,7 +114,7 @@ extension ChatProgram {
     var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .droid, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 }
@@ -279,7 +279,7 @@ struct ChatTranscriptAdapter: Sendable {
     /// store by query rather than from a transcript file (ADR 0025); it
     /// returns nil for a session id the store cannot be asked about. Nil
     /// for a program whose transcript file the engine finds and follows.
-    var makeRecordSource: (@Sendable (_ sessionID: String) -> (any ChatTranscriptSource)?)? = nil
+    var makeRecordSource: (@Sendable (_ sessionID: String, _ transcriptRoot: String?) -> (any ChatTranscriptSource)?)? = nil
 
     /// Whether the conversation is read by query, so there is no file to
     /// look for.
@@ -588,7 +588,7 @@ actor ChatConversationEngine {
         setContext(context)
         do {
             if let makeRecordSource = adapter.makeRecordSource {
-                if let source = makeRecordSource(reference.sessionID) {
+                if let source = makeRecordSource(reference.sessionID, transcriptRoot) {
                     try await follow(source)
                 } else {
                     stop(.unidentifiedSession(reference.program))
@@ -1615,7 +1615,7 @@ actor ChatConversationEngine {
             case .failure(.notFound):
                 return .unavailable(.notFound(searchedAll: true))
             }
-        case .opencode, .amp:
+        case .opencode, .devin, .amp:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)
         }

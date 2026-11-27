@@ -276,7 +276,10 @@ final class TmuxChatTyping: CheckedChatTyping {
         case .unknown:
             return
         }
-        guard let projection, projection.admits(corePin) else { return }
+        // Devin has no tmux status hook to retire a synthetic Working report.
+        // Its screen and pending SQLite call already tell Chat when the prompt ends.
+        guard let projection, projection.admits(corePin),
+              projection.agentsByPane[paneID]?.agent.kind != ChatProgram.devin.rawValue else { return }
         _ = await projection.recordHeelerAnswer(declines: declines, on: paneID)
     }
 

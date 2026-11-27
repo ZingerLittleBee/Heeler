@@ -1,0 +1,490 @@
+import Foundation
+import SwiftUI
+import Testing
+
+@testable import Heeler
+
+@MainActor
+@Suite("Devin Chat over loopback SSH", .serialized)
+struct DevinChatLiveTests {
+    private struct Lab: Decodable, LiveChatBackendLab {
+        let port: Int
+        let user, seed, fingerprint, coreName, tmuxSocket, tmuxExecutable, rexSocket, rexSession, rexBlock: String
+        let panes, sessions: [String: String]
+        let directory: String
+        var herdrSocket: String?
+        struct Startup: Decodable { let pane, directory: String }
+        var startup: [String: Startup]?
+    }
+
+    private func config(_ platform: String) throws -> Lab {
+        let key = "HEELER_DEVIN_LAB_" + platform.uppercased()
+        let url = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment[key]))
+        return try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
+    }
+
+    @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+    func opensTheForegroundSessionAndDeliversExactlyOnce(_ platform: String, _ backend: ServerKind) async throws {
+        let lab = try config(platform)
+        try await withChat(lab, backend) { live in
+            let token = "HEELER_DEVIN_" + UUID().uuidString.prefix(8)
+            let prompt = "Reply only with the marker on the last line. Ignore the sample \u{4E2D}\u{6587}. Do not use tools.\n\n    \(token)"
+            try await live.send(prompt)
+            try await live.wait {
+                live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) }
+            }
+            #expect(live.chat.conversation.transcript.recordedPrompts.filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == prompt }.count == 1)
+            #expect(live.chat.droidSessionID == lab.sessions[backend.rawValue])
+        }
+    }
+
+    private func withChat(_ lab: Lab, _ backend: ServerKind, startsAtTrust: Bool = false, body: (Live) async throws -> Void) async throws {
+        let expected = lab.sessions[backend.rawValue]
+        let (projection, pane) = try lab.connection(backend)
+        projection.start(isActive: true)
+        defer { projection.end() }
+        let start = ContinuousClock.now
+        while projection.agentsByPane[pane]?.agent.kind != "devin", ContinuousClock.now - start < .seconds(20) {
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        let agent = try #require(projection.agentsByPane[pane]?.agent, "No Agent in \(backend), \(projection.status)")
+        try #require(agent.kind == "devin")
+        let binding = try await projection.chatInputTarget(paneID: pane, program: .devin)
+        if startsAtTrust {
+            try #require(binding?.sessionID == nil)
+        } else {
+            try #require(expected != nil && binding?.sessionID == expected && binding?.directory == lab.directory)
+        }
+        let typing = projection.checkedChatTyping(at: pane)
+        var io = typing?.blockedScreen ?? .init(
+            readScreen: { try await projection.readAgentScreen(pane) },
+            sendKeys: { try await projection.sendAgentKeys($0, to: pane) },
+            paste: { try await projection.pasteIntoAgent($0, paneID: pane) })
+        io.hostName = projection.host.name
+        io.droidTarget = { try await projection.chatInputTarget(paneID: pane, program: .devin) }
+        var source = AgentChatSource(hostID: projection.host.id, socketLocation: .namedSession("lab"), files: projection.chatHostFiles(),
+            agentInfo: { try await projection.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
+            adapter: try #require(ChatTranscriptAdapter.standard(for: .devin)), screen: io)
+        source.sessionEvidence = {
+            if let tui = projection as? HostConsoleProjection { return try await tui.droidSessionEvidence(paneID: pane, program: .devin) }
+            return try await projection.checkChatSession(paneID: pane, program: .devin)
+        }
+        source.coreScope = projection.chatCacheScope
+        let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .devin, source: source)
+        defer { chat.end() }
+        await chat.step()
+        chat.show()
+        if !startsAtTrust {
+            try #require(chat.displayedDroidTarget == binding && chat.droidSessionID == expected, "Chat failed to bind: \(chat.conversation.phase)")
+        }
+        let sender = projection.checkedComposerSend(for: pane, keepingTo: TerminalCorePin(joined: projection.inventoryCore), live: { projection })
+        let composer = AgentComposerStore(target: pane, checkedSend: sender) { message in
+            try #require(backend == .herdrTUI)
+            return try await projection.promptAgent(message)
+        }
+        composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
+        let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .devin, commands: []),
+            activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
+            readScreen: io.readScreen, droidTarget: io.droidTarget,
+            displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
+        try await body(.init(chat: chat, composer: composer, policy: policy, projection: projection, pane: pane, io: io))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil),
+          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+    func approvalsQuestionsAndStaleDrafts(_ backend: ServerKind) async throws {
+        let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
+        try await withChat(lab, backend) { live in
+            let tag = String(UUID().uuidString.prefix(8))
+            let fileA = "approval-a-" + tag + ".txt", fileB = "approval-b-" + tag + ".txt"
+            let session = try #require(live.chat.droidSessionID)
+            let files = live.projection.chatHostFiles()
+            let marker = "DEVIN_A_" + tag
+            let rawRex = backend == .rex && live.chat.agent.status == .unknown
+            try await live.send("Use write to create exactly " + lab.directory + "/" + fileA + " with contents " + marker + ". Use this full path. Do not use exec or ask a follow-up question.")
+            if rawRex {
+                try await live.wait { try await DevinDialog.parse(live.io.readScreen()).dialog?.kind == .devinPermission }
+                if case .card = live.chat.blocked.content { Issue.record("Unknown Rex exposed an actionable card") }
+                try await live.projection.sendAgentKeys(["esc"], to: live.pane)
+            } else {
+                let first = try await live.card(.devinPermission)
+                try #require(first.request?.summary == lab.directory + "/" + fileA)
+                try await capture(live.chat.blocked, name: "write-" + backend.rawValue)
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: first)
+                try await live.wait {
+                    let chunk = try await files.read(.init(path: lab.directory + "/" + fileA, offset: 0, maxBytes: 128))
+                    return String(decoding: chunk.data, as: UTF8.self).trimmingCharacters(in: .newlines) == marker
+                }
+                try await live.send("Use write to create exactly " + lab.directory + "/" + fileB + " with contents DEVIN_B. Use this full path. Do not use exec.")
+                let second = try await live.card(.devinPermission)
+                try #require(second.request?.summary == lab.directory + "/" + fileB && second.request?.callID != first.request?.callID)
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: first)
+                try #require(try await DevinDialog.parse(live.io.readScreen()).dialog?.subject.filePath?.hasSuffix(fileB) == true)
+                try await live.projection.sendAgentKeys(["esc"], to: live.pane)
+                try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: second)
+                #expect(try await files.status(lab.directory + "/" + fileB) == nil)
+
+                try await live.send("Call ask_user_question now. Ask 'Which color?' (Red or Blue) and 'Which size?' (Small or Large). Give each option a short description. Wait for both answers.")
+                let color = try await live.card(.devinQuestion)
+                try #require(color.request?.questions.count == 2)
+                try await capture(live.chat.blocked, name: "question-" + backend.rawValue)
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: color)
+                try await live.wait {
+                    guard case .card(let next) = live.chat.blocked.content else { return false }
+                    return next.dialog.kind == .devinQuestion && next.dialog.title != color.dialog.title
+                }
+                let size = try await live.card(.devinQuestion)
+                let field = try #require(size.dialog.options.first(where: { $0.role == .otherText }))
+                await live.chat.blocked.perform(.respond(ordinal: field.ordinal, text: "Medium"), shownCard: size)
+                try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
+            }
+
+            let draft = "PARKED_" + tag
+            live.composer.replaceDraft(with: draft)
+            live.chat.draftDidChange(to: draft)
+            try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
+            try await live.desktop("/clear")
+            let limit = ContinuousClock.now + .seconds(15)
+            var next: String?
+            repeat {
+                next = try? await live.io.droidTarget?()?.sessionID
+                if next != nil && next != session { break }
+                try await Task.sleep(for: .milliseconds(180))
+            } while ContinuousClock.now < limit
+            let other = try #require(next)
+            try #require(other != session)
+            guard case .refused = await live.composer.send(policy: live.policy) else { Issue.record("The parked draft left the original session"); return }
+            try await live.bindVerifiedSession(other)
+            try #require(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
+            #expect(live.composer.draft.isEmpty)
+            let peerMarker = "PEER_" + tag
+            try await live.send("Reply with exactly " + peerMarker + ". Do not use tools.")
+            try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) } }
+            try await live.desktop("/resume " + session)
+            try await live.bindVerifiedSession(session)
+            try #require(live.composer.draft == draft)
+
+            // Change the terminal from an independent SSH connection while the
+            // mobile projection is offline, then exercise the old Send button.
+            let (desktop, pane) = try lab.connection(backend)
+            desktop.start(isActive: true)
+            defer { desktop.end() }
+            let deadline = ContinuousClock.now + .seconds(20)
+            while desktop.agentsByPane[pane]?.agent.kind != "devin", ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(150))
+            }
+            try #require(try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID == session)
+            live.chat.suspend()
+            await live.projection.suspend()
+            try await desktop.pasteIntoAgent("/resume " + other, paneID: pane)
+            try await Task.sleep(for: .milliseconds(300))
+            try await desktop.sendAgentKeys(["enter"], to: pane)
+            let moved = ContinuousClock.now + .seconds(15)
+            while try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID != other,
+                  ContinuousClock.now < moved { try await Task.sleep(for: .milliseconds(180)) }
+            try #require(try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID == other)
+            await live.projection.resume()
+            let afterReconnect = await live.composer.send(policy: live.policy)
+            guard case .refused = afterReconnect else {
+                Issue.record("Unexpected result for the parked draft after reconnect: \(afterReconnect)"); return
+            }
+            live.chat.resume()
+            try await live.bindVerifiedSession(other)
+            #expect(live.composer.draft.isEmpty)
+            #expect(live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) })
+            #expect(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
+            try await live.desktop("/resume " + session)
+            try await live.bindVerifiedSession(session)
+            #expect(live.composer.draft == draft)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil))
+    func firstTrustAndDeclineBeforeTheSessionExists() async throws {
+        let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
+        let (projection, _) = try lab.connection(.herdrTUI)
+        let tui = try #require(projection as? HostConsoleProjection)
+        projection.start(isActive: true)
+        defer { projection.end() }
+        for key in ["trust", "decline"] {
+            let entry = try #require(lab.startup?[key])
+            let pane = entry.pane, directory = entry.directory
+            let deadline = ContinuousClock.now + .seconds(20)
+            while projection.agentsByPane[pane]?.agent.kind != "devin", ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(200))
+            }
+            let agent = try #require(projection.agentsByPane[pane]?.agent)
+            var io = BlockedScreenIO(readScreen: { try await tui.readAgentScreen(pane) },
+                                     sendKeys: { try await tui.sendAgentKeys($0, to: pane) }, paste: { try await tui.pasteIntoAgent($0, paneID: pane) })
+            io.hostName = projection.host.name
+            io.droidTarget = { try await tui.chatInputTarget(paneID: pane, program: .devin) }
+            var source = AgentChatSource(hostID: projection.host.id, socketLocation: .namedSession("lab"), files: tui.chatHostFiles(),
+                agentInfo: { try await tui.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
+                adapter: try #require(ChatTranscriptAdapter.standard(for: .devin)), screen: io)
+            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: pane, program: .devin) }
+            let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .devin, source: source)
+            defer { chat.end() }
+            chat.show()
+            let composer = AgentComposerStore(target: pane) { try await tui.promptAgent($0) }
+            let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .devin, commands: []), activity: { ChatAgentActivity(chat.agent.status) },
+                readScreen: io.readScreen, droidTarget: io.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget },
+                confirmSession: { await chat.confirmSessionBeforeSend() })
+            let live = Live(chat: chat, composer: composer, policy: policy, projection: tui, pane: pane, io: io)
+            try await live.wait { if case .card = chat.blocked.content { return true }; return false }
+            guard case .card(let shown) = chat.blocked.content else { throw TransportError.cancelled }
+            try #require(shown.dialog.kind == .devinWorkspaceTrust && shown.dialog.subject.workspacePath == directory)
+            try #require(shown.target?.directory == directory && shown.target?.sessionID == nil)
+            if key == "trust" {
+                try await capture(chat.blocked, name: "trust")
+                await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
+                try await live.wait { chat.composerSessionID != nil }
+                composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
+                let token = "TRUST_" + UUID().uuidString.prefix(8)
+                try await live.send("Reply with exactly " + token + ". Do not use tools.")
+                try await live.wait { chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) } }
+            } else {
+                await chat.blocked.perform(.choose(ordinal: 2), shownCard: shown)
+                var running = true
+                for _ in 0..<30 {
+                    running = (try? await tui.processInfo(paneID: pane).foregroundProcesses?.contains { $0.name == "devin" }) == true
+                    if !running { break }
+                    try await Task.sleep(for: .milliseconds(150))
+                }
+                try #require(!running)
+                await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
+                #expect(try await tui.chatInputTarget(paneID: pane, program: .devin) == nil)
+            }
+        }
+    }
+
+    /// A fresh account-data directory keeps each startup independent. Rex
+    /// Unknown owns no Chat keys, including at trust.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"] != nil),
+          arguments: [ServerKind.herdrCore, .tmux, .rex])
+    func firstTrustOverTheBackendTypingPath(_ backend: ServerKind) async throws {
+        let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"])
+        let path = URL(fileURLWithPath: folder).appendingPathComponent(backend.rawValue + ".json")
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: path))
+        try await withChat(lab, backend, startsAtTrust: true) { live in
+            try await live.wait { try await DevinDialog.parse(live.io.readScreen()).dialog?.subject.workspacePath == lab.directory }
+            if backend == .rex, live.chat.agent.status == .unknown {
+                #expect(live.chat.displayedDroidTarget == nil)
+                if case .card = live.chat.blocked.content { Issue.record("Unknown Rex offered a trust choice") }
+                // The user confirms the displayed directory from the terminal.
+                let screen = try await live.io.readScreen()
+                let dialog = try #require(DevinDialog.parse(screen).dialog)
+                try #require(dialog.subject.workspacePath == lab.directory && dialog.focus.focusedOrdinal == 1)
+                try await live.projection.sendAgentKeys(["enter"], to: live.pane)
+            } else {
+                try await live.wait {
+                    guard case .card(let card) = live.chat.blocked.content else { return false }
+                    return card.dialog.kind == .devinWorkspaceTrust && card.target?.directory == lab.directory
+                }
+                guard case .card(let card) = live.chat.blocked.content else { throw TransportError.cancelled }
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+            }
+            try await live.wait { live.chat.composerSessionID != nil }
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
+            let marker = "FRESH_" + UUID().uuidString.prefix(8)
+            try await live.send("Reply with exactly " + marker + ". Do not use tools.")
+            try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: marker)) } }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"] != nil))
+    func reopensTheSameBackgroundShellsAndChildOverSSH() async throws {
+        struct Fixture: Decodable {
+            let lab: Lab
+            let shells: [String: String]
+            let child, childOutput: String
+            let stoppedShell: String?
+        }
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"])
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        for _ in 0..<2 {
+            try await withChat(fixture.lab, .herdrTUI) { live in
+                try await live.wait {
+                    let transcript = live.chat.conversation.transcript
+                    let work = transcript.backgroundWork
+                    if Set(work.compactMap(\.taskID)).isSuperset(of: Set(fixture.shells.keys).union([fixture.child])) {
+                        return true
+                    }
+                    return false
+                }
+                let transcript = live.chat.conversation.transcript
+                for (shell, output) in fixture.shells {
+                    let jobs = transcript.backgroundWork.filter { $0.taskID == shell }
+                    try #require(jobs.count == 1)
+                    #expect(jobs[0].state == .completed && jobs[0].reportedOutput == output)
+                }
+                if let stopped = fixture.stoppedShell {
+                    let job = try #require(transcript.backgroundWork.first { $0.taskID == stopped })
+                    #expect(job.state == .stopped)
+                }
+                let children = transcript.backgroundWork.filter { $0.taskID == fixture.child }
+                try #require(children.count == 1)
+                #expect(children[0].reportedOutput?.contains(fixture.childOutput) == true)
+                #expect(!transcript.recordedPrompts.contains { $0.text.hasPrefix("<subagent_completion_notification>") })
+            }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"] != nil))
+    func stopsOnlyTheCurrentlyDisplayedTurn() async throws {
+        let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"]))
+        try await withChat(lab, .herdrTUI) { live in
+            let plan = ChatStopPlan.standard(for: .devin)
+            let check = try #require(plan.screenGuard)
+            let keys = ChatAgentKeysStore(send: { try await live.projection.sendAgentKeys($0, to: live.pane) })
+            let context: @MainActor () async throws -> ChatStopContext = {
+                try await .init(screen: live.io.readScreen(), activity: ChatAgentActivity(live.chat.agent.status))
+            }
+            var previous: AgentComposerInterrupt?
+            for _ in 0..<2 {
+                try await live.send("Count to 1000 in words, on individual lines, without using tools. Begin with " + UUID().uuidString.prefix(8) + ".")
+                try await live.wait {
+                    let turn = live.chat.conversation.transcript.turns.last
+                    let verdict = try await check(context())
+                    return turn != nil && turn?.ending == nil && verdict == .press
+                }
+                if let previous { try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn)) }
+                let stop = plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())
+                try #require(await stop.perform() == .sent)
+                try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
+                previous = stop
+            }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"] != nil))
+    func declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        try await withChat(lab, .herdrTUI) { live in
+            try await live.desktop("/plan")
+            try await live.wait { try await DevinInputBox.isPlan(live.io.readScreen()) }
+            try await live.send("Propose writing a note.txt in this empty test folder. Write a very short plan with two plain numbered steps and no headings, then call exit_plan_mode to request approval. Make no changes to the workspace.")
+            let card = try await live.card(.devinPlan)
+            try #require(card.request?.summary.isEmpty == false && card.dialog.options.count == 3)
+            try await capture(live.chat.blocked, name: "plan")
+            live.composer.replaceDraft(with: "Ordinary message kept apart")
+            await live.chat.blocked.perform(.choose(ordinal: 3), shownCard: card)
+            try await live.wait { live.chat.blocked.droidRevision != nil }
+            let feedback = try #require(live.chat.blocked.droidRevision)
+            feedback.text = "Thank you. End the conversation without changing files. Reply with PLAN_FEEDBACK_RECEIVED."
+            try #require(await live.composer.sendDroidRevision(feedback, policy: live.policy, readScreen: live.io.readScreen))
+            let submitted = ChatSendRules(program: .devin, commands: []).outgoingText(feedback.text)
+            try await live.wait {
+                let transcript = live.chat.conversation.transcript
+                return transcript.recordedPrompts.filter { $0.text == submitted }.count == 1
+                    && transcript.entries.contains { $0.content == .assistant(.init(text: "PLAN_FEEDBACK_RECEIVED")) }
+            }
+            #expect(live.composer.draft == "Ordinary message kept apart")
+            #expect(try await live.projection.chatHostFiles().status(lab.directory + "/note.txt") == nil)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"] != nil), arguments: ["mac", "linux"])
+    func approvesTheDisplayedLongCommandOnce(_ platform: String) async throws {
+        let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"])
+        let url = URL(fileURLWithPath: folder).appendingPathComponent("lab-" + platform + ".json")
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
+        try await withChat(lab, .herdrTUI) { live in
+            let marker = "DEVIN_COMMAND_" + UUID().uuidString.prefix(8)
+            let command = "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 " + marker
+            try await live.send("Use exec once with this exact command. Do not touch any files.\n\n" + command)
+            let first = try await live.card(.devinPermission)
+            try #require(first.request?.summary == command && first.dialog.subject.devinScope == 1)
+            try #require(first.dialog.options.prefix(4).map(\.label) == ["Allow · Once", "Allow · Session", "Allow · Project", "Allow · Always"])
+            try await capture(live.chat.blocked, name: "command-" + platform)
+            // Move the terminal cursor to Session, then have the native card
+            // choose Once. No persistent permission is granted in this fixture.
+            try await live.projection.sendAgentKeys(["right"], to: live.pane)
+            try await live.wait {
+                guard case .card(let current) = live.chat.blocked.content else { return false }
+                return current.request?.callID == first.request?.callID && current.dialog.focus.focusedOrdinal == 2
+            }
+            let selected = try await live.card(.devinPermission)
+            await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: selected)
+            try await live.wait {
+                live.chat.conversation.transcript.entries.contains {
+                    guard case .tool(let tool) = $0.content, tool.callID == selected.request?.callID else { return false }
+                    return tool.status == .succeeded && tool.preview?.text.contains(marker) == true
+                }
+            }
+        }
+    }
+
+    private func capture(_ store: BlockedCardStore, name: String) async throws {
+        guard let dir = ProcessInfo.processInfo.environment["HEELER_DEVIN_SCREENSHOTS"] else { return }
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.keyWindow, window = UIWindow(windowScene: scene)
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        let view = BlockedCardView(store: store, maxHeight: pad ? 540 : 430, openTerminal: {})
+            .padding().frame(maxWidth: pad ? 640 : .infinity).background(.background)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; previous?.makeKeyAndVisible() }
+        try await Task.sleep(for: .milliseconds(450))
+        let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let url = URL(fileURLWithPath: dir).appendingPathComponent(name + (pad ? "-ipad.png" : "-iphone.png"))
+        try #require(image.pngData()).write(to: url)
+    }
+
+    @MainActor private struct Live {
+        let chat: AgentChatStore
+        let composer: AgentComposerStore
+        let policy: ComposerDeliveryPolicy
+        let projection: any ConsoleHostProjection
+        let pane: String
+        let io: BlockedScreenIO
+
+        func bindVerifiedSession(_ session: String) async throws {
+            try await wait {
+                guard chat.droidSessionID == session, chat.displayedDroidTarget?.sessionID == session,
+                      let owner = chat.composerSessionID else { return false }
+                composer.bindDroidDraft(to: owner, program: .devin)
+                return composer.droidDraftMatches(owner)
+            }
+        }
+
+        func send(_ text: String) async throws {
+            try await wait { try await DevinInputBox.read(io.readScreen()).isSendable }
+            composer.replaceDraft(with: text)
+            chat.draftDidChange(to: text)
+            let sent = await composer.send(policy: policy)
+            try #require([.deliveredViaAttach, .submittedViaAttach, .deliveredViaPrompt].contains(sent), "Delivery via \(projection.host.serverKind): \(sent)")
+        }
+
+        func wait(at location: SourceLocation = #_sourceLocation, _ condition: () async throws -> Bool) async throws {
+            let limit = ContinuousClock.now + .seconds(65)
+            repeat {
+                if let updated = projection.agentsByPane[pane]?.agent { chat.agentDidChange(updated) }
+                await chat.step()
+                await chat.blocked.refresh()
+                if try await condition() { return }
+                try await Task.sleep(for: .milliseconds(300))
+            } while ContinuousClock.now < limit
+            throw NSError(domain: "DevinLive", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                "Timed out at \(location.line) on \(projection.host.serverKind) (\(chat.agent.status), \(chat.conversation.phase), \(chat.blocked.notice ?? ""))"])
+        }
+
+        func card(_ kind: BlockedDialogKind) async throws -> BlockedCard {
+            var found: BlockedCard?
+            try await wait {
+                guard case .card(let card) = chat.blocked.content, card.dialog.kind == kind,
+                      card.target?.sessionID == chat.droidSessionID, card.request?.callID != nil else { return false }
+                found = card
+                return true
+            }
+            return try #require(found)
+        }
+
+        func desktop(_ text: String) async throws {
+            try await projection.pasteIntoAgent(text, paneID: pane)
+            try await Task.sleep(for: .milliseconds(300))
+            try await projection.sendAgentKeys(["enter"], to: pane)
+        }
+    }
+}

@@ -95,7 +95,7 @@ extension ChatProgram {
     /// is not necessarily the message.
     var mayRefillInputBoxAfterSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .opencode, .agy, .droid, .amp: false
+        case .claude, .codex, .pi, .omp, .opencode, .agy, .droid, .devin, .amp: false
         case .grok: true
         }
     }
@@ -107,6 +107,7 @@ extension ChatProgram {
     /// queues or steers the message.
     var inputBoxWhileWorking: InputBoxState? {
         switch self {
+        case .devin: .disabled(DevinInputBox.working)
         case .droid: .disabled(DroidInputBox.working)
         case .omp: .disabled(PiInputBoxDetector.ompWorking)
         case .opencode: .disabled(OpenCodeScreenReader.working)

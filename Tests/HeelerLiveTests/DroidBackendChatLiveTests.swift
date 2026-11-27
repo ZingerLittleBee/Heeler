@@ -9,7 +9,7 @@ import Testing
 @MainActor
 @Suite("Droid Chat over SSH on three live backends", .serialized)
 struct DroidBackendChatLiveTests {
-    private struct Lab: Decodable {
+    private struct Lab: Decodable, LiveChatBackendLab {
         let port: Int
         let user, seed, fingerprint, coreName, tmuxSocket, tmuxExecutable, rexSocket, rexSession, rexBlock: String
         let panes, sessions: [String: String]
@@ -23,7 +23,7 @@ struct DroidBackendChatLiveTests {
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-        let (projection, pane) = try connection(kind, lab: lab)
+        let (projection, pane) = try lab.connection(kind)
         let host = projection.host
         projection.start(isActive: true)
         defer { projection.end() }
@@ -98,52 +98,6 @@ struct DroidBackendChatLiveTests {
         Issue.record("Droid's answer did not reach the Chat timeline")
     }
 
-    private func connection(_ kind: ServerKind, lab: Lab) throws -> (any ConsoleHostProjection, String) {
-        let key = try Curve25519.Signing.PrivateKey(rawRepresentation: #require(Data(base64Encoded: lab.seed)))
-        var ssh = SSHTransportSettings(host: "127.0.0.1", port: lab.port, username: lab.user,
-            credentials: .ed25519(key), hostKeyPolicy: .init(knownHosts: InMemoryKnownHostsStore()) {
-                $0.fingerprint.displayString == lab.fingerprint
-            }, socket: lab.herdrSocket.map { .absolutePath($0) } ?? .defaultSession)
-        ssh.serverKind = kind
-        let settings = ssh
-        let host = Host(name: "Droid Lab", address: "127.0.0.1", port: lab.port, username: lab.user, serverKind: kind)
-        let projection: any ConsoleHostProjection
-        let pane: String
-        switch kind {
-        case .herdrCore:
-            let session = HerdrCoreHostSession(connect: {
-                try await HerdrCoreSSHTransport(connection: HeelerSSHTransport.connect(settings: settings), session: lab.coreName)
-            })
-            projection = HerdrCoreConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
-                gitGate: .init(), herdrAppRename: false, isNativeWindows: { false }, onChange: {})
-            pane = try #require(lab.panes[kind.rawValue])
-        case .tmux:
-            let paths = try #require(TmuxPaths(executable: lab.tmuxExecutable, socket: lab.tmuxSocket))
-            let socketName = URL(fileURLWithPath: lab.tmuxSocket).lastPathComponent
-            let session = TmuxHostSession(storedPaths: paths, connect: { saved in
-                try await TmuxSSHTransport(connection: HeelerSSHTransport.connect(settings: settings),
-                                           socketName: socketName, storedPaths: saved)
-            })
-            projection = TmuxConsoleProjection(host: host, session: session, memory: .init(), pins: .init(),
-                                               gitGate: .init(), onPathsResolved: { _ in }, onChange: {})
-            pane = try #require(lab.panes[kind.rawValue])
-        case .rex:
-            let socket = try #require(RexSocket(path: lab.rexSocket))
-            let session = RexHostSession(storedSocket: socket) { stored, previous in
-                try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: settings),
-                                                  socket: stored, resuming: previous)
-            }
-            projection = RexConsoleProjection(host: host, session: session, pins: .init(), onChange: {})
-            pane = RexPaneAddress(sessionID: lab.rexSession, blockID: lab.rexBlock).paneID
-        case .herdrTUI:
-            let link = EventsSession(subscriptions: [], connect: { try await HeelerSSHTransport.connect(settings: settings) }, keepalive: nil)
-            projection = HostConsoleProjection(host: host, session: link, snapshotRetryDelay: .milliseconds(50), onChange: {})
-            pane = try #require(lab.panes[kind.rawValue])
-        case .unconfirmed: throw TransportError.cancelled
-        }
-        return (projection, pane)
-    }
-
     /// The external driver replaces only this dedicated server. Both the old
     /// and the new Droid must show their own live Create call for the same file.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"] != nil),
@@ -158,7 +112,7 @@ struct DroidBackendChatLiveTests {
                 try await Task.sleep(for: .milliseconds(250))
             }
             let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: file))
-            let (projection, pane) = try connection(kind, lab: lab)
+            let (projection, pane) = try lab.connection(kind)
             projection.start(isActive: true)
             do {
                 while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < until {

@@ -282,14 +282,14 @@ struct HerdrCoreChatTests {
         // Each kernel offers what passed its owner's check there: on Linux and on
         // the owner's Mac every program but OpenCode.
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
             #expect(capabilities.chat)
             for program in ChatProgram.allCases {
                 #expect(capabilities.offersChat(for: program) == offered.contains(program), "\(program) on \(kernel)")
-                #expect(HostCapabilities(serverKind: .herdrTUI).offersChat(for: program))
+                #expect(HostCapabilities(serverKind: .herdrTUI, platform: .posix).offersChat(for: program))
             }
         }
     }

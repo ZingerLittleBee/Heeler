@@ -313,7 +313,7 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .pi, .omp, .droid])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .pi, .omp, .droid, .devin])
         #expect(!rig.host.capabilities.chat)
 
         world.restart(as: "instance-0002")

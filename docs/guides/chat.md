@@ -1,8 +1,8 @@
 # Chat with an Agent
 
-Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
+Use your coding Agent in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid Chat supports all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). Droid and local Devin CLI Chat support all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
 
 ## Set up the Host
 
@@ -66,6 +66,19 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
 - **Images and files.** On Herdr TUI, herdr-core, tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+
+### Devin CLI
+
+Open a running local Devin on a macOS or Linux Host. The session name above the timeline identifies the conversation that owns the Composer. Chat checks the foreground client, its ACP process and that process’s open session lock. The Host needs Python 3 with SQLite. Heeler reads Devin’s own store over SSH and does not install a plugin or change the user’s Devin configuration.
+
+On a POSIX Host, New Agent starts an uncustomized Devin with its own writer. Presets and explicit arguments keep their settings. If the terminal uses a shared daemon, open a local client with `devin --process-model=in-process --resume SESSION`. A blocked sign-in belongs in the terminal. A recognized trust card shows the Host, full path and both choices before a session exists. A Rex block with Unknown status opens its terminal for trust and approvals.
+
+- **Messages.** Send from the empty message field. A desktop draft, an active picker, Bash input or a working turn holds delivery. Enable terminal colors so Heeler can distinguish Devin’s placeholder from identical typed text. Use Devin’s terminal to steer. A session move parks the old draft. Returning to that session restores it.
+- **Permissions.** Check the path or full command and scope before answering. The command chooser can offer Once, Session, Project and Always. A write permission can offer a change to Accept edits or Bypass mode. A partial screen, an unsupported tool or a proposal with additional execution settings stays in the terminal.
+- **Questions and plans.** Answer a choice or type an Other response in its card. Devin advances to the next question and submits the final answer. Plan mode can ask to switch to Accept edits, switch to Bypass or decline. After a decline, send revisions through the plan feedback field.
+- **Background work.** Open the task strip for each reported shell or subagent. Chat ties output to the shell ID or child agent ID in this session. A parent reply can arrive first. When Devin has not recorded an exit, the task keeps its last known state. Open the terminal’s task panel to manage active work.
+
+The [Devin acceptance matrix](../agents/devin-chat-validation.md) records the independently exercised paths for each backend.
 
 ### Droid
 

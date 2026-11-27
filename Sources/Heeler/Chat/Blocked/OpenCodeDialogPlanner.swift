@@ -21,7 +21,7 @@ struct OpenCodeDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .agyCommand, .agyFileEdit,
-            .agyFileCreate, .agyQuestion, .agyWorkspaceTrust, .droidWorkspaceTrust, .droidPermission, .droidQuestion,
+            .agyFileCreate, .agyQuestion, .agyWorkspaceTrust, .devinWorkspaceTrust, .devinPermission, .devinQuestion, .devinPlan, .droidWorkspaceTrust, .droidPermission, .droidQuestion,
             .droidQuestionReview, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
             throw .unsupported(String(localized: "Not an OpenCode dialog."))
         }

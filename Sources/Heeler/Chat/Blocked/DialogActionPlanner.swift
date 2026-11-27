@@ -24,6 +24,7 @@ enum DialogActionPlanner {
         case .opencode: try OpenCodeDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         case .agy: try AgyDialogPlanner(dialog: dialog).plan(action)
         case .droid: try DroidDialog.plan(action, dialog, callID: toolUseID)
+        case .devin: try DevinDialog.plan(action, dialog, call: toolUseID)
         case .pi, .amp: throw .unsupported(String(localized: "Answer this dialog in the Agent terminal."))
         case .grok: try GrokDialogPlanner(dialog: dialog, toolUseID: toolUseID).plan(action)
         }
@@ -436,7 +437,7 @@ private struct CodexDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
             .openCodeQuestion, .agyCommand, .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust,
-            .droidWorkspaceTrust, .droidPermission, .droidQuestion, .droidQuestionReview, .droidSpec, .droidSpecFeedback, .droidSpecAutonomy:
+            .devinWorkspaceTrust, .devinPermission, .devinQuestion, .devinPlan, .droidWorkspaceTrust, .droidPermission, .droidQuestion, .droidQuestionReview, .droidSpec, .droidSpecFeedback, .droidSpecAutonomy:
             throw .unsupported(String(localized: "Not a Codex dialog."))
         }
     }
