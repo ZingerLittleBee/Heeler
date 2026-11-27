@@ -1,6 +1,7 @@
 ---
 // Where Heeler connects: one SSH line from the phone to each backend, and the
 // agents Chat can read. Behaviour: `backends()` in `src/scripts/home/sections.ts`.
+import { links } from '../../data/links';
 import { agents, backends } from './content';
 ---
 
@@ -21,6 +22,16 @@ import { agents, backends } from './content';
               <h3>{backend.name}</h3>
               <p>{backend.body}</p>
               <small>{backend.runs}</small>
+              <div class="bk-lk">
+                <a class="lk" href={`${links.docs}${backend.guide.slug}`} target="_blank" rel="noopener">
+                  {backend.guide.label} <span aria-hidden="true">→</span>
+                </a>
+                {backend.windows && (
+                  <a class="lk" href={`${links.docs}windows-setup`} target="_blank" rel="noopener">
+                    Windows setup <span aria-hidden="true">→</span>
+                  </a>
+                )}
+              </div>
             </li>
           ))
         }

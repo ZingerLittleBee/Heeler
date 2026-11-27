@@ -14,4 +14,5 @@ const delay = 60 + (index % 4) * 70 + (index > 3 ? 90 : 0);
   <div class="bx-i" aria-hidden="true"><slot name="art" /></div>
   <h3>{title}</h3>
   <p><slot /></p>
+  <slot name="link" />
 </li>

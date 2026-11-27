@@ -1,6 +1,7 @@
 ---
 // Voice input, reaching the machine from anywhere, and the privacy statement.
 // Behaviour: `voice()`, `reach()` and `priv()` in `src/scripts/home/sections.ts`.
+import { links } from '../../data/links';
 import { overlays, privacy, routes } from './content';
 
 /** The voice waveform: 56 bars with fixed, uneven heights and tempos. */
@@ -12,6 +13,7 @@ const bars = Array.from({ length: 56 }, (_, i) => {
 
 <section class="sec">
   <div class="wrap">
+    <h2 class="lp-sr">Voice input and remote access</h2>
     <div class="t2g">
       <article class="t2 vo" data-rv>
         <h3>Say it. <span class="dim">Send it.</span></h3>
@@ -38,6 +40,11 @@ const bars = Array.from({ length: 56 }, (_, i) => {
         <ul class="chips">
           {overlays.map((name) => <li>{name}</li>)}
         </ul>
+        <div class="re-lk">
+          <a class="lk" href={`${links.docs}overlay-networks`} target="_blank" rel="noopener">
+            Overlay networks guide <span aria-hidden="true">→</span>
+          </a>
+        </div>
         <ol class="race" aria-hidden="true">
           {
             routes.map((route) => (
