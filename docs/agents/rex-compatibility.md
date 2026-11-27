@@ -17,6 +17,14 @@ observation to a newer server. The [Linux lab](rex-linux-lab.md) and
   reaches the server's named pipe through an exec of
   `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
   which starts none either.
+- On macOS 27.0.1, a refused SSH forward is checked against the local Unix
+  stream table. A socket bound under `/tmp` keeps that spelling even when
+  SSH names the same file under `/private/tmp`. An unlinked listener keeps
+  its printed address after another socket takes its place. The system
+  Perl Socket module distinguishes an abandoned pathname from a live stream
+  with a datagram lookup. A stream rejects it with `EPROTOTYPE`, leaving
+  its accept queue empty. An unavailable lookup or two different stream
+  endpoints with conflicting listener state leave the diagnosis unknown.
 - One WebSocket control connection per Host carries everything but terminal
   data: hello at API revisions 12 to 19, `server.status`, `session.attach_all`
   and the inventory reads

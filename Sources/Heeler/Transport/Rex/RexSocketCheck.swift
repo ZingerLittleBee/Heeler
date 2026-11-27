@@ -9,7 +9,9 @@ import Foundation
 /// The script only tests the file and lists the Host's Unix sockets: Linux's
 /// `/proc/net/unix` and macOS's `netstat` report listening stream sockets.
 /// Darwin keeps the bind spelling and exposes SO_ACCEPTCONN as bit 0x0002.
-/// The check neither opens the socket nor runs Rex.
+/// Darwin leaves an unlinked listener in its table. A local datagram lookup
+/// checks which endpoint the pathname reaches without queueing a stream
+/// connection or sending data. Neither probe runs Rex.
 enum RexSocketCheck {
     enum Answer: Equatable, Sendable {
         /// No socket file at the path.
@@ -48,23 +50,41 @@ enum RexSocketCheck {
                         *) other=/private$p ;;
                     esac
                     [ "$p" -ef "$other" ] || other=$p
-                    { LC_ALL=C netstat -anv -f unix && echo complete; } | LC_ALL=C awk -v path="$p" -v other="$other" '
+                    state=$({ LC_ALL=C netstat -anv -f unix && echo complete; } | LC_ALL=C awk -v path="$p" -v other="$other" '
                         $1 == "Address" && $NF == "Addr" {
                             for (i = 1; i < NF; i++) if ($i == "options") options = i
                             after = NF - options - 1
                             next
                         }
                         $0 == "complete" { complete = 1 }
-                        $2 == "stream" && options && match($0, "[[:space:]]/") {
+                        $2 == "stream" && $6 == "0" && options && match($0, "[[:space:]]/") {
                             name = substr($0, RSTART + 1)
                             if (name != path && name != other) next
                             $0 = substr($0, 1, RSTART - 1)
                             # Count back from the address because a process name may contain spaces.
                             flags = $(NF - after)
-                            if (flags ~ /^[[:xdigit:]]+$/ && flags ~ /[2367abefABEF]$/) listening = 1
+                            if (flags !~ /^[[:xdigit:]]+$/) next
+                            if (flags ~ /[2367abefABEF]$/) listening = 1
+                            else bound = 1
                         }
-                        END { if (options && complete) print listening ? "listening" : "idle" }
-                    '
+                        END {
+                            # An unconnected bound stream can coexist with an unlinked listener at the same address.
+                            if (options && complete) print listening ? (bound ? "ambiguous" : "candidate") : "idle"
+                        }
+                    ')
+                    case "$state" in
+                        idle) echo idle ;;
+                        candidate|ambiguous)
+                            # A listener can keep its old address after unlink. Check the vnode at the requested path.
+                            /usr/bin/perl -MSocket -MErrno=EPROTOTYPE,ECONNREFUSED,ENOENT,ENOTSOCK -e '
+                                socket(my $probe, AF_UNIX, SOCK_DGRAM, 0) or exit;
+                                if (connect($probe, sockaddr_un($ARGV[0]))) { print "idle" }
+                                elsif ($! == EPROTOTYPE) { print "listening" if $ARGV[1] eq "candidate" }
+                                elsif ($! == ENOENT) { print "missing" }
+                                elsif ($! == ECONNREFUSED || $! == ENOTSOCK) { print "idle" }
+                            ' "$p" "$state"
+                            ;;
+                    esac
                     ;;
                 esac
             fi
