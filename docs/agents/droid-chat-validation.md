@@ -1,10 +1,23 @@
 # Factory Droid Chat acceptance
 
-The implementation candidate is `e433870600d26395bf7d1d4842a9416957bdab06`. The full TUI suites, macOS backend suite and focused suite used this candidate. A subsequent test-only change, `686a2c07f0a82029439f89f06e8147a304f255cf`, used the app’s existing Done-to-idle mapping for the targeted Stop reruns. The final Linux backend run and supplemental checks also used that test revision. The production Swift sources, host scripts, project and assets are identical between those commits. The work started at `f858cee5b30890352d3cea267ef228147992e587`. The pre-existing macOS backend changes are preserved in `59d44b133a77459f8cf45ee7fa84fee19fc65881`. Native Windows was skipped as requested.
+The production fixes are in `8c89c78943e2d91fb4fa39bf86277b56be47fb4d`. The tested candidate, `4bf211cf2f5965026e2cd33cf364ba0810d2c0a6`, adds the live regression scenarios on top of that code. Both Hosts ran Factory Droid 1.21.1. The platform tables include the new results for server and foreground replacement and for a desktop edit during Send. Other rows retain their original evidence dates and revisions. The local receipts and simulator captures for this candidate are under `build/droid-fixes/`. The [portable repair record](evidence/droid-chat-repair-4bf211cf.json) preserves the run counts and independent backend observations.
 
-**N** means the operation uses a native Chat control, **R** means the result or identity can be inspected, and **T** means the user acts in the indicated terminal. Each cell has its own evidence status. A PASS for T records the terminal workflow. A PASS for R records a read or identity check. A cell with two entries identifies the device path and the separately exercised terminal path. NOT-RUN covers the specific operation in that cell, including when only a shared parser or transport test ran. N/A identifies an inapplicable platform or operation. The checkout’s local evidence bundle is `build/droid-acceptance/`. The controls apply to a correctly bound, supported foreground Droid. A terminal PASS can coexist with an implemented native control that did not receive a device run on that backend.
+- **Send.** After the usual preflight, the real core, tmux and Rex tests staged a desktop draft, then separately ran `/new`. The desktop text survived the first attempt. In the second, the phone retained A’s draft and B’s input field and transcript were empty. The transport also reads the staged payload before Enter. Herdr TUI uses its single `agent.prompt` request. A shared regression changes the foreground between the final reads and another drops the prompt receipt.
+- **Approvals.** On each Host, the TUI test inspected both file diffs for `git apply './two files.patch'`, accepted the card and checked the contents of both created files. A separate regression changes the patch bytes after the card opens. Incomplete reads, multiple patch arguments and shell expressions require the terminal. The four live backend cases exercised two distinct approvals with the same target filename across reconnection. Each time the old card and draft were refused, the replacement file stayed absent and a fresh card could decline the second request.
+- **Hooks.** Registration tests cover mixed user and Heeler groups, the previous notification matcher, wrappers, customized scripts and repeat install/remove. These are in-process settings tests. Rex also exercised host registration and removal over SSH. Core and tmux exercised process-only settings through New Agent. Herdr TUI uses its own integration. An application test checks its install-action capability. Two Python tests on each OS used real tmux servers with identical socket basenames and an empty hook PATH. They checked the saved executable, server and TTY. A simulated Stop followed by a recorded provider failure incremented the blocked turn once and published the error state.
 
-The [portable verification record](evidence/droid-chat-1.21.1.json) includes evidence extracted from the four flow transcripts, the measured test counts, and backend ownership observations. The local index at `build/droid-acceptance/report.md` links the test receipts, Xcode results and native card images.
+## Repair runs
+
+| Check | macOS Host | Linux Host |
+| --- | --- | --- |
+| Herdr TUI live scenarios | 15/15 | 14/15 initially, then 1/1 for the two-file patch |
+| Backend live suite, checked delivery and server replacement | 6/7 backend cases initially, then 3/3 for checked delivery on core, tmux and Rex | 7/7 backend cases in two test methods |
+| Foreground replacement on the same live server and address | 1/4 backend cases in the first driver run, then 4/4 | 4/4 |
+| tmux hook with a restricted PATH and two private servers | 2/2 | 2/2 |
+
+The focused app suite passed 20/20. The eleven shared composer, transport, hooks and input suites passed 321/321. The app runs skipped zero tests. All 36 repository tool checks passed on macOS. On the first macOS backend run, New Agent resolved to an unconfigured mise shim in the disposable SSH account. On the initial same-server run, its external driver read a truncated executable name from macOS `ps` and never launched three of the replacement Droids. On the first Linux TUI run the reviewed patch command exited 127 because the container lacked Git. The retries used the same candidate after correcting each fixture.
+
+**N** means the operation uses a native Chat control, **R** means the result or identity can be inspected, and **T** means the user acts in the indicated terminal. Each cell has its own evidence status. A PASS for T records the terminal workflow. A PASS for R records a read or identity check. A cell with two entries identifies the device path and the separately exercised terminal path. NOT-RUN covers the specific operation in that cell, including when only a shared parser or transport test ran. N/A identifies an inapplicable platform or operation. The original local evidence bundle is `build/droid-acceptance/`. The controls apply to a correctly bound, supported foreground Droid. A terminal PASS can coexist with an implemented native control that did not receive a device run on that backend.
 
 ## Hosts and clients
 
@@ -24,12 +37,26 @@ The behavior suites used local loopback SSH with pinned host keys, distinct term
 
 The rows below use the two Herdr TUI device runs. Core, tmux and Rex have separate live receipts in the platform tables. A separate terminal input path supplied the desktop responses. The background test suspended and resumed the Chat store. The reconnect test also suspended and resumed the SSH projection. OS process eviction was not exercised.
 
+Repair candidate `4bf211cf2`
+
+| Flow | macOS Host, iPad | Linux Host, iPhone |
+| --- | --- | --- |
+| First trust and decline | `DROID_TRUST_8A5D185D` returned. The shell observer remained `ready`. | `DROID_TRUST_5A153BBD` returned. The shell observer remained `ready`. |
+| Two consecutive approvals | `call_7da69c6b2d118bd7_0` and `call_a6b1e819233439a3_0`. Only A existed, with `ALPHA-DROID` and a newline. | `call_41018e69f27f7fe5_0` and `call_9081853aeed6096a_0`. Only A existed, with `ALPHA-DROID` and a newline. |
+| Parallel commands and a late child | `RED_6AC710` (signal SIGTERM), `BLUE_6AC710` (code 0). One report for `CHILD_6AC710`. | `RED_235D97` (signal SIGTERM), `BLUE_235D97` (code 0). One report for `CHILD_235D97`. |
+| Draft across a switch and reconnect | 3 header-verified transcripts, 0 records of the unsent draft. | 3 header-verified transcripts, 0 records of the unsent draft. |
+
+<details>
+<summary>Original demonstration receipts</summary>
+
 | Flow | macOS Host, iPad | Linux Host, iPhone |
 | --- | --- | --- |
 | First startup trust and decline | Reply `DROID_TRUST_6D47EA65` in `7bd01d58-b979-414d-bac0-263380dcf358`. The raw shell observer remained `ready`. | Reply `DROID_TRUST_BCAB251B` in `6e2f3d2a-2251-4cb8-96f9-cd9f28b4a44f`. The raw shell observer remained `ready`. |
 | Consecutive file approvals | `call_decd9028e7392c04_0` and `call_9c10b805a72b3490_0`. The first file contained `ALPHA-DROID` and one newline. The second file was absent. | `call_b802891078ad72ba_0` and `call_79a18f5b3bb6c337_0`. The first file contained `ALPHA-DROID` and one newline. The second file was absent. |
 | Two background commands and one asynchronous child | `RED_1E9C45` (PID 79295, signal SIGTERM), `BLUE_1E9C45` (PID 79315, code 0). The worker reported `CHILD_1E9C45` once under `d422be9f-c23c-4c53-a502-5e828660caea`. | `RED_EE1A6D` (PID 174761, signal SIGTERM), `BLUE_EE1A6D` (PID 174765, code 0). The worker reported `CHILD_EE1A6D` once under `2d2eaff9-6ad7-409e-a133-c823b2dc26c0`. |
 | Draft, fork and reconnect | The shared directory contained 3 header-verified transcripts with 0 copies of the unsent draft. The device recovered the draft on returning to A. | The shared directory contained 3 header-verified transcripts with 0 copies of the unsent draft. The device recovered the draft on returning to A. |
+
+</details>
 
 ## macOS
 
@@ -85,8 +112,10 @@ The rows below use the two Herdr TUI device runs. Core, tmux and Rex have separa
 | Read an unrecognized dialog and follow its terminal entry | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN |
 | Handle a real account quota or rate limit | T / NOT-RUN | T / NOT-RUN | T / NOT-RUN | T / NOT-RUN |
 | Stop from A remains harmless after the same foreground Droid starts another turn | N / PASS | N / PASS | N / PASS | N / PASS |
-| Server replacement or a recreated pane cannot receive input from an old Chat | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
-| Restart a terminal or reuse a PID while a stale permission card is open | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
+| Restart the backend at its saved endpoint, reconnect and refuse an old approval and draft | N / PASS | N / PASS | N / PASS | N / PASS |
+| Keep the backend and its address, replace the foreground Droid, refuse the old approval and draft | N / PASS | N / PASS | N / PASS | N / PASS |
+| Desktop enters a draft or runs /new after mobile Send preflight, before the transport writes | N / NOT-RUN | N / PASS | N / PASS | N / PASS |
+| Reuse the same numeric OS PID with a different process birth while a stale permission card is open | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
 | Keep the desktop terminal size, owner and focus through Chat actions | N/A / N/A | N/A / N/A | R / PASS | R / PASS |
 | Same-number panes on separate tmux sockets and a replacement on the first socket | N/A / N/A | N/A / N/A | R / PASS | N/A / N/A |
 | Read a nested tmux client and its inner Droid displaying the same screen | N/A / N/A | N/A / N/A | R / PASS | N/A / N/A |
@@ -146,8 +175,10 @@ The rows below use the two Herdr TUI device runs. Core, tmux and Rex have separa
 | Read an unrecognized dialog and follow its terminal entry | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN | R / NOT-RUN |
 | Handle a real account quota or rate limit | T / NOT-RUN | T / NOT-RUN | T / NOT-RUN | T / NOT-RUN |
 | Stop from A remains harmless after the same foreground Droid starts another turn | N / PASS | N / PASS | N / PASS | N / PASS |
-| Server replacement or a recreated pane cannot receive input from an old Chat | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
-| Restart a terminal or reuse a PID while a stale permission card is open | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
+| Restart the backend at its saved endpoint, reconnect and refuse an old approval and draft | N / PASS | N / PASS | N / PASS | N / PASS |
+| Keep the backend and its address, replace the foreground Droid, refuse the old approval and draft | N / PASS | N / PASS | N / PASS | N / PASS |
+| Desktop enters a draft or runs /new after mobile Send preflight, before the transport writes | N / NOT-RUN | N / PASS | N / PASS | N / PASS |
+| Reuse the same numeric OS PID with a different process birth while a stale permission card is open | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN | N / NOT-RUN |
 | Keep the desktop terminal size, owner and focus through Chat actions | N/A / N/A | N/A / N/A | R / PASS | R / PASS |
 | Same-number panes on separate tmux sockets and a replacement on the first socket | N/A / N/A | N/A / N/A | R / PASS | N/A / N/A |
 | Read a nested tmux client and its inner Droid displaying the same screen | N/A / N/A | N/A / N/A | R / PASS | N/A / N/A |
@@ -161,7 +192,11 @@ The rows below use the two Herdr TUI device runs. Core, tmux and Rex have separa
 
 Native Windows was skipped at the user’s request. The implementation enables no new Windows capability.
 
-## Executed tests
+## Original acceptance runs
+
+The original implementation candidate was `e433870600d26395bf7d1d4842a9416957bdab06`. The full TUI suites, macOS backend suite and focused suite used this candidate. A subsequent test-only change, `686a2c07f0a82029439f89f06e8147a304f255cf`, used the app’s existing Done-to-idle mapping for the targeted Stop reruns. The final Linux backend run and supplemental checks also used that test revision. The production Swift sources, host scripts, project and assets are identical between those commits. The work started at `f858cee5b30890352d3cea267ef228147992e587`. The pre-existing macOS backend changes are preserved in `59d44b133a77459f8cf45ee7fa84fee19fc65881`. Native Windows was skipped as requested.
+
+The [portable verification record](evidence/droid-chat-1.21.1.json) includes evidence extracted from the four flow transcripts, the measured test counts, and backend ownership observations. The local index at `build/droid-acceptance/report.md` links the test receipts, Xcode results and native card images.
 
 | Selector or scope | Verification | Selected and executed | Evidence file |
 | --- | --- | --- | --- |
@@ -189,7 +224,7 @@ Native Windows was skipped at the user’s request. The implementation enables n
 - **Background work.** Execute launch, parent reply, process exit and asynchronous child report have independent records. Command identity includes its tool call, PID and command. Rex can clip both the task list and its detail at 80 columns. Chat can inspect a uniquely identified row and offers the terminal if its full command cannot be rechecked. Separate real tmux runs on both systems recorded the parent reply and a background command exiting with code 7 under its own call ID. No targeted sub-Droid cancellation was demonstrated. Task outcomes with insufficient identity remain at their last reported state.
 - **Other interfaces.** In Linux tmux, Enter submitted a steering message to the same session. Ctrl+Enter queued two messages. Ctrl+X cleared the whole queue before either was recorded. The queue screen supplied no stable item ID, so its native controls could not distinguish phone and desktop entries. Steering and queue management stay in the terminal. The native input guard was checked against recorded menu, Bash, side-chat and login frames. The Mission picker and its local startup screen were observed. Droid described an autonomous run with substantial credit use and requested separate confirmation, which was left at the prompt. No live worker, milestone or waiting-for-input state is asserted.
 - **Device layout.** Native SwiftUI cards were rendered in a visible hosted simulator window on both device sizes. The captures cover the linked worktree path, a long command, the file diff, AskUser and Spec. Approvals were driven through the same Chat stores and backend paths as the controls. Full-app navigation, physical-device touch input and OS process eviction have separate evidence requirements.
-- **Backend isolation.** tmux observations used the saved executable and server socket, two independent servers with pane `%0`, and a replacement server. An attached 125 × 32 terminal client supplied the desktop comparison. The Droid Rex blocks reported their before/after size and owner, including a null owner when no desktop client owned the block. In the macOS Rex control-link suite, the before and after owner were both null and the complete size result was identical. Separate macOS and Linux runs attached an independent terminal client to the exact Droid block before starting the real three-backend test. During checked Send, a session switch and Stop, the full size response and the non-null owner were sampled repeatedly on the same control connection. Separate live nested tmux servers exposed the same Droid screen on both panes. The outer foreground program was a tmux client, and its pane and server were distinguished from the inner Droid. Shared checked-typing tests cover reused numbers, a replaced Rex process/server and nested terminal scopes. Rows for stale actions on a real restarted Host remain explicitly marked.
+- **Backend isolation.** tmux observations used the saved executable and server socket, two independent servers with pane `%0`, and a replacement server. An attached 125 × 32 terminal client supplied the desktop comparison. The Droid Rex blocks reported their before/after size and owner, including a null owner when no desktop client owned the block. In the macOS Rex control-link suite, the before and after owner were both null and the complete size result was identical. Separate macOS and Linux runs attached an independent terminal client to the exact Droid block before starting the real three-backend test. During checked Send, a session switch and Stop, the full size response and the non-null owner were sampled repeatedly on the same control connection. Separate live nested tmux servers exposed the same Droid screen on both panes. The outer foreground program was a tmux client, and its pane and server were distinguished from the inner Droid. Shared checked-typing tests cover reused numbers, a replaced Rex process/server and nested terminal scopes. The repair record adds live stale-action checks for all four server kinds.
 - **Hook lifecycle.** Herdr TUI uses its Droid integration. New Agent on core and tmux supplies process-only settings. Existing terminals can register the Python 3 hook in Chat and then restart or resume Droid. Tests exercised the earlier Heeler-owned settings format, repeat installation, removal, an existing unrelated hook and preserved arguments. The isolated Linux test disabled hooks, enabled them again and recovered the same UUID in a new process.
 
 ## Supplemental regression failures
