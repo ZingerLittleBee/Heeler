@@ -36,6 +36,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- A macOS Rex Host reports when SSH refuses to forward its running socket under either `/tmp` or `/private/tmp`.
 - Open large Chat conversations reliably over slow cellular connections and recover cleanly from SFTP timeouts: read transcripts in 256 KiB chunks so multi-megabyte files open within the request deadline at 64 KiB/s, retire timed-out or failed shared SFTP handles immediately so **Retry** and concurrent reads open a fresh channel instead of failing with SFTP status 4, stop status changes from re-arming background Chat prefetches after timeouts or on sessionless panes, clear read-failure banners automatically once the next poll succeeds, and show a quiet canvas rather than **No Messages Yet** under the **Retry** banner when an initial Chat read times out. (PR #861)
 - Name a new worktree's Workspace on a Herdr TUI Host after its branch instead of the new Agent's name (such as `claude-2` or `agy-3`). (PR #860)
 - Keep a Rex Host's open terminals and Agents, pins, Done and Chat when Rex restarts and brings back its sessions, as Rex 0.1.0-preview.25 does after it stops or crashes. Heeler read every restart as another Rex server: open terminals said **This Terminal belongs to a Rex server that is gone**, and pins and Done were cleared. A restored terminal reconnects and shows a fresh screen. Tried against Rex 0.1.0-preview.25 on macOS. (PR #854)

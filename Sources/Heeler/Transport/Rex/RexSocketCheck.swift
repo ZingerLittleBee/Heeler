@@ -7,8 +7,9 @@ import Foundation
 /// builds a script for one bounded exec and reads what it prints.
 ///
 /// The script only tests the file and lists the Host's Unix sockets: Linux's
-/// `/proc/net/unix` shows which are listening, and on macOS `lsof` shows the
-/// account's own processes holding one at that path. It runs nothing of Rex's.
+/// `/proc/net/unix` and macOS's `netstat` report listening stream sockets.
+/// Darwin keeps the bind spelling and exposes SO_ACCEPTCONN as bit 0x0002.
+/// The check neither opens the socket nor runs Rex.
 enum RexSocketCheck {
     enum Answer: Equatable, Sendable {
         /// No socket file at the path.
@@ -42,13 +43,28 @@ enum RexSocketCheck {
                     fi
                     ;;
                 Darwin)
-                    if command -v lsof >/dev/null 2>&1; then
-                        if lsof -nP -U -F n 2>/dev/null | grep -Fqx "n$p"; then
-                            printf 'listening\\n'
-                        else
-                            printf 'idle\\n'
-                        fi
-                    fi
+                    case "$p" in
+                        /private/*) other=${p#/private} ;;
+                        *) other=/private$p ;;
+                    esac
+                    [ "$p" -ef "$other" ] || other=$p
+                    { LC_ALL=C netstat -anv -f unix && echo complete; } | LC_ALL=C awk -v path="$p" -v other="$other" '
+                        $1 == "Address" && $NF == "Addr" {
+                            for (i = 1; i < NF; i++) if ($i == "options") options = i
+                            after = NF - options - 1
+                            next
+                        }
+                        $0 == "complete" { complete = 1 }
+                        $2 == "stream" && options && match($0, "[[:space:]]/") {
+                            name = substr($0, RSTART + 1)
+                            if (name != path && name != other) next
+                            $0 = substr($0, 1, RSTART - 1)
+                            # Count back from the address because a process name may contain spaces.
+                            flags = $(NF - after)
+                            if (flags ~ /^[[:xdigit:]]+$/ && flags ~ /[2367abefABEF]$/) listening = 1
+                        }
+                        END { if (options && complete) print listening ? "listening" : "idle" }
+                    '
                     ;;
                 esac
             fi
