@@ -72,7 +72,7 @@ struct DroidBackendChatLiveTests {
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
-        let prompt = "Reply with exactly \(token). Do not use tools."
+        let prompt = "Reply with only the marker on the last line, without indentation or formatting. Do not use tools.\n\n    \(token)"
         try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
         composer.replaceDraft(with: prompt)
         chat.draftDidChange(to: prompt)

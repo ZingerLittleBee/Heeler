@@ -4,23 +4,43 @@ enum DroidInputBox {
     static let working = String(localized: "Wait for Droid to finish this turn before sending another message.")
     private static let openComposer = String(localized: "Open Droid's message box in the terminal to send a message.")
 
+    private enum Reading {
+        case held(InputBoxState)
+        case composer(rows: [String], columns: Int, cursor: (row: Int, column: Int)?)
+    }
+
     static func read(_ screen: ANSIScreen) -> InputBoxState {
+        switch inspect(screen) {
+        case .held(let state): return state
+        case .composer(let rows, _, let cursor):
+            let text = rows.joined(separator: "\n")
+            if !text.isEmpty { return .text(text) }
+            if let cursor, cursor.column > 0 { return .text(String(repeating: " ", count: cursor.column)) }
+            return .empty(placeholder: nil)
+        }
+    }
+
+    private static func inspect(_ screen: ANSIScreen) -> Reading {
         let rows = screen.rows.map(\.trimmedText)
-        if let reason = terminalGuidance(rows) { return .noComposer(reason) }
+        if let reason = terminalGuidance(rows) { return .held(.noComposer(reason)) }
         guard let bottom = rows.lastIndex(where: { border($0, left: "╰", right: "╯") }),
               let top = rows[..<bottom].lastIndex(where: {
                   border($0.replacingOccurrences(of: "╭── Spec ", with: "╭───────"), left: "╭", right: "╮")
               }),
               bottom > top + 1, rows[top].count == rows[bottom].count
-        else { return .noComposer(openComposer) }
+        else { return .held(.noComposer(openComposer)) }
 
         var draft: [String] = []
+        var cursor: (row: Int, column: Int)?
         for index in (top + 1)..<bottom {
-            let row = rows[index]
-            let prefix = index == top + 1 ? "│ > " : "│ "
-            guard row.hasPrefix(prefix), row.hasSuffix("│") else { return .noComposer(openComposer) }
-            let text = row.dropFirst(prefix.count).dropLast().trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty { draft.append(text) }
+            let source = screen.rows[index]
+            let row = source.text.trimmingCharacters(in: .whitespaces)
+            let prefix = index == top + 1 ? "│ > " : "│   "
+            guard row.hasPrefix(prefix), row.hasSuffix("│") else { return .held(.noComposer(openComposer)) }
+            if let caret = source.runs.first(where: { $0.style.isReverse }) {
+                cursor = (draft.count, caret.column - (source.indent ?? 0) - prefix.count)
+            }
+            draft.append(withoutFramePadding(row.dropFirst(prefix.count).dropLast()))
         }
         // Menus can leave the input frame on screen and replace the status footer.
         let footer = rows[(bottom + 1)...].filter { !$0.isEmpty }
@@ -29,15 +49,20 @@ enum DroidInputBox {
               (status.contains("MCP ") && (status.contains("| IDE ") || status.hasSuffix("| TMUX ⧉") || status.hasSuffix("| GHOSTTY ᗣ")))
                 || ["? for help TMUX ⧉", "? for help GHOSTTY ᗣ", "? for help IDE ◌"]
                     .contains(status.replacing(#/^\[⏱ [0-9hms ]+\] /#, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")) else {
-            return .noComposer(openComposer)
+            return .held(.noComposer(openComposer))
         }
         // The steering hint and the stop instruction appear together during a turn.
         if draft.first?.hasPrefix("Enter to steer") == true,
            rows[max(0, top - 6)..<top].contains(where: { $0.hasSuffix("(Press ESC to stop)") }) {
-            return .disabled(working)
+            return .held(.disabled(working))
         }
-        if !draft.isEmpty { return .text(draft.joined(separator: "\n")) }
-        return .empty(placeholder: nil)
+        // Droid 1.21.1 wraps ten cells inside the frame width, at every pane size.
+        return .composer(rows: draft, columns: rows[top].count - 10, cursor: cursor)
+    }
+
+    private static func withoutFramePadding(_ row: Substring) -> String {
+        guard let last = row.lastIndex(where: { $0 != " " }) else { return "" }
+        return String(row[...last])
     }
 
     /// Identify only the active page. Old tool output can mention any menu.
@@ -83,20 +108,43 @@ enum DroidInputBox {
         screen.rows.last(where: { $0.trimmedText.hasPrefix("╭") })?.trimmedText.hasPrefix("╭── Spec ") == true
     }
 
-    static func showsPaste(_ displayed: String, text: String) -> Bool {
-        // ChatSendRules adds one trailing space, indistinguishable from the
-        // input frame's own padding. It is never part of the user's draft.
-        let payload = text.last == " " ? text.dropLast() : text[...]
-        if displayed == payload { return true }
-        // The terminal wraps at cell boundaries and pads rows with spaces.
-        // Consume each displayed fragment in order, including word wraps.
-        var remaining = payload
-        for row in displayed.components(separatedBy: "\n") {
-            if !remaining.hasPrefix(row), remaining.first == " " || remaining.first == "\n" { remaining.removeFirst() }
-            guard !row.isEmpty, remaining.hasPrefix(row) else { return false }
-            remaining = remaining.dropFirst(row.count)
+    static func showsPaste(_ text: String, on screen: ANSIScreen) -> Bool {
+        guard !text.isEmpty, case .composer(let visible, let columns, let cursor) = inspect(screen), columns > 0 else { return false }
+        let expected = wrappedRows(text, columns: columns)
+        guard expected.map({ withoutFramePadding($0[...]) }) == visible else { return false }
+        // Captures that retain Droid's reverse-video caret distinguish trailing input spaces from frame padding.
+        guard let cursor, let last = expected.last else { return true }
+        return cursor.row == expected.count - 1 && cursor.column == TerminalCellWidth.width(of: last)
+    }
+
+    private static func wrappedRows(_ text: String, columns: Int) -> [String] {
+        var rows: [String] = []
+        var row = ""
+        var used = 0
+        func finishRow() {
+            rows.append(row)
+            row = ""
+            used = 0
         }
-        return remaining.isEmpty
+        func append(_ character: Character) {
+            let width = TerminalCellWidth.width(of: character)
+            if used + width > columns { finishRow() }
+            row.append(character)
+            used += width
+        }
+
+        // Droid expands each pasted tab to four spaces, keeps explicit blank lines,
+        // wraps whole words and splits a word wider than the field at cell boundaries.
+        for line in text.replacingOccurrences(of: "\t", with: "    ").components(separatedBy: "\n") {
+            for (index, word) in line.split(separator: " ", omittingEmptySubsequences: false).enumerated() {
+                if index > 0 { append(" ") }
+                let width = TerminalCellWidth.width(of: word)
+                if width <= columns, used + width > columns { finishRow() }
+                for character in word { append(character) }
+            }
+            finishRow()
+        }
+        return rows
     }
 
     static func stop(_ context: ChatStopContext) -> ChatStopVerdict {
@@ -125,11 +173,10 @@ struct DroidSendVerification: Sendable {
         guard !Task.isCancelled, (try? await readTarget()) == target,
               let screen = try? await readScreen(), !Task.isCancelled, !requiresSpec || DroidInputBox.isSpec(screen)
         else { return text == nil ? .inputNotReady(held) : .notSubmitted(afterPaste) }
-        let box = DroidInputBox.read(screen)
         if let text {
-            if case .text(let visible) = box, DroidInputBox.showsPaste(visible, text: text) { return nil }
-            return .notSubmitted(afterPaste)
+            return DroidInputBox.showsPaste(text, on: screen) ? nil : .notSubmitted(afterPaste)
         }
+        let box = DroidInputBox.read(screen)
         if case .empty = box { return nil }
         return .inputNotReady(box.holdReason(for: .droid))
     }

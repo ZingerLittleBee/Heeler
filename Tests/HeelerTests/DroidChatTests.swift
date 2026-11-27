@@ -175,8 +175,26 @@ struct DroidChatTests {
         let changed = DroidSendVerification(target: target, readTarget: { nil },
             readScreen: { ANSIScreenDecoder.decode(initial) }, requiresSpec: false)
         #expect(await changed.refusal(staged: "mine") != nil)
-        #expect(DroidInputBox.showsPaste("第一行\nsecond line", text: "第一行\nsecond line "))
-        #expect(!DroidInputBox.showsPaste("第一行\nchanged", text: "第一行\nsecond line "))
+    }
+
+    @MainActor @Test func enterPreservesIndentationAndBlankLinesAcrossDroidWordWraps() async throws {
+        let screen = try ScreenFixture.screen("droid-multiline-paste")
+        let target = DroidDialogTarget(scope: "server/pane", pid: "12", start: "birth", directory: "/repo", sessionID: session)
+        let check = DroidSendVerification(target: target, readTarget: { target }, readScreen: { screen }, requiresSpec: false)
+        let rules = ChatSendRules(program: .droid, commands: [])
+        let draft = "示例\n    let title = \"a narrow window wraps these words but keeps indentation\"\n\n    return title"
+        #expect(await check.refusal(staged: rules.outgoingText(draft)) == nil)
+        for changed in [
+            draft.replacingOccurrences(of: "\n\n", with: "\n").replacingOccurrences(of: "\n    ", with: "\n"),
+            draft.replacingOccurrences(of: "    let", with: "let"),
+            draft.replacingOccurrences(of: "    return", with: "      return"),
+            draft.replacingOccurrences(of: "\n\n", with: "\n"),
+            draft.replacingOccurrences(of: "\n\n", with: "\n\n\n"),
+            draft.replacingOccurrences(of: "narrow window", with: "narrow\nwindow"),
+            draft.replacingOccurrences(of: "return title", with: "return other")
+        ] {
+            #expect(await check.refusal(staged: rules.outgoingText(changed)) != nil)
+        }
     }
 
     @Test func customHookScriptSurvivesAnInstallAndOnlyProcessBoundHostsOfferIt() async throws {
