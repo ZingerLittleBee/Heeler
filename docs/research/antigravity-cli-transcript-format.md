@@ -436,6 +436,27 @@ key clears `? for shortcuts` (117, 129). A draft keeps `esc to cancel`
 exit's `press ctrl+c again to exit` (07), so over that footer the same text
 reads as a draft, which holds.
 
+### Color schemes
+
+agy 1.5.18's `colorScheme` setting in `settings.json` swaps its palette.
+Under `tokyo night` (herdr 0.9.5, 2026-11-27, 201 to 204, #863) the layout
+is the same, but every color is 24-bit and nothing is dim: the box's rules
+and a past prompt's 60-column rule `38;2;65;72;104`, the `>`
+`38;2;122;162;247` (not bold), a mode's hint, `? for shortcuts` and the
+footer's model `38;2;126;134;173`, a past prompt bold `38;2;122;162;247`,
+and a dialog's title bold `38;2;224;175;104`. A draft stays in the default
+color. The default scheme in 1.5.18 still draws 256-color 8, 12, 4 and 3
+as above, and `NO_COLOR` overrides any scheme.
+
+So Heeler never reads agy's colors by value. In colors a box is two
+full-width rules in one color, each one color end to end, around a colored
+`>` that is not bold; a mode's hint is one of the three hints, or the
+start of one cut with `...`, drawn in a color other than the `>`'s, where a
+draft is in the default color. A dialog's title is one bold run at column
+0 in any color over a rule in a color. A capture redrawn with each indexed
+color a 24-bit one and dim text in a muted color reads the same (the
+recolored tests in `AgyInputBoxDetectorTests` and `AgyDialogParserTests`).
+
 ### Vim mode
 
 agy 1.5.3 turns Vim mode on in `/settings` (alias `/config`) under Editor
@@ -489,10 +510,11 @@ a hint row, and the footer `esc to cancel`. A long option label continues at
 column 0. Scrollback keeps an answered dialog only as a `● Ran …`, `● Edited
 …` or `? <question>` row. A declined one keeps its title at column 0, bold
 blue (4) instead of yellow (3), over `⎿  User declined the tool call` (56,
-69, 83, 88); Heeler frames a dialog by the bottom-most bold yellow title
-with a rule under it, so it never reads that title as one. Under `NO_COLOR`
-both titles are bold without color, and only the live one has a rule under
-it (Without colors, above).
+69, 83, 88). Heeler frames a dialog by the bottom-most bold title with a
+rule of its palette under it, so it never reads that title as one. Under `NO_COLOR` both titles
+are bold without color, and only the live one has a rule under it (Without
+colors, above); under another color scheme the title is in that scheme's
+colors (Color schemes, above).
 
 | Dialog | Question and hint row | Keys | herdr 0.9.5 |
 |---|---|---|---|
