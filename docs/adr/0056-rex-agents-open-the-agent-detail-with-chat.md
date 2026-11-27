@@ -491,3 +491,13 @@ Rex 0.1.0-preview.23 on Windows 11 with three Claude Code 2.1.332 Agents,
 each found `REX_BLOCK` matching its block and no `REX_SESSION`, its start
 matched `procStart` in the Agent's registry entry, and SFTP over the same
 relay listed its Transcript at the path the binder builds.
+
+## Update 2026-11-27: Pi session reports on preview.25
+
+On macOS and Linux, two real Pi clients in one project inherited `REX_BLOCK`
+while `REX_SESSION` was absent. The extension now recognizes the block with
+that variable, keeps the tmux exclusion, and writes the existing per-process
+report. The binder still checks the foreground PID, birth and transcript.
+The extension presence probe distinguishes this revision so the existing
+installation action can update a stale copy. [Chat evidence](../agents/rex-chat-parity.md)
+and [Linux report and exit observations](../agents/rex-linux-lab.md).

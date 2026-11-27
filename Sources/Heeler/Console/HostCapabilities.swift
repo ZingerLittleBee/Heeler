@@ -264,7 +264,7 @@ extension HostCapabilities {
     /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
     /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
     /// process start in the local account registry (rex-chat-parity.md).
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid, .devin]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
