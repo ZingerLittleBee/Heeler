@@ -17,13 +17,23 @@ struct DevinTranscriptReducer: ChatTranscriptReducer {
         var pending: [String: ChatPendingRequest] = [:]
         var seen: Set<String> = []
         var background = DevinBackgroundWork()
+        var workRows = rows
+        for row in rows.values {
+            for earlier in row.earlierWork ?? [] where workRows[earlier.offset] == nil {
+                workRows[earlier.offset] = earlier.row
+            }
+        }
+        for offset in workRows.keys.sorted() {
+            if let row = workRows[offset] {
+                background.observe(row, at: offset, date: ClaudeTranscriptProjection.date(row.timestamp))
+            }
+        }
         for offset in rows.keys.sorted() {
             guard let row = rows[offset], seen.insert(row.id).inserted else { continue }
             let entry = ChatEntryID("devin:" + row.id)
             result.title = row.title ?? result.title
             result.model = row.model ?? result.model
             let date = ClaudeTranscriptProjection.date(row.timestamp)
-            background.observe(row, at: offset, date: date)
             switch row.role {
             case "user":
                 result.entries.append(.init(id: entry, sourceOffset: offset, content: .user(.init(text: row.text))))

@@ -275,7 +275,6 @@ struct DevinChatLiveTests {
                     if Set(work.compactMap(\.taskID)).isSuperset(of: Set(fixture.shells.keys).union([fixture.child])) {
                         return true
                     }
-                    if live.chat.conversation.older == .available { live.chat.loadOlder() }
                     return false
                 }
                 let transcript = live.chat.conversation.transcript

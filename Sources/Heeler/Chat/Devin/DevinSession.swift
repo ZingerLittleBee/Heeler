@@ -69,6 +69,11 @@ struct DevinSessionPage: Decodable, Sendable {
     var title, model: String?
     var rows: [Row]
 
+    struct EarlierWork: Codable, Equatable, Sendable {
+        var offset: UInt64
+        var row: Row
+    }
+
     struct Row: Codable, Equatable, Sendable {
         var id, role, text: String
         var truncated: Bool
@@ -77,6 +82,7 @@ struct DevinSessionPage: Decodable, Sendable {
         var title, model, agentID: String?
         var success: Bool?
         var childReports: [String: String]?
+        var earlierWork: [EarlierWork]?
     }
 
     struct Call: Codable, Equatable, Sendable {

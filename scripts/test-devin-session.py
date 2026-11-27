@@ -52,6 +52,19 @@ class DevinSessionRead(unittest.TestCase):
         self.assertEqual(self.page(1, 1)["rows"][0]["id"], "a-3")
         self.assertEqual(self.page(70, 1)["offset"], 2)
 
+    def test_reopens_older_work_without_replaying_unrelated_messages(self):
+        def shell(identifier):
+            return {"id": identifier, "name": "exec", "arguments": {"shell_id": identifier, "command": "sleep 10"}}
+        self.put(1, None, "assistant", "older answer", calls=[shell("first")])
+        self.put(2, 1, "assistant", "abandoned", calls=[shell("fork")])
+        self.put(3, 1, "assistant", "visible tail")
+        self.put(4, None, "assistant", "foreign", session="b", calls=[shell("foreign")])
+        tail = self.page(limit=1)["rows"][0]
+        self.assertEqual(tail["text"], "visible tail")
+        events = tail["earlierWork"]
+        self.assertEqual([(e["offset"], e["row"]["id"], e["row"]["text"]) for e in events], [(0, "a-1", "")])
+        self.assertEqual([c["id"] for c in events[0]["row"]["calls"]], ["first"])
+
     def test_open_tool_is_unique_and_has_all_its_approval_arguments(self):
         self.put(3, None, "user", "run it", meta={"is_user_input": True})
         self.put(4, 3, "assistant", "", calls=[dict(id="call-a", name="exec", arguments={"command": "pwd", "env": {"MODE": "something else"}})])

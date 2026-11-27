@@ -55,6 +55,56 @@ def row(message, limit):
                 success=(extra.get("chisel/tool_result_meta") or {}).get("success"))
 
 
+def earlier_work(db, session, ids):
+    """Recover public task events preceding the opening page, without adding older conversation text."""
+    positions = {node: index for index, node in enumerate(ids)}
+    events, call_ids = {}, set()
+    launches = db.execute("""
+        SELECT m.node_id, m.chat_message FROM message_nodes m
+        WHERE m.session_id=? AND m.node_id<=? AND EXISTS (
+            SELECT 1 FROM json_each(m.chat_message,'$.tool_calls') c
+            WHERE json_extract(c.value,'$.name') IN ('run_subagent','exec','get_output')
+              AND (json_type(c.value,'$.arguments.shell_id')='text'
+                   OR json_extract(c.value,'$.arguments.is_background')=1))
+        ORDER BY m.node_id DESC LIMIT 128
+    """, (session, ids[-1]))
+    for node, raw in launches:
+        if node not in positions:
+            continue
+        event = row(json.loads(raw), 0)
+        calls = []
+        for call in event["calls"]:
+            args = call["arguments"]
+            if not ((call["name"] == "run_subagent" and args.get("is_background") is True)
+                    or (call["name"] in ("exec", "get_output") and args.get("shell_id"))):
+                continue
+            call["arguments"] = {k: args[k] for k in ("shell_id", "command", "title", "is_background") if k in args}
+            if len(json.dumps(call).encode()) <= 4096 and len(call_ids) < 128:
+                call_ids.add(call["id"])
+                calls.append(call)
+        if calls:
+            event["calls"] = calls
+            events[node] = event
+    if call_ids:
+        params = ",".join("?" for _ in call_ids)
+        results = db.execute("""
+            SELECT node_id, chat_message FROM message_nodes WHERE session_id=? AND node_id<=?
+            AND json_extract(chat_message,'$.role')='tool' AND json_extract(chat_message,'$.tool_call_id') IN ("""
+            + params + ") ORDER BY node_id DESC LIMIT 256", (session, ids[-1], *call_ids))
+        for node, raw in results:
+            if node in positions:
+                events[node] = row(json.loads(raw), 2048)
+    remaining = 128 * 1024
+    bounded = []
+    for node in sorted(events, reverse=True):
+        event = dict(offset=positions[node], row=events[node])
+        remaining -= len(json.dumps(event, ensure_ascii=False).encode())
+        if remaining < 0:
+            break
+        bounded.append(event)
+    return list(reversed(bounded))
+
+
 def read(db, request):
     session = request["session"]
     offset, limit = request.get("offset"), request["limit"]
@@ -99,6 +149,8 @@ def read(db, request):
         (raw,) = db.execute("SELECT chat_message FROM message_nodes WHERE session_id=? AND node_id=?",
                             (session, node)).fetchone()
         result.append(row(json.loads(raw), text_limit))
+    if result and offset is None and start:
+        result[0]["earlierWork"] = earlier_work(db, session, ids[:start])
     if result and start + len(result) == len(ids):
         # A child can finish after the main turn. Only its final public text
         # accompanies the tail. The reducer associates it with a launch on this chain.

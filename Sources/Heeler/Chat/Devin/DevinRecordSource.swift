@@ -82,6 +82,7 @@ struct DevinRecordSource: ChatTranscriptSource {
             let position = page.offset + offset
             row.title = page.title
             row.model = page.model
+            row.earlierWork = row.earlierWork ?? held[position]?.earlierWork
             guard held[position] != row else { continue }
             held[position] = row
             result.append(try ChatLine(offset: UInt64(position), data: JSONEncoder().encode(row)))
