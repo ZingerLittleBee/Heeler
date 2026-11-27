@@ -164,6 +164,90 @@ struct RexProjectLiveTests {
         #expect(String(decoding: response, as: UTF8.self).hasSuffix("heeler-lab-preview-ok"))
     }
 
+    @Test func replacingABlockInTheSameSessionCannotReceiveTheDepartedAgentsDraft() async throws {
+        let lab = try Lab.configured()
+        let link = try Connection(lab)
+        let console = link.console, host = link.host.id
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await wait("the Host can launch its fixture Agent") { console.capabilities(for: host).startsAgents }
+        let label = "heeler-lab-rebuild-" + UUID().uuidString.lowercased()
+        let workspace = try await console.createShellWorkspace(.init(directory: lab.project, label: label), tabLabel: nil, on: host)
+        let peer = try #require(RexPaneAddress(paneID: workspace.paneID))
+        do {
+            try await wait("the Workspace and its first shell are in the current inventory") {
+                console.workspaces(for: host).contains { $0.id == peer.sessionID }
+                    && console.terminals.contains { $0.paneID == peer.paneID }
+            }
+            let environment = lab.labBin.map { ["PATH": $0 + ":/usr/bin:/bin:/usr/sbin:/sbin"] } ?? [:]
+            let request = AgentLaunchRequest(kind: "claude", name: label, workspaceID: peer.sessionID,
+                                             cwd: lab.project, environment: environment)
+            let original = try await console.startAgent(request, on: host)
+            let old = try #require(RexPaneAddress(paneID: original.paneID))
+            try #require(old.sessionID == peer.sessionID && old.blockID != peer.blockID)
+            try await wait("the original foreground and its neighboring shell are live") {
+                let peerProcess = try await link.foreground(peer)
+                return peerProcess.processID != nil && console.agents.contains { $0.agent.paneID == old.paneID }
+            }
+            let agent = try #require(console.agents.first { $0.agent.paneID == old.paneID })
+            let composer = console.composerStore(for: agent)
+            let marker = "HEELER_LAB_DEPARTED_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            composer.replaceDraft(with: marker)
+            let before = try await link.view(peer.sessionID)
+            let neighborPID = try #require(try await link.foreground(peer).processID)
+            let ownerPID = try #require(try await link.foreground(old).processID)
+            try #require(try await link.receipt(lab, pid: ownerPID).cwd == lab.project)
+            try #require(before["label"]?.stringValue == label)
+            // An independent desktop closes this one proven lab foreground. The app's Composer stays open.
+            try await link.session.withConnection { connection in
+                _ = try await connection.control.call("block.close", payload: [
+                    "session_id": old.sessionID, "block_id": old.blockID,
+                ])
+            }
+            await console.refreshTerminalInventory(on: host)
+            try await wait("the original Agent left the session") {
+                !console.terminals.contains { $0.paneID == old.paneID }
+                    && console.terminals.contains { $0.paneID == peer.paneID }
+            }
+            let created = try await console.createShellTerminal(.init(workspaceID: peer.sessionID, cwd: lab.project,
+                                                                       label: label), on: host)
+            let replacement = try #require(RexPaneAddress(paneID: created.paneID))
+            try #require(replacement.sessionID == old.sessionID && replacement.blockID != old.blockID)
+            await console.refreshTerminalInventory(on: host)
+            try await wait("fresh inventory dropped the old block and found the new shell") {
+                !console.terminals.contains { $0.paneID == old.paneID }
+                    && console.terminals.contains { $0.paneID == replacement.paneID }
+            }
+            switch await composer.send() {
+            case .refused, .ignored: break
+            case .failed:
+                let failed = try #require(composer.messages.last)
+                composer.withdrawToDraft(failed.id)
+            default: Issue.record("The old Composer must refuse delivery to a replaced block")
+            }
+            #expect(composer.draft == marker)
+            do {
+                try await console.sendAgentKeys(["enter"], to: old.paneID, on: host)
+                Issue.record("The replaced Agent accepted its old key")
+            } catch {}
+            for address in [peer, replacement] {
+                let requests = try await link.session.blockRequests(at: address, readDeadline: .sharedLinkRead)
+                let screen = try await RexChatScreen.read(on: requests).screen
+                let visibleText = screen.rows.map(\.text).joined().filter { !$0.isWhitespace }
+                #expect(!visibleText.contains(marker))
+            }
+            #expect(try await link.foreground(peer).processID == neighborPID)
+            let after = try await link.view(peer.sessionID)
+            #expect(after["active_window_id"] == before["active_window_id"])
+            let windows = try #require(RexInventoryWire.view(after)?.windows)
+            #expect(windows.first { $0.id == workspace.tabID }?.focusedBlockID == peer.blockID)
+        } catch {
+            try? await link.removeLabSession(peer.sessionID, named: label)
+            throw error
+        }
+        try await link.removeLabSession(peer.sessionID, named: label)
+    }
+
     @Test func anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit() async throws {
         let lab = try Lab.configured()
         let link = try Connection(lab)
