@@ -5,6 +5,24 @@ import Testing
 
 @Suite("Devin Chat")
 struct DevinChatTests {
+    @Test func stopNeedsTheOpenTurnAndInterruptFooterWhenTheLastReportWasIdle() throws {
+        let screen = ANSIScreenDecoder.decode("""
+            Generating (esc twice to interrupt)
+            ─────────────────────────
+            ❭ Guide Devin while it works
+            ─────────────────────────
+            SWE-2 High
+            """)
+        #expect(DevinInputBox.stop(.init(screen: screen, activity: .idle, hasVerifiedTurn: true)) == .press)
+        for context in [
+            ChatStopContext(screen: screen, activity: .idle),
+            .init(screen: screen, activity: .blocked, hasVerifiedTurn: true),
+            .init(screen: try ScreenFixture.screen("devin-idle"), activity: .idle, hasVerifiedTurn: true),
+        ] {
+            if case .press = DevinInputBox.stop(context) { Issue.record("Unexpected Stop on a stale or blocked turn") }
+        }
+    }
+
     @Test func ordinaryNewAgentUsesADedicatedWriterAndPreservesPresets() {
         let plain = AgentLaunchRequest(kind: "devin", name: "review")
         #expect(DevinSession.localLaunch(plain, platform: .posix).arguments == ["--process-model=in-process"])
@@ -132,13 +150,13 @@ struct DevinChatTests {
     @Test func mergesLateSubagentReportsAndEachShellsOutputOnlyOnce() throws {
         let records = [
             #"{"id":"u","role":"user","text":"Run two jobs","calls":[]}"#,
-            #"{"id":"a","role":"assistant","text":"","calls":[{"id":"child","name":"run_subagent","arguments":{"is_background":true,"title":"Child"},"complete":true},{"id":"one","name":"exec","arguments":{"command":"first","shell_id":"qa-one"},"complete":true},{"id":"two","name":"exec","arguments":{"command":"second","shell_id":"qa-two"},"complete":true}]}"#,
+            #"{"id":"a","role":"assistant","text":"","calls":[{"id":"child","name":"run_subagent","arguments":{"is_background":true,"title":"Child"},"complete":true},{"id":"one","name":"exec","arguments":{"command":"first","shell_id":"qa-one"},"complete":true},{"id":"two","name":"exec","arguments":{"command":"second","timeout":0},"complete":true}]}"#,
             #"{"id":"r","role":"tool","text":"Background subagent started with agent_id=123abcd. You can wait.","calls":[],"resultFor":"child","agentID":"123abcd"}"#,
             #"{"id":"r1","role":"tool","text":"Command running in background with ID: qa-one. Run get_output with timeout if you need to wait.","calls":[],"resultFor":"one"}"#,
-            #"{"id":"r2","role":"tool","text":"Command running in background with ID: qa-two. Run get_output with timeout if you need to wait.","calls":[],"resultFor":"two"}"#,
+            #"{"id":"r2","role":"tool","text":"Command running in background with ID: 22fd3e","calls":[],"resultFor":"two","success":true}"#,
             #"{"id":"f","role":"assistant","text":"Parent done","calls":[],"finish":"stop"}"#,
             #"{"id":"child-report","role":"subagent_report","text":"child output","agentID":"123abcd","calls":[]}"#,
-            #"{"id":"get","role":"assistant","text":"","calls":[{"id":"read2","name":"get_output","arguments":{"shell_id":"qa-two"},"complete":true}]}"#,
+            #"{"id":"get","role":"assistant","text":"","calls":[{"id":"read2","name":"get_output","arguments":{"shell_id":"22fd3e"},"complete":true}]}"#,
             #"{"id":"res","role":"tool","text":"second output\n\nExit code: 0","calls":[],"resultFor":"read2","shellExit":{"code":0,"outputLength":14},"childReports":{"123abcd":"child output"}}"#,
         ]
         let lines = records.enumerated().map { index, record in

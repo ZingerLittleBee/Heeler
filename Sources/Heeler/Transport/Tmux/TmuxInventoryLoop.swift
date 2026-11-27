@@ -50,12 +50,15 @@ enum TmuxInventoryLoop {
     private static let textFields = [
         "session_name", "window_name", "pane_current_command", "pane_current_path",
         "@heeler-status", "@heeler-session", "@heeler-pipe", "@heeler-attach", "@heeler-worktree",
-        "@heeler-chat",
+        "@heeler-chat", "@heeler-agent-name",
     ]
     fileprivate static var fixedFieldCount: Int { fixedFields.count }
     fileprivate static var textFieldCount: Int { textFields.count }
     /// A row whose text is longer than this is not one.
     fileprivate static let rowTextLimit = 1 << 20
+
+    /// Shared by the name writer and reader, even across different login locales.
+    static let processStamp = #"LC_ALL=C TZ=UTC ps -p "$owner" -o lstart= | LC_ALL=C tr -cd '[:alnum:]'"#
 
     /// What `list-panes -a -F` is given. A ` .` ends each row, so empty trailing
     /// fields and trailing newlines survive the shell's command substitution. A
@@ -110,11 +113,14 @@ enum TmuxInventoryLoop {
             "w() {",
             "o=",
             "g=",
+            "tracked=",
+            "previousNames=",
             "f=1",
             "i=0",
             "k=$(uname -s 2>/dev/null)",
             "while :; do",
             #"c=$("$t" -N -u -S "$s" list-panes -a -F "$F" 2>/dev/null </dev/null) || break"#,
+            "r=",
             #"if [ -n "$f" ] || [ "$c" != "$o" ]; then"#,
             #"r=$({ printf '%s\n' "$g"; printf '%s body\n' "$n"; printf '%s\n' "$c"; } | awk -v n="$n" '"#,
             awkQuotedFieldFunction,
@@ -131,16 +137,33 @@ enum TmuxInventoryLoop {
             "c=t[3];a=t[5];p=u+2",
             "if(f[6] in D)continue",
             #"D[f[6]]=1;x="";m=split(a,w,/[ :;,\t\n]/);for(q=1;q<=m;q++)if(substr(w[q],1,4)=="app=")x=substr(w[q],5)"#,
+            #"if(t[11]~/^[0-9]+:[A-Za-z0-9]+:[a-z0-9_-]+:[a-z][a-z0-9_-]*$/&&split(t[11],vname,":")==4&&length(vname[4])<=32)print "N",f[6],f[8],vname[1],vname[2],vname[3],vname[4]"#,
             #"gsub(/[^!-~]/,"?",c);gsub(/[^!-~]/,"?",x)"#,
             #"g=f[8]":"f[11]":"c":"x"#,
             #"print "S",f[6],g"#,
             #"if(f[11]=="0"&&f[8]!=""&&G[f[6]]!=g)print "R",f[6],f[8]}}"#,
             "')",
             #"g=$(printf '%s\n' "$r" | sed -n 's/^S //p')"#,
+            #"tracked=$(printf '%s\n' "$r" | sed -n 's/^N //p')"#,
+            "fi",
+            // Only explicitly named Agents need a process check on a quiet tick.
+            // A replacement of the same kind can leave every tmux field identical.
+            "names=",
+            #"if [ -n "$tracked" ]; then"#,
+            #"names=$(printf '%s\n' "$tracked" | while read -r pane root owner birth program name; do"#,
+            #"fg=$(ps -p "$root" -o tpgid= 2>/dev/null | tr -d ' ')"#,
+            #"[ "$fg" = "$owner" ] || continue"#,
+            "[ \"$(\(processStamp))\" = \"$birth\" ] || continue",
+            #"printf 'N %s %s %s\n' "$pane" "$program" "$name""#,
+            "done)",
+            "fi",
+            #"if [ -n "$f" ] || [ "$c" != "$o" ] || [ "$names" != "$previousNames" ]; then"#,
             #"printf '%s begin\n%s\n%s argv\n' "$n" "$c" "$n" || return 0"#,
             #"printf '%s\n' "$r" | sed -n 's/^R //p' | a || return 0"#,
+            #"[ -z "$names" ] || printf '%s\n' "$names" || return 0"#,
             #"printf '%s end\n' "$n" || return 0"#,
             "o=$c",
+            "previousNames=$names",
             "f=",
             "i=0",
             "fi",
@@ -276,6 +299,7 @@ enum TmuxInventoryLoop {
         private var state = State.idle
         private var pending = TmuxInventory()
         private var pendingArguments: [String: [String]?] = [:]
+        private var names: [String: (program: String, name: String)] = [:]
         private var instance: TmuxServerInstance?
         private var argumentsByPane: [String: [String]] = [:]
 
@@ -298,6 +322,7 @@ enum TmuxInventoryLoop {
                     state = .rows
                     pending = TmuxInventory()
                     pendingArguments = [:]
+                    names = [:]
                     offset = next
                     continue
                 }
@@ -355,6 +380,13 @@ enum TmuxInventoryLoop {
         /// `A %1 6869006f` holds the arguments with a NUL between two, `a %1 …`
         /// the words of a process's title in one line, and `A %1 -` nothing.
         private mutating func noteArguments(_ line: Data) {
+            if line.first == UInt8(ascii: "N") {
+                let fields = String(decoding: line, as: UTF8.self).split(separator: " ")
+                if fields.count == 4, fields[0] == "N" {
+                    names[String(fields[1])] = (String(fields[2]), String(fields[3]))
+                }
+                return
+            }
             guard let parsed = parseArguments(line, withProcessID: false) else { return }
             pendingArguments[parsed.pane] = .some(parsed.arguments)
         }
@@ -371,6 +403,9 @@ enum TmuxInventoryLoop {
             }
             for index in pending.panes.indices where !pending.panes[index].isDead {
                 pending.panes[index].foregroundArguments = argumentsByPane[pending.panes[index].paneID]
+                let name = names[pending.panes[index].paneID]
+                pending.panes[index].namedProgram = name?.program
+                pending.panes[index].managementName = name?.name
             }
             let inventory = pending
             pending = TmuxInventory()

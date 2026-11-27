@@ -1,0 +1,1478 @@
+{
+  "baseline": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+  "candidate": "2599fe8e4ba58678719d0422bee34dc66992c502",
+  "binaries": {
+    "iPhone17/iPadAir13M3": "2722816396ec9cac6abc86c67d09daeb47d9d6dcd8cfa1400d36e5b952a299c2",
+    "macOS": "27.0.1",
+    "Xcode": "27.2",
+    "simulators": "iOS and iPadOS 27.0",
+    "Herdr TUI": "0.9.5",
+    "Droid": "1.21.1",
+    "Devin CLI": "3000.15.14",
+    "OpenCode": "2.0.32",
+    "Pi": "1.5.2",
+    "Mac tmux": [
+      "3.3",
+      "3.7b"
+    ],
+    "Linux tmux": [
+      "3.3",
+      "3.3a",
+      "3.7b"
+    ]
+  },
+  "iPhone": {
+    "recognized": [
+      "Amp",
+      "Antigravity",
+      "Claude",
+      "Codex",
+      "Devin CLI",
+      "Droid",
+      "Grok Build",
+      "OMP",
+      "OpenCode",
+      "Pi"
+    ],
+    "nativeDevin": {
+      "count": 1,
+      "replies": 1,
+      "visible": true
+    },
+    "move": {
+      "beforeMove": {
+        "server": "81371:1795779640",
+        "pane": "%45",
+        "pid": "79019",
+        "session": [
+          "western-dogwood"
+        ],
+        "neighborhood": [
+          "move-source @44 %44 79009 118x37 1 1 e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}",
+          "move-source @44 %45 79019 118x37 1 0 e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}",
+          "move-source @45 %46 79025 118x37 0 1 e496,118x37,0,0,46",
+          "target @4 %4 81485 80x24 1 1 b261,80x24,0,0,4"
+        ],
+        "workspace": "move-source",
+        "windowName": "Mobile Tab 2599",
+        "agentName": "79019:FriNov271159032026:devin:mobile-2599",
+        "automaticRename": "off"
+      },
+      "afterMove": {
+        "server": "81371:1795779640",
+        "pane": "%45",
+        "pid": "79019",
+        "session": [
+          "western-dogwood"
+        ],
+        "neighborhood": [
+          "move-source @44 %44 79009 118x37 1 1 e494,118x37,0,0,44",
+          "move-source @45 %46 79025 118x37 0 1 e496,118x37,0,0,46",
+          "target @4 %4 81485 80x24 1 1 b261,80x24,0,0,4",
+          "target @315 %45 79019 118x37 0 1 e495,118x37,0,0,45"
+        ],
+        "workspace": "target",
+        "windowName": "devin",
+        "agentName": "79019:FriNov271159032026:devin:mobile-2599",
+        "automaticRename": ""
+      }
+    },
+    "afterMove": {
+      "draft": true,
+      "pin": true
+    },
+    "desktopPTY": [
+      {
+        "phase": "chat",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x37",
+            "active": "1",
+            "pane": "%44",
+            "layout": "e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "0",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      },
+      {
+        "phase": "terminal",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          },
+          {
+            "session": "heeler-attach-d0d73dd9",
+            "size": [
+              "80",
+              ""
+            ],
+            "flags": "attached,focused,control-mode,pause-after=10,UTF-8",
+            "marker": "%45"
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x20",
+            "active": "1",
+            "pane": "%44",
+            "layout": "45dc,118x20,0,0{59x20,0,0,44,58x20,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "0",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      },
+      {
+        "phase": "desktop chose adjacent window",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          },
+          {
+            "session": "heeler-attach-d0d73dd9",
+            "size": [
+              "80",
+              ""
+            ],
+            "flags": "attached,focused,control-mode,pause-after=10,UTF-8",
+            "marker": "%45"
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x20",
+            "active": "0",
+            "pane": "%44",
+            "layout": "45dc,118x20,0,0{59x20,0,0,44,58x20,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "1",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      },
+      {
+        "phase": "background",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          },
+          {
+            "session": "heeler-attach-d0d73dd9",
+            "size": [
+              "80",
+              ""
+            ],
+            "flags": "attached,focused,control-mode,pause-after=10,UTF-8",
+            "marker": "%45"
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x37",
+            "active": "1",
+            "pane": "%44",
+            "layout": "e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "0",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      },
+      {
+        "phase": "foreground",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          },
+          {
+            "session": "heeler-attach-d0d73dd9",
+            "size": [
+              "80",
+              ""
+            ],
+            "flags": "attached,focused,control-mode,pause-after=10,UTF-8",
+            "marker": "%45"
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x37",
+            "active": "1",
+            "pane": "%44",
+            "layout": "e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "0",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      },
+      {
+        "phase": "back in chat",
+        "clients": [
+          {
+            "session": "move-source",
+            "size": [
+              "118",
+              "38"
+            ],
+            "flags": "attached,focused,UTF-8",
+            "marker": ""
+          },
+          {
+            "session": "heeler-attach-eb560dfe",
+            "size": [
+              "80",
+              ""
+            ],
+            "flags": "attached,focused,control-mode,ignore-size,pause-after=10,UTF-8",
+            "marker": "%45"
+          }
+        ],
+        "windows": [
+          {
+            "window": "@44",
+            "size": "118x37",
+            "active": "1",
+            "pane": "%44",
+            "layout": "e7a3,118x37,0,0{59x37,0,0,44,58x37,60,0,45}"
+          },
+          {
+            "window": "@45",
+            "size": "118x37",
+            "active": "0",
+            "pane": "%46",
+            "layout": "e496,118x37,0,0,46"
+          }
+        ]
+      }
+    ],
+    "twoSockets": {
+      "before": {
+        "a": {
+          "server": "36387:1795781042",
+          "pane": "%0",
+          "pid": "36388",
+          "session": "spring-dish"
+        },
+        "b": {
+          "server": "36392:1795781042",
+          "pane": "%0",
+          "pid": "36393",
+          "session": "expensive-rubidium"
+        }
+      },
+      "delivered": {
+        "a": 1,
+        "b": 0
+      },
+      "oldDraftReady": true,
+      "after": {
+        "a": {
+          "server": "93034:1795787356",
+          "pane": "%0",
+          "pid": "93049",
+          "session": null
+        },
+        "b": {
+          "server": "36392:1795781042",
+          "pane": "%0",
+          "pid": "36393",
+          "session": "expensive-rubidium"
+        },
+        "oldATranscript": 0,
+        "newATranscript": 0,
+        "bTranscript": 0,
+        "aHasInput": false,
+        "bHasInput": false,
+        "formerHitTarget": [
+          356.0,
+          468.0
+        ],
+        "oldDetailStillPresented": false
+      },
+      "newSessionOpened": {
+        "newSession": "prong-floss",
+        "aEntries": 0,
+        "bEntries": 0,
+        "aPaneProgram": "devin",
+        "bPaneProgram": "devin"
+      }
+    },
+    "attachment": {
+      "source": "Daily attachment 中文.txt",
+      "target": "Daily_attachment___.txt",
+      "bytes": 36,
+      "sha256": "756f4fe4f139a6d987fc84b4fbb1dd96e2650db778cb6657dd23adf6847dae66",
+      "activeChainUserEntries": 1,
+      "pathsInUserEntry": 1,
+      "pane": "%45",
+      "conversation": "western-dogwood"
+    },
+    "openCodeTerminal": {
+      "DAILY_PHONE_OPEN_2599": {
+        "marker": "DAILY_PHONE_OPEN_2599",
+        "session": "63ee0fd275c12a33",
+        "sequence": [
+          "user",
+          "assistant",
+          "idle"
+        ],
+        "uniqueUser": 1,
+        "correctAssistant": 1,
+        "outcome": "succeeded",
+        "hasIdleTime": true
+      },
+      "DAILY_PHONE_OPEN_AFTER_2599": {
+        "marker": "DAILY_PHONE_OPEN_AFTER_2599",
+        "session": "d6a273eb50f59aef",
+        "sequence": [
+          "user",
+          "assistant",
+          "idle"
+        ],
+        "uniqueUser": 1,
+        "correctAssistant": 1,
+        "outcome": "succeeded",
+        "hasIdleTime": true
+      }
+    },
+    "ampPlugin": {
+      "recordForeground": true,
+      "foregroundBirth": true,
+      "bindingBirth": true,
+      "bindingInstance": true,
+      "pluginContentRevision": 2,
+      "focusedThread": true,
+      "revision": 1,
+      "error": null,
+      "terminalModelError": "Unauthorized",
+      "userOptions": [
+        "Retry",
+        "Dismiss"
+      ]
+    },
+    "changes": {
+      "path": "mobile-check.txt",
+      "removed": "before the mobile review",
+      "added": "after the mobile review cc7"
+    },
+    "files": {
+      "path": "mobile-check.txt",
+      "content": "after the mobile review cc7",
+      "bytes": 28
+    },
+    "macPortPreview": "Port 51786 Is in Use on This Device"
+  },
+  "iPad/Linux": {
+    "openedExternalPi": true,
+    "piSend": {
+      "users": 1,
+      "replies": 1,
+      "visible": true
+    },
+    "splitMoveDesktopInventory": {
+      "source": [
+        "destination @1 %1 116863 80x24 1",
+        "mobile @0 %0 116860 115x38 1",
+        "mobile @0 %2 116866 115x38 0"
+      ],
+      "destination": [
+        "destination @1 %1 116863 80x24 1",
+        "destination @3 %2 116866 115x38 1",
+        "mobile @0 %0 116860 115x38 1"
+      ]
+    },
+    "draftVisibleAfterMove": "DAILY_IPAD_DRAFT_2599",
+    "desktopPTY": "115x39",
+    "portPreview": {
+      "host": "Linux Lab",
+      "port": 41835,
+      "path": "/daily-preview.txt",
+      "http": 200,
+      "body": "Daily Linux preview 2599"
+    }
+  },
+  "nativeDevinStop": {
+    "candidate": "2599fe8e4",
+    "cli": "3000.15.14",
+    "pane": "%7",
+    "session": "voracious-centipede",
+    "userTurns": 2,
+    "interruptedSystemRecords": 2,
+    "visibleCancellationMessages": 2
+  },
+  "xcresult": {
+    "approval-only": {
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "color-devin": {
+      "totalTestCount": 8,
+      "passedTests": 5,
+      "failedTests": 3,
+      "skippedTests": 0,
+      "result": "Failed",
+      "failures": [
+        "approvalsQuestionsAndStaleDrafts",
+        "approvesTheDisplayedLongCommandOnce",
+        "declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft"
+      ]
+    },
+    "color-droid": {
+      "totalTestCount": 2,
+      "passedTests": 1,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "result": "Failed",
+      "failures": [
+        "bindsSendsAndReadsTheReply"
+      ]
+    },
+    "devin-background-unit": {
+      "totalTestCount": 13,
+      "passedTests": 13,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "dialogs": {
+      "totalTestCount": 136,
+      "passedTests": 136,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "droid-switch-only": {
+      "totalTestCount": 1,
+      "passedTests": 0,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "result": "Failed",
+      "failures": [
+        "bindsSendsAndReadsTheReply"
+      ]
+    },
+    "linux-33": {
+      "totalTestCount": 38,
+      "passedTests": 38,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "linux-33a": {
+      "totalTestCount": 38,
+      "passedTests": 38,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "linux-37": {
+      "totalTestCount": 38,
+      "passedTests": 38,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "mac-33": {
+      "totalTestCount": 38,
+      "passedTests": 38,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "mac-37-large-repeat": {
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "receipt-retry": {
+      "totalTestCount": 3,
+      "passedTests": 2,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "result": "Failed",
+      "failures": [
+        "approvalsQuestionsAndStaleDrafts"
+      ]
+    },
+    "signed-herdr": {
+      "totalTestCount": 2,
+      "passedTests": 2,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "verified-checked": {
+      "totalTestCount": 275,
+      "passedTests": 275,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "verified-dialogs": {
+      "totalTestCount": 105,
+      "passedTests": 105,
+      "failedTests": 0,
+      "skippedTests": 0,
+      "result": "Passed",
+      "failures": []
+    },
+    "verified-mac-37": {
+      "totalTestCount": 38,
+      "passedTests": 37,
+      "failedTests": 1,
+      "skippedTests": 0,
+      "result": "Failed",
+      "failures": [
+        "Composer Send pastes CRLF, CJK and tmux syntax between bracketed paste markers, and pastes a 1 MB message"
+      ]
+    }
+  },
+  "nodeRealTmux": {
+    "mac-helper": {
+      "tests": 87,
+      "pass": 85,
+      "fail": 2,
+      "skipped": 0
+    },
+    "mac-helper-focused": {
+      "tests": 8,
+      "pass": 7,
+      "fail": 1,
+      "skipped": 0
+    },
+    "mac-helper-attach-repeat": {
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "skipped": 0
+    },
+    "linux-33a-helper": {
+      "tests": 87,
+      "pass": 87,
+      "fail": 0,
+      "skipped": 0
+    },
+    "linux-37-helper": {
+      "tests": 87,
+      "pass": 86,
+      "fail": 1,
+      "skipped": 0
+    },
+    "linux-37-env-repeat": {
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "toolChecks": {
+    "macOSFull": {
+      "pass": 36,
+      "fail": 1,
+      "skipped": 0,
+      "failure": "test-node-toolchain-probe global process assertion found sleep 10"
+    },
+    "DebianWithoutSwift": {
+      "pass": 34,
+      "fail": 3,
+      "skipped": 0
+    },
+    "UbuntuSwift6.1.3Node18": {
+      "pass": 32,
+      "fail": 5,
+      "skipped": 0
+    },
+    "UbuntuNode24Focused": [
+      "test-amp-chat",
+      "test-publish-plugin",
+      "test-host-helper-manifest"
+    ]
+  },
+  "mac-tools-settled": {
+    "passed": 37,
+    "failed": 0,
+    "exit": 0,
+    "skipped": 0
+  },
+  "iphone-approvals": {
+    "phoneAllowedA": true,
+    "desktopDeniedBThenTouchedOldAllow": {
+      "pane": "%319",
+      "session": "aquatic-geometry",
+      "oldCardStillVisibleBeforeTap": true,
+      "a": "PHONE_ACCEPT_2599",
+      "b": null,
+      "dialogClosed": true
+    }
+  },
+  "mac-helper-settled": {
+    "tests": 87,
+    "pass": 87,
+    "fail": 0,
+    "skipped": 0,
+    "exit": 0
+  },
+  "droid-manual": {
+    "oldNativeSend": {
+      "user": 0,
+      "answer": 0
+    },
+    "incomplete": "initial message",
+    "desktopSwitch": {
+      "old": "82974b57-8940-4fad-bc77-dd1902ffa1ba",
+      "current": "32cc2115-2bf6-4413-8338-2450fdb996ce",
+      "switched": true,
+      "confirmation": false
+    },
+    "newBinding": true,
+    "oldDraftInNewEditor": false,
+    "oldDraftInNewTranscript": false,
+    "desktopSlashResumeRestoredOldUUID": false,
+    "resumeShowedPicker": false
+  },
+  "iphone-hand-off": {
+    "source": "aquatic-geometry",
+    "target": "western-dogwood",
+    "file": "handoff-devin.md",
+    "bytes": 24058,
+    "sha256": "701a297dfdfd1f9d96146d2a21d2c3eaf2168c5050e148f6cbafd8bc40b5e9d9",
+    "containsSourceMarker": true,
+    "targetDraftContainsPath": true,
+    "targetRecordedUserMessagesWithPath": 0
+  },
+  "iphone-skills": {
+    "projectSkill": "daily-tmux-2599",
+    "nativeDevinChatPicker": "No Skills",
+    "terminalPickerFound": true,
+    "matchingBody": true
+  },
+  "iphone-copy": {
+    "copied": "%0",
+    "serverA": "3924:1795788833",
+    "foreground": "oval-marquess"
+  },
+  "iphone-rename": {
+    "before": "pair-a",
+    "after": "daily-user-renamed",
+    "unchangedB": "pair-b",
+    "samePidSession": true
+  },
+  "pair-stale-actions": {
+    "approve": {
+      "old": {
+        "server": "93034:1795787356",
+        "pane": "%0",
+        "pid": "93049",
+        "session": "prong-floss"
+      },
+      "new": {
+        "server": "70968:1795788724",
+        "pane": "%0",
+        "pid": "70969",
+        "session": "typhoon-cookie"
+      },
+      "b": {
+        "server": "36392:1795781042",
+        "pane": "%0",
+        "pid": "36393",
+        "session": "expensive-rubidium"
+      },
+      "buttonWasVisible": true,
+      "oldDetailAfter": false,
+      "BRecordsUnchanged": true,
+      "newA": {
+        "user": 0,
+        "interruptions": 0,
+        "staleText": 0
+      },
+      "B": {
+        "user": 0,
+        "interruptions": 0,
+        "staleText": 0
+      },
+      "oldABeforeRestart": {
+        "user": 1,
+        "interruptions": 0,
+        "staleText": 1
+      },
+      "noCreatedFile": true,
+      "newForeground": "devin",
+      "bForeground": "devin",
+      "staleInNewInput": false
+    },
+    "stop": {
+      "old": {
+        "server": "70968:1795788724",
+        "pane": "%0",
+        "pid": "70969",
+        "session": "typhoon-cookie"
+      },
+      "new": {
+        "server": "3924:1795788833",
+        "pane": "%0",
+        "pid": "3929",
+        "session": "oval-marquess"
+      },
+      "b": {
+        "server": "36392:1795781042",
+        "pane": "%0",
+        "pid": "36393",
+        "session": "expensive-rubidium"
+      },
+      "buttonWasVisible": true,
+      "oldDetailAfter": false,
+      "BRecordsUnchanged": true,
+      "newA": {
+        "user": 0,
+        "interruptions": 0,
+        "staleText": 0
+      },
+      "B": {
+        "user": 0,
+        "interruptions": 0,
+        "staleText": 0
+      },
+      "oldABeforeRestart": {
+        "user": 1,
+        "interruptions": 0,
+        "staleText": 1
+      },
+      "noCreatedFile": true,
+      "newForeground": "devin",
+      "bForeground": "devin",
+      "staleInNewInput": false
+    }
+  },
+  "iphone-held-stop": {
+    "pane": "%319",
+    "session": "aquatic-geometry",
+    "controlledForegroundSleepWitnessed": true,
+    "mobileStopPressed": true,
+    "approvedFromPhone": false,
+    "interruptedRecordsBefore": 0,
+    "interruptedRecordsAfter": 0,
+    "visibleCancelBefore": 0,
+    "visibleCancelAfter": 1,
+    "naturalCompletionMarker": false,
+    "interruptionObserved": true,
+    "afterCommandDeadline": {
+      "naturalCompletionMarker": true,
+      "expectedContent": true
+    }
+  },
+  "versions": {
+    "claude": "2.1.332",
+    "codex": "0.172.0",
+    "grok": "1.0.92",
+    "pi": "1.5.2",
+    "omp": "18.12.3",
+    "agy": "1.5.18",
+    "opencode": "v2.0.32",
+    "amp": "0.0.1795737653-g84af98",
+    "droid": "1.21.1",
+    "devin": "3000.15.14"
+  },
+  "desktop-release": {
+    "afterOpeningAnotherAgent": true,
+    "markedSessionsForOldPane": 0,
+    "originalDesktopStillAttached": true,
+    "clientCount": 1
+  },
+  "iphone-first-trust": {
+    "pane": "%327",
+    "foreground": "droid",
+    "beforeSession": false,
+    "matchedFullPath": true,
+    "beforeOptions": [
+      "Trust this folder",
+      "Exit without trusting"
+    ],
+    "nativeLabel": "Trust this folder",
+    "boundSession": "82974b57-8940-4fad-bc77-dd1902ffa1ba",
+    "trustScreenCleared": true
+  },
+  "iphone-nested": {
+    "outerPane": "%330",
+    "sameOuterServer": true,
+    "oldForegroundPid": "45274",
+    "newForegroundPid": "52318",
+    "newForeground": "tmux",
+    "nestedClientCount": 1,
+    "oldControl": "Trust this folder",
+    "innerPane": "%0",
+    "bytesReceived": 0,
+    "nestedRecorderVisible": true
+  },
+  "iphone-create": {
+    "workspace": "daily-user-renamed",
+    "window": "@1",
+    "tab": "Mobile Pi Tab",
+    "pane": "%1",
+    "pid": "67090",
+    "command": "node",
+    "existingWindowStayedSelected": true,
+    "scopedNameMatches": true,
+    "automaticRename": "off"
+  },
+  "iphone-terminal-workspace": {
+    "workspace": "daily-mobile-terminal",
+    "tab": "bash",
+    "windowID": "@334",
+    "pane": "%331",
+    "pid": "83521",
+    "chosenDirectory": true,
+    "foregroundShell": "bash",
+    "desktopUnchanged": true,
+    "desktopSplitSibling": "%333",
+    "paneCloseKeptOtherPane": true,
+    "tabCloseKeptSiblingWindow": true
+  },
+  "linux-helper-ui": {
+    "host": {
+      "system": "Debian 12.15 arm64",
+      "tmux": "3.3a",
+      "systemd": "252",
+      "node": "24.11.0",
+      "authenticatedHarnesses": false,
+      "pipes": "controlled foreground named codex",
+      "eventProgram": "Pi 1.5.2, local model endpoint"
+    },
+    "before": {
+      "unit": "inactive",
+      "unitEnabled": "",
+      "mainPID": "0",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=0 mark= status="
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 237,
+      "userBindPreserved": true,
+      "prefix": "C-q"
+    },
+    "installed": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "3393",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status="
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 289,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "installedSheet": {
+      "version": "0.5.13",
+      "repeatOffersInstall": false,
+      "offersRemove": true
+    },
+    "reopened": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "3393",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=",
+        "%2 pi pipe=0 mark= status=state=idle:app=pi:turn=0:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 339,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "restarted": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "3932",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=",
+        "%2 pi pipe=0 mark= status=state=idle:app=pi:turn=0:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 391,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "disabled": {
+      "unit": "inactive",
+      "unitEnabled": "disabled",
+      "mainPID": "0",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=",
+        "%2 pi pipe=0 mark= status=state=idle:app=pi:turn=0:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 441,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "disabledSheet": {
+      "status": [
+        "0.5.13"
+      ],
+      "offersRepair": false
+    },
+    "piDesktopEvent": {
+      "before": "state=idle:app=pi:turn=0:blocked=0",
+      "after": "state=done:app=pi:turn=1:blocked=0",
+      "counts": [
+        1,
+        1
+      ],
+      "answered": true
+    },
+    "restored": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "4119",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=",
+        "%2 pi pipe=0 mark= status=state=done:app=pi:turn=1:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 491,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "piPhoneEvent": {
+      "before": "state=done:app=pi:turn=1:blocked=0",
+      "after": "state=done:app=pi:turn=2:blocked=0",
+      "counts": [
+        1,
+        1
+      ],
+      "answered": true,
+      "visibleInChat": true,
+      "clientStatus": [
+        "Idle"
+      ]
+    },
+    "usageOpened": {
+      "tokensTab": true,
+      "period": true,
+      "source": "synthetic Claude usage row with 17 input and 5 output tokens"
+    },
+    "usageCount": {
+      "selectedSocket": "daily-helper",
+      "fixtureInput": 17,
+      "fixtureOutput": 5,
+      "queryAgrees": true,
+      "phoneTotal22": true,
+      "labels": [
+        "Token Usage · Today, 22, tokens, Estimated API cost < $0.01 on this Host",
+        "22",
+        "22",
+        "Claude Code, 22 tokens, 100% of tokens · 22 tokens"
+      ]
+    },
+    "disabledAfterExplicitRefresh": {
+      "status": [
+        "Service Failed"
+      ],
+      "offersRepair": true
+    },
+    "phoneRepair": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "5367",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=",
+        "%2 pi pipe=0 mark= status=state=done:app=pi:turn=2:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 547,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "repairSucceeded": true,
+    "notificationRegistration": {
+      "sandboxReady": true,
+      "hostFlags": [
+        "Blocked",
+        "Done"
+      ],
+      "configuredThrough": "iPhone Settings",
+      "helperVersion": "0.5.13"
+    },
+    "alertEvent": {
+      "pane": "%2",
+      "before": "state=done:app=pi:turn=2:blocked=0",
+      "after": "state=done:app=pi:turn=3:blocked=0",
+      "userAndReply": [
+        1,
+        1
+      ],
+      "reply": true,
+      "priorAlerts": 0
+    },
+    "osAlert": {
+      "observed": true,
+      "nodes": 1,
+      "appInBackground": true
+    },
+    "notificationTap": {
+      "piDetail": true,
+      "expectedMarker": true
+    },
+    "bannerLabel": "shared · Pi, Done",
+    "deviceRegistrations": {
+      "blocked": 2,
+      "done": 1,
+      "activity": 0
+    },
+    "twoDeviceDone": {
+      "banners": {
+        "qa": [],
+        "qapad": []
+      },
+      "countsInPiTranscript": [
+        1,
+        1
+      ],
+      "before": {
+        "%0": "",
+        "%1": "",
+        "%2": "state=done:app=pi:turn=3:blocked=0"
+      },
+      "after": {
+        "%0": "",
+        "%1": "",
+        "%2": "state=done:app=pi:turn=4:blocked=0"
+      }
+    },
+    "firstDeviceBlocked": {
+      "banners": {
+        "qa": [
+          "HEELER, now, shared · Codex, Blocked — waiting for input"
+        ],
+        "qapad": []
+      },
+      "paneStatus": {
+        "%0": "",
+        "%1": "state=blocked:app=codex:kind=permission:turn=0:blocked=1",
+        "%2": "state=done:app=pi:turn=4:blocked=0"
+      }
+    },
+    "secondDeviceBlocked": {
+      "banners": {
+        "qa": [],
+        "qapad": []
+      },
+      "paneStatus": {
+        "%0": "",
+        "%1": "state=blocked:app=codex:kind=permission:turn=0:blocked=2",
+        "%2": "state=done:app=pi:turn=4:blocked=0"
+      }
+    },
+    "deliveredNotificationStores": {
+      "iPhone": {
+        "remainingOSRecords": 2,
+        "publicSummaries": [
+          [
+            "shared · Codex",
+            "Done"
+          ],
+          [
+            "shared · Pi",
+            "Done"
+          ]
+        ]
+      },
+      "iPad": {
+        "remainingOSRecords": 0,
+        "publicSummaries": []
+      }
+    },
+    "widgetBuild": {
+      "developmentSigned": true,
+      "platform": "iPad",
+      "embeddedAppCodeSHA256": "2722816396ec9cac6abc86c67d09daeb47d9d6dcd8cfa1400d36e5b952a299c2"
+    },
+    "liveActivityUI": {
+      "enabled": true,
+      "diagnostic": "active — started",
+      "host": "Helper Linux"
+    },
+    "settledLiveActivityDeviceCount": 1,
+    "island": {
+      "activityDeviceRegistered": true,
+      "expandedAgent": false,
+      "hasSystemActivity": false,
+      "piReported": "state=done:app=pi:turn=5:blocked=0"
+    },
+    "widgetTapped": {
+      "platform": "iPad",
+      "addedFromHomeScreen": true,
+      "initialText": "Open Heeler to load Usage.",
+      "opensUsage": true,
+      "expected22Tokens": true,
+      "hostShown": true
+    },
+    "verifiedSystemScreens": {
+      "expandedIPhoneLiveActivity": {
+        "host": "Helper Linux",
+        "donePrograms": [
+          "Codex",
+          "Pi"
+        ],
+        "workspace": "shared",
+        "matchingDoneGlyphs": 2
+      },
+      "iPadSmallUsageWidget": {
+        "scope": "All Hosts",
+        "period": "Today",
+        "estimatedCost": "< $0.01",
+        "tokens": 22,
+        "tapOpened": "Usage"
+      }
+    },
+    "removalSheet": {
+      "status": [
+        "0.5.13"
+      ],
+      "ownedUnitRemoved": true,
+      "appExtensionRemoved": true
+    },
+    "removalInProgress": {
+      "unit": "active",
+      "unitEnabled": "enabled",
+      "mainPID": "5367",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=state=done:app=codex:turn=1:blocked=2",
+        "%2 pi pipe=0 mark= status=state=done:app=pi:turn=5:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 595,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "removed": {
+      "unit": "inactive",
+      "unitEnabled": "",
+      "mainPID": "0",
+      "panes": [
+        "%0 codex pipe=1 mark= status=",
+        "%1 codex pipe=1 mark=codex:3100:9f1fd7126aaf:1795790780245 status=state=done:app=codex:turn=1:blocked=2",
+        "%2 pi pipe=0 mark= status=state=done:app=pi:turn=5:blocked=0"
+      ],
+      "existingConfig": [
+        "d84eb97d47feaf9ce8a51292f79e1ab0156883d2b4d0cf65e962b30ab4bd2562  /home/lab/.tmux.conf",
+        "fb921856344f64b2b7b504d321f0b2b33c1096f06f4e2eff6702aaf59088c61e  /home/lab/.claude/settings.json",
+        "37b6e1d7f59157111d97acc67f76f3bb48d1fd222bdcb344d5c0438ab4b9b516  /home/lab/.pi/agent/extensions/user-sentinel.txt"
+      ],
+      "userPipeBytes": 643,
+      "userBindPreserved": true,
+      "prefix": "C-q",
+      "userOutputRecorded": true
+    },
+    "finalRemoval": {
+      "phoneStatus": "Not Installed",
+      "serviceAndExtensionRemoved": true,
+      "originalUserPipeReceivedFinalMarker": true,
+      "existingConfigHashesMatched": true,
+      "helperOwnedWorkerStillOnItsPane": true
+    }
+  },
+  "mac-harness-ui": {
+    "pi": {
+      "registered": true,
+      "externalSeed": [
+        1,
+        1
+      ],
+      "openedExistingTranscript": true,
+      "nativeEditor": true,
+      "userAndAnswer": [
+        1,
+        1
+      ],
+      "visible": true
+    },
+    "claude": {
+      "pane": "%307",
+      "nativeEditor": true,
+      "detailHeading": [],
+      "uiGuidance": [
+        "Finish signing in or answer any prompt in the terminal."
+      ],
+      "hostStartupHints": [
+        "get started"
+      ],
+      "paneSessionRegistration": false
+    },
+    "codex": {
+      "pane": "%308",
+      "nativeEditor": true,
+      "detailHeading": [],
+      "uiGuidance": [
+        "Send a first message in the terminal."
+      ],
+      "hostStartupHints": [
+        "sign in",
+        "welcome",
+        "api key"
+      ],
+      "paneSessionRegistration": false
+    },
+    "grok": {
+      "pane": "%309",
+      "nativeEditor": true,
+      "detailHeading": [
+        "Grok Build, heeler-lab-identity"
+      ],
+      "uiGuidance": [
+        "Send a first message in the terminal."
+      ],
+      "hostStartupHints": [],
+      "paneSessionRegistration": false
+    },
+    "omp": {
+      "pane": "%311",
+      "nativeEditor": true,
+      "detailHeading": [
+        "OMP, heeler-lab-identity"
+      ],
+      "uiGuidance": [
+        "Install the Host Helper from this Host's details and restart Oh My Pi, or send a first message in the terminal."
+      ],
+      "hostStartupHints": [
+        "sign in"
+      ],
+      "paneSessionRegistration": false
+    },
+    "agy": {
+      "pane": "%312",
+      "nativeEditor": true,
+      "detailHeading": [],
+      "uiGuidance": [
+        "Send a first message in the terminal, or close the other terminal holding this conversation."
+      ],
+      "hostStartupHints": [
+        "welcome"
+      ],
+      "paneSessionRegistration": false
+    }
+  },
+  "github-ui": {
+    "openedGitHubTab": true,
+    "hostNamed": true,
+    "signals": {
+      "notLoggedIn": [],
+      "missingCLI": [
+        "GitHub CLI Isn't Installed"
+      ],
+      "offline": [],
+      "noItems": [],
+      "tabs": [
+        "Pull Requests",
+        "Issues"
+      ]
+    },
+    "afterAddingCLI": {
+      "Sign In to GitHub": false,
+      "gh auth login": false,
+      "GitHub CLI Isn't Installed": true,
+      "Pull Requests": true,
+      "Issues": true,
+      "Check Again": true,
+      "Daily Lab": true,
+      "No Pull Requests": false,
+      "No Issues": false,
+      "Try Again": false
+    },
+    "settled": {
+      "Sign In to GitHub": true,
+      "gh auth login": true,
+      "GitHub CLI Isn't Installed": false,
+      "Pull Requests": false,
+      "Issues": false,
+      "Check Again": true,
+      "Daily Lab": true,
+      "No Pull Requests": false,
+      "No Issues": false,
+      "Try Again": false
+    }
+  },
+  "worktree-ui": {
+    "checkoutCreated": true,
+    "created": {
+      "branch": "mobile-accept-2599",
+      "baseWorkspace": "daily-mobile-worktree-base",
+      "separateSession": true,
+      "pane": "%339",
+      "sameBaseCommit": true
+    },
+    "afterMobileRemoval": {
+      "checkoutGone": false,
+      "registrationGone": false,
+      "branchPreserved": true,
+      "baseWorkspaceSurvived": true,
+      "worktreeSessionGone": false
+    },
+    "aliasCase": {
+      "home": "/tmp/<fixture>/account",
+      "gitWorktreeRoot": "/private/tmp/<fixture>/account",
+      "alert": "This is no longer the same linked worktree. Nothing was removed.",
+      "gitShowsSameDirectory": true
+    },
+    "beforeReconnecting": {
+      "checkoutCreated": true,
+      "created": {
+        "branch": "canon-2599",
+        "baseWorkspace": "daily-mobile-worktree-base",
+        "separateSession": true,
+        "pane": "%341",
+        "sameBaseCommit": true
+      },
+      "afterMobileRemoval": {
+        "checkoutGone": false,
+        "registrationGone": false,
+        "branchPreserved": true,
+        "baseWorkspaceSurvived": true,
+        "worktreeSessionGone": false
+      },
+      "tmuxHomeSpelling": "/tmp/<fixture>/account"
+    }
+  },
+  "worktree-canonical-ui": {
+    "checkoutCreated": true,
+    "created": {
+      "branch": "real-2599",
+      "baseWorkspace": "daily-mobile-worktree-base",
+      "separateSession": true,
+      "pane": "%343",
+      "sameBaseCommit": true
+    },
+    "afterMobileRemoval": {
+      "checkoutGone": true,
+      "registrationGone": true,
+      "branchPreserved": true,
+      "baseWorkspaceSurvived": true,
+      "worktreeSessionGone": true
+    }
+  }
+}

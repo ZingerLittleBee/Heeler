@@ -4,6 +4,17 @@ import Testing
 
 @testable import Heeler
 
+/// Select one backend when a private fixture only contains that backend's Panes.
+enum LiveChatLabSelection {
+    static var backend: ServerKind? {
+        ProcessInfo.processInfo.environment["HEELER_LIVE_CHAT_BACKEND"].flatMap(ServerKind.init(rawValue:))
+    }
+
+    static func cases(_ defaults: [ServerKind]) -> [ServerKind] {
+        backend.map { defaults.contains($0) ? [$0] : [] } ?? defaults
+    }
+}
+
 /// A loopback SSH fixture, pinned to its host key and private server addresses.
 protocol LiveChatBackendLab: Sendable {
     var port: Int { get }

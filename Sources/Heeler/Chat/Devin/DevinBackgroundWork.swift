@@ -27,8 +27,7 @@ struct DevinBackgroundWork {
                     items.append(item)
                 }
             case "exec":
-                if let shell = args.shell_id, !shell.isEmpty, let command = args.command, row.success != false, !row.truncated,
-                   row.text.hasSuffix("Command running in background with ID: " + shell + ". Run get_output with timeout if you need to wait.") {
+                if let command = args.command, let shell = Self.acknowledgedShell(call, result: row) {
                     if let previous = shells[shell], items[previous].state == .running { ambiguousShells.insert(shell) }
                     var item = ChatBackgroundWorkItem(id: id, kind: .command, title: command,
                                                       launchOffset: launch, launchedAt: started)
@@ -56,6 +55,19 @@ struct DevinBackgroundWork {
                 finish(index, .completed, output: report, at: offset, date: nil)
             }
         }
+    }
+
+    private static func acknowledgedShell(_ call: DevinSessionPage.Call, result: DevinSessionPage.Row) -> String? {
+        guard !result.truncated, result.success != false else { return nil }
+        if let id = call.arguments.shell_id {
+            let receipt = "Command running in background with ID: " + id + ". Run get_output with timeout if you need to wait."
+            return !id.isEmpty && result.text.hasSuffix(receipt) ? id : nil
+        }
+        // Devin assigns the ID when exec requests an immediate background return.
+        guard call.complete, call.arguments.timeout == 0, result.success == true,
+              let receipt = result.text.wholeMatch(of: /Command running in background with ID: ([0-9a-f]{6})/)
+        else { return nil }
+        return String(receipt.1)
     }
 
     private mutating func finish(_ index: Int, _ state: ChatBackgroundWorkItem.State, output: String, at offset: UInt64, date: Date?) {

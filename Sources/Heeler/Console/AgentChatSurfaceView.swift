@@ -78,6 +78,7 @@ struct AgentChatSurfaceView: View {
     @State private var isSelectingFile = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
+    @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
@@ -231,7 +232,7 @@ struct AgentChatSurfaceView: View {
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
                 || isShowingSkillsPicker
-                || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
+                || viewingSkill != nil || isRenamingAgent || titleRename != nil || tabRename != nil || isRenamingWorkspace
                 || closeErrorMessage != nil || isShowingBackgroundWork || isShowingSwarm,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
@@ -259,6 +260,7 @@ struct AgentChatSurfaceView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(TabRenameSheetPresenter(request: $tabRename, console: console))
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 // The Agent has a new id in its new Workspace: the detail goes with it.
@@ -340,7 +342,7 @@ struct AgentChatSurfaceView: View {
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
                 ) { [console, agent] name in
-                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
+                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID, keepingTo: session.corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
@@ -1334,11 +1336,17 @@ struct AgentChatSurfaceView: View {
             keyboardIsLeaving: keyboardIsLeaving)
     }
 
+    private var composerStatus: AgentStatus {
+        if program == .devin, [.unknown, .idle, .done].contains(agent.agent.status),
+           console.tmuxProjection(on: agent.hostID) != nil, chat?.hasActivePinnedTurn == true { return .working }
+        return agent.agent.status
+    }
+
     private var composerChrome: some View {
         let hostID = agent.hostID
         return AgentComposerView(
             store: composer,
-            status: agent.agent.status,
+            status: composerStatus,
             hostTelemetry: nil,
             hostTelemetryProvider: { [console] in
                 HostTelemetryPresentation(
@@ -2293,9 +2301,15 @@ struct AgentChatSurfaceView: View {
         let offers = AgentDetailMenuOffers(
             capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
             removesSavedChat: console.isSavedChat(agent.id))
+        if console.capabilities(for: agent.hostID).renamesExistingTabs, !console.isSavedChat(agent.id) {
+            actions.append(AgentDetailHeaderAction(title: "Rename Tab", systemImage: "pencil") {
+                tabRename = TabRenameRequest(hostID: agent.hostID, tabID: agent.agent.tabID,
+                                             label: agent.tabLabel ?? "", instance: session.corePin.joined)
+            })
+        }
         if offers.movePane {
             actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
-                movePaneRequest = MovePaneRequest(agent: agent)
+                movePaneRequest = MovePaneRequest(agent: agent, instance: session.corePin.joined)
             })
         }
         if offers.copyPaneID {

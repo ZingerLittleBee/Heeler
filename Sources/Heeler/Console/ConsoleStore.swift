@@ -1792,8 +1792,13 @@ final class ConsoleStore {
     /// and answers the id it has there, carrying its pin along. The
     /// projection's resync brings the row to its new Workspace.
     func movePane(
-        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination
+        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination,
+        keepingTo instance: String? = nil, from workspace: String? = nil
     ) async throws -> String {
+        if let instance, hostCores[hostID] != instance { throw leftCoreError(on: hostID) }
+        if instance != nil, let workspace, terminals.first(where: { $0.hostID == hostID && $0.paneID == paneID })?.workspaceID != workspace {
+            throw TransportError.malformedResponse(String(localized: "The Pane has left this Workspace."))
+        }
         let movedPaneID = try await projection(for: hostID).movePane(paneID, to: destination)
         pins.movePin(hostID: hostID, from: paneID, to: movedPaneID)
         rebuild()
@@ -2033,7 +2038,7 @@ final class ConsoleStore {
     }
 
     func offersTitleRename(for agent: ConsoleAgent) -> Bool {
-        capabilities(for: agent.hostID).renameAgent
+        capabilities(for: agent.hostID).renamesConversationTitles
             && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
     }
 
@@ -2407,8 +2412,9 @@ final class ConsoleStore {
     }
 
     func renameAgent(
-        _ paneID: String, name: String?, on hostID: Host.ID
+        _ paneID: String, name: String?, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameAgent(paneID, name: name)
         flushScheduledRebuild()
     }
@@ -2417,6 +2423,14 @@ final class ConsoleStore {
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
+        flushScheduledRebuild()
+    }
+
+    func renameTab(
+        _ tabID: String, label: String, on hostID: Host.ID, keepingTo instance: String?
+    ) async throws {
+        guard let instance, hostCores[hostID] == instance else { throw leftCoreError(on: hostID) }
+        try await projection(for: hostID).renameTab(tabID, label: label)
         flushScheduledRebuild()
     }
 

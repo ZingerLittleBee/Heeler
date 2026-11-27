@@ -283,6 +283,7 @@ struct AgentTerminalView: View {
     @State private var isConfirmingClose = false
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isStartingAgent = false
+    @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
@@ -638,7 +639,7 @@ struct AgentTerminalView: View {
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
                 || isShowingSkillsPicker
-                || isRenamingAgent || titleRename != nil || viewingSkill != nil || isRenamingWorkspace
+                || isRenamingAgent || titleRename != nil || viewingSkill != nil || tabRename != nil || isRenamingWorkspace
                 || isShowingWorktree || attachLinksOrigin != nil || closeErrorMessage != nil
                 || attach.pendingPaste != nil || attach.pasteErrorMessage != nil
                 || attach.attachLinkOpenFailure != nil,
@@ -662,6 +663,7 @@ struct AgentTerminalView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(TabRenameSheetPresenter(request: $tabRename, console: console))
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 // The Agent has a new id in its new Workspace: the detail goes with it.
@@ -730,7 +732,7 @@ struct AgentTerminalView: View {
                     currentValue: agent.agent.name ?? ""
                 ) { [console, agent] name in
                     try await console.renameAgent(
-                        agent.agent.paneID, name: name, on: agent.hostID)
+                        agent.agent.paneID, name: name, on: agent.hostID, keepingTo: session.corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
@@ -1386,9 +1388,15 @@ struct AgentTerminalView: View {
         let offers = AgentDetailMenuOffers(
             capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
             removesSavedChat: console.isSavedChat(agent.id))
+        if console.capabilities(for: agent.hostID).renamesExistingTabs, !console.isSavedChat(agent.id) {
+            actions.append(AgentDetailHeaderAction(title: "Rename Tab", systemImage: "pencil") {
+                tabRename = TabRenameRequest(hostID: agent.hostID, tabID: agent.agent.tabID,
+                                             label: agent.tabLabel ?? "", instance: session.corePin.joined)
+            })
+        }
         if offers.movePane {
             actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
-                movePaneRequest = MovePaneRequest(agent: agent)
+                movePaneRequest = MovePaneRequest(agent: agent, instance: session.corePin.joined)
             })
         }
         if offers.copyPaneID {

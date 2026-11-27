@@ -77,7 +77,7 @@ enum TmuxLoopText {
     ) -> Data {
         let texts = [
             pane.sessionName, pane.windowName, pane.command, pane.path, pane.status, pane.agentSession,
-            pane.pipeMark, pane.attachMark, pane.worktree, pane.chatPick,
+            pane.pipeMark, pane.attachMark, pane.worktree, pane.chatPick, "",
         ]
         let fixed: [String] = [
             String(instance.pid), String(instance.startTime), pane.sessionID, pane.windowID,

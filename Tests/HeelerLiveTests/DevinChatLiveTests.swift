@@ -23,7 +23,7 @@ struct DevinChatLiveTests {
         return try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
     }
 
-    @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+    @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], LiveChatLabSelection.cases([.herdrTUI, .herdrCore, .tmux, .rex]))
     func opensTheForegroundSessionAndDeliversExactlyOnce(_ platform: String, _ backend: ServerKind) async throws {
         let lab = try config(platform)
         try await withChat(lab, backend) { live in
@@ -38,9 +38,10 @@ struct DevinChatLiveTests {
         }
     }
 
-    private func withChat(_ lab: Lab, _ backend: ServerKind, startsAtTrust: Bool = false, body: (Live) async throws -> Void) async throws {
+    private func withChat(_ lab: Lab, _ backend: ServerKind, startsAtTrust: Bool = false, pane selectedPane: String? = nil, body: (Live) async throws -> Void) async throws {
         let expected = lab.sessions[backend.rawValue]
-        let (projection, pane) = try lab.connection(backend)
+        let (projection, primary) = try lab.connection(backend)
+        let pane = selectedPane ?? primary
         projection.start(isActive: true)
         defer { projection.end() }
         let start = ContinuousClock.now
@@ -91,7 +92,7 @@ struct DevinChatLiveTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil),
-          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+          arguments: LiveChatLabSelection.cases([.herdrTUI, .herdrCore, .tmux, .rex]))
     func approvalsQuestionsAndStaleDrafts(_ backend: ServerKind) async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
         try await withChat(lab, backend) { live in
@@ -203,57 +204,42 @@ struct DevinChatLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil))
     func firstTrustAndDeclineBeforeTheSessionExists() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
-        let (projection, _) = try lab.connection(.herdrTUI)
-        let tui = try #require(projection as? HostConsoleProjection)
-        projection.start(isActive: true)
-        defer { projection.end() }
+        let backend = LiveChatLabSelection.backend ?? .herdrTUI
         for key in ["trust", "decline"] {
             let entry = try #require(lab.startup?[key])
             let pane = entry.pane, directory = entry.directory
-            let deadline = ContinuousClock.now + .seconds(20)
-            while projection.agentsByPane[pane]?.agent.kind != "devin", ContinuousClock.now < deadline {
-                try await Task.sleep(for: .milliseconds(200))
-            }
-            let agent = try #require(projection.agentsByPane[pane]?.agent)
-            var io = BlockedScreenIO(readScreen: { try await tui.readAgentScreen(pane) },
-                                     sendKeys: { try await tui.sendAgentKeys($0, to: pane) }, paste: { try await tui.pasteIntoAgent($0, paneID: pane) })
-            io.hostName = projection.host.name
-            io.droidTarget = { try await tui.chatInputTarget(paneID: pane, program: .devin) }
-            var source = AgentChatSource(hostID: projection.host.id, socketLocation: .namedSession("lab"), files: tui.chatHostFiles(),
-                agentInfo: { try await tui.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
-                adapter: try #require(ChatTranscriptAdapter.standard(for: .devin)), screen: io)
-            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: pane, program: .devin) }
-            let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .devin, source: source)
-            defer { chat.end() }
-            chat.show()
-            let composer = AgentComposerStore(target: pane) { try await tui.promptAgent($0) }
-            let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .devin, commands: []), activity: { ChatAgentActivity(chat.agent.status) },
-                readScreen: io.readScreen, droidTarget: io.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget },
-                confirmSession: { await chat.confirmSessionBeforeSend() })
-            let live = Live(chat: chat, composer: composer, policy: policy, projection: tui, pane: pane, io: io)
-            try await live.wait { if case .card = chat.blocked.content { return true }; return false }
-            guard case .card(let shown) = chat.blocked.content else { throw TransportError.cancelled }
-            try #require(shown.dialog.kind == .devinWorkspaceTrust && shown.dialog.subject.workspacePath == directory)
-            try #require(shown.target?.directory == directory && shown.target?.sessionID == nil)
-            if key == "trust" {
-                try await capture(chat.blocked, name: "trust")
-                await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
-                try await live.wait { chat.composerSessionID != nil }
-                composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
-                let token = "TRUST_" + UUID().uuidString.prefix(8)
-                try await live.send("Reply with exactly " + token + ". Do not use tools.")
-                try await live.wait { chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) } }
-            } else {
-                await chat.blocked.perform(.choose(ordinal: 2), shownCard: shown)
-                var running = true
-                for _ in 0..<30 {
-                    running = (try? await tui.processInfo(paneID: pane).foregroundProcesses?.contains { $0.name == "devin" }) == true
-                    if !running { break }
-                    try await Task.sleep(for: .milliseconds(150))
+            try await withChat(lab, backend, startsAtTrust: true, pane: pane) { live in
+                let chat = live.chat, composer = live.composer
+                try await live.wait { if case .card = chat.blocked.content { return true }; return false }
+                guard case .card(let shown) = chat.blocked.content else { throw TransportError.cancelled }
+                try #require(shown.dialog.kind == .devinWorkspaceTrust && shown.dialog.subject.workspacePath == directory)
+                try #require(shown.target?.directory == directory && shown.target?.sessionID == nil)
+                if key == "trust" {
+                    try await capture(chat.blocked, name: "trust")
+                    await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
+                    try await live.wait { chat.composerSessionID != nil }
+                    composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
+                    let token = "TRUST_" + UUID().uuidString.prefix(8)
+                    try await live.send("Reply with exactly " + token + ". Do not use tools.")
+                    try await live.wait { chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) } }
+                } else {
+                    await chat.blocked.perform(.choose(ordinal: 2), shownCard: shown)
+                    var running = true
+                    let deadline = ContinuousClock.now + .seconds(25)
+                    while ContinuousClock.now < deadline {
+                        if let tui = live.projection as? HostConsoleProjection {
+                            running = (try? await tui.processInfo(paneID: pane).foregroundProcesses?.contains { $0.name == "devin" }) == true
+                        } else {
+                            running = live.projection.agentsByPane[pane]?.agent.kind == "devin"
+                        }
+                        if !running { break }
+                        try await Task.sleep(for: .milliseconds(250))
+                    }
+                    try #require(!running)
+                    await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
+                    let replacement = try? await live.projection.chatInputTarget(paneID: pane, program: .devin)
+                    #expect(replacement == nil)
                 }
-                try #require(!running)
-                await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
-                #expect(try await tui.chatInputTarget(paneID: pane, program: .devin) == nil)
             }
         }
     }
@@ -261,7 +247,7 @@ struct DevinChatLiveTests {
     /// A fresh account-data directory keeps each startup independent. Rex
     /// Unknown owns no Chat keys, including at trust.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"] != nil),
-          arguments: [ServerKind.herdrCore, .tmux, .rex])
+          arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
     func firstTrustOverTheBackendTypingPath(_ backend: ServerKind) async throws {
         let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"])
         let path = URL(fileURLWithPath: folder).appendingPathComponent(backend.rawValue + ".json")
@@ -303,7 +289,7 @@ struct DevinChatLiveTests {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"])
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         for _ in 0..<2 {
-            try await withChat(fixture.lab, .herdrTUI) { live in
+            try await withChat(fixture.lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
                 try await live.wait {
                     let transcript = live.chat.conversation.transcript
                     let work = transcript.backgroundWork
@@ -333,12 +319,14 @@ struct DevinChatLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"] != nil))
     func stopsOnlyTheCurrentlyDisplayedTurn() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"]))
-        try await withChat(lab, .herdrTUI) { live in
+        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
             let plan = ChatStopPlan.standard(for: .devin)
             let check = try #require(plan.screenGuard)
             let keys = ChatAgentKeysStore(send: { try await live.projection.sendAgentKeys($0, to: live.pane) })
             let context: @MainActor () async throws -> ChatStopContext = {
-                try await .init(screen: live.io.readScreen(), activity: ChatAgentActivity(live.chat.agent.status))
+                let screen = try await live.io.readScreen()
+                let verified = if live.projection is TmuxConsoleProjection { await live.chat.droidStopVerification()() } else { false }
+                return .init(screen: screen, activity: ChatAgentActivity(live.chat.agent.status), hasVerifiedTurn: verified)
             }
             var previous: AgentComposerInterrupt?
             for _ in 0..<2 {
@@ -349,7 +337,11 @@ struct DevinChatLiveTests {
                     return turn != nil && turn?.ending == nil && verdict == .press
                 }
                 if let previous { try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn)) }
-                let stop = plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())
+                let verify = live.chat.droidStopVerification()
+                let stop = live.projection.checkedChatStop(
+                    for: live.pane, program: .devin, keepingTo: TerminalCorePin(joined: live.projection.inventoryCore),
+                    agentKeys: keys, followThrough: nil, confirmTarget: verify, live: { live.projection }
+                ) ?? plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: verify)
                 try #require(await stop.perform() == .sent)
                 try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
                 previous = stop
@@ -361,7 +353,7 @@ struct DevinChatLiveTests {
     func declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft() async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-        try await withChat(lab, .herdrTUI) { live in
+        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
             try await live.desktop("/plan")
             try await live.wait { try await DevinInputBox.isPlan(live.io.readScreen()) }
             try await live.send("Propose writing a note.txt in this empty test folder. Write a very short plan with two plain numbered steps and no headings, then call exit_plan_mode to request approval. Make no changes to the workspace.")
@@ -385,12 +377,12 @@ struct DevinChatLiveTests {
         }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"] != nil), arguments: ["mac", "linux"])
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"] != nil), arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"])
     func approvesTheDisplayedLongCommandOnce(_ platform: String) async throws {
         let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"])
         let url = URL(fileURLWithPath: folder).appendingPathComponent("lab-" + platform + ".json")
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
-        try await withChat(lab, .herdrTUI) { live in
+        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
             let marker = "DEVIN_COMMAND_" + UUID().uuidString.prefix(8)
             let command = "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 " + marker
             try await live.send("Use exec once with this exact command. Do not touch any files.\n\n" + command)

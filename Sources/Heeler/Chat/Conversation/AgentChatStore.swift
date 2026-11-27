@@ -363,6 +363,8 @@ final class AgentChatStore {
         }
     }
 
+    var hasActivePinnedTurn: Bool { activeDroidTurn != nil }
+
     private var activeDroidTurn: ChatEntryID? {
         guard case .following = conversation.phase, !conversation.isFromCache, !conversation.hasUnreadRecords,
               conversation.readFailure == nil, let last = conversation.transcript.turns.last,

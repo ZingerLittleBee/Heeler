@@ -1,5 +1,5 @@
 {
-  "version": "0.5.12",
+  "version": "0.5.13",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -231,7 +231,7 @@
     },
     {
       "path": "tmux/pipe-reader.js",
-      "sha256": "b81a00bfed7c141c455e9125864737cbf17ced0c0af8eb1a0a7bea933b27ea7f"
+      "sha256": "345747041f0c781267daca46b665d3bcca488b3fa482a34c89098aa71e85315d"
     },
     {
       "path": "tmux/quoted-format.js",
@@ -279,7 +279,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "ea71edc51f9955ddb9e2e56407f1680b32c253f79e84fba55a9e671d624a59dd"
+      "sha256": "12484abe2cbe1f23464649037e50fa004d49be4a619efd1bdddbbc8f1edb799f"
     }
   ]
 }

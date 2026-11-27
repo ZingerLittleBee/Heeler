@@ -26,6 +26,7 @@ struct TerminalListView: View {
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
+    @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var closeFailure: String?
     @State private var hiddenSidebarCache = HiddenTerminalListCache()
@@ -53,6 +54,7 @@ struct TerminalListView: View {
             case .byHost: byHost
             }
         }
+        .modifier(TabRenameSheetPresenter(request: $tabRename, console: console))
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 // The Terminal beside the list has a new id in its new
@@ -355,9 +357,15 @@ struct TerminalListView: View {
                             UIPasteboard.general.string = currentTerminal(terminal).cwd
                         }
                     }
+                    if console.capabilities(for: terminal.hostID).renamesExistingTabs {
+                        Button("Rename Tab", systemImage: "pencil") {
+                            tabRename = TabRenameRequest(hostID: terminal.hostID, tabID: terminal.tabID,
+                                                         label: terminal.tabLabel ?? "", instance: console.hostCores[terminal.hostID])
+                        }
+                    }
                     if capabilities(of: terminal).movesPanes {
                         Button(MovePaneCopy.action, systemImage: MovePaneCopy.symbol) {
-                            movePaneRequest = MovePaneRequest(terminal: currentTerminal(terminal))
+                            movePaneRequest = MovePaneRequest(terminal: currentTerminal(terminal), instance: console.hostCores[terminal.hostID])
                         }
                     }
                     if capabilities(of: terminal).copiesPaneID {

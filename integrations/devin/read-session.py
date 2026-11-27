@@ -57,6 +57,8 @@ def row(message, limit):
         inputs = {k: v for k, v in args.items() if k in (
             "file_path", "path", "content", "old_string", "new_string", "command",
             "description", "prompt", "questions", "plan", "shell_id", "agent_id", "task", "title", "is_background")}
+        if call["name"] == "exec" and type(args.get("timeout")) is int and args["timeout"] == 0:
+            inputs["timeout"] = 0
         options = {"write": {"file_path", "content"}, "edit": {"file_path", "old_string", "new_string"},
                    "exec": {"command", "shell_id", "timeout"}, "exit_plan_mode": {"plan"},
                    "ask_user_question": {"questions"}}
@@ -90,6 +92,8 @@ def earlier_work(db, session, ids):
             SELECT 1 FROM json_each(m.chat_message,'$.tool_calls') c
             WHERE json_extract(c.value,'$.name') IN ('run_subagent','exec','get_output')
               AND (json_type(c.value,'$.arguments.shell_id')='text'
+                   OR (json_extract(c.value,'$.name')='exec' AND json_type(c.value,'$.arguments.timeout')='integer'
+                       AND json_extract(c.value,'$.arguments.timeout')=0)
                    OR json_extract(c.value,'$.arguments.is_background')=1))
         ORDER BY m.node_id DESC LIMIT 128
     """, (session, ids[-1]))
@@ -101,9 +105,10 @@ def earlier_work(db, session, ids):
         for call in event["calls"]:
             args = call["arguments"]
             if not ((call["name"] == "run_subagent" and args.get("is_background") is True)
+                    or (call["name"] == "exec" and args.get("timeout") == 0)
                     or (call["name"] in ("exec", "get_output") and args.get("shell_id"))):
                 continue
-            call["arguments"] = {k: args[k] for k in ("shell_id", "command", "title", "is_background") if k in args}
+            call["arguments"] = {k: args[k] for k in ("shell_id", "timeout", "command", "title", "is_background") if k in args}
             if len(json.dumps(call).encode()) <= 4096 and len(call_ids) < 128:
                 call_ids.add(call["id"])
                 calls.append(call)
