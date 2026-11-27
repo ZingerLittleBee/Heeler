@@ -23,7 +23,7 @@ struct DevinChatLiveTests {
         return try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
     }
 
-    @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+    @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], liveChatBackends([ServerKind.herdrTUI, .herdrCore, .tmux, .rex]))
     func opensTheForegroundSessionAndDeliversExactlyOnce(_ platform: String, _ backend: ServerKind) async throws {
         let lab = try config(platform)
         try await withChat(lab, backend) { live in
@@ -70,6 +70,7 @@ struct DevinChatLiveTests {
             return try await projection.checkChatSession(paneID: pane, program: .devin)
         }
         source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
         let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .devin, source: source)
         defer { chat.end() }
         await chat.step()
@@ -91,7 +92,7 @@ struct DevinChatLiveTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil),
-          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+          arguments: liveChatBackends([ServerKind.herdrTUI, .herdrCore, .tmux, .rex]))
     func approvalsQuestionsAndStaleDrafts(_ backend: ServerKind) async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
         try await withChat(lab, backend) { live in
@@ -261,7 +262,7 @@ struct DevinChatLiveTests {
     /// A fresh account-data directory keeps each startup independent. Rex
     /// Unknown owns no Chat keys, including at trust.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"] != nil),
-          arguments: [ServerKind.herdrCore, .tmux, .rex])
+          arguments: liveChatBackends([ServerKind.herdrCore, .tmux, .rex]))
     func firstTrustOverTheBackendTypingPath(_ backend: ServerKind) async throws {
         let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STARTUP_LABS"])
         let path = URL(fileURLWithPath: folder).appendingPathComponent(backend.rawValue + ".json")
@@ -297,17 +298,27 @@ struct DevinChatLiveTests {
         struct Fixture: Decodable {
             let lab: Lab
             let shells: [String: String]
-            let child, childOutput: String
+            let child, childOutput: String?
+            let shellsOnly: Bool?
+            let backend: ServerKind?
             let stoppedShell: String?
         }
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"])
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let child: (id: String, output: String)?
+        if fixture.shellsOnly == true {
+            try #require(!fixture.shells.isEmpty)
+            child = nil
+        } else {
+            child = (try #require(fixture.child), try #require(fixture.childOutput))
+        }
+        let expected = Set(fixture.shells.keys).union(child.map { [$0.id] } ?? [])
         for _ in 0..<2 {
-            try await withChat(fixture.lab, .herdrTUI) { live in
+            try await withChat(fixture.lab, fixture.backend ?? .herdrTUI) { live in
                 try await live.wait {
                     let transcript = live.chat.conversation.transcript
                     let work = transcript.backgroundWork
-                    if Set(work.compactMap(\.taskID)).isSuperset(of: Set(fixture.shells.keys).union([fixture.child])) {
+                    if Set(work.compactMap(\.taskID)).isSuperset(of: expected) {
                         return true
                     }
                     return false
@@ -322,9 +333,11 @@ struct DevinChatLiveTests {
                     let job = try #require(transcript.backgroundWork.first { $0.taskID == stopped })
                     #expect(job.state == .stopped)
                 }
-                let children = transcript.backgroundWork.filter { $0.taskID == fixture.child }
-                try #require(children.count == 1)
-                #expect(children[0].reportedOutput?.contains(fixture.childOutput) == true)
+                if let child {
+                    let children = transcript.backgroundWork.filter { $0.taskID == child.id }
+                    try #require(children.count == 1)
+                    #expect(children[0].reportedOutput?.contains(child.output) == true)
+                }
                 #expect(!transcript.recordedPrompts.contains { $0.text.hasPrefix("<subagent_completion_notification>") })
             }
         }
@@ -333,7 +346,9 @@ struct DevinChatLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"] != nil))
     func stopsOnlyTheCurrentlyDisplayedTurn() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"]))
-        try await withChat(lab, .herdrTUI) { live in
+        let name = ProcessInfo.processInfo.environment["HEELER_CHAT_LAB_BACKEND"] ?? ServerKind.herdrTUI.rawValue
+        let backend = try #require(ServerKind(rawValue: name))
+        try await withChat(lab, backend) { live in
             let plan = ChatStopPlan.standard(for: .devin)
             let check = try #require(plan.screenGuard)
             let keys = ChatAgentKeysStore(send: { try await live.projection.sendAgentKeys($0, to: live.pane) })
@@ -349,7 +364,10 @@ struct DevinChatLiveTests {
                     return turn != nil && turn?.ending == nil && verdict == .press
                 }
                 if let previous { try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn)) }
-                let stop = plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())
+                let stop = live.projection.checkedChatStop(for: live.pane, program: .devin,
+                    keepingTo: .init(joined: live.projection.inventoryCore), agentKeys: keys, followThrough: nil,
+                    confirmTarget: live.chat.rexStopVerification(), live: { live.projection })
+                    ?? plan.composerInterrupt(context: context, agentKeys: keys, confirmTarget: live.chat.droidStopVerification())
                 try #require(await stop.perform() == .sent)
                 try await live.wait { try await DevinInputBox.read(live.io.readScreen()).isSendable }
                 previous = stop
@@ -453,7 +471,9 @@ struct DevinChatLiveTests {
             try await wait { try await DevinInputBox.read(io.readScreen()).isSendable }
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
-            let sent = await composer.send(policy: policy)
+            var current = policy
+            current.sessionWrite = chat.composerSessionInputCheck
+            let sent = await composer.send(policy: current)
             try #require([.deliveredViaAttach, .submittedViaAttach, .deliveredViaPrompt].contains(sent), "Delivery via \(projection.host.serverKind): \(sent)")
         }
 

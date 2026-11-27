@@ -55,7 +55,7 @@ struct RexProgramStatusLiveTests {
 
     private func run(_ lab: RexLab, socketPath: String) async throws {
         let created = try await lab.createSession(
-            blocks: [("agent", ["/bin/sh"])], grid: LocalGrid(columns: 100, rows: 30), name: "r7")
+            blocks: [("agent", ["/bin/bash"])], grid: LocalGrid(columns: 100, rows: 30), name: "r7")
         let block = created.blocks[0]
         let type = { (text: String) in try await lab.type(text, session: created.id, block: block) }
 

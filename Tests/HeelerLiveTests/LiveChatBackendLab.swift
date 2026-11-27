@@ -4,6 +4,13 @@ import Testing
 
 @testable import Heeler
 
+/// Select one configured backend when a private fixture provides just that server.
+/// The complete matrix runs when the variable is absent.
+func liveChatBackends(_ kinds: [ServerKind]) -> [ServerKind] {
+    guard let name = ProcessInfo.processInfo.environment["HEELER_CHAT_LAB_BACKEND"] else { return kinds }
+    return kinds.filter { $0.rawValue == name }
+}
+
 /// A loopback SSH fixture, pinned to its host key and private server addresses.
 protocol LiveChatBackendLab: Sendable {
     var port: Int { get }

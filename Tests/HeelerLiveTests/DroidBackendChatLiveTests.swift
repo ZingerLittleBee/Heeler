@@ -19,7 +19,7 @@ struct DroidBackendChatLiveTests {
         var herdrSocket: String?
     }
 
-    @Test(arguments: [ServerKind.herdrCore, .tmux, .rex])
+    @Test(arguments: liveChatBackends([ServerKind.herdrCore, .tmux, .rex]))
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
@@ -53,6 +53,7 @@ struct DroidBackendChatLiveTests {
         source.screen.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
         source.screen.hostName = host.name
         source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: pane), agent: agent, program: .droid, source: source)
         defer { chat.end() }
         await chat.step()
@@ -68,9 +69,10 @@ struct DroidBackendChatLiveTests {
             throw TransportError.cancelled
         }
         composer.bindDroidDraft(to: chat.droidSessionID)
-        let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
+        var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
+        policy.sessionWrite = chat.composerSessionInputCheck
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with only the marker on the last line, without indentation or formatting. Do not use tools.\n\n    \(token)"
         try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
@@ -101,7 +103,7 @@ struct DroidBackendChatLiveTests {
     /// The external driver replaces only this dedicated server. Both the old
     /// and the new Droid must show their own live Create call for the same file.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"] != nil),
-          arguments: [ServerKind.herdrTUI, .herdrCore, .tmux, .rex])
+          arguments: liveChatBackends([ServerKind.herdrTUI, .herdrCore, .tmux, .rex]))
     func staleCardAndDraftCannotWriteToAReplacementServer(_ kind: ServerKind) async throws {
         let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["HEELER_DROID_REPLACEMENT_LAB"]))
         let directory = root.appendingPathComponent(kind.rawValue)
@@ -220,6 +222,7 @@ struct DroidBackendChatLiveTests {
             cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)), screen: io)
         source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
         source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
         let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .droid, source: source)
         defer { chat.end() }
         await chat.step()
@@ -282,7 +285,9 @@ struct DroidBackendChatLiveTests {
             try await waitForEmptyBox(io, projection: projection, pane: pane)
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
-            let result = await composer.send(policy: policy)
+            var current = policy
+            current.sessionWrite = chat.composerSessionInputCheck
+            let result = await composer.send(policy: current)
             try #require(result == .submittedViaAttach || result == .deliveredViaPrompt || result == .deliveredViaAttach, "Droid submission: \(result)")
         }
         func selectAutonomy(_ name: String) async throws {

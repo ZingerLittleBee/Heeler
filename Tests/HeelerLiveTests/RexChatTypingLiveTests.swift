@@ -75,7 +75,7 @@ struct RexChatTypingLiveTests {
 
     private func run(_ lab: RexLab, socketPath: String) async throws {
         let grid = LocalGrid(columns: 100, rows: 30)
-        let created = try await lab.createSession(blocks: [("agent", ["/bin/sh"])], grid: grid, name: "r9")
+        let created = try await lab.createSession(blocks: [("agent", ["/bin/bash"])], grid: grid, name: "r9")
         let address = RexPaneAddress(sessionID: created.id, blockID: created.blocks[0])
         let paneID = address.paneID
         let size = {
