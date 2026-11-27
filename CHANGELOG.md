@@ -37,7 +37,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Show a terminal's output as it arrives after Heeler reconnects over a slow connection. A request Heeler made while reconnecting held up the whole connection until the terminal's output had arrived, so a program that redraws its history, such as Antigravity CLI, showed only its status line for seconds and then everything at once.
+- Show a terminal's output as it arrives after Heeler reconnects over a slow connection. A request Heeler made while reconnecting held up the whole connection until the terminal's output had arrived, so a program that redraws its history, such as Antigravity CLI, showed only its status line for seconds and then everything at once. (PR #870)
 - Send from Chat to an Antigravity CLI that uses another color scheme, such as `tokyo night`. Chat held every message with **Heeler can't find the Agent's input box on screen.**, and showed agy's trust and permission prompts without their buttons. (PR #867)
 - Send from Chat to a Devin CLI in its light theme. Chat held every message, saying Devin's message field could contain a draft. (PR #867)
 - Say which Agent's input box Chat can't find, and why, such as **Heeler can't find Antigravity CLI's input box on screen.** or **Codex's composer is not on screen.**, where it said **Heeler can't find the Agent's input box on screen.** for every Agent. (PR #867)
