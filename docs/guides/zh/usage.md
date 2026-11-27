@@ -1,11 +1,11 @@
-<!-- Translated from docs/guides/usage.md at 09cddbfd -->
+<!-- Translated from docs/guides/usage.md at d418c957 -->
 # 查看 Usage 与 Usage Limits
 
-在 iPhone 或 iPad 上查看 Claude Code 和 Codex 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
+在 iPhone 或 iPad 上查看 Claude Code、Codex 和 Antigravity CLI 的用量额度（Usage Limits），并用主屏和锁屏小组件查看账号额度与重置时间。
 
 Usage 还会显示每台 Host 上的 Agent 最近 30 天用了多少 token，以及按 API 标价折算的估算费用。估算费用不是你的订阅账单。
 
-你需要一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host，或在 [herdr-core](herdr-core.md#host-helper) 或 [tmux](tmux.md#host-helper) Host 上安装 Host Helper。
+你需要在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)，并准备一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host，或在 [herdr-core](herdr-core.md#host-helper) 或 [tmux](tmux.md#host-helper) Host 上安装 Host Helper。Antigravity CLI 用量需要 Heeler 插件 0.10.0 或更新版本（或 Host Helper 0.5.8 及更新版本），其 Usage Limits 还要求 Host 上装有 `agy` 1.1.11 或更新版本。
 
 ## 配置 Host
 
@@ -47,9 +47,9 @@ Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limi
 
 每台 Host 一开始都有 **Default** Account，也就是 herdr 启动 Claude Code 时它使用的目录。你添加的每个 Account 都有自己的 Token Usage，列在 Claude Code 下面。打开 **Claude Code limits** 后，它还有自己的 Usage Limits，并在 Usage Limits 小组件里单独占一行。
 
-1. 在 Usage 中选择一台 Host。如果 Heeler 找到了像是 Claude Code 的目录，会出现 **Found 1 Claude Code directory** 这样的提示，轻点它。否则轻点 **Usage Limits** 旁的 **Details**，再轻点 **Claude Code Accounts**。
-2. 在 **Suggestions** 下，轻点 **Add** 开始统计某个目录，或轻点 **Ignore** 不再建议它。Heeler 建议的是正在运行的 Agent 使用的目录，或你主目录里的目录；在你添加之前，它们都不计入。
-3. 要添加 Heeler 没有建议的目录，轻点 **Choose Another Directory…**，在 Host 上选中它。这个目录里必须有 Claude Code 的登录信息或 Transcript，也就是一个 `.claude.json` 文件或一个 `projects` 文件夹。
+1. 在 Usage 中选择一台 Host。如果 Heeler 找到了疑似账户文件夹的目录，会出现 **Found 1 Account folder**（中文界面：**找到 1 个账户文件夹**）这样的提示，轻点它。否则前往 **Settings > Agents & Accounts**，选择该 Host，找到 **Claude Code** 分组。
+2. 在列出的建议目录旁，轻点 **Add** 开始统计它，或轻点 **Ignore** 不再建议它。Heeler 建议的是正在运行的 Agent 使用的目录，或你主目录里的目录；在你添加之前，它们都不计入。
+3. 要添加 Heeler 没有建议的目录，轻点 **Choose a Folder…**（中文界面：**选择文件夹…**），在 Host 上选中它。这个目录里必须有 Claude Code 的登录信息或 Transcript，也就是一个 `.claude.json` 文件或一个 `projects` 文件夹。
 
 新 Account 从下一次刷新开始计入。一台 Host 最多可以有四个 Claude Code Account（包括 Default）；满四个后，要先移除一个才能再添加。
 

@@ -1,4 +1,4 @@
-<!-- Translated from docs/guides/pairing.md at 25c500b6 -->
+<!-- Translated from docs/guides/pairing.md at d418c957 -->
 
 # 扫码配对 Host
 
@@ -8,6 +8,7 @@
 
 ## 开始之前
 
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)。
 - 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 herdr、只运行 herdr-core、tmux 或 Rex 时，也能用一条命令配对：请直接跳到[配对没有 herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
 - iPhone 或 iPad 与这台机器处于同一网络（例如同一个 Wi-Fi），或连接到同一个 VPN。配对不会使用 Heeler 中 **Settings > Overlay Networks** 里的网络；这些网络可以在配对完成后再添加，用于[外出时使用](#外出时使用)。
 - 预留约两分钟：配对码只能使用一次，两分钟后失效。
@@ -110,7 +111,7 @@ npx -y heeler-pair@latest
 npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 ```
 
-这些 Server 上的 Agent Notifications、Live Activity 和 Usage 需要 Host Helper，Heeler 会在每个 Server 的页面上提供安装入口，参见[连接 herdr-core](herdr-core.md#host-helper) 和[连接 tmux](tmux.md#host-helper)。
+在 **herdr-core** 和 **tmux** Server（不含 Rex）上，Agent Notifications、Live Activity 和 Usage 需要 Host Helper，Heeler 会在对应 Server 的页面上提供安装入口，参见[连接 herdr-core](herdr-core.md#host-helper) 和[连接 tmux](tmux.md#host-helper)。Rex 不使用 Host Helper，也不提供通知、Live Activity 或 Usage。
 
 ## 外出时使用
 
@@ -156,5 +157,9 @@ npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 | **Camera Access Needed** 或 **Scanning Unavailable** | 轻点 **Open Settings** 并允许访问相机，或使用 **Paste Pairing Code**。 |
 
 配对错误会显示在弹窗或 Heeler 中，不会写入 herdr 的插件日志。
+
+## herdr-app / herdr-core
+
+配对会列出在这台机器上找到的每个 Server。如果 Agent 是在 Herdr 桌面端中启动的，请在最后一步保持勾选 **herdr-core**，或稍后在 Host 页面上打开它。安装了桌面端但没有 `herdr` 命令的机器，可以使用 [`heeler-pair`](#配对没有-herdr-的机器) 配对。在 Windows 上请[通过 SSH 添加 Host](herdr-core.md)。
 
 核对依据为 Heeler 插件 0.6.0（2026-10-14）。
