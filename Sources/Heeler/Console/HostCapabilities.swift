@@ -275,7 +275,7 @@ extension HostCapabilities {
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
     /// CLI the reader's own open-file read in `host-evidence/agy`). Taking one out
     /// leaves it to the candidate list on macOS, and changes nothing on Linux.
-    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.amp])
+    static let macOSExactCoreChatPrograms = Set(ChatProgram.allCases).subtracting([.droid, .amp])
 }
 
 extension Host {

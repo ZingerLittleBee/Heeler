@@ -4,13 +4,13 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-With herdr, Chat works only for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI on macOS and Linux Hosts. On a herdr-core (native Windows included) or tmux Host, [herdr-core](herdr-core.md#chat) and [tmux](tmux.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+On macOS and Linux Herdr TUI Hosts, Chat supports Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, Amp, and Droid. On a herdr-core (native Windows included) or tmux Host, [herdr-core](herdr-core.md#chat) and [tmux](tmux.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
 
 ## Waiting for Conversation
 
 herdr hasn't told Heeler which conversation the Agent is in yet.
 
-1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there.
+1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there. For Droid, finish the folder trust prompt in the terminal.
 2. On the Host, run `herdr integration status` and install the program's integration if it isn't `current` ([Set up the Host](chat.md#set-up-the-host)), then restart the Agent.
 3. Tap **Check Again**.
 

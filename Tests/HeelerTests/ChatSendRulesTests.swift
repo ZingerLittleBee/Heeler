@@ -15,7 +15,7 @@ struct ChatSendRulesTests {
     /// `/skill:name`. OpenCode's menu offers none, whatever the prefix.
     private static func skillPrefix(_ program: ChatProgram) -> String {
         switch program {
-        case .claude, .opencode, .agy, .amp: "/"
+        case .claude, .opencode, .agy, .droid, .amp: "/"
         case .codex: "$"
         case .pi, .omp: "/skill:"
         case .grok: "/"
@@ -220,7 +220,7 @@ struct ChatSendRulesTests {
         #expect(rules.outgoingText("/deploy") == "$deploy ")
     }
 
-    @Test(arguments: ChatProgram.allCases.filter { $0 != .amp })
+    @Test(arguments: ChatProgram.allCases.filter { $0 != .amp && $0 != .droid })
     func aPickedSkillSendsInTheProgramsOwnForm(program: ChatProgram) {
         let skill = AgentSkill(
             scope: .project, name: "review", description: nil,
@@ -400,7 +400,7 @@ struct ChatSendRulesTests {
             #expect(rules.validate("/e2e-hidden") == .unknownCommand("e2e-hidden"))
         case .codex, .pi, .omp, .agy:
             #expect(names == ["compact", "review", "e2e-hidden"])
-        case .amp:
+        case .droid, .amp:
             #expect(names.isEmpty)
         case .opencode:
             #expect(names == ["compact"])
@@ -586,7 +586,7 @@ struct ChatSendRulesTests {
             #expect(rules.validate("/swarm-monitor") == .unknownCommand("swarm-monitor"))
         case .claude, .codex, .pi, .omp, .grok:
             #expect(names == ["compact", "review", "swarm-monitor"])
-        case .amp:
+        case .droid, .amp:
             #expect(names.isEmpty)
         case .opencode:
             #expect(names == ["compact"])

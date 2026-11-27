@@ -14,6 +14,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case opencode
     case agy
     case amp
+    case droid
 
     /// Whether live, non-stale Background Work promotes an Idle or Done
     /// Agent's displayed Console and Composer status to Working (and keeps
@@ -21,7 +22,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     var promotesBackgroundWorkToWorking: Bool {
         switch self {
         case .agy, .claude: true
-        case .codex, .pi, .omp, .grok, .opencode, .amp: false
+        case .codex, .pi, .omp, .grok, .opencode, .droid, .amp: false
         }
     }
 }

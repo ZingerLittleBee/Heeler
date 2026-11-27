@@ -41,6 +41,10 @@ extension ChatUnavailableReason {
         case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
             String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
+        case .noSession(.droid):
+            String(localized: "Droid has not reported its session ID. Finish startup in the terminal and check the Droid integration on the Host if this persists.")
+        case .unidentifiedSession(.droid):
+            String(localized: "Droid reported an unrecognized session ID. Chat cannot identify its transcript.")
         case .noSession(.codex):
             String(localized: "Codex reports its conversation after a prompt. Send one to show it here.")
         case .noSession(.pi):
@@ -628,6 +632,7 @@ extension ChatProgram {
     var chatName: String {
         switch self {
         case .amp: "Amp"
+        case .droid: "Droid"
         case .claude: "Claude Code"
         case .codex: "Codex"
         case .pi: "Pi"
@@ -647,7 +652,7 @@ extension ChatProgram {
             return String(localized: "Send a first message in the terminal.")
         case .opencode:
             return String(localized: "Start OpenCode 2.1 or later from New Agent, or add Heeler's plugin.")
-        case .claude, .pi, .omp:
+        case .claude, .pi, .omp, .droid:
             return String(localized: "Finish signing in or answer any prompt in the terminal.")
         case .agy:
             return String(localized: "Send a first message in the terminal, or close the other terminal holding this conversation.")

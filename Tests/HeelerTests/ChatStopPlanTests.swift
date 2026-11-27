@@ -9,13 +9,12 @@ import Testing
 @MainActor
 @Suite("Chat Stop plan")
 struct ChatStopPlanTests {
-    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp, .agy])
+    @Test(arguments: [ChatProgram.claude, .codex, .pi, .omp, .agy, .droid, .amp])
     func oneEscAndThreeSecondsForEveryProgramButGrokAndOpenCode(program: ChatProgram) {
         let plan = ChatStopPlan.standard(for: program)
 
         #expect(plan.keys == ["esc"])
-        // Only Antigravity CLI's Esc reads the screen first (below).
-        #expect((plan.screenGuard == nil) == (program != .agy))
+        #expect((plan.screenGuard != nil) == (program == .agy || program == .droid))
         #expect(plan.wait == AgentStopWait.escape)
         #expect(plan.wait.window == .seconds(3))
         #expect(plan.wait.unconfirmedNotice == "Esc went, but the Agent still shows Working.")

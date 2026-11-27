@@ -13,9 +13,9 @@ extension ComposerDeliveryPolicy {
     /// not Blocked: Chat registers the send there, so a send witness's mark
     /// is on its way before `agent.read` rather than after it.
     ///
-    /// `confirmSession`, for a program that can leave its conversation
-    /// without herdr reporting it (`ChatProgram.confirmsSessionBeforeSend`),
-    /// and for any on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
+    /// `confirmSession`, for a program that checks the current conversation
+    /// before sending (`ChatProgram.confirmsSessionBeforeSend`) and for any
+    /// on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
     /// A reported Working holds a program Chat never sends to during a turn
@@ -118,7 +118,7 @@ extension InputBoxState {
             String(localized: "The Agent's input box is ready.")
         case .text:
             switch program {
-            case .claude:
+            case .claude, .droid:
                 String(localized: "The Agent's input box already has text. Send or clear it in the terminal first.")
             case .codex:
                 // Codex 0.162.1's Esc puts follow-ups queued with Tab back

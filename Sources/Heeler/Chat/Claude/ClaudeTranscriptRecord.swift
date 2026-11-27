@@ -457,6 +457,11 @@ extension ClaudeRecord {
 }
 
 extension ClaudeContentBlock {
+    /// Droid also records messages using these content blocks, inside its own envelope.
+    static func decode<Key: CodingKey>(from container: KeyedDecodingContainer<Key>, forKey key: Key) -> [Self] {
+        RawBlock.blocks(in: container, key)?.map(Self.init) ?? []
+    }
+
     fileprivate init(_ raw: RawBlock) {
         switch raw.type {
         case "text":

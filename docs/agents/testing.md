@@ -88,6 +88,7 @@ and fails rather than skips when selected without it.
 | Suite | Gate | Needs |
 | --- | --- | --- |
 | `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
+| `DroidChatLiveTests` | `HEELER_DROID_CHAT_LAB`, path to a private JSON file with the loopback SSH `port`, `user`, Ed25519 `seed` (base64), pinned `fingerprint`, herdr `socket`, disposable `pane` and expected Droid session UUID (`session`) | Checks the pane identity, opens its transcript, sends one text prompt through the Composer and reads the reply in Chat. |
 | `AmpChatLiveTests` | `HEELER_AMP_CHAT_LAB`, path to private fixture JSON | Two disposable Amp terminals on a loopback Herdr TUI Host, using separate private threads. Installs the plugin in their isolated configuration and sends one text prompt. Reload the first terminal's plugins after installation. |
 | `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
 | `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing, except `RexInventoryLiveTests.newTerminalStartsShellsTheInventoryLists`, which creates and destroys one `heeler-lab-new-terminal` session and touches no other |

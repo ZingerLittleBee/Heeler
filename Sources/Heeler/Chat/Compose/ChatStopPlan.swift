@@ -39,6 +39,10 @@ struct ChatStopPlan: Sendable {
     static func standard(for program: ChatProgram) -> ChatStopPlan {
         switch program {
         case .claude, .codex, .pi, .omp, .amp: .escape
+        case .droid:
+            ChatStopPlan(
+                keys: ["esc"], screenGuard: DroidInputBox.stop, wait: .escape,
+                accessibilityHint: AgentComposerInterrupt.escapeHint)
         case .agy:
             // Antigravity CLI's Esc stops the turn, from a dialog too, and
             // puts a queued message back in the box. At an idle box it

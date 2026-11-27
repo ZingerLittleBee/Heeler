@@ -60,7 +60,7 @@ Heeler is an independent, open-source agent console and **herdr mobile client** 
 ## Features
 
 - **Console**: every Agent on every machine in one live list, sorted with Blocked first and filterable by Host.
-- **Chat**: an Agent's conversation as native messages, with buttons to answer a Blocked Agent. For Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI. [Chat guide](https://docs.heeler.bybee.dev/chat)
+- **Chat**: an Agent's conversation as native messages, with buttons to answer a Blocked Agent. For Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI. On macOS and Linux Herdr TUI Hosts, you can also read and reply to Droid and Amp. [Chat guide](https://docs.heeler.bybee.dev/chat)
 - **Live terminal**: the Agent's real terminal, rendered by libghostty with native scrollback and selection, and a plain shell in the Agent's directory.
 - **Notifications and Live Activities**: an end-to-end encrypted push when an Agent goes Blocked or Done, and your Agents on the Lock Screen and Dynamic Island. The relay cannot read the content. [Privacy](PRIVACY.md)
 - **Usage**: Claude Code and Codex Usage Limits with their reset times, up to 30 days of Token Usage with its estimated API cost, and Home Screen and Lock Screen widgets. [Usage guide](https://docs.heeler.bybee.dev/usage)

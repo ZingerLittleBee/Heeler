@@ -2,7 +2,7 @@
 
 Use Claude Code and Codex in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code, Codex, Pi, and Oh My Pi only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI).
+You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (Claude Code, Codex, Pi, and Oh My Pi only), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, or Antigravity CLI). On a Mac or Linux Host running the Herdr TUI, Chat also supports Droid.
 
 ## Set up the Host
 
@@ -20,7 +20,7 @@ If a program doesn't read `current`, install its integration, then restart that 
 herdr integration install claude
 ```
 
-Replace `claude` with `codex`, `pi`, `omp`, `grok`, `opencode`, or `antigravity-cli` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
+Replace `claude` with `codex`, `pi`, `omp`, `grok`, `opencode`, `antigravity-cli`, or `droid` as needed. OpenCode must be version 2.x, and the Host needs `sqlite3` or `python3` for it.
 
 Start Codex with `--no-daemon`, and continue a conversation with `codex --no-daemon resume`:
 
@@ -66,6 +66,8 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
 - **Images and files.** On Herdr TUI, herdr-core, tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+
+With Droid, finish any startup prompt in the terminal. Chat can then read earlier messages, show tool results, and send a message when Droid's input box is empty. Wait for a running turn to finish or tap **Stop**. Use the terminal for slash commands and approval dialogs.
 
 If Chat can't send something, such as a message starting with `!`, it keeps your text and says why under the message box.
 

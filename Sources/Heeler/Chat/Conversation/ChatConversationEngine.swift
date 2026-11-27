@@ -104,7 +104,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .amp: false
         }
     }
 
@@ -113,7 +113,7 @@ extension ChatProgram {
     var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .amp: false
         }
     }
 }
@@ -1581,6 +1581,9 @@ actor ChatConversationEngine {
                 let name = reference.program == .omp ? "Oh My Pi" : "Pi"
                 return .unavailable(.unsupportedFormat(String(localized: "\(name) session version \(version)")))
             }
+        case .droid:
+            return .found(try await DroidTranscriptLocator(files: files).locate(
+                sessionID: reference.sessionID, directories: directories))
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
                 sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
@@ -1774,8 +1777,15 @@ actor ChatConversationEngine {
     private func start(
         _ source: any ChatTranscriptSource, lines: [ChatLine], hydratingFromCache: Bool = false
     ) async throws {
+        let firstLine = try await firstLine(for: source)
+        if reference.program == .droid {
+            let header = firstLine ?? lines.first
+            guard let header, header.offset == 0, DroidTranscriptLocator.sessionID(inHead: header.data) == reference.sessionID else {
+                throw ChatSourceUnavailable(reason: .mismatched)
+            }
+        }
         var reducer = adapter.makeReducer(
-            ChatReducerSeed(path: source.path, firstLine: try await firstLine(for: source)))
+            ChatReducerSeed(path: source.path, firstLine: firstLine))
         reducer.append(lines)
         if let format = reducer.unsupportedFormat {
             stop(.unsupportedFormat(format))

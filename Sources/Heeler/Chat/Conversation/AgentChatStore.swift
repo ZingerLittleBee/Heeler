@@ -2258,6 +2258,13 @@ final class AgentChatStore {
             return String(
                 localized: "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again.")
         }
+        if program == .droid {
+            guard fresh.kind == program.rawValue, let shown,
+                  ConversationReference.resolve(fresh.agentSession) == .bound(shown) else {
+                return Self.cannotTellSessionReason(program)
+            }
+            return nil
+        }
         if staleSession != nil {
             return String(localized: "\(name) is on its home screen, so this conversation isn't open there. Open it in the terminal first.")
         }
@@ -3374,7 +3381,7 @@ extension ChatProgram {
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
-        case .opencode, .amp: false
+        case .opencode, .droid, .amp: false
         }
     }
 
@@ -3387,7 +3394,7 @@ extension ChatProgram {
         case .pi, .omp, .grok, .opencode: true
         // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
         // checkpoint; a refused one was not observed.
-        case .claude, .codex, .agy, .amp: false
+        case .claude, .codex, .agy, .droid, .amp: false
         }
     }
 
@@ -3401,7 +3408,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode, .agy, .amp: false
+        case .claude, .codex, .opencode, .agy, .droid, .amp: false
         }
     }
 
@@ -3414,7 +3421,7 @@ extension ChatProgram {
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy: true
-        case .opencode, .amp: false
+        case .opencode, .droid, .amp: false
         }
     }
 
@@ -3427,7 +3434,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .droid, .amp: false
         case .opencode: true
         }
     }
@@ -3435,11 +3442,12 @@ extension ChatProgram {
     /// Whether each send first checks that the program still shows the
     /// conversation Chat shows (`AgentChatStore.confirmSessionBeforeSend`),
     /// which a program that leaves it without a report may not. Opting in
-    /// needs the program's terminal title in the check.
+    /// needs fresh session evidence. Droid reports its UUID at startup and
+    /// OpenCode also checks the terminal title.
     var confirmsSessionBeforeSend: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
-        case .opencode: true
+        case .opencode, .droid: true
         }
     }
 
@@ -3449,7 +3457,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode, .agy, .amp: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy, .droid, .amp: false
         }
     }
 }
