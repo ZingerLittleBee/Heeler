@@ -3,9 +3,9 @@ import Testing
 
 @testable import Heeler
 
-/// The fixture owns one disposable Linux socket. Only its SSH connection crosses the cut proxy.
+/// The fixture owns one disposable Unix socket. Only its SSH connection crosses the cut proxy.
 /// Its independent observer reads both terminal screens after each attempted stale input.
-@Suite("Rex Linux SSH recovery", .serialized, .timeLimit(.minutes(3)))
+@Suite("Rex SSH recovery", .serialized, .timeLimit(.minutes(3)))
 @MainActor
 struct RexRecoveryLiveTests {
     private struct Row: Decodable {
@@ -23,6 +23,7 @@ struct RexRecoveryLiveTests {
         let rexSocket: String
         let instance: String
         let host: String
+        let loginShell: String?
         let rows: [Row]
     }
 
@@ -134,7 +135,8 @@ struct RexRecoveryLiveTests {
         let restored = try await lab.phase("restored", as: Observation.self)
         try #require(restored.instance != lab.initial.instance && restored.host == lab.initial.host)
         try #require(Set(restored.rows.map(\.paneID)) == originalPanes)
-        try #require(restored.rows.allSatisfy { $0.program == "bash" }
+        let loginShell = restored.loginShell ?? "bash" // Older Linux fixture manifests name Bash implicitly.
+        try #require(!loginShell.isEmpty && restored.rows.allSatisfy { $0.program == loginShell }
                      && restored.rows.first { $0.paneID == original.paneID }?.pid != original.pid)
         try await awaitSnapshot(restored)
         #expect(projection.inventoryCore == core)

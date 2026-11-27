@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Drive RexRecoveryLiveTests on a disposable loopback Linux SSH account."""
+"""Drive RexRecoveryLiveTests on a disposable loopback macOS or Linux SSH account."""
 
 import argparse
 import http.server
 import json
 import os
+import pwd
 from pathlib import Path
 import re
 import secrets
@@ -32,17 +33,23 @@ def eventually(read, accepts):
     raise RuntimeError("Timed out waiting for " + read.__name__)
 
 
-def on_linux(action, directory, marker):
-    if action == "initial":
+def on_host(action, directory, marker):
+    if action == "prepare":
         root = Path(tempfile.mkdtemp(prefix="heeler-lab-recovery-", dir="/tmp"))
         (root / "fixture").write_text(marker)
-        for name in ("home", "runtime", "config", "state-a", "state-b", "bin"):
-            (root / name).mkdir(mode=0o700)
-        shutil.copy2("/bin/bash", root / "bin/claude")
-    else:
-        root = Path(directory)
+        return {"root": str(root)}
+    root = Path(directory)
     if root.parent != Path("/tmp") or not root.name.startswith("heeler-lab-recovery-") or (root / "fixture").read_text() != marker:
         raise ValueError("Unrecognized recovery fixture")
+    if action == "initial":
+        for name in ("home", "runtime", "config", "state-a", "state-b", "bin"):
+            (root / name).mkdir(mode=0o700)
+        executable = root / "bin/claude"
+        shutil.copyfile("/bin/bash", executable)
+        executable.chmod(0o700)
+        if sys.platform == "darwin":
+            # macOS enforces the system binary signature after copying to a writable volume.
+            subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(executable)], check=True, stderr=subprocess.PIPE)
     sock = root / "runtime/server.sock"
     env = dict(os.environ, HOME=str(root / "home"), REX_RUNTIME_DIR=str(sock.parent),
                XDG_CONFIG_HOME=str(root / "config"), XDG_DATA_HOME=str(root / "home/data"), SHELL="/bin/bash")
@@ -94,7 +101,10 @@ def on_linux(action, directory, marker):
             if list_sessions():
                 raise ValueError("New state unexpectedly has sessions")
             for name in LABELS:
-                created = json.loads(rex("session", "new", "--json", "--cwd", str(root / "home"), name))
+                layout = {"block": {"flavor": "com.superlogical.terminal.shell",
+                                    "options": {"cwd": str(root / "home"), "shell": "/bin/bash", "login": False}}}
+                created = json.loads(rex("api", "call", "session.create", json.dumps({
+                    "label": name, "initial_windows": [{"layout": layout}]})))
                 if name == LABELS[0] and action == "initial":
                     sid = created["session_id"]
                     block = created["initial_windows"][0]["block_ids"][0]
@@ -102,15 +112,19 @@ def on_linux(action, directory, marker):
                     fixture = "printf '\\033]7501;state=idle:app=claude\\007heeler-lab-agent-ready\\n'; while IFS= read -r line; do printf '%s\\n' \"$line\"; done"
                     rex("send", "-s", sid, "-b", block, shlex.join(["exec", str(root / "bin/claude"), "-c", fixture]))
                     rex("send-key", "-s", sid, "-b", block, "enter")
-    if action == "inspect":
+    if action.startswith("inspect-"):
         # PTY echo occurs after the control reply to a paste.
         time.sleep(0.4)
-    expected = "claude" if action == "initial" else "bash"
+    # Restoring Rex starts the account's login shell, even when the old block
+    # explicitly launched bash. New fixture windows always start bash.
+    login_shell = Path(pwd.getpwuid(os.getuid()).pw_shell).name
+    shell = login_shell if action in ("restored", "inspect-restored") else "bash"
+    expected = "claude" if action == "initial" else shell
     def ready(observation):
         programs = {row["label"]: row["program"] for row in observation["rows"]}
-        return programs == {LABELS[0]: expected, LABELS[1]: "bash"}
+        return programs == {LABELS[0]: expected, LABELS[1]: shell}
     observation = eventually(snapshot, ready)
-    return dict(root=str(root), rexSocket=str(sock), **observation)
+    return dict(root=str(root), rexSocket=str(sock), loginShell=login_shell, **observation)
 
 
 def available_port():
@@ -137,12 +151,16 @@ def serve(args):
     remote_root = ""
 
     def remote(action):
-        argv = ["python3", "-", "--linux", action, remote_root, marker]
+        argv = ["python3", "-", "--host", action, remote_root, marker]
         command = ["ssh", "-F", str(args.ssh_config), "-o", "BatchMode=yes", args.target, shlex.join(argv)]
         return json.loads(subprocess.check_output(command, input=script, timeout=35))
 
-    initial = remote("initial")
-    remote_root = initial["root"]
+    remote_root = remote("prepare")["root"]
+    try:
+        initial = remote("initial")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        remote("cleanup")
+        raise
     port = available_port()
     control = available_port()
     while control == port:
@@ -164,7 +182,7 @@ def serve(args):
             counters.update(stats)
             result = stats
         else:
-            result = remote("inspect" if action.startswith("inspect-") else action)
+            result = remote(action)
             if any(row["containsMarker"] for row in result["rows"]):
                 raise ValueError("The stale input appeared in a fixture shell")
             observations[action] = result
@@ -213,8 +231,8 @@ def serve(args):
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["--linux"]:
-        print(json.dumps(on_linux(*sys.argv[2:])))
+    if sys.argv[1:2] == ["--host"]:
+        print(json.dumps(on_host(*sys.argv[2:])))
     else:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("--lab", type=Path, required=True, help="private loopback SSH fixture JSON")

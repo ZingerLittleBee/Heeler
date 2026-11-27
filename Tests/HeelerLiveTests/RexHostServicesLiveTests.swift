@@ -4,12 +4,12 @@ import Testing
 
 @testable import Heeler
 
-/// Reads only the named private SSH fixtures. The GitHub endpoint accepts two
-/// fixture queries. Hand Off uses two real Pi processes and never presses Send.
+/// Uses named private SSH fixtures. GitHub writes require their own loopback
+/// enterprise endpoint. Hand Off uses two real Pi processes and never presses Send.
 @MainActor
 @Suite("Rex Host services over SSH", .serialized, .timeLimit(.minutes(3)))
 struct RexHostServicesLiveTests {
-    private struct Fixture: Decodable {
+    fileprivate struct Fixture: Decodable {
         let port: Int
         let user: String
         let seed: String
@@ -26,6 +26,8 @@ struct RexHostServicesLiveTests {
         let targetPane: String?
         let sourceMarker: String?
         let peerMarker: String?
+        let openCodeSession: String?
+        let openCodePeer: String?
         let managementProject: String?
         let managementBin: String?
         let managementReceipts: String?
@@ -99,7 +101,8 @@ struct RexHostServicesLiveTests {
         let first = RexPaneAddress(sessionID: try #require(fixture.rexSession), blockID: try #require(fixture.rexBlock))
         let peer = RexPaneAddress(sessionID: try #require(fixture.peerSession), blockID: try #require(fixture.peerBlock))
         try await checkHandOff(.rex, on: fixture, from: first.paneID, to: peer.paneID,
-                               sourceMarker: "REX_LAB_SEED_PIHANDOFFA", peerMarker: "REX_LAB_SEED_PIHANDOFFB")
+                               sourceMarker: fixture.sourceMarker ?? "REX_LAB_SEED_PIHANDOFFA",
+                               peerMarker: fixture.peerMarker ?? "REX_LAB_SEED_PIHANDOFFB")
     }
 
     @Test func herdrHandOffStagesOnlyTheSourceRecordAndLeavesBothPiTranscriptsUntouched() async throws {
@@ -192,7 +195,7 @@ struct RexHostServicesLiveTests {
         let files = console.chatHostFiles(for: host.id)
         func read(_ path: String) async throws -> Data {
             let data = try await files.read(.init(path: path, offset: 0, maxBytes: 32768))
-            try #require(data.length == UInt64(data.data.count) && !data.data.isEmpty)
+            try #require(data.length == UInt64(data.data.count) && !data.data.isEmpty, "Incomplete fixture file at \(path)")
             return data.data
         }
         func text(_ path: String) async throws -> String {
@@ -287,5 +290,163 @@ struct RexHostServicesLiveTests {
         let deadline = ContinuousClock.now + .seconds(18)
         while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(80)) }
         try #require(condition(), "Timed out waiting for \(description)")
+    }
+}
+
+extension RexHostServicesLiveTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_REX_GITHUB_WRITE_LAB"] != nil))
+    func aCommentOnThePrivateEnterpriseIssueIsPostedOnceAndReadBack() async throws {
+        let fixture = try Fixture.load("HEELER_REX_GITHUB_WRITE_LAB")
+        let name = "heeler-lab-github-write-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (host, console) = try fixture.connect(.rex, defaults: defaults)
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await wait("the private GitHub write Host") { console.hostStatuses[host.id] == .connected }
+
+        let preflight = """
+        set -eu
+        test "$GH_HOST" = heeler-lab-github-write.test
+        test "$HTTPS_PROXY" = http://127.0.0.1:9
+        test "$HTTP_PROXY" = http://127.0.0.1:9
+        test "$NO_PROXY" = heeler-lab-github-write.test,127.0.0.2
+        test "$SSL_CERT_FILE" = /home/heelerlab/heeler-lab-gh-write/ca.pem
+        test "$(getent ahostsv4 "$GH_HOST" | awk '{print $1}' | sort -u)" = 127.0.0.2
+        test "$(command -v gh)" = /usr/bin/gh
+        """
+        let isolation = try await console.runGitHubSeamScript(Data(preflight.utf8), on: host.id)
+        try #require(isolation.exitStatus == 0, "The private loopback enterprise endpoint is required")
+
+        let tab = console.gitHub
+        let machine = try #require(tab.selectedHost)
+        try #require(machine.records == [host.id])
+        await tab.appear(showing: .issue)
+        let listing = try #require(tab.shown(.issue, on: machine))
+        try #require(listing.login == "heeler-lab-write-fixture")
+        let issue = try #require(listing.list.items.first { $0.id == "LAB_WRITE_9666" })
+        let address = "https://heeler-lab-github-write.test/lab/write-fixture/issues/9666"
+        try #require(issue.url == address && issue.repository == "lab/write-fixture" && issue.number == 9666)
+        await tab.openDetail(issue, on: machine)
+        let before = try #require(tab.detailState(of: issue, on: machine).detail)
+        try #require(before.item.url == address && before.viewer == listing.login)
+
+        let body = "Heeler private fixture " + UUID().uuidString + "\nSecond line."
+        let presenter = UUID()
+        tab.present(presenter)
+        defer { tab.leave(presenter) }
+        let delivery = await tab.write(.comment(body), on: issue, host: machine, shownBy: presenter)
+        guard case .result(let result) = delivery else {
+            Issue.record("The open comment form did not receive its result")
+            return
+        }
+        try #require(result.isPlainSuccess && result.readFailure == nil)
+        let after = try #require(result.detail)
+        #expect(after.item.id == issue.id && after.item.url == address)
+        #expect(after.item.commentCount == before.item.commentCount + 1)
+        #expect(tab.detailState(of: issue, on: machine).detail?.item.commentCount == after.item.commentCount)
+
+        struct Receipt: Decodable { let node, body, client: String }
+        let read = try await console.runGitHubSeamScript(
+            Data("cat /home/heelerlab/heeler-lab-gh-write/comments.jsonl".utf8), on: host.id)
+        try #require(read.exitStatus == 0)
+        let entries = try read.stdout.split(separator: 10).map { try JSONDecoder().decode(Receipt.self, from: Data($0)) }
+        let matches = entries.filter { $0.body == body && $0.node == issue.id && $0.client.hasPrefix("GitHub CLI") }
+        #expect(matches.count == 1)
+    }
+}
+
+@MainActor
+@Suite("OpenCode history on a private Rex Host", .timeLimit(.minutes(2)))
+struct RexOpenCodeHistoryLiveTests {
+    @Test func choosingHistoryKeepsInputInTheTerminal() async throws {
+        let fixture = try RexHostServicesLiveTests.Fixture.load("HEELER_REX_OPENCODE_LAB")
+        let pane = RexPaneAddress(sessionID: try #require(fixture.rexSession), blockID: try #require(fixture.rexBlock)).paneID
+        let peer = RexPaneAddress(sessionID: try #require(fixture.peerSession), blockID: try #require(fixture.peerBlock)).paneID
+        let id = try #require(fixture.openCodeSession.flatMap(OpenCodeSessionID.init))
+        let peerID = try #require(fixture.openCodePeer.flatMap(OpenCodeSessionID.init))
+        let marker = try #require(fixture.sourceMarker)
+        let peerMarker = try #require(fixture.peerMarker)
+        try #require(pane != peer && id != peerID && marker != peerMarker)
+        let suite = "heeler-lab-opencode-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let (host, console) = try fixture.connect(.rex, defaults: defaults)
+        defer { console.setHosts([]) }
+        await console.resume()
+        let deadline = ContinuousClock.now + .seconds(30)
+        func bothAreVisible() -> Bool {
+            [pane, peer].allSatisfy { target in
+                console.agents.contains { $0.agent.paneID == target && console.chatProgram(for: $0) == .opencode }
+            }
+        }
+        while !bothAreVisible(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(150))
+        }
+        try #require(bothAreVisible())
+        let agent = try #require(console.agents.first { $0.agent.paneID == pane })
+        try #require(console.capabilities(for: host.id).readOnlyChatPrograms.contains(.opencode))
+        let chat = try #require(console.chatStore(for: agent, program: .opencode))
+        defer { chat.end() }
+        await chat.step()
+        try #require(chat.offersCandidates && chat.picksAreReadOnly)
+        await chat.listCandidates()
+        guard case .listed(let list) = chat.candidates else {
+            Issue.record("The private OpenCode sessions were not listed")
+            return
+        }
+        let selected = try #require(list.candidates.first { $0.sessionID == id.rawValue })
+        let other = try #require(list.candidates.first { $0.sessionID == peerID.rawValue })
+        guard case .conversation = await chat.previewCandidate(other),
+              case .conversation = await chat.previewCandidate(selected) else {
+            Issue.record("Both conversations must be independently readable before selection")
+            return
+        }
+        await chat.confirmCandidate(selected)
+        let readDeadline = ContinuousClock.now + .seconds(12)
+        while !chat.isReadingPickedConversation && ContinuousClock.now < readDeadline {
+            await chat.step()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        try #require(chat.isReadingPickedConversation)
+        let prompts = chat.conversation.transcript.recordedPrompts.map(\.text)
+        try #require(prompts.contains { $0.contains(marker) } && !prompts.contains { $0.contains(peerMarker) })
+        let query = try #require(console.chatHostFiles(for: host.id).queryOpenCode)
+        func rows(_ id: OpenCodeSessionID) async throws -> [OpenCodeRowLine] {
+            let result = try await query(.init(session: id, kind: .tail(budget: 65536)))
+            guard case .records(let records) = result, !records.rows.isEmpty else { throw TransportError.cancelled }
+            return records.rows
+        }
+        let a = try await rows(id), b = try await rows(peerID)
+        let composer = console.composerSession(for: agent).composer
+        composer.bindChatDraft(to: chat.composerSessionID, program: .opencode)
+        let draft = "HEELER_LAB_READ_ONLY_" + UUID().uuidString
+        composer.replaceDraft(with: draft)
+        chat.draftDidChange(to: draft)
+        var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .opencode, commands: []),
+            activity: { ChatAgentActivity(agent.agent.status) },
+            readScreen: { try await console.readAgentScreen(pane, on: host.id) },
+            confirmSession: { await chat.confirmSessionBeforeSend(for: composer) })
+        policy.sessionWrite = chat.composerWriteCheck(for: composer)
+        guard case .refused = await composer.send(policy: policy) else {
+            Issue.record("A read-only selection accepted input")
+            return
+        }
+        #expect(composer.draft == draft)
+        try #require(chat.offersCandidates)
+        await chat.listCandidates()
+        guard case .conversation = await chat.previewCandidate(other) else { throw TransportError.cancelled }
+        await chat.confirmCandidate(other)
+        let switchDeadline = ContinuousClock.now + .seconds(12)
+        while !chat.conversation.transcript.recordedPrompts.contains(where: { $0.text.contains(peerMarker) }),
+              ContinuousClock.now < switchDeadline {
+            await chat.step()
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        let peerPrompts = chat.conversation.transcript.recordedPrompts.map(\.text)
+        #expect(chat.isReadingPickedConversation && peerPrompts.contains { $0.contains(peerMarker) })
+        #expect(!peerPrompts.contains { $0.contains(marker) })
+        let after = try await rows(id), peerAfter = try await rows(peerID)
+        #expect(after == a && peerAfter == b)
     }
 }
