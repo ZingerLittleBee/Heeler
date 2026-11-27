@@ -1160,7 +1160,7 @@ struct RexConsoleTests {
         let tmux = Host(
             name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
         let records = HostStore(volatileHosts: [tmux, rexServer]).consoleHosts
-        #expect(records.map(\.displayName) == ["m3 · tmux", "m3 · Rex"])
+        #expect(records.map(\.displayName) == ["m3 · Tmux", "m3 · Rex"])
         let console = store(rexConnect: { _, _ in throw TransportError.rexForwardingRefused(socketPath: "/run/rex.sock") })
         defer { console.setHosts([]) }
         console.setHosts(records)
@@ -1174,7 +1174,7 @@ struct RexConsoleTests {
 
         let issues = console.hostIssues(for: records)
         #expect(issues.map(\.hostID) == [tmux.id, rexServer.id])
-        #expect(issues.map(\.hostName) == ["m3 · tmux", "m3 · Rex"])
+        #expect(issues.map(\.hostName) == ["m3 · Tmux", "m3 · Rex"])
         #expect(issues[1].message.hasPrefix("m3 · Rex: "))
 
         let suite = "rex-console-host-issues-\(UUID().uuidString)"

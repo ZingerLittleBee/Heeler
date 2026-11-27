@@ -68,7 +68,7 @@ struct HostMachineRowPresentation: Equatable {
         }
         servers = rows.map { record, row, _ in
             Server(
-                id: record.id, label: record.serverKey?.badgeLabel ?? record.serverKind.badgeName,
+                id: record.id, label: record.serverKey?.badgeLabel ?? record.serverKind.displayName,
                 tone: row.tone, offersRetry: row.offersRetry, isDialing: row.isDialing)
         }
         // Any connected Server proves the Host is connected (ADR 0058), with
@@ -334,27 +334,14 @@ private struct HostFoundServerChip: View {
     }
 }
 
-extension ServerKind {
-    /// How a Server Kind reads on a Hosts list badge.
-    var badgeName: String {
-        switch self {
-        case .herdrTUI: String(localized: "Herdr TUI")
-        case .herdrCore: "Herdr Core"
-        case .tmux: "Tmux"
-        case .rex: "Rex"
-        case .unconfirmed: String(localized: "Not confirmed")
-        }
-    }
-}
-
 extension HostServerKey {
     /// Compact badge label on the Hosts list: a named Herdr TUI session shows
     /// its session name directly without the `Herdr TUI` prefix, while
     /// `herdr-core` and `tmux` read as `Herdr Core` and `Tmux`.
     var badgeLabel: String {
-        guard let distinguishingName else { return kind.badgeName }
+        guard let distinguishingName else { return kind.displayName }
         if kind == .herdrTUI { return distinguishingName }
-        return "\(kind.badgeName) · \(distinguishingName)"
+        return "\(kind.displayName) · \(distinguishingName)"
     }
 }
 

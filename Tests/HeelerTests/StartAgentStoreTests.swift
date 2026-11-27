@@ -67,6 +67,7 @@ struct StartAgentStoreTests {
             kind.configDirectoryVariable
         },
         generateWorktreeBranch: @escaping () -> String = { GitBranchName.generatedWorktreeBranch() },
+        capabilities: @escaping (Host) -> HostCapabilities = \.capabilities,
         recorder: StartRecorder
     ) -> StartAgentStore {
         StartAgentStore(
@@ -80,6 +81,7 @@ struct StartAgentStoreTests {
             awaitAgentVisible: awaitAgentVisible,
             origin: origin,
             recents: recents ?? makeRecents(),
+            capabilities: capabilities,
             presets: { presets },
             accountVariable: accountVariable,
             generateWorktreeBranch: generateWorktreeBranch)
@@ -1682,7 +1684,46 @@ struct StartAgentStoreTests {
         store.selectedHostConnection = m3ProChoice.id
         #expect(store.selectedHostID == m3ProCore.id)
         #expect(store.offersServerChoice)
-        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["herdr-core", "Herdr TUI"])
+        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["Herdr Core", "Herdr TUI"])
+    }
+
+    @Test func rexStaysInTheServerPickerUntilItsLaunchSupportIsKnown() async throws {
+        let hosts = [ServerKind.herdrTUI, .herdrCore, .tmux, .rex].map {
+            Host(name: "Studio", address: "studio.example", username: "dev", serverKind: $0)
+        }
+        let rex = try #require(hosts.last)
+        var rexCapabilities = rex.capabilities
+        let capabilities: (Host) -> HostCapabilities = { $0.id == rex.id ? rexCapabilities : $0.capabilities }
+        let recorder = StartRecorder()
+        var probes: [Host.ID] = []
+        let available = { hosts.newAgentDestinations(capabilities: capabilities) }
+        let store = makeStore(hosts: Array(available().prefix(3)), workspaces: { _ in [.init(id: "w", label: "Project")] },
+                              agentKinds: { id in
+                                  probes.append(id)
+                                  return [.claude]
+                              }, capabilities: capabilities, recorder: recorder)
+        store.updateHosts(available())
+        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["Herdr TUI", "Herdr Core", "Tmux", "Rex"])
+        store.selectedHostID = rex.id
+        store.name = "heeler-lab-picker"
+        for blocked in [rex.capabilities,
+                        HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel, rexAcceptsCommand: true),
+                        HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAPIRevision: 19)] {
+            rexCapabilities = blocked
+            #expect(store.launchUnavailableMessage != nil)
+            await store.discoverAgents()
+            await store.submit()
+            #expect(!store.canSubmit && probes.isEmpty && recorder.hostIDs.isEmpty)
+        }
+        rexCapabilities = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAcceptsCommand: true)
+        #expect(store.launchUnavailableMessage == nil && store.offersWorkspaceAndTabNames)
+        await store.discoverAgents()
+        try #require(store.canSubmit)
+        await store.submit()
+        #expect(probes == [rex.id] && recorder.hostIDs == [rex.id])
+        #expect(recorder.params.first?.name == "heeler-lab-picker")
+        store.updateHosts(Array(hosts.dropLast()))
+        #expect(store.selectedHostID == nil && !store.canSubmit)
     }
 
     @Test func singleHostWithSeveralServersPreSelectsTheHostAndOffersServerChoice() {

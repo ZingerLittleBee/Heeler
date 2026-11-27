@@ -116,7 +116,7 @@ struct HostServerScanTests {
                 FoundServer(key: Self.defaultTmux, isRunning: true, version: "3.4"),
                 FoundServer(key: HostServerKey(kind: .tmux, name: "work"), isRunning: true, version: "3.4"),
             ])
-        #expect(found.servers.map(\.key.label) == ["tmux", "tmux · work"])
+        #expect(found.servers.map(\.key.label) == ["Tmux", "Tmux · work"])
         #expect(!found.missing.contains { $0.kind == .tmux })
     }
 

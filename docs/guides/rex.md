@@ -119,7 +119,7 @@ Heeler starts a shell in Rex, in a new window, the way Rex's own New Terminal do
 
 ## New Agent and project tools
 
-On a supported macOS or Linux Host, open **Agents → + → New Agent**. Choose the Rex Server, an installed Agent, and a Workspace. Pick a saved launch preset or supply arguments in the form. Choose **New Workspace** to enter a specific directory. **Start in a new worktree** branches from the selected Workspace's checkout and opens the new checkout in its own Rex session. The checkout remains on the Host if launching the Agent fails.
+On a supported macOS or Linux Host, open **Agents → + → New Agent**. Choose your Host, then **Server → Rex**, an installed Agent, and a Workspace. The form shows Rex once you turn it on under **Hosts → your Host → Servers**, including while it connects. With Rex as the only Server, its name appears beside **Server**. If Rex cannot confirm command launch, the Agent section explains how to continue. Pick a saved launch preset or supply arguments in the form. Choose **New Workspace** to enter a specific directory. **Start in a new worktree** branches from the selected Workspace's checkout and opens the new checkout in its own Rex session. The checkout remains on the Host if launching the Agent fails.
 
 In **Terminals**, tap the pencil beside a Workspace to **Rename Workspace**. Its Rex session takes the new label. **Rename Agent** in the Agent menu changes its Rex block label. Clearing it restores the default. The harness owns the separate conversation title. In the Agent detail, open **Files** or **Changes**, or use **Skills** in the keyboard. **Hosts → your Host → Rex** lists the Chat programs and actions available on that system.
 

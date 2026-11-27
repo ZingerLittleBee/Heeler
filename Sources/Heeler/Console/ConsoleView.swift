@@ -370,8 +370,7 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
                 StartAgentView(
-                    hosts: hosts.consoleHosts.offeringNewItem(
-                        listsTerminals: false, capabilities: { console.capabilities(for: $0) }),
+                    hosts: hosts.consoleHosts.newAgentDestinations { console.capabilities(for: $0) },
                     console: console, origin: request.origin
                 ) { id in
                     // A fresh launch lands in its own terminal, exactly

@@ -175,7 +175,7 @@ struct ConsoleListPresentationStoreTests {
         let (tui, tmux, build) = twoServerCatalog()
         let catalog = HostStore(volatileHosts: [tui, build, tmux])
         let record = try #require(catalog.consoleHosts.first { $0.id == tmux.id })
-        #expect(record.displayName == "m3 · tmux")
+        #expect(record.displayName == "m3 · Tmux")
         let snapshot = SessionSnapshot(
             agents: [.fixture(paneID: "w1:p1")], layouts: [],
             panes: [

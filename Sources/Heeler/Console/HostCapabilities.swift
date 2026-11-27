@@ -61,6 +61,7 @@ struct HostCapabilities: Equatable, Sendable {
 
     /// A Rex Host can read Skills and Changes and create a linked checkout over its POSIX SSH connection.
     var rexAPIRevision: Int?
+    var rexAgentLaunchUnavailable: String?
     var rexProjects = false
     var readsProjects: Bool { hostScripts || rexProjects }
     var createsWorktrees: Bool { worktrees || (rexProjects && startsAgents) }
@@ -173,6 +174,15 @@ extension HostCapabilities {
             }
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix
+            if !startsAgents {
+                if coreKernel == HerdrCoreLocator.windowsKernel {
+                    rexAgentLaunchUnavailable = String(localized: "On Windows Rex Hosts, start the Agent in Terminal.")
+                } else if posix && rexAPIRevision != nil {
+                    rexAgentLaunchUnavailable = String(localized: "This Rex server has not confirmed support for launching commands. You can start the Agent in Terminal.")
+                } else {
+                    rexAgentLaunchUnavailable = String(localized: "Connect to the Rex server so Heeler can check whether it can start Agents.")
+                }
+            }
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
@@ -356,6 +366,10 @@ struct AgentDetailMenuOffers: Equatable, Sendable {
 }
 
 extension Collection<Host> {
+    func newAgentDestinations(capabilities: (Host) -> HostCapabilities) -> [Host] {
+        filter { $0.serverKind == .rex || capabilities($0).startsAgents }
+    }
+
     /// The Hosts a list's New button can start something on: Agents, or
     /// Terminals on the Terminals tab. With none, it is not offered. What a
     /// connection has learned of a Host comes through `capabilities`.
@@ -373,6 +387,7 @@ extension Collection<Host> {
     func offersNewItem(
         listsTerminals: Bool, capabilities: (Host) -> HostCapabilities
     ) -> Bool {
-        isEmpty || !offeringNewItem(listsTerminals: listsTerminals, capabilities: capabilities).isEmpty
+        if listsTerminals { return isEmpty || contains { capabilities($0).startsTerminals } }
+        return isEmpty || !newAgentDestinations(capabilities: capabilities).isEmpty
     }
 }

@@ -142,8 +142,8 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     var displayName: String {
         switch self {
         case .herdrTUI: String(localized: "Herdr TUI")
-        case .herdrCore: "herdr-core"
-        case .tmux: "tmux"
+        case .herdrCore: "Herdr Core"
+        case .tmux: "Tmux"
         case .rex: "Rex"
         case .unconfirmed: String(localized: "Not confirmed")
         }
