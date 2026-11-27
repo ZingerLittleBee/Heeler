@@ -19,7 +19,7 @@ struct DroidBackendChatLiveTests {
         var herdrSocket: String?
     }
 
-    @Test(arguments: [ServerKind.herdrCore, .tmux, .rex])
+    @Test(arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
