@@ -346,8 +346,41 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     var droidSessionID: String? { program.pinsComposerToSession ? followed?.sessionID : nil }
+    var tracksConversationDraft: Bool { program.pinsComposerToSession || source.requiresIndependentInputSession }
+
+    /// A Rex socket can start serving a different instance. Even a matching
+    /// program session ID there must not inherit the old server's draft.
     var composerSessionID: String? {
-        program == .devin ? displayedDroidTarget?.draftID(for: program) : droidSessionID
+        if program.pinsComposerToSession {
+            if source.requiresIndependentInputSession {
+                guard let scope = source.coreScope, let target = displayedDroidTarget, target.rexServerScope == scope else { return nil }
+                return target.draftID(for: program)
+            }
+            return program == .devin ? displayedDroidTarget?.draftID(for: program) : droidSessionID
+        }
+        guard source.requiresIndependentInputSession, let scope = source.coreScope else { return nil }
+        if let followed { return [scope, program.rawValue, followed.draftSessionID].joined(separator: "\0") }
+        guard case .noConversationYet = evidenceReason else { return nil }
+        return [scope, program.rawValue, "", firstDraftID.uuidString].joined(separator: "\0")
+    }
+
+    /// The first prompt can start a conversation. Its provisional owner is
+    /// local to this Chat, until a host check supplies a real session ID.
+    private let firstDraftID = UUID()
+
+    func confirmSessionBeforeSend(for composer: AgentComposerStore) async -> String? {
+        if let reason = await confirmSessionBeforeSend() { return reason }
+        return tracksConversationDraft && !composer.draftMatches(composerSessionID) ? program.draftOwnerGuidance : nil
+    }
+
+    func composerWriteCheck(for composer: AgentComposerStore) -> ChatSessionInputCheck? {
+        guard let check = composerSessionInputCheck else { return nil }
+        let owner = composerSessionID
+        return { [weak self, weak composer] in
+            guard let self, let composer, let owner, self.composerSessionID == owner,
+                  composer.draftMatches(owner), await check() else { return false }
+            return !Task.isCancelled && self.composerSessionID == owner && composer.draftMatches(owner)
+        }
     }
     private(set) var displayedDroidTarget: DroidDialogTarget?
 
@@ -441,7 +474,7 @@ final class AgentChatStore {
     /// A session the transcript says the conversation continued in, until
     /// herdr reports a session of its own.
     @ObservationIgnored private var continuedSession: ConversationReference?
-    @ObservationIgnored private var followed: ConversationReference?
+    private var followed: ConversationReference?
     /// The root conversation's id for the Antigravity CLI transcript now
     /// followed, and every session id (root or subagent) already found to
     /// resolve to it. herdr's `PreInvocation` hook reports each subagent step
@@ -469,7 +502,7 @@ final class AgentChatStore {
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
-    @ObservationIgnored private var evidenceReason: ChatUnavailableReason?
+    private var evidenceReason: ChatUnavailableReason?
     /// Where the last check that bound says the Agent keeps its Transcripts,
     /// and the directory it filed this conversation under, if it said.
     @ObservationIgnored private var evidenceRoot: String?
@@ -1745,7 +1778,7 @@ final class AgentChatStore {
             forgetPick()
             let shown = followed
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
-            if let shown, let followed, !followed.namesSameSession(as: shown) {
+            if !source.requiresIndependentInputSession, let shown, let followed, !followed.namesSameSession(as: shown) {
                 movedSinceDraft = true
                 draftAtMove = composerDraft
             }

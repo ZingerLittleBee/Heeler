@@ -124,14 +124,20 @@ struct RexForegroundChatLiveTests {
             throw TransportError.cancelled
         }
         let rules = ChatSendRules(program: program, commands: [])
-        var policy = ComposerDeliveryPolicy.chat(rules: rules,
+        composer.bindChatDraft(to: chat.composerSessionID, program: program)
+        let firstDraftOwner = try #require(chat.composerSessionID)
+        // SwiftUI builds a new policy for each render and tap.
+        var policy: ComposerDeliveryPolicy {
+            var policy = ComposerDeliveryPolicy.chat(rules: rules,
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
-            readScreen: typing.blockedScreen.readScreen, confirmSession: { await chat.confirmSessionBeforeSend() },
+            readScreen: typing.blockedScreen.readScreen, confirmSession: { await chat.confirmSessionBeforeSend(for: composer) },
             heldSession: { chat.sessionRefusalBeforeCheck() },
             sendConcern: { chat.sendConcern(for: $0, after: $1) },
             willReadScreen: { chat.updateSends(ChatComposerEchoes.sentMessages(composer.messages, rules: rules)) },
             conversation: { chat.conversationGeneration })
-        policy.sessionWrite = chat.composerSessionInputCheck
+            policy.sessionWrite = chat.composerWriteCheck(for: composer)
+            return policy
+        }
         let marker = "REX_LAB_SEND_" + UUID().uuidString.prefix(8)
         let prompt = "Reply only with this marker. Do not use tools.\n\n    " + marker
         composer.replaceDraft(with: prompt)
@@ -159,6 +165,7 @@ struct RexForegroundChatLiveTests {
 
         let heldMarker = "REX_LAB_HELD_" + UUID().uuidString.prefix(8)
         let held = heldMarker + (native.map { " " + $0.path } ?? "")
+        let heldImage = native == nil ? nil : try await stageDraftImage(projection: projection, pane: pane, composer: composer)
         composer.replaceDraft(with: held)
         chat.draftDidChange(to: held)
         func desktopLine(_ line: String) async throws {
@@ -172,7 +179,28 @@ struct RexForegroundChatLiveTests {
             }
         }
         try await desktopLine(program == .claude ? "/clear" : "/new")
-        if program != .codex && program != .grok {
+        if program == .grok {
+            // Grok discards keyboard input while /new is replacing the editor.
+            // Its first rendered prompt names the new conversation explicitly.
+            try await wait(for: "Grok to draw the new session before the desktop types") {
+                let screen = try await typing.blockedScreen.readScreen()
+                guard case .empty = InputBoxStateDetector.detect(screen, program: .grok) else { return false }
+                return screen.rows.contains { row in
+                    let words = row.text.split(whereSeparator: \.isWhitespace)
+                    guard words.first == "Session", let token = words.dropFirst().first,
+                        token.last == ",", let shown = ConversationReference.lowercaseUUID(String(token.dropLast()))
+                    else { return false }
+                    return shown != firstID && shown != peerID
+                }
+            }
+        } else if program == .codex {
+            try await wait(for: "Codex to draw the new empty thread before the desktop types") {
+                let screen = try await typing.blockedScreen.readScreen()
+                guard case .empty = InputBoxStateDetector.detect(screen, program: .codex) else { return false }
+                return screen.rows.contains { $0.text.contains("OpenAI Codex") }
+                    && !screen.rows.contains { $0.text.contains("REX_LAB_") }
+            }
+        } else {
             try await wait(for: "the first client to leave its old binding") {
                 try await binding(first) != firstID
             }
@@ -201,6 +229,18 @@ struct RexForegroundChatLiveTests {
         #expect(composer.draft == held)
         var successor: String?
         if let native {
+            // Each independent desktop turn must finish before the driver types
+            // the next. Codex can otherwise append to or interrupt that turn.
+            func waitForDesktopReply(_ marker: String) async throws {
+                let rendered = (program == .claude ? "⏺ " : "• ") + marker
+                try await wait(for: "the independent desktop reply " + marker) {
+                    let screen = try await typing.blockedScreen.readScreen()
+                    guard let status = projection.agentsByPane[pane]?.agent.status,
+                          status == .idle || status == .done else { return false }
+                    return screen.rows.contains { $0.trimmedText == rendered }
+                }
+            }
+            try await waitForDesktopReply(rotated)
             let next = "REX_LAB_SUCCESSOR_SWITCHED_" + UUID().uuidString.prefix(8)
             try await desktopLine(next)
             try await wait(for: "the successor conversation to start a fresh turn") {
@@ -208,6 +248,7 @@ struct RexForegroundChatLiveTests {
             }
             let stale = await native.oldStop.perform()
             try #require(stale == .failed(ChatStopPlan.changedDroidTurn))
+            try await waitForDesktopReply(next)
             successor = next
             #expect(composer.draft == held)
         }
@@ -224,7 +265,6 @@ struct RexForegroundChatLiveTests {
             }
             composer.replaceDraft(with: wrongPickMarker)
             chat.draftDidChange(to: wrongPickMarker)
-            policy.sessionWrite = chat.composerSessionInputCheck
             guard case .refused = await composer.send(policy: policy) else {
                 throw RexLab.LabError.unreadable("a read selection sent a draft to the other conversation")
             }
@@ -285,11 +325,65 @@ struct RexForegroundChatLiveTests {
             nextFile = path
             return true
         }
+        var nextDraftMarker: String?
+        if let heldImage {
+            let nextOwner = try #require(chat.composerSessionID)
+            try #require(nextOwner != firstDraftOwner)
+            // The new conversation finished a real turn. A render can already
+            // see that owner before onChange has moved the old draft out.
+            for _ in 0..<2 {
+                guard case .refused = await composer.send(policy: policy) else {
+                    throw RexLab.LabError.unreadable("a rebuilt policy submitted the previous conversation's draft")
+                }
+                try #require(composer.draft == held && composer.readyImagePaths == [heldImage])
+            }
+            composer.bindChatDraft(to: nextOwner, program: program)
+            try #require(composer.draft.isEmpty && composer.readyImagePaths.isEmpty)
+            let emptySend = await composer.send(policy: policy)
+            try #require(emptySend == .ignored)
+            let text = "REX_LAB_NEW_DRAFT_" + UUID().uuidString.prefix(8)
+            composer.replaceDraft(with: text)
+            chat.draftDidChange(to: text)
+            let sent = await composer.send(policy: policy)
+            if needsPick {
+                guard case .refused = sent else { throw RexLab.LabError.unreadable("the picked history accepted a new draft") }
+                try #require(composer.draft == text)
+            } else {
+                try #require(sent == .submittedViaAttach || sent == .deliveredViaAttach)
+                try await wait(for: "the independent new conversation to receive only its own phone draft") {
+                    await chat.step()
+                    return chat.conversation.transcript.recordedPrompts.filter { $0.text == text }.count == 1 &&
+                        chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: text)) }
+                }
+            }
+            nextDraftMarker = text
+            if needsPick {
+                guard case .listed(let list) = try await projection.chatCandidates(paneID: pane, program: program),
+                      let old = list.candidates.first(where: { $0.sessionID == firstID && $0.origins.contains(.heldOpen) })
+                else { throw RexLab.LabError.unreadable("the original conversation was no longer available to read") }
+                try await projection.writeChatPick(old, of: list, paneID: pane)
+            } else {
+                try #require(program == .claude)
+                try await desktopLine("/resume " + firstID)
+                try await wait(for: "Claude to resume the original conversation") { try await binding(first) == firstID }
+            }
+            chat.sessionEvidenceMayHaveChanged()
+            try await wait(for: "the original conversation to regain its own draft") {
+                await chat.step()
+                return chat.composerSessionID == firstDraftOwner && chat.conversation.phase == .following(path: fixture.firstFile)
+            }
+            composer.bindChatDraft(to: chat.composerSessionID, program: program)
+            try #require(composer.draft == held && composer.readyImagePaths == [heldImage])
+        }
         for path in [fixture.firstFile, fixture.peerFile, try #require(nextFile)] {
             let info = try #require(try await files.status(path))
             let bytes = try #require(info.size)
             try #require(bytes <= 1 << 20)
             let data = try #require(try await files.read(path: path, from: 0, to: bytes, chunk: 64 << 10))
+            if let nextDraftMarker {
+                let receivedDraft = data.range(of: Data(nextDraftMarker.utf8)) != nil
+                #expect(receivedDraft == (path == nextFile && !needsPick))
+            }
             let containsHeld = data.range(of: Data(heldMarker.utf8)) != nil
             #expect(!containsHeld)
             let containsWrongPick = data.range(of: Data(wrongPickMarker.utf8)) != nil
@@ -319,6 +413,21 @@ struct RexForegroundChatLiveTests {
 }
 
 private extension RexForegroundChatLiveTests {
+    func stageDraftImage(projection: RexConsoleProjection, pane: String, composer: AgentComposerStore) async throws -> String {
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP4DwABAQEAsTj2FAAAAABJRU5ErkJggg=="))
+        let local = FileManager.default.temporaryDirectory.appendingPathComponent("heeler-lab-\(UUID()).png")
+        try bytes.write(to: local)
+        defer { try? FileManager.default.removeItem(at: local) }
+        let stager = projection.fileStager(beside: pane, keepingTo: .init(joined: projection.inventoryCore))
+        let file = PreparedFile(fileURL: local, fileExtension: "png", byteCount: Int64(bytes.count), pickedName: local.lastPathComponent)
+        let staged = try await stager(file, .init { _ in })
+        let readback = try await projection.chatHostFiles().read(path: staged.path, from: 0, to: UInt64(bytes.count), chunk: 4096)
+        try #require(readback == bytes)
+        composer.imageStagingDidBegin(operationID: 1)
+        composer.imageStagingDidComplete(operationID: 1, path: staged.path, preview: nil)
+        return staged.path
+    }
+
     /// A retained action on the desktop's real prompt while the phone is
     /// explicitly reading the previous thread. Only the desktop may answer.
     func checkReadOnlyPermission(_ marker: String, directory: String, chat: AgentChatStore, projection: RexConsoleProjection, pane: String) async throws {

@@ -27,6 +27,23 @@ struct ConversationReference: Hashable, Sendable {
         return Self.file(sessionID, isNamedFor: other.sessionID) || Self.file(other.sessionID, isNamedFor: sessionID)
     }
 
+    /// The UUID ending a Pi or Oh My Pi session file's name.
+    static func piSession(inFileName name: String) -> String? {
+        guard name.hasSuffix(".jsonl") else { return nil }
+        let stem = name.dropLast(".jsonl".count)
+        guard stem.count >= 36 else { return nil }
+        return ConversationReference.canonicalUUID(String(stem.suffix(36)))
+    }
+
+    /// Pi can report a UUID first and then the absolute file named for it.
+    var draftSessionID: String {
+        guard program.sessionNaming.acceptsTranscriptPath, sessionID.hasPrefix("/"),
+              let leaf = sessionID.split(separator: "/").last,
+              let id = Self.piSession(inFileName: String(leaf)), Self.file(sessionID, isNamedFor: id)
+        else { return sessionID }
+        return id
+    }
+
     /// Whether a Pi or Oh My Pi session file carries this session's name.
     static func file(_ file: String, isNamedFor session: String) -> Bool {
         guard let name = file.split(separator: "/").last else { return false }

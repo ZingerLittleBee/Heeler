@@ -515,8 +515,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
         guard program.pinsComposerToSession, !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
               let active = server, let scope = chatCacheScope, (program == .devin || agentsByPane[paneID]?.agent.status != .unknown) else { return nil }
         let details = try await detailsWithCurrentForeground(at: address, listed: listed, server: active)
-        let target = try await chatBinder(at: address, details: details, program: program, server: active)
+        var target = try await chatBinder(at: address, details: details, program: program, server: active)
             .droidDialogTarget(chatRecord(at: address, details: details), scope: scope + "/" + paneID)
+        target?.rexServerScope = scope
         if program == .devin, agentsByPane[paneID]?.agent.status == .unknown, target?.sessionID == nil { return nil }
         return server == active && chatCacheScope == scope ? target : nil
     }

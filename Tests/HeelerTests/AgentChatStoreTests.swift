@@ -5165,6 +5165,144 @@ struct AgentChatStoreTests {
                 == .empty)
     }
 
+    @Test func rebuiltRexChatPoliciesKeepDraftsAndAttachmentsWithTheirConversation() async throws {
+        actor HostEvidence {
+            var session: ChatSessionEvidence = .unavailable(.noConversationYet(.claude))
+            var writes: [String] = []
+            func record(_ text: String) { writes.append(text) }
+            func bind(_ id: String) { session = .bound(sessionID: id, transcriptRoot: nil, directory: nil) }
+        }
+        let evidence = HostEvidence()
+        let files = VirtualHostFiles()
+        let agent = Self.agent(session: nil, program: .claude)
+        func makeChat(_ scope: String) -> AgentChatStore {
+            let source = AgentChatSource(hostID: Self.host, socketLocation: .defaultSession, files: files.hostFiles(),
+                agentInfo: { agent }, cache: VolatileChatTranscriptCache(), adapter: NumberedChatReducer.adapter(),
+                sessionEvidence: { await evidence.session }, requiresIndependentInputSession: true, coreScope: scope)
+            return AgentChatStore(agentID: .init(hostID: Self.host, paneID: agent.paneID), agent: agent, program: .claude, source: source)
+        }
+        let chat = makeChat("rex:first-server")
+        defer { chat.end() }
+        let composer = AgentComposerStore(target: agent.paneID) { input in
+            await evidence.record(input.text)
+            return agent
+        }
+        func policy(_ store: AgentChatStore) -> ComposerDeliveryPolicy {
+            var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .claude, commands: []), activity: { .idle },
+                readScreen: { try ScreenFixture.screen("claude-01-ready") },
+                confirmSession: { await store.confirmSessionBeforeSend(for: composer) })
+            policy.sessionWrite = store.composerWriteCheck(for: composer)
+            policy.verify = nil
+            return policy
+        }
+        func refresh(_ chat: AgentChatStore) async {
+            chat.sessionEvidenceMayHaveChanged()
+            await chat.step()
+        }
+        await refresh(chat)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .claude)
+        composer.replaceDraft(with: "first message before the host has a session")
+        #expect(await composer.send(policy: policy(chat)) == .deliveredViaPrompt)
+        await evidence.bind(Self.first)
+        await refresh(chat)
+        let firstOwner = try #require(chat.composerSessionID)
+        composer.bindChatDraft(to: firstOwner, program: .claude)
+        let text = "keep this in A"
+        let attachment = "/private/tmp/heeler-lab-draft/A.png"
+        composer.replaceDraft(with: text)
+        composer.imageStagingDidBegin(operationID: 1)
+        composer.imageStagingDidComplete(operationID: 1, path: attachment, preview: nil)
+        await evidence.bind(Self.second)
+        await refresh(chat)
+        let secondOwner = try #require(chat.composerSessionID)
+        try #require(secondOwner != firstOwner)
+        // SwiftUI may calculate B's policy before its change handler parks A.
+        for _ in 0..<2 {
+            guard case .refused = await composer.send(policy: policy(chat)) else {
+                Issue.record("A rebuilt policy submitted another conversation's draft")
+                return
+            }
+            #expect(composer.draft == text && composer.readyImagePaths == [attachment])
+        }
+        composer.bindChatDraft(to: secondOwner, program: .claude)
+        #expect(composer.draft.isEmpty && composer.readyImagePaths.isEmpty)
+        #expect(await composer.send(policy: policy(chat)) == .ignored)
+        composer.replaceDraft(with: "only B")
+        #expect(await composer.send(policy: policy(chat)) == .deliveredViaPrompt)
+        composer.replaceDraft(with: "another draft for B")
+        await evidence.bind(Self.first)
+        await refresh(chat)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .claude)
+        #expect(composer.draft == text && composer.readyImagePaths == [attachment])
+        let otherServer = makeChat("rex:another-server")
+        defer { otherServer.end() }
+        await refresh(otherServer)
+        guard case .refused = await composer.send(policy: policy(otherServer)) else {
+            Issue.record("A new server at the same socket inherited the old draft")
+            return
+        }
+        composer.bindChatDraft(to: otherServer.composerSessionID, program: .claude)
+        #expect(composer.draft.isEmpty && composer.readyImagePaths.isEmpty)
+        composer.replaceDraft(with: "explicit terminal input")
+        #expect(await composer.send(policy: .terminal) == .deliveredViaPrompt)
+        composer.bindChatDraft(to: secondOwner, program: .claude)
+        #expect(composer.draft == "another draft for B")
+        #expect(await evidence.writes == ["first message before the host has a session", "only B", "explicit terminal input"])
+    }
+
+    @Test(arguments: [ChatProgram.droid, .devin])
+    func rexDroidAndDevinDraftsUseTheRestoredServerIdentity(_ program: ChatProgram) async throws {
+        let agent = Self.agent(session: nil, program: program)
+        let host = Self.host
+        let session = program == .devin ? "aabbccdd" : Self.first
+        let firstScope = ChatCacheKey.rexScope(coreID: "first")
+        let replacementScope = ChatCacheKey.rexScope(coreID: "replacement")
+        func target(_ scope: String?, pid: String) -> DroidDialogTarget {
+            .init(scope: (scope ?? "herdr") + "/pane/" + pid, pid: pid, start: "birth-" + pid,
+                  directory: Self.cwd, sessionID: session, transcriptFolder: "/home/lab/account/devin/cli",
+                  rexServerScope: scope)
+        }
+        func store(_ target: DroidDialogTarget) -> AgentChatStore {
+            var screen = BlockedScreenIO.unavailable
+            screen.droidTarget = { target }
+            let source = AgentChatSource(hostID: host, socketLocation: .defaultSession, files: VirtualHostFiles().hostFiles(),
+                agentInfo: { agent }, cache: VolatileChatTranscriptCache(), adapter: NumberedChatReducer.adapter(),
+                screen: screen, sessionEvidence: { .bound(sessionID: session, transcriptRoot: nil, directory: nil) },
+                requiresIndependentInputSession: true, coreScope: target.rexServerScope)
+            return AgentChatStore(agentID: .init(hostID: host, paneID: agent.paneID), agent: agent, program: program, source: source)
+        }
+        func strongPreflight(_ target: DroidDialogTarget, owner: String) async -> ComposerRefusal? {
+            var policy = ComposerDeliveryPolicy.terminal
+            policy.checkedProgram = program
+            policy.requiresSinglePrompt = true
+            policy.droidTarget = { target }
+            policy.displayedDroidTarget = { target }
+            policy.droidScreen = BlockedScreenIO.unavailable.readScreen
+            return await policy.prepare("approval feedback", for: owner)
+        }
+        let first = target(firstScope, pid: "11")
+        let restored = target(firstScope, pid: "22")
+        let replacement = target(replacementScope, pid: "11")
+        let herdr = target(nil, pid: "11")
+        #expect(herdr.draftID(for: program) == (program == .devin ? "/home/lab/account/devin/cli#" + session : session))
+        let original = store(first), after = store(restored), other = store(replacement)
+        defer { original.end(); after.end(); other.end() }
+        for chat in [original, after, other] { await chat.step() }
+        let owner = try #require(original.composerSessionID)
+        try #require(after.composerSessionID == owner && other.composerSessionID != owner)
+        #expect(await strongPreflight(restored, owner: owner) == nil)
+        #expect(await strongPreflight(replacement, owner: owner) != nil)
+        let composer = AgentComposerStore(target: agent.paneID) { _ in throw TransportError.cancelled }
+        composer.bindChatDraft(to: owner, program: program)
+        composer.replaceDraft(with: "Original server's draft")
+        composer.imageStagingDidBegin(operationID: 1)
+        composer.imageStagingDidComplete(operationID: 1, path: "/tmp/heeler-lab-draft/A.png", preview: nil)
+        composer.bindChatDraft(to: other.composerSessionID, program: program)
+        #expect(composer.draft.isEmpty && composer.readyImagePaths.isEmpty)
+        composer.bindChatDraft(to: after.composerSessionID, program: program)
+        #expect(composer.draft == "Original server's draft" && composer.readyImagePaths == ["/tmp/heeler-lab-draft/A.png"])
+    }
+
     @Test func aRexChatStopRequiresTheSameIndependentlyBoundOpenTurn() async throws {
         actor Evidence {
             var answer: ChatSessionEvidence

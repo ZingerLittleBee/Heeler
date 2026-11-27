@@ -18,8 +18,11 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case devin
 
     var draftOwnerGuidance: String {
-        self == .devin ? String(localized: "Return to the Devin session that owns this draft before sending it.")
-            : String(localized: "Return to the Droid session that owns this draft before sending it.")
+        switch self {
+        case .devin: String(localized: "Return to the Devin session that owns this draft before sending it.")
+        case .droid: String(localized: "Return to the Droid session that owns this draft before sending it.")
+        default: String(localized: "Return to the conversation that owns this draft before sending it.")
+        }
     }
 
     var pinsComposerToSession: Bool { self == .droid || self == .devin }

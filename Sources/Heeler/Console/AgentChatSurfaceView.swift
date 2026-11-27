@@ -449,9 +449,11 @@ struct AgentChatSurfaceView: View {
             chat?.draftDidChange(to: draft)
         }
         // The writer's lock can become readable after Chat has loaded the
-        // session. Bind when the verified draft owner becomes available.
+        // session. Bind when its displayed draft owner becomes available.
         .onChange(of: chat?.composerSessionID, initial: true) { _, session in
-            if program.pinsComposerToSession { composer.bindDroidDraft(to: session, program: program) }
+            if program.pinsComposerToSession || chat?.tracksConversationDraft == true {
+                composer.bindChatDraft(to: session, program: program)
+            }
         }
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
@@ -1157,7 +1159,7 @@ struct AgentChatSurfaceView: View {
             displayedDroidTarget: { [chat] in chat?.displayedDroidTarget }, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
-        policy.sessionWrite = chat?.composerSessionInputCheck
+        policy.sessionWrite = chat?.composerWriteCheck(for: composer)
         if program == .amp {
             let connection = chat?.ampConnection
             let displayed = chat?.displayedAmpBinding
@@ -1204,18 +1206,13 @@ struct AgentChatSurfaceView: View {
     /// herdr-core Host. Without a store there is nothing to check with, so
     /// nothing is sent.
     private var confirmSession: (@MainActor () async -> String?)? {
-        guard chat?.confirmsSessionBeforeSend ?? program.confirmsSessionBeforeSend else { return nil }
-        let chat = chat
-        let program = program
-        let composer = composer
-        return {
-            guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
-            if let reason = await chat.confirmSessionBeforeSend() { return reason }
-            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.composerSessionID) {
-                return program.draftOwnerGuidance
-            }
-            return nil
+        guard let chat else {
+            let program = program
+            return { AgentChatStore.uncheckedSessionReason(program) }
         }
+        guard chat.confirmsSessionBeforeSend else { return nil }
+        let composer = composer
+        return { await chat.confirmSessionBeforeSend(for: composer) }
     }
 
     /// The refusal Chat already knows the check would give, before any await.

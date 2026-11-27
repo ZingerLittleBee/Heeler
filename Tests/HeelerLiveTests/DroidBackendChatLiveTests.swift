@@ -68,7 +68,7 @@ struct DroidBackendChatLiveTests {
             Issue.record("Droid bypassed this backend's checked sender")
             throw TransportError.cancelled
         }
-        composer.bindDroidDraft(to: chat.droidSessionID)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .droid)
         var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
@@ -172,7 +172,7 @@ struct DroidBackendChatLiveTests {
             keepingTo: TerminalCorePin(joined: oldProjection.inventoryCore), live: { oldProjection })
         let composer = AgentComposerStore(target: oldPane, checkedSend: sender) { try await oldProjection.promptAgent($0) }
         let marker = "OLD_DROID_" + UUID().uuidString
-        composer.bindDroidDraft(to: oldTarget.sessionID)
+        composer.bindChatDraft(to: oldTarget.draftID(for: .droid), program: .droid)
         composer.replaceDraft(with: marker)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []), activity: { .idle },
             readScreen: oldChat.droidScreen.readScreen, droidTarget: oldChat.droidScreen.droidTarget, displayedDroidTarget: { oldTarget })
@@ -455,7 +455,7 @@ struct DroidBackendChatLiveTests {
         #expect(path.hasSuffix("/" + next + ".jsonl"))
         #expect(chat.conversation.transcript.recordedPrompts.isEmpty)
         try #require(try await DroidInputBox.read(screen.readScreen()).isSendable)
-        composer.bindDroidDraft(to: next)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .droid)
         #expect(composer.draft.isEmpty)
         try await checkInterrupt(chat: chat, composer: composer, policy: policy, projection: projection, pane: pane)
     }
