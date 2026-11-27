@@ -444,6 +444,8 @@ private extension RexForegroundChatLiveTests {
                 guard card.dialog.kind == .codexExec, card.dialog.subject.command?.contains(marker) == true else { return false }
             case .generic(let excerpt):
                 guard excerpt.rows.map(\.text).joined(separator: " ").contains(marker), excerpt.numbered[1]?.contains("Yes") == true else { return false }
+            case .unreadable:
+                guard chat.blocked.unreadableNote != nil else { return false }
             default: return false
             }
             shown = chat.blocked.content
@@ -455,6 +457,9 @@ private extension RexForegroundChatLiveTests {
             await chat.blocked.perform(.choose(ordinal: allow.ordinal), shownCard: card)
         case .generic:
             await chat.blocked.press(number: 1)
+        case .unreadable:
+            await chat.blocked.press(number: 1)
+            await chat.blocked.sendKeys(["enter"])
         default:
             throw RexLab.LabError.unreadable("No retained permission action")
         }
@@ -558,7 +563,8 @@ private extension RexForegroundChatLiveTests {
 
         chat.blocked.show()
         defer { chat.blocked.hide() }
-        for role in [DialogOptionRole.approve, .decline] {
+        var declinedCard: BlockedCard?
+        for role in [DialogOptionRole.approve, .decline, .decline] {
             let request = (role == .approve ? "REX_LAB_APPROVE_" : "REX_LAB_DECLINE_") + tag
             let path = directory + "/heeler-lab-" + request.lowercased() + ".txt"
             let original = try await files.status(path)
@@ -592,6 +598,23 @@ private extension RexForegroundChatLiveTests {
                 throw RexLab.LabError.unreadable("Single-use permission: " + lastReading)
             }
             let card = try #require(observed)
+            let currentCall = try #require(card.request?.callID)
+            if let declinedCard {
+                let previousCall = try #require(declinedCard.request?.callID)
+                try #require(previousCall != currentCall)
+                try #require(declinedCard.request?.summary == card.request?.summary)
+                try #require(declinedCard.dialog.fingerprint.matches(card.dialog.fingerprint))
+                let staleAllow = try #require(declinedCard.dialog.options.first { $0.role == .approve })
+                await chat.blocked.perform(.choose(ordinal: staleAllow.ordinal), shownCard: declinedCard)
+                await chat.step()
+                await chat.blocked.refresh()
+                guard case .card(let current) = chat.blocked.content else {
+                    throw RexLab.LabError.unreadable("The second permission disappeared after a stale action.")
+                }
+                try #require(current.request?.callID == currentCall)
+                let premature = try await files.status(path)
+                try #require(premature == nil)
+            }
             let choice = try #require(card.dialog.options.first { $0.role == role })
             await chat.blocked.perform(.choose(ordinal: choice.ordinal), shownCard: card)
             try await wait(for: "the native Agent to finish the answered permission") {
@@ -609,6 +632,7 @@ private extension RexForegroundChatLiveTests {
             } else {
                 let declined = try await files.status(path)
                 try #require(declined == nil)
+                declinedCard = card
             }
         }
         return (staged.path, stop)

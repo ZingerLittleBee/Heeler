@@ -456,7 +456,7 @@ private struct BlockedDialogCard: View {
         guard ordinal != focusedAnswer, previewChoice == nil else { return }
         previewChoice = ordinal
         Task {
-            await store.perform(.focus(ordinal: ordinal))
+            await store.perform(.focus(ordinal: ordinal), shownCard: card)
             previewChoice = nil
         }
     }

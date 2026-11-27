@@ -724,8 +724,17 @@ final class AgentChatStore {
         blocked = BlockedCardStore(program: program, io: source.screen)
         if source.requiresIndependentInputSession, !program.pinsComposerToSession {
             blocked.captureSessionCheck = { [weak self] in
-                guard let self else { return { false } }
-                return self.independentInputSession()
+                guard let self, let session = followed?.sessionID else { return nil }
+                return (session, self.independentInputSession())
+            }
+            blocked.readRexRequests = { [weak self] in
+                guard let self, let engine, let followed else { return nil }
+                let snapshot = await engine.poll(context: projectionContext)
+                guard !Task.isCancelled, engine === self.engine,
+                      self.followed?.namesSameSession(as: followed) == true,
+                      case .following = snapshot.phase, snapshot.readFailure == nil,
+                      !snapshot.isFromCache, !snapshot.hasUnreadRecords else { return nil }
+                return snapshot.transcript.pendingRequests
             }
         }
         if program.pinsComposerToSession {
