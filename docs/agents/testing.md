@@ -192,6 +192,11 @@ project is complete. `make check-test-membership`, which `make test-tools` and
 full verification run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
 
+
+For a focused tooling run, pass the existing check names in the desired order.
+For example, `make test-tools TOOL_TESTS='test-host-process-reader test-devin-session'`
+runs those two checks sequentially. An unknown name fails the command.
+
 ## Test result constraints
 
 `scripts/run-app-simulator-tests.py` verifies `xcresult` reports after every app

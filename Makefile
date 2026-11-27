@@ -20,7 +20,7 @@ CI_APP_SHARD ?= all
 TEST_FLAGS ?=
 TEST_SELECTOR ?=
 TEST_XCTESTRUN ?=
-export TEST_FLAGS TEST_SELECTOR TEST_XCTESTRUN
+export TEST_FLAGS TEST_SELECTOR TEST_XCTESTRUN TOOL_TESTS
 export VERSION BUILD TAG DRY_RUN YES
 export ADHOC_DIR ADHOC_URL ADHOC_UDID ADHOC_IPA ADHOC_PUBLISH_URL
 BUILD_FLAGS ?=
@@ -135,7 +135,7 @@ check-agent-docs: ## Check navigation links and unique ADR numbers
 check-test-membership: ## Check that the committed project compiles every app test source
 	python3 scripts/check-test-target-membership.py
 
-test-tools: check-agent-docs check-test-membership ## Test agent tooling concurrently without Xcode or a simulator
+test-tools: check-agent-docs check-test-membership ## Test agent tooling, or run the named TOOL_TESTS sequentially
 	python3 scripts/run-tool-tests.py
 
 # An owner's check on a real box: see docs/guides/herdr-core-testing.md.
