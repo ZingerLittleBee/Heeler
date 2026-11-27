@@ -627,7 +627,7 @@ private struct BlockBuilder {
             }
             if attributes.inlinePresentationIntent?.contains(.code) == true, attributes.link == nil {
                 imagePath = imagePath ?? ChatImageLink.path(written: text)
-                if unlinkedText { filePath = ChatFileLink.path(text) }
+                if unlinkedText { filePath = ChatFileLink.written(text) }
             }
             if var intent = attributes.inlinePresentationIntent {
                 // `Text` ignores both break intents and draws the characters,

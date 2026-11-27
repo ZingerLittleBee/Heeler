@@ -264,14 +264,16 @@ enum ChatImageLink {
         for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
             if index > 0 { plain += "\n" }
             let media = path(written: String(line))
-            guard let path = media ?? ChatFileLink.path(String(line)), let range = line.range(of: path, options: .literal) else {
+            let shown = line.trimmingCharacters(in: .whitespaces)
+            guard let path = media ?? ChatFileLink.written(shown), let range = line.range(of: media ?? shown, options: .literal)
+            else {
                 plain += line
                 continue
             }
             plain += line[..<range.lowerBound]
             result.append(AttributedString(plain))
             plain = String(line[range.upperBound...])
-            var piece = AttributedString(path)
+            var piece = AttributedString(String(line[range]))
             if media != nil { piece[PathAttribute.self] = path } else { piece[ChatFileLink.self] = path }
             result.append(piece)
         }
@@ -568,13 +570,43 @@ enum ChatFileLink: AttributedStringKey {
         return path
     }
 
+    static func written(_ text: String) -> String? {
+        guard let path = path(withoutLocation(text)), path.contains("/") else { return nil }
+        if path.hasPrefix("/") { return path.dropFirst().contains("/") ? path : nil }
+        if path.hasPrefix("~/") || path.hasPrefix("./") || path.hasPrefix("../") { return path }
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        if extensionlessNames.contains(name) { return path }
+        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return nil }
+        let pathExtension = name[name.index(after: dot)...]
+        guard pathExtension.first?.isLetter == true,
+            pathExtension.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber) })
+        else { return nil }
+        return path
+    }
+
+    private static let extensionlessNames: Set<String> = [
+        "Makefile", "GNUmakefile", "makefile", "Dockerfile", "Containerfile", "Gemfile", "Podfile", "Brewfile",
+        "Procfile", "Rakefile", "Justfile", "justfile", "Vagrantfile", "Jenkinsfile", "LICENSE", "README", "NOTICE",
+        "COPYING", "AUTHORS", "CODEOWNERS", ".gitignore", ".gitattributes", ".gitmodules", ".env", ".editorconfig",
+        ".dockerignore", ".npmrc", ".nvmrc", ".zshrc", ".bashrc", ".profile",
+    ]
+
+    private static func withoutLocation(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: #"(?::\d+(?:-\d+)?)+$"#, with: "", options: .regularExpression)
+    }
+
     static func destination(_ url: URL) -> String? {
-        if url.isFileURL {
-            return ChatImagePath.resolve(url.absoluteString, cwd: nil).flatMap { path($0, allowsSpaces: true) }
+        guard url.query == nil, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.fragment = nil
+        guard let target = components.url else { return nil }
+        if target.isFileURL {
+            return ChatImagePath.resolve(target.absoluteString, cwd: nil).flatMap { path(withoutLocation($0), allowsSpaces: true) }
         }
-        guard url.scheme == nil, url.host == nil, url.query == nil, url.fragment == nil,
-            let decoded = url.relativeString.removingPercentEncoding else { return nil }
-        return path(decoded, allowsSpaces: true)
+        guard target.host == nil, let decoded = target.relativeString.removingPercentEncoding else { return nil }
+        let plain = withoutLocation(decoded)
+        if target.scheme != nil, plain.contains(":") || !plain.contains(".") { return nil }
+        return path(plain, allowsSpaces: true)
     }
 
     /// In prose only a complete token containing a slash looks enough like a
@@ -585,12 +617,13 @@ enum ChatFileLink: AttributedStringKey {
             let tokens = text.split { $0.isWhitespace || "\"'`()[]{}<>,，。；：、！？（）【】「」『』《》“”‘’".contains($0) }
             for token in tokens where token.contains("/") {
                 var end = token.endIndex
-                while end > token.startIndex, ".;!?".contains(text[text.index(before: end)]) {
+                while end > token.startIndex, ".:;!?".contains(text[text.index(before: end)]) {
                     end = text.index(before: end)
                 }
-                guard let path = path(String(text[token.startIndex..<end])) else { continue }
+                let shown = String(text[token.startIndex..<end])
+                guard let path = written(shown) else { continue }
                 content.append(AttributedString(String(text[start..<token.startIndex]), attributes: attributes))
-                var piece = AttributedString(path, attributes: attributes)
+                var piece = AttributedString(shown, attributes: attributes)
                 piece[Self.self] = path
                 content.append(piece)
                 start = end
