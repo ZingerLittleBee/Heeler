@@ -36,6 +36,7 @@ struct RexHostServicesLiveTests {
         let managementEvidence: String?
         let home: String?
         let recorder: String?
+        let macGitHubWriteRoot: String?
 
         static func load(_ name: String) throws -> Fixture {
             let path = try #require(ProcessInfo.processInfo.environment[name])
@@ -307,16 +308,7 @@ extension RexHostServicesLiveTests {
         await console.resume()
         try await wait("the private GitHub write Host") { console.hostStatuses[host.id] == .connected }
 
-        let preflight = """
-        set -eu
-        test "$GH_HOST" = heeler-lab-github-write.test
-        test "$HTTPS_PROXY" = http://127.0.0.1:9
-        test "$HTTP_PROXY" = http://127.0.0.1:9
-        test "$NO_PROXY" = heeler-lab-github-write.test,127.0.0.2
-        test "$SSL_CERT_FILE" = /home/heelerlab/heeler-lab-gh-write/ca.pem
-        test "$(getent ahostsv4 "$GH_HOST" | awk '{print $1}' | sort -u)" = 127.0.0.2
-        test "$(command -v gh)" = /usr/bin/gh
-        """
+        let (preflight, receipts) = try privateGitHubWriteEndpoint(macRoot: fixture.macGitHubWriteRoot)
         let isolation = try await console.runGitHubSeamScript(Data(preflight.utf8), on: host.id)
         try #require(isolation.exitStatus == 0, "The private loopback enterprise endpoint is required")
 
@@ -350,11 +342,51 @@ extension RexHostServicesLiveTests {
 
         struct Receipt: Decodable { let node, body, client: String }
         let read = try await console.runGitHubSeamScript(
-            Data("cat /home/heelerlab/heeler-lab-gh-write/comments.jsonl".utf8), on: host.id)
+            Data("cat '\(receipts)'".utf8), on: host.id)
         try #require(read.exitStatus == 0)
         let entries = try read.stdout.split(separator: 10).map { try JSONDecoder().decode(Receipt.self, from: Data($0)) }
         let matches = entries.filter { $0.body == body && $0.node == issue.id && $0.client.hasPrefix("GitHub CLI") }
         #expect(matches.count == 1)
+    }
+
+    /// Each Host proves its loopback destination before the shared write case runs.
+    private func privateGitHubWriteEndpoint(macRoot: String?) throws -> (preflight: String, receipts: String) {
+        if let root = macRoot {
+            let format = #"\A/private/tmp/heeler-lab-mac-github-write\.[A-Za-z0-9_-]{6,16}\z"#
+            try #require(root.range(of: format, options: .regularExpression) != nil)
+            let script = """
+            set -eu
+            test "$(uname -s)" = Darwin
+            test "$HOME" = '\(root)/home'
+            test "$GH_CONFIG_DIR" = '\(root)/gh-config'
+            test "$GH_HOST" = heeler-lab-github-write.test
+            test -z "${NO_PROXY:-}"
+            test -z "${no_proxy:-}"
+            port=$(cat '\(root)/proxy.port')
+            case "$port" in ''|*[!0-9]*) exit 1 ;; esac
+            test "$port" -gt 0 && test "$port" -le 65535
+            test "$HTTPS_PROXY" = "http://127.0.0.1:$port"
+            test "$HTTP_PROXY" = "$HTTPS_PROXY"
+            test "$SSL_CERT_FILE" = '\(root)/service/ca.pem'
+            test "$(command -v gh)" = '\(root)/bin/gh'
+            challenge=$(cat '\(root)/service/challenge')
+            case "$challenge" in ''|*[!0-9a-f]*) exit 1 ;; esac
+            test "${#challenge}" = 48
+            test "$(gh api --hostname "$GH_HOST" /meta --jq .heelerFixture)" = "$challenge"
+            """
+            return (script, root + "/service/comments.jsonl")
+        }
+        let linux = """
+        set -eu
+        test "$GH_HOST" = heeler-lab-github-write.test
+        test "$HTTPS_PROXY" = http://127.0.0.1:9
+        test "$HTTP_PROXY" = http://127.0.0.1:9
+        test "$NO_PROXY" = heeler-lab-github-write.test,127.0.0.2
+        test "$SSL_CERT_FILE" = /home/heelerlab/heeler-lab-gh-write/ca.pem
+        test "$(getent ahostsv4 "$GH_HOST" | awk '{print $1}' | sort -u)" = 127.0.0.2
+        test "$(command -v gh)" = /usr/bin/gh
+        """
+        return (linux, "/home/heelerlab/heeler-lab-gh-write/comments.jsonl")
     }
 }
 
