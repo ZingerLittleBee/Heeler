@@ -181,6 +181,7 @@ enum HostProcessReader {
     private static func linuxReads(_ request: Request, root: String) -> [String] {
         [
             "R=\(root)",
+            "readlink_mode=",
             // `od` keeps the environment's NUL framing exact whatever a value
             // holds, and awk keeps a value only for an exact name asked for.
             // `ok` follows only a whole read, and an empty read (a zombie, a
@@ -238,15 +239,33 @@ enum HostProcessReader {
             "    printf 'O %s -\\n' \"$p\"",
             "    return",
             "  fi",
+            // Test for multiple NUL-terminated results once. Some readlink
+            // implementations accept one operand or lack -z. Read those
+            // targets without a delimiter and append a NUL only on success.
+            "  if [ -z \"$readlink_mode\" ]; then",
+            "    if readlink -z /proc/self/exe /proc/self/exe | od -An -v -tx1 |",
+            "      awk '{for(i=1;i<=NF;i++)if($i==\"00\")n++} END{exit n!=2}'; then",
+            "      readlink_mode=batch",
+            "    elif readlink -n /proc/self/exe >/dev/null || readlink -n /dev/stdin >/dev/null; then",
+            "      readlink_mode=single",
+            "    else",
+            "      readlink_mode=unavailable",
+            "    fi",
+            "  fi",
+            "  if [ \"$readlink_mode\" = unavailable ]; then printf 'O %s -\\n' \"$p\"; return; fi",
             "  {",
-            "    for l in \"$@\"; do",
-            "      t=$(readlink \"$l\") || continue",
-            "      case $t in /*) printf '%s\\000' \"$t\" ;; esac",
-            "    done | od -An -v -tx1",
+            "    if [ \"$readlink_mode\" = batch ]; then",
+            "      readlink -z \"$@\"",
+            "    else",
+            "      for l in \"$@\"; do",
+            "        readlink -n \"$l\" && printf '\\000'",
+            "      done",
+            "    fi | od -An -v -tx1",
             "    [ -r \"$d\" ] && echo ok",
             "  } | awk -v p=\"$p\" '",
             "$1==\"ok\"{k=1;next}",
-            "{for(i=1;i<=NF;i++){if($i==\"00\"){o=o \"F \" p \" \" v \"\\n\";v=\"\"}else v=v $i}}",
+            "{for(i=1;i<=NF;i++){if($i==\"00\"){",
+            "if(substr(v,1,2)==\"2f\")o=o \"F \" p \" \" v \"\\n\";v=\"\"}else v=v $i}}",
             "END{if(k){printf \"%s\",o;print \"O\",p,\"ok\"}else print \"O\",p,\"-\"}",
             "'",
             "}",
@@ -265,28 +284,26 @@ enum HostProcessReader {
             "END{if(v!=\"\")t();if(k&&c){printf \"%s\",o;print \"B\",p,\"ok\"}else print \"B\",p,\"-\"}",
             "'",
             "}",
-            // `read` needs no process per entry of /proc. The parent is counted
-            // past the last `) ` like the start, and a name is printed only
-            // when it cannot be taken for anything else.
+            // The shell passes decimal directory names to one awk process.
+            // It reads and closes each stat, including newlines in a command.
+            // The parent follows the last closing parenthesis in the record.
             "w() {",
             "  q=$1",
             "  set +f",
             "  set -- \"$R\"/[0-9]*",
             "  set -f",
             "  for d in \"$@\"; do",
-            "    l=",
-            "    { read -r l <\"$d/stat\"; } || continue",
-            "    n=${l#*\\(}",
-            "    n=${n%\\)*}",
-            "    t=${l##*\") \"}",
-            "    set -- $t",
             "    c=${d##*/}",
             "    case $c in *[!0-9]*) continue ;; esac",
-            "    case $2 in ''|*[!0-9]*) continue ;; esac",
-            "    case $n in ''|*[!A-Za-z0-9._-]*) n=- ;; esac",
-            "    printf '%s %s %s\\n' \"$c\" \"$2\" \"$n\"",
-            "  done | awk -v r=\"$q\" -v m=\(processCap) '",
-            "{P[$1]=$2;N[$1]=$3;K[$2]=K[$2] \" \" $1}",
+            "    printf '%s\\n' \"$c\"",
+            "  done | awk -v root=\"$R\" -v r=\"$q\" -v m=\(processCap) '",
+            "{pid=$0;file=root \"/\" pid \"/stat\";ok=(getline stat <file)",
+            "while(ok>0&&(more=(getline extra <file))>0)stat=stat \"\\n\" extra",
+            "close(file);if(ok!=1||more<0||index(stat,pid \" (\")!=1||!match(stat,/\\) [^)]*$/))next",
+            "tail=substr(stat,RSTART+2);name=substr(stat,1,RSTART-1);sub(/^[^(]*\\(/,\"\",name)",
+            "if(name!~/^[A-Za-z0-9._-]+$/)name=\"-\"",
+            "split(tail,fields,\" \");parent=fields[2];if(parent!~/^[0-9]+$/)next",
+            "P[pid]=parent;N[pid]=name;K[parent]=K[parent] \" \" pid}",
             "END{Q[1]=r;h=1;e=1;",
             "while(h<=e){x=Q[h++];u=split(K[x],A,\" \");",
             "for(i=1;i<=u;i++)if(!(A[i] in S)&&A[i]!=r){S[A[i]]=1;Q[++e]=A[i]}}",

@@ -411,7 +411,7 @@ class OpenFileTests(ReaderTestCase):
         return directory
 
     def test_reads_the_file_targets_a_process_holds(self) -> None:
-        self.descriptors(77, {
+        directory = self.descriptors(77, {
             0: b"/dev/null",
             1: b"pipe:[1234]",
             2: b"socket:[99]",
@@ -420,7 +420,11 @@ class OpenFileTests(ReaderTestCase):
             5: b"/home/me/my files/\xe8\xb7\xaf\xe5\xbe\x84.jsonl",
             6: b"/home/me/new\nline.jsonl",
             7: b"/home/me/gone.jsonl (deleted)",
+            8: b"/home/me/trailing\n\n",
+            90: b"/home/me/after an unreadable link",
+            91: b"/dev/null",
         })
+        (directory / "9").touch()
 
         def check(shell: list[str]) -> None:
             files = self.read(shell, pids=["77"], files=True)["77"]["files"]
@@ -430,6 +434,9 @@ class OpenFileTests(ReaderTestCase):
                 "/home/me/my files/\u8def\u5f84.jsonl",
                 "/home/me/new\nline.jsonl",
                 "/home/me/gone.jsonl (deleted)",
+                "/home/me/trailing\n\n",
+                "/home/me/after an unreadable link",
+                "/dev/null",
             ])
         self.for_each_shell(check)
 
@@ -539,12 +546,16 @@ class DescendantTests(ReaderTestCase):
         self.process(31, command=") S 30 2 3", start=310, parent=1)
         self.process(32, command="a) b (c", start=320, parent=30)
         self.process(33, command="T 99 30 x", start=330, parent=30)
+        self.process(34, command="cut) S 1\nname", start=340, parent=30)
+        self.process(35, command="cut) S 30\nname", start=350, parent=1)
 
         def check(shell: list[str]) -> None:
             facts = self.read(shell, pids=["30"], start=True, descendants="30")
-            self.assertEqual(set(facts["30"]["descendants"]), {"32", "33"})
+            self.assertEqual(set(facts["30"]["descendants"]), {"32", "33", "34"})
             self.assertEqual(facts["32"]["name"], "-")
             self.assertEqual(facts["33"]["name"], "-")
+            self.assertEqual(facts["34"]["name"], "-")
+            self.assertEqual(facts["34"]["parent"], "30")
             self.assertEqual(facts["32"]["start"], "320")
         self.for_each_shell(check)
 
