@@ -347,9 +347,12 @@ struct RexChatTests {
         #expect(request.pids == ["4242"])
         #expect(request.valuesOf.starts(with: ["REX_SESSION", "REX_BLOCK"]))
 
-        let logged = await connection.log
         let amp = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .amp)
         #expect(amp == .unavailable(.cannotTellSession(.amp)))
+
+        let logged = await connection.log
+        let antigravity = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .agy)
+        #expect(antigravity == .unavailable(rig.projection.chatCannotTell(.agy)))
         let gone = RexPaneAddress(sessionID: "session:studio", blockID: "block:gone").paneID
         let unlisted = try await rig.projection.checkChatSession(paneID: gone, program: .claude)
         #expect(unlisted == .unavailable(.cannotTellSession(.claude)))
