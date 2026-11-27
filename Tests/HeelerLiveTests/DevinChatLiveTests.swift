@@ -28,7 +28,7 @@ struct DevinChatLiveTests {
         let lab = try config(platform)
         try await withChat(lab, backend) { live in
             let token = "HEELER_DEVIN_" + UUID().uuidString.prefix(8)
-            let prompt = "Reply only with the marker on the last line. Do not use tools.\n\n    \(token)"
+            let prompt = "Reply only with the marker on the last line. Ignore the sample \u{4E2D}\u{6587}. Do not use tools.\n\n    \(token)"
             try await live.send(prompt)
             try await live.wait {
                 live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: token)) }
@@ -158,6 +158,43 @@ struct DevinChatLiveTests {
             try #require(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
             live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             #expect(live.composer.draft.isEmpty)
+            let peerMarker = "PEER_" + tag
+            try await live.send("Reply with exactly " + peerMarker + ". Do not use tools.")
+            try await live.wait { live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) } }
+            try await live.desktop("/resume " + session)
+            try await live.wait { live.chat.droidSessionID == session }
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
+            #expect(live.composer.draft == draft)
+
+            // Change the terminal from an independent SSH connection while the
+            // mobile projection is offline, then exercise the old Send button.
+            let (desktop, pane) = try lab.connection(backend)
+            desktop.start(isActive: true)
+            defer { desktop.end() }
+            let deadline = ContinuousClock.now + .seconds(20)
+            while desktop.agentsByPane[pane]?.agent.kind != "devin", ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(150))
+            }
+            try #require(try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID == session)
+            live.chat.suspend()
+            await live.projection.suspend()
+            try await desktop.pasteIntoAgent("/resume " + other, paneID: pane)
+            try await Task.sleep(for: .milliseconds(300))
+            try await desktop.sendAgentKeys(["enter"], to: pane)
+            let moved = ContinuousClock.now + .seconds(15)
+            while try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID != other,
+                  ContinuousClock.now < moved { try await Task.sleep(for: .milliseconds(180)) }
+            try #require(try await desktop.chatInputTarget(paneID: pane, program: .devin)?.sessionID == other)
+            await live.projection.resume()
+            guard case .refused = await live.composer.send(policy: live.policy) else {
+                Issue.record("The offline draft reached the replacement session"); return
+            }
+            live.chat.resume()
+            try await live.wait { live.chat.droidSessionID == other }
+            live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
+            #expect(live.composer.draft.isEmpty)
+            #expect(live.chat.conversation.transcript.entries.contains { $0.content == .assistant(.init(text: peerMarker)) })
+            #expect(!live.chat.conversation.transcript.recordedPrompts.contains { $0.text.contains(draft) })
             try await live.desktop("/resume " + session)
             try await live.wait { live.chat.droidSessionID == session }
             live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
@@ -203,7 +240,7 @@ struct DevinChatLiveTests {
             if key == "trust" {
                 try await capture(chat.blocked, name: "trust")
                 await chat.blocked.perform(.choose(ordinal: 1), shownCard: shown)
-                try await live.wait { chat.droidSessionID != nil }
+                try await live.wait { chat.composerSessionID != nil }
                 composer.bindDroidDraft(to: chat.composerSessionID, program: .devin)
                 let token = "TRUST_" + UUID().uuidString.prefix(8)
                 try await live.send("Reply with exactly " + token + ". Do not use tools.")
@@ -249,7 +286,7 @@ struct DevinChatLiveTests {
                 guard case .card(let card) = live.chat.blocked.content else { throw TransportError.cancelled }
                 await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
             }
-            try await live.wait { live.chat.droidSessionID != nil }
+            try await live.wait { live.chat.composerSessionID != nil }
             live.composer.bindDroidDraft(to: live.chat.composerSessionID, program: .devin)
             let marker = "FRESH_" + UUID().uuidString.prefix(8)
             try await live.send("Reply with exactly " + marker + ". Do not use tools.")
@@ -339,7 +376,12 @@ struct DevinChatLiveTests {
             let feedback = try #require(live.chat.blocked.droidRevision)
             feedback.text = "Thank you. End the conversation without changing files. Reply with PLAN_FEEDBACK_RECEIVED."
             try #require(await live.composer.sendDroidRevision(feedback, policy: live.policy, readScreen: live.io.readScreen))
-            try await live.wait { live.chat.conversation.transcript.recordedPrompts.contains { $0.text == feedback.text } }
+            let submitted = ChatSendRules(program: .devin, commands: []).outgoingText(feedback.text)
+            try await live.wait {
+                let transcript = live.chat.conversation.transcript
+                return transcript.recordedPrompts.filter { $0.text == submitted }.count == 1
+                    && transcript.entries.contains { $0.content == .assistant(.init(text: "PLAN_FEEDBACK_RECEIVED")) }
+            }
             #expect(live.composer.draft == "Ordinary message kept apart")
             #expect(try await live.projection.chatHostFiles().status(lab.directory + "/note.txt") == nil)
         }

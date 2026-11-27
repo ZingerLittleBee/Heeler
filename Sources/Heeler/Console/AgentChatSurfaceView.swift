@@ -453,9 +453,12 @@ struct AgentChatSurfaceView: View {
         .onChange(of: composer.composedDraft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
-        // Also on appearing: Chat may have followed another while it was away.
+        // The writer's lock can become readable after Chat has loaded the
+        // session. Bind when the verified draft owner becomes available.
+        .onChange(of: chat?.composerSessionID, initial: true) { _, session in
+            if program.pinsComposerToSession { composer.bindDroidDraft(to: session, program: program) }
+        }
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
-            if program.pinsComposerToSession { composer.bindDroidDraft(to: chat?.composerSessionID, program: program) }
             guard let generation else { return }
             welcomeModel = nil
             welcomeEffort = nil
