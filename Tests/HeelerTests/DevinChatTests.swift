@@ -104,6 +104,18 @@ struct DevinChatTests {
         #expect(BlockedRequestMatch.request(for: dialog, in: [other]) == nil)
     }
 
+    @Test func readsThePlaceholderInEitherTheme() throws {
+        let placeholder = "Ask Devin to build features, fix bugs, or work on your code"
+        for stem in ["devin-idle", "devin-light-idle"] {
+            #expect(DevinInputBox.read(try ScreenFixture.screen(stem)) == .empty(placeholder: placeholder))
+        }
+        // The placeholder's text in the default color could be typed.
+        let light = try ScreenFixture.text("devin-light-idle")
+        let typed = light.replacingOccurrences(of: "\(SGR.reset)\(SGR.fg(107, 107, 107))\(placeholder)", with: placeholder)
+        try #require(typed != light)
+        #expect(!DevinInputBox.read(ANSIScreenDecoder.decode(typed)).isSendable)
+    }
+
     @Test func refusesMenusDesktopDraftsAndChangedPastes() throws {
         #expect(DevinInputBox.read(try ScreenFixture.screen("devin-idle")).isSendable)
         for screen in ["devin-menu", "devin-write", "devin-trust", "devin-ask", "devin-paste"] {

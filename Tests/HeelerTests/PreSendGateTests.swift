@@ -133,6 +133,8 @@ struct PreSendGateTests {
             "agy-169-plain-working-background-task-120x40",
             "agy-170-plain-idle-background-task-after-esc-120x40", "agy-175-plain-idle-after-tasks-120x40",
             "agy-181-idle-background-task-after-esc-62x46", "agy-185-idle-after-tasks-62x46",
+            // agy's tokyo night color scheme (#863).
+            "agy-201-tokyo-night-idle-empty-93x11", "agy-203-tokyo-night-idle-after-reply-93x16",
         ]
         let screen = try ScreenFixture.screen(stem)
         let state = InputBoxStateDetector.detect(screen, program: .agy)
