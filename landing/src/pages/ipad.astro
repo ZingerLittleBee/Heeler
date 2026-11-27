@@ -1,22 +1,57 @@
 ---
+import appStoreBadge from '../assets/badges/app-store-badge.svg';
 import IpadScreenshot from '../components/IpadScreenshot.astro';
 import { ipadScreens } from '../data/ipad-screens';
+import { links } from '../data/links';
 import Layout from '../layouts/Layout.astro';
 import '../styles/substrate/index.css';
 import '../styles/landing.css';
+
+const guides = [
+  { label: 'Pairing (Herdr TUI)', slug: 'pairing' },
+  { label: 'herdr-core & Herdr desktop', slug: 'herdr-core' },
+  { label: 'tmux', slug: 'tmux' },
+  { label: 'Windows setup', slug: 'windows-setup' },
+  { label: 'Rex', slug: 'rex' },
+];
 ---
 
 <Layout
-  title="iPad screenshots — Heeler"
-  description="See Heeler on iPad: a windowed agent console, Direct Input, Skills, and plain shell terminals."
+  title="Heeler on iPad — Claude Code, Codex & tmux Console over SSH"
+  description="Control Claude Code, Codex, and other agents on your own Mac, Linux, or Windows machine from iPad over SSH. Multi-window, Magic Keyboard, Chat, and diffs."
 >
   <section class="section">
     <div class="container gallery">
-      <a class="back-link text-link" href="/#faq">
+      <a class="back-link text-link" href="/">
         <span aria-hidden="true">&larr;</span> Back to Heeler
       </a>
       <h1 class="section-title">Heeler on iPad</h1>
-      <p class="section-lede">Your agents, their conversations, and the tools to keep work moving.</p>
+      <p class="section-lede">
+        Control Claude Code, Codex, and other coding agents running on your own machines over SSH, from a native iPad console.
+      </p>
+      <p class="intro-copy">
+        Work in Split View or multiple windows with Magic Keyboard shortcuts, native Chat, live terminals, and side-by-side Git diffs. Connects over SSH to Herdr TUI and herdr-core (Herdr desktop) on macOS, Linux, and Windows, tmux on macOS and Linux, and Rex on macOS, Linux, and Windows.
+      </p>
+      <div class="ipad-actions">
+        <a class="store-link" href={links.appStore} target="_blank" rel="noopener">
+          <img src={appStoreBadge.src} alt="Download on the App Store" width="144" height="48" />
+        </a>
+        <p class="store-note">For iPad and iPhone, on iOS 18 or newer.</p>
+      </div>
+      <nav class="guide-nav" aria-label="Setup guides">
+        <span class="guide-label">Setup guides</span>
+        <ul class="guide-list">
+          {
+            guides.map((guide) => (
+              <li>
+                <a class="text-link guide-link" href={`${links.docs}${guide.slug}`} target="_blank" rel="noopener">
+                  {guide.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
       <div class="screenshots">
         {ipadScreens.map((screen, index) => (
           <figure>
@@ -49,6 +84,79 @@ import '../styles/landing.css';
     font: var(--type-label);
   }
 
+  .intro-copy {
+    font: var(--type-body);
+    color: var(--text-secondary);
+    max-width: 68ch;
+    margin-top: var(--sp-4);
+  }
+
+  .ipad-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-4) var(--sp-6);
+    margin-top: var(--sp-8);
+  }
+
+  .store-link {
+    display: inline-block;
+    border-radius: var(--r-lg);
+    transition: transform 0.25s ease, filter 0.25s ease;
+  }
+
+  .store-link:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.15);
+  }
+
+  .store-link:active {
+    transform: scale(0.97);
+  }
+
+  .store-link img {
+    display: block;
+    width: auto;
+    height: 48px;
+  }
+
+  .store-note {
+    font: var(--type-mono-sm);
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .guide-nav {
+    margin-top: var(--sp-8);
+    padding-top: var(--sp-6);
+    border-top: var(--hairline);
+  }
+
+  .guide-label {
+    display: block;
+    font: var(--type-eyebrow);
+    letter-spacing: var(--tr-eyebrow);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: var(--sp-3);
+  }
+
+  .guide-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-6);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .guide-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font: var(--type-body-sm);
+  }
+
   .screenshots {
     display: grid;
     gap: var(--sp-16);
@@ -72,5 +180,16 @@ import '../styles/landing.css';
     font: var(--type-body);
     color: var(--text-secondary);
     margin-top: var(--sp-2);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .store-link {
+      transition: none;
+    }
+
+    .store-link:hover,
+    .store-link:active {
+      transform: none;
+    }
   }
 </style>

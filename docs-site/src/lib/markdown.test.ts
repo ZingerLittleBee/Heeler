@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Element, ElementContent, Root as HastRoot, RootContent } from 'hast';
 import type { Code, Paragraph, PhrasingContent, Root as MdastRoot } from 'mdast';
-import { htmlLang, localeFromPath, localePath, sidebarTitle } from './guides.ts';
+import { htmlLang, localeFromPath, localePath, seoMeta, sidebarTitle } from './guides.ts';
 import {
   codeBlockTitle,
   codeMeta,
@@ -252,12 +252,40 @@ describe('rehypeFumadocsElements', () => {
 });
 
 describe('summarize', () => {
-  it('keeps short text and trims long text on a word boundary', () => {
+  it('keeps short text and trims long text on a word boundary when no sentence ends', () => {
     assert.equal(summarize('  short\n text '), 'short text');
     const long = 'word '.repeat(60);
     const result = summarize(long);
     assert.ok(result.length <= 160, `${result.length}`);
     assert.ok(result.endsWith('word…'));
+  });
+
+  it('prefers complete English and Chinese sentence boundaries before cutting mid-sentence', () => {
+    const en =
+      'Connect Heeler over SSH to a running server on your Mac or Linux Host. This second sentence explains extra details that push the paragraph well beyond the 160 character description budget.';
+    assert.equal(summarize(en), 'Connect Heeler over SSH to a running server on your Mac or Linux Host.');
+
+    const zh =
+      '通过 SSH 将 Heeler 连接到你在 Mac 或 Linux 上运行的服务端，在手机上查看所有终端。' +
+      '第二句话继续补充许多额外细节，以便让整段文字超过默认截断长度限制。'.repeat(5);
+    assert.equal(summarize(zh, 60), '通过 SSH 将 Heeler 连接到你在 Mac 或 Linux 上运行的服务端，在手机上查看所有终端。');
+    assert.ok(summarize(zh).endsWith('。'));
+    assert.ok(summarize(zh).length <= 160);
+  });
+
+  it('falls back to Chinese clause punctuation when a single sentence exceeds max', () => {
+    const zhClause = '在没有句号的超长中文段落里，第一段内容已经足够长了，' + '后续补充说明文字'.repeat(25);
+    const result = summarize(zhClause, 40);
+    assert.equal(result, '在没有句号的超长中文段落里，第一段内容已经足够长了…');
+  });
+});
+
+describe('seoMeta', () => {
+  it('returns per-locale SEO title and description overrides when configured', () => {
+    assert.ok(seoMeta('index', 'en')?.seoTitle?.includes('Heeler Docs'));
+    assert.ok(seoMeta('index', 'zh')?.seoTitle?.includes('Heeler 文档'));
+    assert.ok(seoMeta('pairing', 'en')?.seoDescription);
+    assert.equal(seoMeta('non-existent-slug', 'en'), undefined);
   });
 });
 

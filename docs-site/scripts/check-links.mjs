@@ -89,6 +89,53 @@ function referencesOf(html) {
   });
 }
 
+/**
+ * Plain visible text of an HTML fragment (tags stripped, entities decoded, whitespace normalized).
+ * @param {string} fragment
+ */
+function textOf(fragment) {
+  return decodeEntities(fragment.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Reads an exact HTML attribute value from a tag's attribute string, requiring
+ * start-of-string or whitespace before the name so prefixed attributes like
+ * `data-href` never match `href`.
+ * @param {string} attrs
+ * @param {string} name
+ */
+function getAttr(attrs, name) {
+  const match = attrs.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'));
+  return match ? decodeEntities(match[1] ?? '') : undefined;
+}
+
+/**
+ * Checks that the guide's footer container (the container holding the Edit on GitHub link)
+ * contains a single <a> element with both the App Store href and the exact localized label.
+ * @param {string} html
+ * @param {boolean} isZhRoute
+ */
+function hasGuideFooterAppStoreLink(html, isZhRoute) {
+  const expectedEditLabel = isZhRoute ? '在 GitHub 上编辑' : 'Edit on GitHub';
+  const expectedAppStoreLabel = isZhRoute ? '在 App Store 下载 Heeler' : 'Download Heeler on the App Store';
+  const appStoreHref = 'https://apps.apple.com/app/id6797263135';
+  const leafDivs = html.matchAll(/<div\b[^>]*>((?:(?!<\/?div\b)[\s\S])*)<\/div>/gi);
+
+  for (const [, inner = ''] of leafDivs) {
+    const anchors = [...inner.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)].map(([, attrs = '', body = '']) => ({
+      href: getAttr(attrs, 'href') ?? '',
+      text: textOf(body),
+    }));
+    const hasEditLink = anchors.some(
+      (anchor) => anchor.href.startsWith('https://github.com/ZingerLittleBee/Heeler/blob/') && anchor.text === expectedEditLabel,
+    );
+    if (!hasEditLink) continue;
+
+    return anchors.some((anchor) => anchor.href === appStoreHref && anchor.text === expectedAppStoreLabel);
+  }
+  return false;
+}
+
 // 1. Internal links and fragments.
 for (const [route, page] of pages) {
   for (const ref of referencesOf(page.html)) {
@@ -210,6 +257,58 @@ for (const [route, { html }] of pages) {
   }
   for (const [tag] of html.matchAll(/<img\b[^>]*src="\/images\/[^>]*>/g)) {
     if (!/\sheight="\d+"/.test(tag) || !tag.includes('loading="lazy"')) failures.push(`${route}: screenshot needs height and lazy loading`);
+  }
+
+  // Server-rendered same-page cross-locale <a> link in raw HTML.
+  const isZhRoute = route === '/zh' || route.startsWith('/zh/');
+  const altTarget = isZhRoute ? en : zh;
+  const altLang = isZhRoute ? 'en' : 'zh-CN';
+  const hasCrossLocaleLink = [...html.matchAll(/<a\b([^>]*)>/gi)].some(([, attrs = '']) =>
+    getAttr(attrs, 'href') === altTarget && getAttr(attrs, 'hreflang')?.toLowerCase() === altLang.toLowerCase(),
+  );
+  if (!hasCrossLocaleLink) {
+    failures.push(`${route}: missing server-rendered cross-locale <a href="${altTarget}" hreflang="${altLang}">`);
+  }
+
+  // Guide footer App Store download link (single <a> in the footer container holding Edit on GitHub).
+  if (route !== '/' && route !== '/zh') {
+    const expectedLabel = isZhRoute ? '在 App Store 下载 Heeler' : 'Download Heeler on the App Store';
+    if (!hasGuideFooterAppStoreLink(html, isZhRoute)) {
+      failures.push(`${route}: missing localized guide footer App Store link (${expectedLabel})`);
+    }
+  }
+}
+
+// 5. Configured SEO overrides (src/guides.json) are reflected in raw HTML.
+for (const [locale, overrides] of Object.entries(config.seo ?? {})) {
+  for (const [slug, { seoTitle, seoDescription }] of Object.entries(overrides)) {
+    const route = slug === 'index'
+      ? (locale === 'zh' ? '/zh' : '/')
+      : (locale === 'zh' ? `/zh/${slug}` : `/${slug}`);
+    const page = pages.get(route);
+    if (!page) {
+      failures.push(`seo.${locale}.${slug}: route ${route} does not exist`);
+      continue;
+    }
+    const titleMatch = page.html.match(/<title>(.*?)<\/title>/s);
+    const actualTitle = titleMatch ? decodeEntities(titleMatch[1]) : '';
+    if (seoTitle && !actualTitle.includes(seoTitle)) {
+      failures.push(`${route}: <title> "${actualTitle}" does not include seoTitle "${seoTitle}"`);
+    }
+    const descMatch = page.html.match(/<meta\s+name="description"\s+content="([^"]*)"/);
+    const actualDesc = descMatch ? decodeEntities(descMatch[1]) : '';
+    if (seoDescription && actualDesc !== seoDescription) {
+      failures.push(`${route}: <meta name="description"> "${actualDesc}" does not match seoDescription "${seoDescription}"`);
+    }
+  }
+}
+
+// 6. In-app deep-link anchors referenced by HeelerTests (CodexLaunchTests.swift).
+for (const route of ['/chat-troubleshooting', '/zh/chat-troubleshooting']) {
+  for (const anchor of ['codex-started-without---no-daemon', 'cant-tell-the-conversation']) {
+    if (!pages.get(route)?.ids.has(anchor)) {
+      failures.push(`${route}: missing required app deep-link anchor #${anchor}`);
+    }
   }
 }
 

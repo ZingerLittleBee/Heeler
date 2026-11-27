@@ -90,6 +90,7 @@ export function wireStage() {
   const tiltEl = q('.dv-tilt', dev);
   const steps = all('.st', stage);
   const ticks = all('button', rail);
+  const heroFocusables = all<HTMLElement>('a[href], button, [tabindex]', hero);
   const frags = all('.fg', dev);
   const screens = all<HTMLImageElement>('.lp-phone-screen img', dev);
   // The stacked stage, as in stage.css.
@@ -174,10 +175,21 @@ export function wireStage() {
       ` scale(${(1 + (m ? 0.16 : 0.05) * k - sw * 0.045).toFixed(4)})`;
 
     if (h !== lastH) {
+      const heroAlpha = clamp(1 - h * 1.8);
+      const heroOff = heroAlpha <= 0.001;
+      const storyAlpha = span(h, 0.5, 1);
+      const railOff = storyAlpha <= 0.01;
       hero.style.transform = `translate3d(0,${(-h * 62).toFixed(2)}vh,0)`;
-      hero.style.opacity = clamp(1 - h * 1.8).toFixed(3);
-      hero.classList.toggle('is-off', h > 0.6);
-      copy.style.opacity = rail.style.opacity = scrim.style.opacity = span(h, 0.5, 1).toFixed(3);
+      hero.style.opacity = heroOff ? '0' : heroAlpha.toFixed(3);
+      hero.classList.toggle('is-off', heroOff);
+      hero.inert = heroOff;
+      if (heroOff) hero.setAttribute('aria-hidden', 'true');
+      else hero.removeAttribute('aria-hidden');
+      heroFocusables.forEach((el) => (el.tabIndex = heroOff ? -1 : 0));
+      copy.style.opacity = rail.style.opacity = scrim.style.opacity = storyAlpha.toFixed(3);
+      rail.classList.toggle('is-off', railOff);
+      rail.setAttribute('aria-hidden', String(railOff));
+      ticks.forEach((t) => (t.tabIndex = railOff ? -1 : 0));
       dev.style.setProperty('--h', h.toFixed(3));
       tiltEl.style.setProperty('--tk', lerp(1, 0.45, e).toFixed(2));
     }
@@ -200,8 +212,14 @@ export function wireStage() {
     measure();
     if (heroY !== was) redraw();
   }
-  measure();
-  scrub(stage, draw);
+  document.documentElement.classList.add('stage-ready');
+  try {
+    measure();
+    scrub(stage, draw);
+  } catch (err) {
+    document.documentElement.classList.remove('stage-ready');
+    throw err;
+  }
   window.addEventListener('resize', redraw);
   window.addEventListener('load', remeasure);
   void document.fonts?.ready.then(remeasure);

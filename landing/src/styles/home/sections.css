@@ -54,7 +54,7 @@
     position: relative; display: flex; flex-direction: column; min-height: 196px; padding: 24px 22px 22px;
     border-radius: 20px; background: var(--s1); outline-offset: 4px;
     transition: transform 0.8s var(--spring-soft);
-    &::before { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.07); }
+    &::before { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.07); pointer-events: none; }
     &::after {
       content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
       background: linear-gradient(oklch(1 0 0 / 0.075), transparent 62%); box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.3);
@@ -63,6 +63,10 @@
     h3 { font-size: 22px; font-weight: 600; letter-spacing: -0.025em; }
     p { margin-top: 8px; color: var(--t2); font-size: 15px; line-height: 1.45; text-wrap: pretty; }
     small { margin-top: auto; padding-top: 18px; font: 400 12px/1.45 var(--mono); color: var(--t3); }
+    .bk-lk {
+      position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 0 16px; margin: 6px 0 -10px;
+      .lk { font-size: 13.5px; color: var(--tx); }
+    }
     &.is-hi { transform: translateY(-7px); &::after { opacity: 1; } }
     &.is-hi .bk-nd { opacity: 1; transform: scale(1.35); }
     /* the tile lifts 7px; its 44px wire shortens by the same 7 so the top stays on the bus */
@@ -131,6 +135,7 @@
     display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px;
     li { padding: 6px 13px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--ln); font: 400 13px/1.5 var(--mono); color: var(--t2); }
   }
+  .re-lk { margin-top: 8px; }
   .race {
     display: grid; gap: 16px; margin-top: auto; padding-top: 40px; font: 400 13px/1.3 var(--mono);
     li { display: grid; grid-template-columns: 6.4em minmax(0, 1fr) auto; align-items: center; gap: 14px; color: var(--t2); white-space: nowrap; transition: opacity 0.5s var(--ease-out); }
@@ -210,6 +215,7 @@
     &:hover::after { opacity: 1; }
     h3 { font-size: 17px; font-weight: 600; line-height: 1.25; letter-spacing: -0.015em; }
     > p { margin-top: 6px; color: var(--t2); font-size: 14.5px; line-height: 1.45; text-wrap: pretty; }
+    .bx-lk { position: relative; z-index: 1; margin: 4px 0 -10px; font-size: 14px; color: var(--tx); }
     code { font: 400 0.92em var(--mono); color: var(--tx); }
   }
   /* Drawings are sized in em and 14em wide at most, so the font follows the card: cqw is its content box. */

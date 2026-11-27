@@ -42,14 +42,14 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
     <div class="wrap pin-in">
       <div class="hero">
         <h1 class="d1">
-          <span class="l"><span>Leave the desk.</span></span>
+          <span class="l"><span>Leave the desk.</span></span>{' '}
           <span class="l dim"><span>Keep your agents.</span></span>
         </h1>
         <p class="hero-p">
-          Heeler is the iPhone and iPad console for the coding agents running on your own machines. See who needs you, answer in Chat or the real terminal, and get on with your day.
+          Heeler is the iPhone and iPad console for Claude Code, Codex, and other coding agents running on your own machines over SSH. See who needs you, answer in Chat or the real terminal, and get on with your day.
         </p>
         <StoreBadges />
-        <p class="hero-n">Works with Herdr TUI, Herdr desktop, tmux and Rex.</p>
+        <p class="hero-n">Works with Herdr TUI, Herdr desktop (herdr-core), tmux, and Rex.</p>
       </div>
       <i class="scr"></i>
       <div class="sc">
@@ -68,10 +68,10 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
           }
         </div>
       </div>
-      <div class="rl">
+      <div class="rl is-off" aria-hidden="true">
         {
           steps.map((step, i) => (
-            <button type="button" data-i={i} aria-label={`Go to ${step.label}`}>
+            <button type="button" data-i={i} tabindex="-1" aria-label={`Go to ${step.label}`}>
               <i />
             </button>
           ))
@@ -90,14 +90,14 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
               />
               {
                 toasts.map((toast, i) => (
-                  <div class={`ts ts${i}`}>
+                  <div class={`ts ts${i}`} aria-hidden="true">
                     <i class={`dot ${toast.state}`} />
                     <b>{toast.name}</b>
                     <span>{toast.note}</span>
                   </div>
                 ))
               }
-              <div class="fg f0 cd" data-f="0">
+              <div class="fg f0 cd" data-f="0" aria-hidden="true">
                 <ul class="rw">
                   {
                     rows.map((row) => (
@@ -112,7 +112,7 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
                   }
                 </ul>
               </div>
-              <div class="fg f1 cd" data-f="1" data-st="b">
+              <div class="fg f1 cd" data-f="1" data-st="b" aria-hidden="true">
                 <div class="pm-h">
                   <i class="dot"></i>Payments API<span class="pm-s"><em class="sb">Blocked</em><em class="sw">Working</em></span>
                 </div>
@@ -123,14 +123,14 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
                   <i class="tap"></i>
                 </div>
               </div>
-              <div class="fg f2" data-f="2">
+              <div class="fg f2" data-f="2" aria-hidden="true">
                 <div class="sg cd"><i></i><span>Chat</span><span>Terminal</span></div>
               </div>
-              <div class="fg f2k" data-f="2">
+              <div class="fg f2k" data-f="2" aria-hidden="true">
                 {keys.map((key, i) => <i style={`--i:${i}`}>{key}</i>)}
               </div>
-              <div class="fg f3i" data-f="3"><i class="dot"></i><b>Payments API</b><em>Blocked</em></div>
-              <div class="fg f3" data-f="3">
+              <div class="fg f3i" data-f="3" aria-hidden="true"><i class="dot"></i><b>Payments API</b><em>Blocked</em></div>
+              <div class="fg f3" data-f="3" aria-hidden="true">
                 <div class="bn">
                   <Logo />
                   <div>
@@ -139,7 +139,7 @@ const keys = ['Esc', 'Tab', 'Ctrl', '↑', '↓', '←', '→'];
                   </div>
                 </div>
               </div>
-              <div class="fg f4 cd" data-f="4">
+              <div class="fg f4 cd" data-f="4" aria-hidden="true">
                 <div class="us-h">Claude Code</div>
                 <div class="us-r">
                   <span>Weekly</span><em data-n="27">27%</em><i><b style="--v:.27"></b></i><small>resets in 4d 20h</small>

@@ -6,6 +6,7 @@ Show a Pairing Code on the machine and scan it in Heeler. The Host is added with
 
 ## Before you start
 
+- [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
 - A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. A machine that runs herdr-core, tmux, or Rex without herdr pairs too, with one command: skip to [Pair a machine without herdr](#pair-a-machine-without-herdr). Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
 - Your iPhone or iPad on the same network as the machine, such as the same Wi-Fi, or connected to the same VPN. Pairing doesn't use the networks in Heeler's **Settings > Overlay Networks**; you can add those afterwards for [use away from home](#use-it-away-from-home).
 - About two minutes: a Pairing Code works once and expires after two minutes.
@@ -108,7 +109,7 @@ Behind a port mapping, pass the address and port your iPhone or iPad reaches ins
 npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 ```
 
-Agent Notifications, Live Activity, and Usage on these Servers need the Host Helper, which Heeler offers on each Server's page: see [Connect herdr-core](herdr-core.md#host-helper) and [Connect tmux](tmux.md#host-helper).
+On **herdr-core** and **tmux** Servers (not Rex), Agent Notifications, Live Activity, and Usage need the Host Helper, which Heeler offers on each Server's page: see [Connect herdr-core](herdr-core.md#host-helper) and [Connect tmux](tmux.md#host-helper). Rex does not use a Host Helper or offer notifications, Live Activity, or Usage.
 
 ## Use it away from home
 
@@ -155,8 +156,8 @@ The port must lead to the OpenSSH server of the machine that runs herdr, because
 
 Pairing errors appear in the popup or in Heeler, not in herdr's plugin log.
 
-Checked against Heeler plugin 0.6.0 on 2026-10-14.
-
 ## herdr-app / herdr-core
 
 Pairing lists every Server it finds on the machine. For Agents started in the Herdr desktop app, leave **herdr-core** checked on the last step, or turn it on later on the Host's page. A machine with the desktop app and no `herdr` command pairs with [`heeler-pair`](#pair-a-machine-without-herdr). On Windows, [add the Host over SSH](herdr-core.md).
+
+Checked against Heeler plugin 0.6.0 on 2026-10-14.

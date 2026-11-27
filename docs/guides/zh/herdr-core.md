@@ -1,10 +1,11 @@
-<!-- Translated from docs/guides/herdr-core.md at 4732ddb2 -->
+<!-- Translated from docs/guides/herdr-core.md at d418c957 -->
 # 连接 herdr-core
 
 Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。在同时运行两者的机器上，它们各自是 Heeler 中同一个 Host 的一个 Server。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
 
 ## 开始之前
 
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。在 Windows 上请按 [Windows 配置](windows-setup.md)操作。
 - 在 Mac 上运行 Herdr 桌面端，或在 Linux、[原生 Windows](#native-windows) 上运行 herdr-core。
 - 让手机能够连通 Mac：处于同一局域网下直连，或通过 [Overlay Network](overlay-networks.md) 连接。一个 Host 可以配置[多条路由](host-routes.md)。

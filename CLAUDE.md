@@ -44,7 +44,7 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   control-mode Attaches in `@heeler-attach` sessions, and `@heeler-status`
   from Claude Code hooks, Pi/Oh My Pi extensions, and Host Helper `pipe-pane`
   readers (ADRs 0044, 0045, and 0046).
-- Rex Hosts (experimental; one Rex Server per Host, listed by a look) target
+- Rex Hosts (one Rex Server per Host, listed by a look) target
   one running Rex server, API revisions 12 to 19: one WebSocket control link
   carries inventory, events and terminal input, and each open terminal adds a
   data link on a channel of its own, painted from the server's redraw. On

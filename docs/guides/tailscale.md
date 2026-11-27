@@ -1,11 +1,11 @@
 # Connect Heeler through Tailscale
 
-Heeler joins your tailnet by itself, so the phone needs no Tailscale app or VPN.
+Heeler runs a built-in Tailscale node inside the app and joins your tailnet by itself, so your iPhone or iPad needs no Tailscale app and does not use the iOS VPN slot.
 
 ## Before you start
 
-- You need a Heeler version with **Settings > Overlay Networks**.
-- You need a Tailscale account that can add devices.
+- [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad (any version with **Settings > Overlay Networks**).
+- A Tailscale account that can add devices.
 - To keep the Mac free of a VPN, follow [Run Tailscale without a VPN on the Mac (advanced)](#run-tailscale-without-a-vpn-on-the-mac-advanced) instead of step 2.
 
 ## 1. Prepare the Mac
