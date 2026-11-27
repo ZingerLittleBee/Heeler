@@ -5,7 +5,7 @@ terminals in Heeler (without Chat or Pairing), including automatic startup of
 SSH and herdr.
 
 > [!NOTE]
-> For native Chat on Windows (Claude Code, Grok Build, Pi, and Oh My Pi), finish [step 1](#1-enable-ssh) for OpenSSH and then follow [Native Windows in Connect herdr-core](herdr-core.md#native-windows). For experimental Windows Rex support (with Claude Code Chat), see [Connect Rex](rex.md).
+> For native Chat on Windows (Claude Code, Grok Build, Pi, and Oh My Pi), finish [step 1](#1-enable-ssh) for OpenSSH and then follow [Native Windows in Connect herdr-core](herdr-core.md#native-windows). For Windows Rex support (with Claude Code Chat), see [Connect Rex](rex.md).
 
 ## Before you start
 

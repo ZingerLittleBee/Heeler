@@ -9,7 +9,7 @@
 
 **ご自身のマシンで動くコーディングエージェントのための、iPhone と iPad のコンソールです。**
 
-[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux に対応しています。Rex への対応は実験的です。
+[Herdr TUI](https://herdr.dev)、Herdr デスクトップアプリ（herdr-core）、tmux、Rex に対応しています。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -77,7 +77,7 @@ Heeler は、iPhone と iPad で使える独立したオープンソースのエ
 | Herdr TUI 0.9.3 以降 | ネイティブの Windows | [Windows のセットアップ](https://docs.heeler.bybee.dev/windows-setup) |
 | Herdr デスクトップアプリまたは herdr-core | macOS、Linux、ネイティブの Windows | [herdr-core に接続する](https://docs.heeler.bybee.dev/herdr-core) |
 | tmux 3.3 以降 | macOS、Linux | [tmux に接続する](https://docs.heeler.bybee.dev/tmux) |
-| Rex（実験的、macOS/Linux は Heeler 0.1.21+、ネイティブの Windows と New Terminal は 0.1.24+ が必要） | macOS、Linux、ネイティブの Windows | [Rex に接続する](https://docs.heeler.bybee.dev/rex) |
+| Rex（macOS/Linux は Heeler 0.1.21+、ネイティブの Windows と New Terminal は 0.1.24+ が必要） | macOS、Linux、ネイティブの Windows | [Rex に接続する](https://docs.heeler.bybee.dev/rex) |
 
 ## マシンの追加
 
@@ -103,7 +103,7 @@ Heeler に必要なのは SSH でのアクセスと動作中のバックエン�
 - **Herdr TUI**：stream-local フォワーディングで `herdr.sock` に接続して herdr の JSON API を使い、ターミナルは SSH PTY 上で動作します。このフォワーディングは OpenSSH のデフォルトで許可されていますが、[Fedora または RHEL の SELinux (English)](https://docs.heeler.bybee.dev/selinux) が拒否する場合があります。
 - **herdr-core**：core のソケットとの間に 1 本のフレーム化されたリンクを使います。
 - **tmux**：制御モードでペインごとに接続し、デスクトップクライアントと共存します。Agent のステータスは Claude Code のフック、Pi/Oh My Pi の拡張機能、およびオプションの Host Helper が報告します。
-- **Rex**（実験的）：すでに動作している Rex サーバーとの間に 1 本の WebSocket リンクを使い（macOS/Linux では Unix ソケット経由、ネイティブの Windows では Rex の stdio ブリッジ経由）、開いているターミナルごとにチャネルを 1 本追加します。Heeler が Rex サーバーを起動することはなく、Rex には通知、ライブアクティビティ、Usage はありません（Windows の Chat は Claude Code のみ対応）。
+- **Rex**：すでに動作している Rex サーバーとの間に 1 本の WebSocket リンクを使い（macOS/Linux では Unix ソケット経由、ネイティブの Windows では Rex の stdio ブリッジ経由）、開いているターミナルごとにチャネルを 1 本追加します。Heeler が Rex サーバーを起動することはなく、Rex には通知、ライブアクティビティ、Usage はありません（Windows の Chat は Claude Code のみ対応）。
 
 macOS と Linux の Host では、通知、ライブアクティビティ、Usage を [Heeler プラグイン](plugin/README.md)（Herdr TUI）またはオプションの Host Helper（herdr-core、tmux）が提供します。[プラグインと Host Helper を更新する (English)](https://docs.heeler.bybee.dev/updates)
 

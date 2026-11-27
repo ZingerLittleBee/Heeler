@@ -68,7 +68,7 @@ export const backends = [
   {
     name: 'Rex',
     body: 'Sessions, windows and terminals, in the same console.',
-    runs: 'Experimental, on macOS, Linux, Windows',
+    runs: 'macOS, Linux, Windows',
     guide: { label: 'Rex guide', slug: 'rex' },
     windows: true,
   },
@@ -93,7 +93,7 @@ export const pairCommands = ['herdr plugin install ZingerLittleBee/Heeler --ref 
 export const faq = [
   {
     q: 'What do I need on the machine?',
-    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server (experimental).',
+    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server.',
   },
   {
     q: 'Do I have to switch to herdr?',

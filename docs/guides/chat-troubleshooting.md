@@ -4,7 +4,7 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, and Amp (with Heeler's Amp plugin, installed from Chat and reloaded in Amp; Heeler 0.1.24 or newer). On a herdr-core (native Windows included), tmux, or experimental Rex (native Windows included) Host, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, and Amp (with Heeler's Amp plugin, installed from Chat and reloaded in Amp; Heeler 0.1.24 or newer). On a herdr-core (native Windows included), tmux, or Rex (native Windows included) Host, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
 
 ## Waiting for Conversation
 

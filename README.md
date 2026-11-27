@@ -9,7 +9,7 @@
 
 **The iPhone and iPad console for the coding agents running on your own machines.**
 
-Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), and tmux. Rex support is experimental.
+Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), tmux, and Rex.
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -77,7 +77,7 @@ Install Heeler from the [App Store](https://apps.apple.com/us/app/id6797263135) 
 | Herdr TUI 0.9.3 or newer | Native Windows | [Windows setup](https://docs.heeler.bybee.dev/windows-setup) |
 | Herdr desktop app or herdr-core | macOS, Linux, native Windows | [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) |
 | tmux 3.3 or newer | macOS, Linux | [Connect tmux](https://docs.heeler.bybee.dev/tmux) |
-| Rex (experimental; Heeler 0.1.21+ on macOS/Linux, 0.1.24+ for native Windows and New Terminal) | macOS, Linux, native Windows | [Connect Rex](https://docs.heeler.bybee.dev/rex) |
+| Rex (Heeler 0.1.21+ on macOS/Linux, 0.1.24+ for native Windows and New Terminal) | macOS, Linux, native Windows | [Connect Rex](https://docs.heeler.bybee.dev/rex) |
 
 ## Adding a machine
 
@@ -103,7 +103,7 @@ Heeler needs only SSH access and a running backend: no server changes, and no ex
 - **Herdr TUI**: herdr's JSON API over stream-local forwarding to `herdr.sock`, with terminals on an SSH PTY. OpenSSH allows the forwarding by default, though [SELinux on Fedora or RHEL](https://docs.heeler.bybee.dev/selinux) can deny it.
 - **herdr-core**: one framed link to the core's socket.
 - **tmux**: control mode, attached per Pane alongside your desktop clients, with Agent status reported by Claude Code hooks, Pi/Oh My Pi extensions, and the optional Host Helper.
-- **Rex** (experimental): one WebSocket link to a running Rex server (over its Unix socket on macOS/Linux, or Rex's stdio bridge on native Windows), plus one channel per open terminal. Heeler never starts a Rex server, and Rex has no notifications, Live Activities, or Usage (on Windows, Chat supports Claude Code only).
+- **Rex**: one WebSocket link to a running Rex server (over its Unix socket on macOS/Linux, or Rex's stdio bridge on native Windows), plus one channel per open terminal. Heeler never starts a Rex server, and Rex has no notifications, Live Activities, or Usage (on Windows, Chat supports Claude Code only).
 
 On macOS and Linux Hosts, notifications, Live Activities, and Usage come from the [Heeler plugin](plugin/README.md) on Herdr TUI and from the optional Host Helper on herdr-core and tmux. [Update the plugin and Host Helper](https://docs.heeler.bybee.dev/updates)
 

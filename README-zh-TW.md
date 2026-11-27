@@ -9,7 +9,7 @@
 
 **在 iPhone 和 iPad 上掌控你自己機器上執行的寫程式 Agent。**
 
-支援 [Herdr TUI](https://herdr.dev)、Herdr 桌面應用程式（herdr-core）與 tmux，對 Rex 的支援為實驗性。
+支援 [Herdr TUI](https://herdr.dev)、Herdr 桌面應用程式（herdr-core）、tmux 與 Rex。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -77,7 +77,7 @@ Heeler 是 iPhone 和 iPad 上獨立、開源的 Agent 主控台，也是一款 
 | Herdr TUI 0.9.3 或更新版本 | 原生 Windows | [Windows 設定](https://docs.heeler.bybee.dev/windows-setup) |
 | Herdr 桌面應用程式或 herdr-core | macOS、Linux、原生 Windows | [連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core) |
 | tmux 3.3 或更新版本 | macOS、Linux | [連線到 tmux](https://docs.heeler.bybee.dev/tmux) |
-| Rex（實驗性；macOS/Linux 需要 Heeler 0.1.21+，原生 Windows 與 New Terminal 需要 0.1.24+） | macOS、Linux、原生 Windows | [連線到 Rex](https://docs.heeler.bybee.dev/rex) |
+| Rex（macOS/Linux 需要 Heeler 0.1.21+，原生 Windows 與 New Terminal 需要 0.1.24+） | macOS、Linux、原生 Windows | [連線到 Rex](https://docs.heeler.bybee.dev/rex) |
 
 ## 新增機器
 
@@ -103,7 +103,7 @@ Heeler 只需要 SSH 連線和一個執行中的後端：不需變更伺服器�
 - **Herdr TUI**：透過 stream-local 轉送連到 `herdr.sock`，使用 herdr 的 JSON API，終端機則在 SSH PTY 上執行。OpenSSH 預設允許這種轉送，但 [Fedora 或 RHEL 上的 SELinux (English)](https://docs.heeler.bybee.dev/selinux) 可能會拒絕。
 - **herdr-core**：與 core 的 socket 之間使用一條分幀連線。
 - **tmux**：以控制模式逐窗格接入，與桌面用戶端並存，Agent 狀態由 Claude Code hooks、Pi/Oh My Pi 擴充功能與選用的 Host Helper 回報。
-- **Rex**（實驗性）：與已在執行的 Rex 伺服器之間使用一條 WebSocket 連線（macOS/Linux 透過 Unix socket，原生 Windows 透過 Rex 內建的 stdio 橋接），每個開啟的終端機另用一條通道。Heeler 絕不會啟動 Rex 伺服器，Rex 上也沒有通知、即時動態與用量（Windows 上的對話僅支援 Claude Code）。
+- **Rex**：與已在執行的 Rex 伺服器之間使用一條 WebSocket 連線（macOS/Linux 透過 Unix socket，原生 Windows 透過 Rex 內建的 stdio 橋接），每個開啟的終端機另用一條通道。Heeler 絕不會啟動 Rex 伺服器，Rex 上也沒有通知、即時動態與用量（Windows 上的對話僅支援 Claude Code）。
 
 在 macOS 與 Linux 主機上，通知、即時動態與用量由 [Heeler 外掛](plugin/README.md)（Herdr TUI）或選用的 Host Helper（herdr-core、tmux）提供。[更新外掛與 Host Helper (English)](https://docs.heeler.bybee.dev/updates)
 

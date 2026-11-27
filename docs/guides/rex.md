@@ -2,12 +2,12 @@
 
 Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
-> [!IMPORTANT]
-> Rex support is experimental. Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows (built against Rex 0.1.0-preview.14 and checked against 0.1.0-preview.23), opening the terminals and Agents Rex runs and starting new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
+> [!NOTE]
+> Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows (built against Rex 0.1.0-preview.14 and checked against 0.1.0-preview.23), opening the terminals and Agents Rex runs and starting new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
 
 ## Before you start
 
-- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 or newer for experimental Rex on macOS and Linux (API revision 12), or 0.1.24 or newer for native Windows Rex, New Terminal, and API revisions 12 to 19.
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 or newer for Rex on macOS and Linux (API revision 12), or 0.1.24 or newer for native Windows Rex, New Terminal, and API revisions 12 to 19.
 - Rex running on the Host under the account you will sign in as over SSH. Heeler connects only to a Rex server that is already running and never starts one.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. On Windows, run Win32-OpenSSH, with `rex.exe` on the account's PATH, as WinGet puts it; Heeler reaches the server through Rex's own stdio bridge, and [Chat](#chat) there works for Claude Code.
 - On a Mac or Linux, an SSH server that allows forwarding to a Unix socket, as OpenSSH does by default. If its `sshd_config` sets `AllowStreamLocalForwarding no` or `AllowTcpForwarding no`, Heeler cannot reach Rex.

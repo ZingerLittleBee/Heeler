@@ -65,17 +65,18 @@ const homeTitle = decodeEntities(home.match(/<title>([^<]+)<\/title>/)[1]);
 const homeDescription = decodeEntities(home.match(/<meta name="description" content="([^"]+)"/)[1]);
 checkMetaLength('homepage <title>', homeTitle, 60);
 checkMetaLength('homepage description', homeDescription, 155);
-assert.ok(homeDescription.includes('Rex (experimental)'), 'homepage description must label Rex (experimental)');
+assert.ok(homeDescription.includes('tmux, and Rex.'), 'homepage description must include Rex');
+assert.doesNotMatch(homeDescription, /\bRex\s*\(/i, 'homepage description must not qualify Rex in parentheses');
 assert.ok(homeDescription.includes('herdr-core'), 'homepage description must mention herdr-core');
 
 // H1 spacing: words across stacked spans must keep a space when extracted as text.
 const homeH1Raw = home.match(/<h1\b[^>]*>(.*?)<\/h1>/s)[1];
 assert.equal(stripTags(homeH1Raw), 'Leave the desk. Keep your agents.');
 
-// Hero note & Rex (experimental) consistency + no overclaiming relay copy.
+// Hero note & Rex consistency + no overclaiming relay copy.
 const heroNote = stripTags(home.match(/<p class="hero-n"[^>]*>(.*?)<\/p>/s)[1]);
-assert.ok(heroNote.includes('Rex (experimental)'), `hero-n must label Rex (experimental): ${heroNote}`);
-assert.ok(heroNote.includes('herdr-core'), `hero-n must include herdr-core: ${heroNote}`);
+assert.equal(heroNote, 'Works with Herdr TUI, Herdr desktop (herdr-core), tmux, and Rex.', `unexpected hero-n: ${heroNote}`);
+assert.doesNotMatch(heroNote, /\bRex\s*\(/i, `hero-n must not qualify Rex in parentheses: ${heroNote}`);
 assert.ok(!home.includes('The relay only ever sees ciphertext.'), 'stale overclaiming relay note');
 assert.ok(!home.includes('The relay sees ciphertext.'), 'stale overclaiming privacy copy');
 assert.ok(!home.includes('as ciphertext it cannot read.'), 'stale overclaiming FAQ copy');
@@ -108,7 +109,7 @@ for (const slug of ['pairing', 'herdr-core', 'tmux', 'rex', 'windows-setup', 'ov
   assert.ok(hasAnchorWithHref(home, `${docsOrigin}/${slug}`), `homepage missing guide link ${docsOrigin}/${slug}`);
 }
 
-// /ipad page checks: metadata, CTA, back link, guides, Rex (experimental), and all 7 screenshots.
+// /ipad page checks: metadata, CTA, back link, guides, Rex, and all 7 screenshots.
 const ipad = read('ipad.html');
 const ipadTitle = decodeEntities(ipad.match(/<title>([^<]+)<\/title>/)[1]);
 const ipadDescription = decodeEntities(ipad.match(/<meta name="description" content="([^"]+)"/)[1]);
@@ -125,7 +126,8 @@ const ipadCtaLink = ipadCtaBlock[1].match(/<a\b([^>]*\sclass="[^"]*\bstore-link\
 assert.ok(ipadCtaLink, '/ipad .ipad-actions missing .store-link CTA');
 assert.equal(getAttr(ipadCtaLink[1], 'href'), appStoreUrl, `/ipad body CTA must link to ${appStoreUrl}`);
 assert.match(ipadCtaLink[2], /<img\b[^>]*alt="Download on the App Store"/, '/ipad body CTA must render the App Store badge');
-assert.ok(ipad.includes('Rex (experimental)'), '/ipad must label Rex (experimental)');
+assert.ok(ipad.includes('and Rex on macOS, Linux, and Windows.'), '/ipad must mention Rex');
+assert.doesNotMatch(ipad, /\bRex\s*\(/i, '/ipad must not qualify Rex in parentheses');
 assert.equal([...ipad.matchAll(/<figure\b/g)].length, 7, '/ipad must keep all 7 screenshots');
 for (const slug of ['pairing', 'herdr-core', 'tmux', 'windows-setup', 'rex']) {
   assert.ok(hasAnchorWithHref(ipad, `${docsOrigin}/${slug}`), `/ipad missing guide link ${docsOrigin}/${slug}`);
