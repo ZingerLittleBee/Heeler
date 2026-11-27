@@ -621,13 +621,9 @@ struct ChatSubagentPresentation {
     }
 }
 
-/// A Codex subagent's recorded events as one inline row, like other
-/// programs' Agent calls: its name, latest event and event count. Opening
-/// it shows the agent's path and each run of events.
 private struct ChatSubagentActivityRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// One width for every history symbol, so the labels line up.
     @ScaledMetric(relativeTo: .caption) private var historyIconWidth: CGFloat = 18
     let activity: ChatSubagentActivity
     let isExpanded: Bool
@@ -646,7 +642,6 @@ private struct ChatSubagentActivityRow: View {
                     ChatToolKindIcon(kind: .agent)
                     Text(verbatim: [presentation.name, presentation.status, presentation.eventCount]
                         .joined(separator: " · "))
-                        // At accessibility sizes two lines hold a word or two.
                         .lineLimit(isExpanded || dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     if hasExpandableContent {
                         Image(systemName: "chevron.right")
