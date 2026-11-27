@@ -169,7 +169,7 @@ final class HerdrCoreChatTyping: CheckedChatTyping {
     /// to arrive together.
     func press(
         _ keys: [String], heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let viewer = try await viewerToType(heldSinceScreenRead: heldSinceScreenRead, stillShows: stillShows)
         defer { viewer.leave() }
@@ -185,7 +185,7 @@ final class HerdrCoreChatTyping: CheckedChatTyping {
 
     func paste(
         _ text: String, heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let viewer = try await viewerToType(heldSinceScreenRead: heldSinceScreenRead, stillShows: stillShows)
         defer { viewer.leave() }
@@ -214,7 +214,7 @@ final class HerdrCoreChatTyping: CheckedChatTyping {
     /// A viewer to press or paste through, with nothing changed while it opened.
     /// Its paint is newer than any read, so a dialog is checked against that.
     private func viewerToType(
-        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) -> Bool)?
+        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
     ) async throws -> HerdrCoreChatViewer {
         let projection = try liveProjection()
         let holder = try await checkHolder(in: projection, heldSinceScreenRead: heldSinceScreenRead)
@@ -222,8 +222,10 @@ final class HerdrCoreChatTyping: CheckedChatTyping {
         do {
             let holderNow = try await checkHolder(in: projection, heldSinceScreenRead: heldSinceScreenRead)
             guard holderNow == holder else { throw Refusal(message: Self.holderChangedWhileOpening) }
-            if let stillShows, viewer.paintedScreen.map(stillShows) != true {
-                throw Refusal(message: BlockedCardStore.changedMessage)
+            if let stillShows {
+                guard let screen = viewer.paintedScreen, await stillShows(screen) else {
+                    throw Refusal(message: BlockedCardStore.changedMessage)
+                }
             }
         } catch {
             viewer.leave()

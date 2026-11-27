@@ -343,6 +343,7 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     var droidSessionID: String? { program == .droid ? followed?.sessionID : nil }
+    private(set) var displayedDroidTarget: DroidDialogTarget?
 
     /// A Stop button belongs to the recorded turn on screen, even when the
     /// same Droid process opens another conversation or starts another turn.
@@ -641,6 +642,7 @@ final class AgentChatStore {
                       let chunk = try? await source.files.read(.init(path: path, offset: 0, maxBytes: Int(size))),
                       chunk.length == size, chunk.data.count == size, !chunk.data.contains(0),
                       let patch = String(data: chunk.data, encoding: .utf8),
+                      TerminalTextSafety.containsOnlySafeScalars(patch), !patch.contains("GIT binary patch"),
                       patch.contains("--- "), patch.contains("\n+++ "), patch.contains("\n@@ ") else { return nil }
                 return patch
             }
@@ -1583,11 +1585,11 @@ final class AgentChatStore {
                     needsAgentRefresh = true
                     return nil
                 }
-                let evidence = try await sessionEvidence()
+                let (evidence, target) = try await readEvidence(sessionEvidence)
                 guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
                 agentRefreshFailure = nil
                 updateReadFailure()
-                adoptEvidence(evidence)
+                adoptEvidence(evidence, droid: target)
                 return nil
             }
             let fresh = try await source.agentInfo()
@@ -1644,7 +1646,16 @@ final class AgentChatStore {
 
     /// Follows what a check of the Agent's process found, as `adoptRecord` does
     /// a herdr record.
-    private func adoptEvidence(_ evidence: ChatSessionEvidence) {
+    private func readEvidence(_ fallback: @Sendable () async throws -> ChatSessionEvidence) async throws
+        -> (ChatSessionEvidence, DroidDialogTarget?) {
+        if program == .droid, let target = try? await source.screen.droidTarget?(), let id = target.sessionID {
+            return (.bound(sessionID: id, transcriptRoot: target.transcriptFolder, directory: target.directory), target)
+        }
+        return (try await fallback(), nil)
+    }
+
+    private func adoptEvidence(_ evidence: ChatSessionEvidence, droid: DroidDialogTarget? = nil) {
+        if program == .droid { displayedDroidTarget = droid }
         if let amp = source.files.amp {
             if let before = ampBinding, let after = amp.current, before != after,
                 before.binding.thread == after.binding.thread {
@@ -2364,11 +2375,11 @@ final class AgentChatStore {
         // Read before the check: the Send emptying the draft must not end it.
         let movedUnseen = movedSinceDraft
         let recordRevision = sessionRecordRevision
-        guard let evidence = try? await sessionEvidence(), !Task.isCancelled,
+        guard let (evidence, target) = try? await readEvidence(sessionEvidence), !Task.isCancelled,
             recordRevision == sessionRecordRevision
         else { return Self.uncheckedSessionReason(program) }
         let before = resolution
-        adoptEvidence(evidence)
+        adoptEvidence(evidence, droid: target)
         if resolution != before { wake() }
         let name = program.chatName
         switch evidence {

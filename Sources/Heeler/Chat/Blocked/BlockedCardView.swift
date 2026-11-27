@@ -173,9 +173,6 @@ private struct BlockedDialogCard: View {
                            isCommand: subject.command != nil)
             if let patch = card.patch {
                 BlockedChangeBox(lines: patch.components(separatedBy: "\n"), marksChanges: true)
-            } else if let directory = card.target?.directory, let command = subject.command,
-                      DroidDialog.patchPath(command: command, directory: directory) != nil {
-                Text("Open this terminal to review the patch. Chat could not read the complete file.")
             }
             if let change = card.request?.fileChanges?.files.first {
                 BlockedChangeBox(lines: change.hunks.flatMap(\.lines), marksChanges: true)

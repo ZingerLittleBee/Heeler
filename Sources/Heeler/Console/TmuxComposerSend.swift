@@ -53,11 +53,11 @@ final class TmuxComposerSend: CheckedComposerSend {
         self.clock = clock
     }
 
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            let outcome = await deliver(text, route: route, attach: attach)
+            let outcome = await deliver(text, route: route, attach: attach, verifying: verifying)
             if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
             return outcome
         }
@@ -67,7 +67,7 @@ final class TmuxComposerSend: CheckedComposerSend {
 
     // MARK: Checked steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection, attach: attach) }
@@ -122,7 +122,7 @@ final class TmuxComposerSend: CheckedComposerSend {
             }
 
             let outcome = await deliverThroughChatAttach(
-                text, held: held, chatAttach: chatAttach, in: projection)
+                text, held: held, chatAttach: chatAttach, in: projection, verifying: verifying)
             await chatAttach.close()
             return outcome
         }
@@ -132,14 +132,14 @@ final class TmuxComposerSend: CheckedComposerSend {
         _ text: String,
         held: HeldAgent,
         chatAttach: TmuxChatAttach,
-        in projection: TmuxConsoleProjection
+        in projection: TmuxConsoleProjection, verifying: DroidSendVerification?
     ) async -> Outcome {
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         if let changed = await changeWhileAttachOpened(from: held, in: projection) {
             return changed
         }
         return await pasteAndSubmit(
-            text, held: held, on: chatAttach.tmuxSend, in: projection, onSubmitted: nil)
+            text, held: held, on: chatAttach.tmuxSend, in: projection, verifying: verifying, onSubmitted: nil)
     }
 
     private func pasteAndSubmit(
@@ -147,6 +147,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         held: HeldAgent,
         on tmuxSend: TmuxAttachSend,
         in projection: TmuxConsoleProjection,
+        verifying: DroidSendVerification? = nil,
         onSubmitted: (@MainActor () -> Void)?
     ) async -> Outcome {
         if await tmuxSend.bracketedPaste() == .disabled {
@@ -154,6 +155,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
 
+        if let refusal = await verifying?.refusal() { return .refused(refusal) }
         let pasteStart = clock.now()
         switch await tmuxSend.paste(text, clock.sleep) {
         case .left: break
@@ -180,6 +182,7 @@ final class TmuxComposerSend: CheckedComposerSend {
                 if Self.isBlocked(sample.pane, kind: held.kind) {
                     return .refused(.notSubmitted(Self.becameBlocked))
                 }
+                if let refusal = await verifying?.refusal(staged: text) { return .refused(refusal) }
                 guard clock.now() - pasteStart < Self.submitWindow else {
                     return .refused(.notSubmitted(Self.windowPassed))
                 }
@@ -193,6 +196,7 @@ final class TmuxComposerSend: CheckedComposerSend {
                     return .outcomeUnknown
                 }
             }
+            if verifying != nil { return .refused(.notSubmitted(Self.programEnded)) }
             return await giveUp(after: sample, program: afterProgram, on: tmuxSend)
         }
     }

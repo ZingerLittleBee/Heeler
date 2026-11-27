@@ -1248,6 +1248,7 @@ final class ConsoleStore {
         }
         if program == .droid {
             source.screen.hostName = host.name
+            source.screen.herdrReportsDroidSession = host.serverKind == .herdrTUI
             source.screen.droidTarget = { [weak self] in
                 guard let live = await self?.projections[hostID] else { return nil }
                 return try await live.droidDialogTarget(paneID: paneID)
@@ -3551,11 +3552,18 @@ final class ConsoleStore {
     }
 
     func configureDroidChatHook(_ action: DroidChatHook.Action, on hostID: Host.ID, keepingTo pin: TerminalCorePin?) async throws {
-        guard capabilities(for: hostID).offersChat(for: .droid), !hasLeftCore(pin, on: hostID) else {
+        guard capabilities(for: hostID).offersDroidChatHook else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Droid Chat hooks"))
+        }
+        guard !hasLeftCore(pin, on: hostID) else {
             throw leftCoreError(on: hostID)
         }
         if let rex = projections[hostID] as? RexConsoleProjection {
             return try await rex.configureDroidChatHook(action, keepingTo: pin)
+        }
+        if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            _ = try await tmux.configureDroidChatHook(action, keepingTo: pin)
+            return
         }
         let services = try await harnessEditServices(on: hostID)
         guard !hasLeftCore(pin, on: hostID) else { throw leftCoreError(on: hostID) }

@@ -178,6 +178,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         sender.bindDroidDraft(to: revision.session)
         sender.replaceDraft(with: revision.text)
         var delivery = policy
+        delivery.requiresSpec = true
         delivery.prependingPreflight { _ in
             guard let screen = try? await readScreen(), DroidInputBox.isEmptySpec(screen),
                   self.droidDraftMatches(revision.session) else {
@@ -716,7 +717,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         imageAttachments = []
         stop.holdAfterSend()
         messages.append(message)
-        if let preflight = policy.preflight, let refusal = await preflight(message.text) {
+        var policy = policy
+        if let refusal = await policy.prepare(message.text, for: message.droidSessionID) {
             returnToDraft(message.id)
             return .refused(refusal)
         }
@@ -744,7 +746,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         messages[index].observedWorkingAfterSend = false
         messages[index].tracksAgentProgress = true
         messages[index].state = .sending
-        if let preflight = policy.preflight, let refusal = await preflight(messages[index].text) {
+        var policy = policy
+        if let refusal = await policy.prepare(messages[index].text, for: messages[index].droidSessionID) {
             // The message keeps the failure it was retried for; the refusal
             // is the notice, which ends as any notice does. As the message's
             // failure it would outlast a passing hold.
@@ -888,7 +891,13 @@ final class AgentComposerStore: ComposerDraftOperations {
         let generation = input?.liveGeneration
         do {
             let params = AgentPromptParams(target: target, text: outgoing)
-            if policy.requiresSinglePrompt { _ = try await prompt(params) }
+            if policy.requiresSinglePrompt {
+                if let refusal = await policy.droidWrite?.refusal() {
+                    returnToDraft(id)
+                    return .refused(refusal)
+                }
+                _ = try await prompt(params)
+            }
             else { _ = try await promptWaitingOutLaunch(params) }
             guard let acknowledgedIndex = messages.firstIndex(where: { $0.id == id }) else {
                 return .ignored
@@ -928,7 +937,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach)
+        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach, verifying: policy.droidWrite)
         return finishChecked(id, outgoing: outgoing, policy: policy, outcome: outcome, success: .submittedViaAttach)
     }
 

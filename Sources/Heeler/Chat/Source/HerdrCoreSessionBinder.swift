@@ -295,9 +295,10 @@ struct HerdrCoreSessionBinder: Sendable {
               let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
               case .value(let start) = process.start else { return nil }
         let id: String?
+        let folder: String?
         switch try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd) {
-        case .bound(let session, _, _): id = session
-        case .unavailable(.cannotTellSession(.droid)): id = nil
+        case .bound(let session, let root, _): (id, folder) = (session, root)
+        case .unavailable(.cannotTellSession(.droid)): (id, folder) = (nil, nil)
         default: return nil
         }
         var disabled = false
@@ -306,7 +307,7 @@ struct HerdrCoreSessionBinder: Sendable {
             disabled = DroidChatHook.disabled(in: settings.data)
         }
         return .init(scope: scope, pid: pid, start: start, directory: record.foreground?.cwd ?? record.cwd,
-                     sessionID: id, userHooksDisabled: disabled)
+                     sessionID: id, transcriptFolder: folder, userHooksDisabled: disabled)
     }
 
     private func checkDroid(_ tree: HerdrCoreTerminalProcesses, directory: String) async throws -> ChatSessionEvidence {

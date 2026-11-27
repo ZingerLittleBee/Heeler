@@ -19,6 +19,7 @@ COMMANDS: list[tuple[str, list[str]]] = [
     ("test-tmux-inventory-loop", [PY, "scripts/test-tmux-inventory-loop.py"]),
     ("test-testflight", [PY, "scripts/test-testflight.py"]),
     ("test-host-helper-scripts", [PY, "scripts/test-host-helper-scripts.py"]),
+    ("test-droid-hook", [PY, "scripts/test-droid-hook.py"]),
     ("test-host-process-reader", [PY, "scripts/test-host-process-reader.py"]),
     ("test-node-toolchain-probe", [PY, "scripts/test-node-toolchain-probe.py"]),
     ("test-server-kind-detection", [PY, "scripts/test-server-kind-detection.py"]),

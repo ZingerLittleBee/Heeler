@@ -26,6 +26,8 @@ extension ComposerDeliveryPolicy {
         rules: ChatSendRules,
         activity: @escaping @MainActor () -> ChatAgentActivity,
         readScreen: @escaping @MainActor () async throws -> ANSIScreen,
+        droidTarget: (@Sendable () async throws -> DroidDialogTarget?)? = nil,
+        displayedDroidTarget: (@MainActor () -> DroidDialogTarget?)? = nil,
         confirmSession: (@MainActor () async -> String?)? = nil,
         heldSession: (@MainActor () -> String?)? = nil,
         sendConcern: @escaping @MainActor (_ outgoing: String, _ screen: ANSIScreen) -> String? = { _, _ in nil },
@@ -97,6 +99,9 @@ extension ComposerDeliveryPolicy {
                 return true
             })
         policy.conversation = conversation
+        policy.droidTarget = droidTarget
+        policy.displayedDroidTarget = displayedDroidTarget
+        if program == .droid { policy.droidScreen = readScreen }
         return policy
     }
 

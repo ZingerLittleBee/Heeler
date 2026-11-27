@@ -126,7 +126,7 @@ final class RexChatTyping: CheckedChatTyping {
     /// kitty keyboard flags as Rex reports them.
     func press(
         _ keys: [String], heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let (requests, holder) = try await checkedRequests(heldSinceScreenRead: heldSinceScreenRead)
         let modes: TerminalModeTracker
@@ -154,7 +154,7 @@ final class RexChatTyping: CheckedChatTyping {
     /// so text with one is refused then, as read in the lane.
     func paste(
         _ text: String, heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let (requests, holder) = try await checkedRequests(heldSinceScreenRead: heldSinceScreenRead)
         guard requests.fitsOnePaste(text) else { throw Refusal(message: Self.pasteTooLarge) }
@@ -181,7 +181,7 @@ final class RexChatTyping: CheckedChatTyping {
     /// for a Blocked Card, its screen still shows.
     private func send(
         _ pieces: [RexTerminalInputPiece], on requests: RexBlockRequests, holder: RexAgentHolder,
-        needsBracketedPaste: Bool = false, stillShows: (@Sendable (ANSIScreen) -> Bool)?
+        needsBracketedPaste: Bool = false, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
     ) async throws {
         let sending = try await requests.send(pieces) { @MainActor in
             let now: RexAgentHolder.Read
@@ -211,7 +211,7 @@ final class RexChatTyping: CheckedChatTyping {
             } catch {
                 throw Refusal(message: Self.saying(error))
             }
-            guard stillShows(screen) else { throw Refusal(message: BlockedCardStore.changedMessage) }
+            guard await stillShows(screen) else { throw Refusal(message: BlockedCardStore.changedMessage) }
         }
         switch sending {
         case .sent:

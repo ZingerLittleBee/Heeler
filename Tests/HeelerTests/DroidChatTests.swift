@@ -107,6 +107,130 @@ struct DroidChatTests {
         }
     }
 
+    @Test func patchApprovalRequiresOneLiteralFileInTheDisplayedDirectory() {
+        for (command, file) in [
+            ("git apply ./change.patch", "change.patch"),
+            ("git apply './two files.patch'", "two files.patch"),
+            ("git apply -- \"改动/两个 文件.diff\"", "改动/两个 文件.diff"),
+        ] {
+            #expect(DroidDialog.patchReview(command: command, directory: "/repo") == .file("/repo/" + file))
+        }
+        for command in ["git apply a.patch b.patch", "git apply < a", "git -C ../repo apply a.patch",
+                        "cat a | git apply", "git apply \"$PATCH\"", "git apply ../other", "patch -p1 < file"] {
+            #expect(DroidDialog.patchReview(command: command, directory: "/repo") == .terminal)
+        }
+        #expect(DroidDialog.patchReview(command: "git status", directory: "/repo") == .ordinaryCommand)
+    }
+
+    @Test func upgradingAndRemovingOnlyOwnsTheGeneratedDroidHandlers() throws {
+        let path = "/home/me/.factory/hooks/" + DroidChatHook.fileName
+        let command = DroidChatHook.jsonString(DroidChatHook.command(script: path))
+        let handler = #"{"type":"command","command":\#(command),"timeout":5}"#
+        let backup = #"{"type":"command","command":"python3 /home/me/.factory/hooks/heeler-droid.py.backup"}"#
+        let original = #"{"hooks":{"Notification":[{"matcher":"permission_prompt","hooks":[\#(backup)]}],"Other":[{"hooks":[\#(handler)]}],"hooksDisabled":true},"custom":42}"#
+        let mixed = original.replacingOccurrences(of: "[" + backup + "]", with: "[" + handler + "," + backup + "]")
+        let old = Data(mixed.utf8)
+        #expect(DroidChatHook.presence(in: old, script: path) == .partly)
+        guard case .change(let upgraded) = DroidChatHook.registration(script: path, remove: false, settings: old) else {
+            Issue.record("The legacy matcher did not upgrade")
+            return
+        }
+        #expect(DroidChatHook.presence(in: upgraded, script: path) == .on)
+        #expect(DroidChatHook.registration(script: path, remove: false, settings: upgraded) == .alreadyApplied)
+        #expect(DroidChatHook.registration(script: path, remove: true, settings: upgraded) == .change(to: Data(original.utf8)))
+        #expect(DroidChatHook.presence(in: Data(original.utf8), script: path) == .off)
+    }
+
+    @MainActor @Test func patchCardNeedsTheCompleteFileAndChecksItAgainBeforeEnter() async throws {
+        let command = "git apply './two files.patch'"
+        let frame = try ScreenFixture.text("droid-execute").replacingOccurrences(
+            of: "printf DROID_APPROVAL_COMMAND > command-proof.txt", with: command)
+        let screen = ANSIScreenDecoder.decode(frame)
+        let target = DroidDialogTarget(scope: "pane", pid: "12", start: "birth", directory: "/repo", sessionID: session)
+        let store = BlockedCardStore(program: .droid, io: .init(droidTarget: { target }, readScreen: { screen },
+            sendKeys: { _ in Issue.record("Changed patch reached Enter") }, paste: { _ in Issue.record("Unexpected paste") }))
+        defer { store.end() }
+        let request = ChatPendingRequest(entryID: .init("execute"), callID: "call", kind: .command, toolName: "Execute", summary: command)
+        store.update(transcript: .init(pendingRequests: [request]))
+        store.update(activity: .blocked)
+        store.droidCallStillOpen = { _, _ in true }
+        store.readDroidPatch = { _ in nil }
+        await store.refresh()
+        guard case .generic = store.content else { Issue.record("Unreadable patch offered an action"); return }
+        store.readDroidPatch = { $0 == "/repo/two files.patch" ? "reviewed bytes" : nil }
+        await store.refresh()
+        guard case .card(let shown) = store.content else { Issue.record("Readable patch did not open"); return }
+        #expect(shown.patch == "reviewed bytes")
+        store.readDroidPatch = { _ in "replacement bytes" }
+        await store.perform(.choose(ordinal: 1), shownCard: shown)
+    }
+
+    @MainActor @Test func enterNeedsTheStagedPayloadAndItsOriginalProcess() async throws {
+        let initial = try ScreenFixture.text("droid-execute")
+        let idle = try ScreenFixture.screen("droid-01-idle")
+        let target = DroidDialogTarget(scope: "server/pane", pid: "12", start: "birth", directory: "/repo", sessionID: session)
+        let check = DroidSendVerification(target: target, readTarget: { target }, readScreen: { idle }, requiresSpec: false)
+        #expect(await check.refusal() == nil)
+        #expect(await check.refusal(staged: "missing") != nil)
+        let changed = DroidSendVerification(target: target, readTarget: { nil },
+            readScreen: { ANSIScreenDecoder.decode(initial) }, requiresSpec: false)
+        #expect(await changed.refusal(staged: "mine") != nil)
+        #expect(DroidInputBox.showsPaste("第一行\nsecond line", text: "第一行\nsecond line "))
+        #expect(!DroidInputBox.showsPaste("第一行\nchanged", text: "第一行\nsecond line "))
+    }
+
+    @Test func customHookScriptSurvivesAnInstallAndOnlyProcessBoundHostsOfferIt() async throws {
+        let script = "/home/dev/.factory/hooks/" + DroidChatHook.fileName
+        let edited = Data("# Heeler Droid Chat hook\nprint('customized')\n".utf8)
+        let host = InMemoryHostFiles(files: [script: edited])
+        await #expect(throws: HostTextFileError.self) {
+            try await DroidChatHook.place(on: host, action: .register) { try await host.createHostFolder(path: $0) }
+        }
+        #expect(await host.files[script] == edited)
+        for kind in [ServerKind.herdrTUI, .tmux, .herdrCore, .rex] {
+            for kernel in [HerdrCoreLocator.macOSKernel, HerdrCoreLocator.linuxKernel] {
+                #expect(HostCapabilities(serverKind: kind, platform: .posix, coreKernel: kernel).offersDroidChatHook == (kind != .herdrTUI))
+            }
+            #expect(!HostCapabilities(serverKind: kind, platform: .nativeWindows, coreKernel: HerdrCoreLocator.windowsKernel).offersDroidChatHook)
+        }
+    }
+
+    @MainActor @Test func sessionProcessOrScreenChangingAfterPreflightKeepsTheDraft() async throws {
+        @MainActor final class Terminal {
+            var target: DroidDialogTarget?
+            var screen: ANSIScreen
+            init(_ screen: ANSIScreen) { self.screen = screen }
+        }
+        let empty = try ScreenFixture.screen("droid-01-idle")
+        let menu = try ScreenFixture.screen("droid-model-selector")
+        let terminal = Terminal(empty)
+        let owner = DroidDialogTarget(scope: "server/pane", pid: "12", start: "birth", directory: "/tmp/repo", sessionID: session)
+        var next = owner
+        next.sessionID = other
+        var reused = owner
+        reused.start = "another birth"
+        var server = owner
+        server.scope = "new server/pane"
+        for (replacement, display) in [(next, empty), (reused, empty), (server, empty), (owner, menu)] {
+            terminal.target = owner
+            terminal.screen = empty
+            let composer = AgentComposerStore(target: "pane") { _ in Issue.record("Stale send reached the terminal"); throw TransportError.cancelled }
+            composer.bindDroidDraft(to: session)
+            composer.replaceDraft(with: "Keep this draft")
+            var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
+                activity: { .idle }, readScreen: { terminal.screen }, droidTarget: { await terminal.target })
+            let preflight = policy.preflight
+            policy.preflight = { text in
+                let refusal = await preflight?(text)
+                terminal.target = replacement
+                terminal.screen = display
+                return refusal
+            }
+            guard case .refused = await composer.send(policy: policy) else { Issue.record("Expected a refusal"); continue }
+            #expect(composer.draft == "Keep this draft")
+        }
+    }
+
     @Test func changingDirectoryRequiresTheBoundProcessAndCancelsInPlace() throws {
         let dialog = try #require(DroidDialog.parse(ScreenFixture.screen("droid-change-directory")).dialog)
         #expect(dialog.subject.workspacePath == "/tmp/fixture/next folder")
@@ -261,8 +385,9 @@ struct DroidChatTests {
         let composer = AgentComposerStore(target: "fixture") { _ in throw TransportError.cancelled }
         composer.bindDroidDraft(to: session)
         let screen = try ScreenFixture.screen("droid-01-idle")
+        let target = DroidDialogTarget(scope: "server/pane", pid: "1", start: "birth", directory: "/repo", sessionID: session)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
-            activity: { .idle }, readScreen: { screen })
+            activity: { .idle }, readScreen: { screen }, droidTarget: { target })
         composer.replaceDraft(with: "Do not replay")
         #expect(await composer.send(policy: policy) == .outcomeUnknown)
         let message = try #require(composer.messages.first)

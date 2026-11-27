@@ -163,12 +163,25 @@ enum DroidDialog {
                     .init(toolName: String(match.1), filePath: path, changeLines: changes))
     }
 
-    /// A literal git apply operand. Unknown options and shell expressions
-    /// do not identify a file whose contents Chat could attest.
-    static func patchPath(command: String, directory: String) -> String? {
-        guard let operand = command.wholeMatch(of: #/git apply ([A-Za-z0-9_][A-Za-z0-9._/-]*\.(?:patch|diff))/#),
-              !operand.1.split(separator: "/").contains(".."), RemoteFilePath.isAcceptable(directory) else { return nil }
-        return RemoteFilePath.join(directory, String(operand.1))
+    enum PatchReview: Equatable {
+        case ordinaryCommand, file(String), terminal
+    }
+
+    /// Only one literal operand in the displayed working directory identifies a
+    /// patch Chat can show in full. Compound commands and stdin need the terminal.
+    static func patchReview(command: String, directory: String) -> PatchReview {
+        if let match = command.wholeMatch(of: #/git[ \t]+apply[ \t]+(?:--[ \t]+)?(?:'([^'\r\n]+)'|"([^"\\\x24\x60\r\n]+)"|([\p{L}\p{M}\p{N}._/+@%-]+))/#),
+           let operand = match.1 ?? match.2 ?? match.3, !operand.hasPrefix("/"), !operand.hasPrefix("-"),
+           RemoteFilePath.isAcceptable(directory) {
+            let parts = operand.split(separator: "/").filter { $0 != "." }
+            let path = RemoteFilePath.join(directory, parts.joined(separator: "/"))
+            if !parts.isEmpty, !operand.hasSuffix("/"), RemoteFilePath.isAcceptable(path) { return .file(path) }
+        }
+        let shell = command.filter { !["'", "\"", "\\"].contains($0) }
+        let words = shell.split { !$0.isLetter && !$0.isNumber && $0 != "_" }
+        if (words.contains("git") && words.contains("apply"))
+            || shell.contains(#/(?:^|[/\s;&|()])(?:g?patch|apply_patch)(?:$|[\s;&|()<>])/#) { return .terminal }
+        return .ordinaryCommand
     }
 
     static func matchesCommandRows(_ fragments: [String], command: String) -> Bool {

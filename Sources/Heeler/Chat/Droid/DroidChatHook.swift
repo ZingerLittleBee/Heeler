@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// The only Droid files a Rex connection can place. New Agent on other
 /// backends requests runtime settings; only the Chat install action registers
@@ -28,6 +29,13 @@ enum DroidChatHook: CommandHookSettings {
                            CommandHookEntry(event: "PostToolUse", matcher: nil)]
     }
     static let entries = notificationEntries(matcher: "permission_prompt|elicitation_dialog")
+    private static let previousNotification = Entry(event: "Notification", matcher: "permission_prompt")
+    /// Exact bundled revisions that can be upgraded in place.
+    private static let previousScripts: Set<String> = [
+        "647104cd52e4bda85a4ab9d765976c1a2863f70476cd2c16268b710f5481d996",
+        "6f8751aef298f82ce629757cfaa2610fcd799b3ae4c3eb03e78dcbd4706e9107",
+        "f4ebe67d5f79e808b7b8b233bb4b036b0986ba5223cb82caff4e42a43f299014",
+    ]
     static let mixedFormReason = String(localized: "Droid's settings contain a hooks entry Heeler couldn't update.")
 
     static func disabled(in data: Data) -> Bool {
@@ -39,6 +47,51 @@ enum DroidChatHook: CommandHookSettings {
     static func command(script: String) -> String {
         let path = HostHelperScript.quote(script)
         return "if [ -r \(path) ]; then exec python3 \(path); fi"
+    }
+
+    private static func owns(_ handler: JSONTextTree.Value, in group: JSONTextTree.Value, entry: Entry,
+                             script: String, tree: JSONTextTree) -> Bool {
+        guard case .object(let groupFields, _) = group, groupFields.map(\.key).sorted() == (entry.matcher == nil ? ["hooks"] : ["hooks", "matcher"]),
+              case .object(let fields, _) = handler, fields.map(\.key).sorted() == ["command", "timeout", "type"],
+              case .string("command", _) = fields.first(where: { $0.key == "type" })?.value,
+              case .string(let text, _) = fields.first(where: { $0.key == "command" })?.value, text == command(script: script),
+              let duration = fields.first(where: { $0.key == "timeout" }), tree.text(in: duration.value.span) == String(timeout)
+        else { return false }
+        if let matcher = entry.matcher {
+            guard case .string(matcher, _) = groupFields.first(where: { $0.key == "matcher" })?.value else { return false }
+        }
+        return true
+    }
+
+    static func includes(_ event: JSONTextTree.Value, entry: Entry, script: String, tree: JSONTextTree) -> Bool {
+        guard case .array(let groups, _) = event else { return false }
+        return groups.contains { group in
+            guard case .object(let fields, _) = group,
+                  case .array(let handlers, _) = fields.first(where: { $0.key == "hooks" })?.value else { return false }
+            return handlers.contains { owns($0, in: group, entry: entry, script: script, tree: tree) }
+        }
+    }
+
+    static func hasRelatedHandler(in event: JSONTextTree.Member, script: String, tree: JSONTextTree) -> Bool {
+        (entries + [previousNotification]).contains {
+            $0.event == event.key && includes(event.value, entry: $0, script: script, tree: tree)
+        }
+    }
+
+    static func registration(script: String, remove: Bool, settings: Data?) -> HarnessConfigEdit.Transform {
+        let removable = remove ? entries + [previousNotification] : [previousNotification]
+        let cleaned = removing(from: settings) { event, group, handler, tree in
+            removable.contains { $0.event == event && owns(handler, in: group, entry: $0, script: script, tree: tree) }
+        }
+        if remove { return cleaned }
+        switch cleaned {
+        case .refused: return cleaned
+        case .alreadyApplied: return adding(script: script)(settings)
+        case .change(let data):
+            let addition = adding(script: script)(data)
+            if case .alreadyApplied = addition { return cleaned }
+            return addition
+        }
     }
 
     static func offersLaunchSettings(kind: String, arguments: [String], kernel: String?) -> Bool {
@@ -75,7 +128,9 @@ enum DroidChatHook: CommandHookSettings {
         if action != .removeRegistration {
             try await createFolder(config)
             try await createFolder(folder)
-            try await placeFile(contents, at: script) { $0.starts(with: Data("# Heeler Droid Chat hook\n".utf8)) }
+            try await placeFile(contents, at: script) {
+                previousScripts.contains(SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined())
+            }
             try await placeFile(launchSettings(script: script), at: launch) { previous in
                 // Only replace complete launch files emitted by earlier Heeler builds.
                 [originalEntries, notificationEntries(matcher: "permission_prompt")].contains {
@@ -86,7 +141,7 @@ enum DroidChatHook: CommandHookSettings {
         if action != .launch {
             let settings = RemoteFilePath.join(config, "settings.json")
             let edit = HarnessConfigEdit(id: "droid.chat-hook", harness: "Droid", path: settings,
-                transform: action == .register ? adding(script: script) : removing)
+                transform: { registration(script: script, remove: action == .removeRegistration, settings: $0) })
             switch try await editor.propose(edit) {
             case .alreadyApplied: break
             case .change(let change): _ = try await editor.apply(change)

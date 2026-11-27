@@ -801,7 +801,7 @@ struct AgentChatSurfaceView: View {
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
                 addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
-                installDroidHook: { showsDroidHook = true },
+                installDroidHook: console.capabilities(for: agent.hostID).offersDroidChatHook ? { showsDroidHook = true } : nil,
                 installAmp: {
                     if let place = chat?.ampConnection?.location {
                         ampInstall = .init(place: place, updating: reason == .amp(.update))
@@ -1149,7 +1149,8 @@ struct AgentChatSurfaceView: View {
 
     private var sendPolicy: ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.chat(
-            rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
+            rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, droidTarget: chat?.droidScreen.droidTarget,
+            displayedDroidTarget: { [chat] in chat?.displayedDroidTarget }, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         if program == .amp {

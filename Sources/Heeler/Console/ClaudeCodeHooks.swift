@@ -76,6 +76,8 @@ protocol CommandHookSettings {
     static var marker: String { get }
     static var mixedFormReason: String { get }
     static func command(script: String) -> String
+    static func includes(_ event: JSONTextTree.Value, entry: CommandHookEntry, script: String, tree: JSONTextTree) -> Bool
+    static func hasRelatedHandler(in event: JSONTextTree.Member, script: String, tree: JSONTextTree) -> Bool
 }
 
 struct CommandHookEntry: Equatable, Sendable {
@@ -115,15 +117,14 @@ extension CommandHookSettings {
         let hooks = members.filter { $0.key == "hooks" }
         guard hooks.count <= 1, let value = hooks.first?.value else { return hooks.isEmpty ? .off : nil }
         guard case .object(let events, _) = value else { return .off }
-        let command = command(script: script)
         let hooked = entries.filter { entry in
             events.filter { $0.key == entry.event }.contains { event in
-                handlers(in: event.value).contains { $0.command == command }
+                includes(event.value, entry: entry, script: script, tree: tree)
             }
         }
         if hooked.count == entries.count { return .on }
         let anyOfHeelers = events.contains { event in
-            handlers(in: event.value).contains { $0.command.contains(marker) }
+            hasRelatedHandler(in: event, script: script, tree: tree)
         }
         return hooked.isEmpty && !anyOfHeelers ? .off : .partly
     }
@@ -151,7 +152,6 @@ extension CommandHookSettings {
         guard case .object(let events, let hooksSpan) = hooksMember.value else {
             return .refused(reason: mixedFormReason)
         }
-        let command = command(script: script)
         var missing: [(String) -> String] = []
         var replacements: [JSONTextTree.Replacement] = []
         for entry in entries {
@@ -163,7 +163,7 @@ extension CommandHookSettings {
                 continue
             }
             guard case .array(_, let span) = event.value else { return .refused(reason: mixedFormReason) }
-            guard !handlers(in: event.value).contains(where: { $0.command == command }) else { continue }
+            guard !includes(event.value, entry: entry, script: script, tree: tree) else { continue }
             let group = group(entry, script: script)
             replacements.append(insertion(into: event.value, span: span, items: [{ _ in group }], tree: tree, style: style))
         }
@@ -232,6 +232,12 @@ extension CommandHookSettings {
     // MARK: Removing
 
     @Sendable static func removing(_ settings: Data?) -> HarnessConfigEdit.Transform {
+        removing(from: settings) { _, _, handler, _ in isHeelers(handler) }
+    }
+
+    static func removing(from settings: Data?, matching owns: (
+        _ event: String, _ group: JSONTextTree.Value, _ handler: JSONTextTree.Value, _ tree: JSONTextTree
+    ) -> Bool) -> HarnessConfigEdit.Transform {
         guard let settings, !isBlank(settings) else { return .alreadyApplied }
         guard let tree = try? JSONTextTree(settings), case .object(let members, let rootSpan) = tree.root else {
             return .refused(reason: unreadableReason)
@@ -252,7 +258,7 @@ extension CommandHookSettings {
                     let handlerList = fields.last(where: { $0.key == "hooks" })?.value,
                     case .array(let handlerValues, let handlersSpan) = handlerList
                 else { continue }
-                let ours = Set(handlerValues.indices.filter { isHeelers(handlerValues[$0]) })
+                let ours = Set(handlerValues.indices.filter { owns(event.key, group, handlerValues[$0], tree) })
                 guard !ours.isEmpty else { continue }
                 if ours.count == handlerValues.count {
                     emptiedGroups.insert(groupIndex)
@@ -278,6 +284,14 @@ extension CommandHookSettings {
     }
 
     // MARK: Plumbing
+
+    static func includes(_ event: JSONTextTree.Value, entry: Entry, script: String, tree: JSONTextTree) -> Bool {
+        handlers(in: event).contains { $0.command == command(script: script) }
+    }
+
+    static func hasRelatedHandler(in event: JSONTextTree.Member, script: String, tree: JSONTextTree) -> Bool {
+        handlers(in: event.value).contains { $0.command.contains(marker) }
+    }
 
     /// The command handlers of an event's matcher groups.
     private static func handlers(in event: JSONTextTree.Value) -> [HookSettingsHandler] {

@@ -1086,6 +1086,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let locations = try await claudeCodeHookLocations()
         let files = TmuxClaudeCodeHooks.files(
             script: try TmuxClaudeCodeHooks.bundledScript(), paths: paths, dataHome: locations.dataHome)
+        try await placeHookFiles(files)
+        return locations
+    }
+
+    private func placeHookFiles(_ files: [TmuxClaudeCodeHooks.File]) async throws {
         let nonce = HostProcessReader.makeNonce()
         let script = TmuxClaudeCodeHooks.placeScript(files, nonce: nonce)
         let result = try await session.withTransport { transport in
@@ -1094,7 +1099,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         guard TmuxClaudeCodeHooks.isPlaced(result, nonce: nonce) else {
             throw TransportError.malformedResponse(String(localized: "The Host refused Heeler's hook script."))
         }
-        return locations
+    }
+
+    func configureDroidChatHook(_ action: DroidChatHook.Action, keepingTo pin: TerminalCorePin? = nil) async throws -> String {
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        if action != .removeRegistration {
+            let paths = try await launchServer().paths
+            let locations = try await claudeCodeHookLocations()
+            if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+            try await placeHookFiles([TmuxClaudeCodeHooks.droidPathsFile(dataHome: locations.dataHome, paths: paths)])
+        }
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        return try await session.withTransport { try await $0.hostServices.prepareDroidChatHook(action) }
     }
 
     /// The Host's home and data home, as the Helper's own script finds them.
@@ -1121,7 +1137,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// handler in two settings files runs once.
     private func hookSettings(for request: AgentLaunchRequest) async -> String? {
         if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: request.arguments, kernel: kernel) {
-            return try? await session.withTransport { try await $0.hostServices.prepareDroidChatHook(.launch) }
+            return try? await configureDroidChatHook(.launch)
         }
         guard request.kind == SupportedAgentKind.claude.rawValue,
             let locations = try? await placeClaudeCodeHooks()

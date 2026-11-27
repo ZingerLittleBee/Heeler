@@ -2833,7 +2833,7 @@ struct BlockedCardStoreTests {
                 typeWhileShowing: { typing, stillShows in
                     // Simulate herdr-core / tmux / Rex re-reading the screen a
                     // second later when the countdown has ticked again.
-                    guard stillShows(try await pane.read()) else {
+                    guard try await stillShows(pane.read()) else {
                         throw HerdrCoreChatTyping.Refusal(message: changedMessage)
                     }
                     switch typing {

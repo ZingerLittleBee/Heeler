@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Heeler's Claude Code hook script on a tmux Host (ADR 0046). It sits in
 /// Heeler's own folder under the Host's data home, apart from the Host Helper,
@@ -47,6 +48,13 @@ enum TmuxClaudeCodeHooks {
     static func storedPathsFile(dataHome: String, paths: TmuxPaths) -> String {
         let name = (paths.socket as NSString).lastPathComponent
         return RemoteFilePath.join(dataHome, HostHelperScript.helperDirectorySuffix, "tmux", name, "paths.json")
+    }
+
+    /// Socket names can coincide on two Hosts in the same SSH account.
+    static func droidPathsFile(dataHome: String, paths: TmuxPaths) -> File {
+        let folder = (storedPathsFile(dataHome: dataHome, paths: paths) as NSString).deletingLastPathComponent
+        let digest = SHA256.hash(data: Data(paths.socket.utf8)).map { String(format: "%02x", $0) }.joined()
+        return File(path: RemoteFilePath.join(folder, "droid-\(digest).json"), contents: storedPaths(paths))
     }
 
     // MARK: What

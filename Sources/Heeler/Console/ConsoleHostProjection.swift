@@ -238,8 +238,14 @@ enum CheckedSendOutcome: Equatable, Sendable {
 @MainActor
 protocol CheckedComposerSend: AnyObject {
     func send(
-        _ text: String, route: ComposerRoute, attach: AgentAttachStore?
+        _ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?
     ) async -> CheckedSendOutcome
+}
+
+extension CheckedComposerSend {
+    func send(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> CheckedSendOutcome {
+        await send(text, route: route, attach: attach, verifying: nil)
+    }
 }
 
 /// A projection's terminal Stop for one Pane. `.keepSend` is a Pane that gets

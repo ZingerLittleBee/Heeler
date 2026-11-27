@@ -76,7 +76,27 @@ enum DroidInputBox {
 
     static func isEmptySpec(_ screen: ANSIScreen) -> Bool {
         guard case .empty = read(screen) else { return false }
-        return screen.rows.last(where: { $0.trimmedText.hasPrefix("╭") })?.trimmedText.hasPrefix("╭── Spec ") == true
+        return isSpec(screen)
+    }
+
+    static func isSpec(_ screen: ANSIScreen) -> Bool {
+        screen.rows.last(where: { $0.trimmedText.hasPrefix("╭") })?.trimmedText.hasPrefix("╭── Spec ") == true
+    }
+
+    static func showsPaste(_ displayed: String, text: String) -> Bool {
+        // ChatSendRules adds one trailing space, indistinguishable from the
+        // input frame's own padding. It is never part of the user's draft.
+        let payload = text.last == " " ? text.dropLast() : text[...]
+        if displayed == payload { return true }
+        // The terminal wraps at cell boundaries and pads rows with spaces.
+        // Consume each displayed fragment in order, including word wraps.
+        var remaining = payload
+        for row in displayed.components(separatedBy: "\n") {
+            if !remaining.hasPrefix(row), remaining.first == " " || remaining.first == "\n" { remaining.removeFirst() }
+            guard !row.isEmpty, remaining.hasPrefix(row) else { return false }
+            remaining = remaining.dropFirst(row.count)
+        }
+        return remaining.isEmpty
     }
 
     static func stop(_ context: ChatStopContext) -> ChatStopVerdict {
@@ -88,5 +108,29 @@ enum DroidInputBox {
 
     private static func border(_ row: String, left: Character, right: Character) -> Bool {
         row.count >= 4 && row.first == left && row.last == right && row.dropFirst().dropLast().allSatisfy { $0 == "─" }
+    }
+}
+
+/// Frozen before preflight. Every write must still belong to this instance,
+/// foreground process and Factory conversation, even after a writer waited.
+struct DroidSendVerification: Sendable {
+    let target: DroidDialogTarget
+    let readTarget: @Sendable () async throws -> DroidDialogTarget?
+    let readScreen: @MainActor @Sendable () async throws -> ANSIScreen
+    let requiresSpec: Bool
+
+    @MainActor func refusal(staged text: String? = nil) async -> ComposerRefusal? {
+        let held = String(localized: "Check this Droid session and its message box before sending.")
+        let afterPaste = String(localized: "The Droid session or its input changed. Check the text in the terminal before sending again.")
+        guard !Task.isCancelled, (try? await readTarget()) == target,
+              let screen = try? await readScreen(), !Task.isCancelled, !requiresSpec || DroidInputBox.isSpec(screen)
+        else { return text == nil ? .inputNotReady(held) : .notSubmitted(afterPaste) }
+        let box = DroidInputBox.read(screen)
+        if let text {
+            if case .text(let visible) = box, DroidInputBox.showsPaste(visible, text: text) { return nil }
+            return .notSubmitted(afterPaste)
+        }
+        if case .empty = box { return nil }
+        return .inputNotReady(box.holdReason(for: .droid))
     }
 }

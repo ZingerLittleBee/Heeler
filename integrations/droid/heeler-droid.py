@@ -3,6 +3,7 @@
 
 import contextlib
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -81,12 +82,33 @@ def label_core(record):
         core_request("terminal.label", {"terminal": terminal, "labels": {"heeler.session": json.dumps(record)}})
 
 
+def stored_tmux(socket_path):
+    if sys.platform == "darwin":
+        data = Path.home() / "Library/Application Support"
+    else:
+        data = Path(os.environ.get("XDG_DATA_HOME", ""))
+        if not data.is_absolute():
+            data = Path.home() / ".local/share"
+    directory = data / "heeler/host-helper/tmux" / Path(socket_path).name
+    digest = hashlib.sha256(os.fsencode(socket_path)).hexdigest()
+    # tmux can spell a symlinked parent differently (e.g. /private/tmp).
+    for path in (directory / f"droid-{digest}.json", directory / "paths.json", *directory.glob("droid-*.json")):
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+            paths = json.loads(path.read_text())
+            if os.path.isabs(paths["executable"]) and os.path.isabs(paths["socket"]) and os.path.realpath(paths["socket"]) == os.path.realpath(socket_path):
+                return paths["executable"]
+    return None
+
+
 def tmux_status(record, tty, state, name_session):
     socket_path, server, _ = os.environ["TMUX"].rsplit(",", 2)
     pane = os.environ["TMUX_PANE"]
     if not socket_path.startswith("/") or not server.isdecimal() or not pane.startswith("%") or not pane[1:].isdecimal():
         return
-    tmux = ["tmux", "-N", "-S", socket_path]
+    executable = stored_tmux(socket_path)
+    if not executable:
+        return
+    tmux = [executable, "-N", "-S", socket_path]
     target = ["-t", pane]
     # An inner terminal can inherit the outer Pane's environment.
     actual = subprocess.check_output(
@@ -98,7 +120,7 @@ def tmux_status(record, tty, state, name_session):
     fields = dict(part.split("=", 1) for part in actual[2].split(":") if "=" in part)
     turn = int(fields.get("turn", "0"))
     blocked = int(fields.get("blocked", "0"))
-    if fields.get("app") == "droid" and fields.get("state") == "working" and state == "done":
+    if fields.get("app") == "droid" and fields.get("state") in ("working", "blocked") and state in ("done", "error"):
         turn += 1
     if state == "blocked" and fields.get("state") != "blocked":
         blocked += 1
@@ -182,10 +204,11 @@ def watch_turn(pid, token, offset):
                             if current.get("turn") == token and process_start(pid) == record["start"]:
                                 current.pop("turn")
                                 write_session(path, current)
-                                state = {"cancelled": "idle", "failed": "error", "error": "error"}
+                                state = {"completed": "done", "cancelled": "idle", "failed": "error",
+                                         "error": "error", "model_provider_unreachable": "error"}.get(outcome.get("reason"))
                                 group, foreground, tty = ps(pid, "pgid=,tpgid=,tty=").split()
-                                if int(group) == pid and group == foreground:
-                                    report(current, "/dev/" + tty, state.get(outcome.get("reason"), "done"))
+                                if state and int(group) == pid and group == foreground:
+                                    report(current, "/dev/" + tty, state)
                         return
                 skipping = False
             elif len(line) == 65536:
@@ -247,9 +270,8 @@ def main(event):
             report(identity, tty, "blocked")
         elif name == "PostToolUse" and turn:
             report(identity, tty, "working")
-        elif name == "Stop" and turn:
-            write_session(path, identity)
-            report(identity, tty, "done")
+        # Stop can precede a cancelled or failed transcript outcome. The turn
+        # watcher owns completion and counts it once even when Stop also fires.
 
 
 if __name__ == "__main__":

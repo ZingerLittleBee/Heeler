@@ -128,11 +128,11 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
     }
 
     /// `attach` is the one the user is viewing, in the window sending. Chat has none.
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            let outcome = await deliver(text, route: route, attach: attach)
+            let outcome = await deliver(text, route: route, attach: attach, verifying: verifying)
             if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
             return outcome
         }
@@ -142,7 +142,7 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
 
     // MARK: The steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.coreGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection) }
@@ -209,6 +209,7 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
             wake.finish()
         }
 
+        if let refusal = await verifying?.refusal() { return .refused(refusal) }
         let pasteStart = clock.now()
         let paste = TerminalBracketedPaste.encode(text, bracketed: true)
         switch await write(paste, on: seat) {
@@ -222,11 +223,13 @@ final class HerdrCoreComposerSend: CheckedComposerSend {
             if HerdrCoreAgentRule.agent(in: record)?.status == .blocked {
                 return .refused(.notSubmitted(Self.becameBlocked))
             }
+            if let refusal = await verifying?.refusal(staged: text) { return .refused(refusal) }
             guard clock.now() - pasteStart < Self.submitWindow else {
                 return .refused(.notSubmitted(Self.windowPassed))
             }
             return await submit(submitKey, text: text, on: seat)
         case .changed(let foreground):
+            if verifying != nil { return .refused(.notSubmitted(Self.programEnded)) }
             return await giveUp(after: foreground, of: held.record, on: seat)
         case .ended:
             return .refused(.notSubmitted(Self.programEnded))

@@ -712,7 +712,11 @@ struct ChatUnavailableView: View {
         ContentUnavailableView {
             Label(reason.title(launchNotice: launchNotice), systemImage: reason.systemImage(launchNotice: launchNotice))
         } description: {
-            reason.unavailableDescription(launchNotice: launchNotice)
+            if reason == .cannotTellSession(.droid), installDroidHook == nil {
+                Text("Open this Agent’s terminal and check that Herdr’s Droid integration reports the running session.")
+            } else {
+                reason.unavailableDescription(launchNotice: launchNotice)
+            }
         } actions: {
             VStack(spacing: 12) {
                 VStack(spacing: 10) {

@@ -35,6 +35,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
     var offersAmpPlugin = false
+    var offersDroidChatHook = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -160,6 +161,7 @@ extension HostCapabilities {
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
+            offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -181,6 +183,7 @@ extension HostCapabilities {
                 tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true)
+            offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
         let offered = serverKind == .herdrTUI
@@ -215,6 +218,7 @@ extension HostCapabilities {
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
+        offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
