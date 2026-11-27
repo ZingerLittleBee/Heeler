@@ -442,13 +442,19 @@ extension DroidChatLiveTests {
             let old = try await begin("FIRST_STOP")
             let original = try #require(live.chat.droidSessionID)
             try #require(await old.perform() == .sent)
-            try await live.wait { live.chat.conversation.transcript.turns.last?.ending == .interrupted && live.chat.agent.status == .idle }
+            try await live.wait {
+                live.chat.conversation.transcript.turns.last?.ending == .interrupted && ChatAgentActivity(live.chat.agent.status) == .idle
+            }
+            try #require(DroidInputBox.read(try await projection.readAgentScreen(live.fixture.pane)).isSendable)
             try await self.desktop("/new", in: live.fixture.pane, projection: projection)
             try await live.wait { live.chat.droidSessionID != nil && live.chat.droidSessionID != original }
             let current = try await begin("SECOND_STOP")
             #expect(await old.perform() == .failed(ChatStopPlan.changedDroidTurn))
             try #require(await current.perform() == .sent)
-            try await live.wait { live.chat.conversation.transcript.turns.last?.ending == .interrupted && live.chat.agent.status == .idle }
+            try await live.wait {
+                live.chat.conversation.transcript.turns.last?.ending == .interrupted && ChatAgentActivity(live.chat.agent.status) == .idle
+            }
+            #expect(DroidInputBox.read(try await projection.readAgentScreen(live.fixture.pane)).isSendable)
         }
     }
 
