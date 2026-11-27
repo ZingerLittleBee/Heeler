@@ -3,7 +3,7 @@
 Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
 > [!NOTE]
-> Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows (built against Rex 0.1.0-preview.14 and checked against 0.1.0-preview.23), opening the terminals and Agents Rex runs and starting new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
+> Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows. Preview.25 was exercised on macOS and Linux, and preview.23 on native Windows. Open running terminals and Agents from the Console. See [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
 
 ## Before you start
 
@@ -15,7 +15,7 @@ Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Win
 
 ## Add a Host
 
-Heeler never starts Rex when connecting or checking, and starts nothing in it until you tap [New Terminal](#new-terminal). On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
+Heeler looks for a running server. A terminal or an Agent starts when you request it in **Terminals** or **Agents**. On a Mac or Linux it never runs the `rex` command; on Windows, where SSH cannot reach Rex's named pipe directly, each connection runs `rex __internal dial-stdio --autostart=false`, the bridge Rex's own command uses over SSH, which starts no server.
 
 ### 1. Connect
 
@@ -58,7 +58,7 @@ If the Host's page reads **Rex** with **Socket found, but this account cannot us
 
 ## The Console
 
-Heeler shows your Rex layout as it is and changes it only when you start a [New Terminal](#new-terminal):
+Heeler reads your Rex layout from the server.
 
 - **Workspaces, Tabs, and Panes:** Each Rex session is a Workspace, each window is a Tab, and each terminal is a Pane, in Rex's order. A session's terminals that are in none of its windows share a Tab named **Detached**. A session with no terminal is not listed.
 - **Agents and Terminals:** A terminal whose program is Claude Code, Codex, or another coding Agent Heeler knows appears in **Agents**, with the status the Agent reports to Rex. Shells and other programs appear in **Terminals**, and a terminal moves back to **Terminals** when its Agent exits. A session whose terminals are all Agents appears in **Terminals** as a card holding only **New Terminal**. Titles, programs, and directories follow Rex as they change.
@@ -113,15 +113,19 @@ On iPad, one window at a time shows a Rex Host's Agent terminals. Another window
 Heeler starts a shell in Rex, in a new window, the way Rex's own New Terminal does:
 
 - **In a Workspace:** Tap **New Terminal** at the end of a Workspace's card in **Terminals**, or **+** in **Terminals** and pick the Workspace. Rex opens the shell in a new window of that session, in the Workspace's directory. The window opens in the background: the Rex app on your Mac keeps showing the window it had.
-- **In a new Workspace:** In the **+** sheet, choose **New Workspace**, and browse to a directory or leave it empty for your home directory. Rex makes a new session with the shell in it, named as you type it, or after the directory when you leave the name empty. There is no tab name to give.
+- **In a new Workspace:** In the **+** sheet, choose **New Workspace**, and browse to a directory or leave it empty for your home directory. Rex makes a new session with the shell in it, named as you type it, or after the directory when you leave the name empty. On macOS and Linux, the optional Tab name labels its window.
 - **Opening it:** The new terminal opens here as soon as Rex lists it, fitted to your screen as any other, and gives its size back when you leave it.
 - **If Rex does not answer:** Heeler never asks Rex twice. When the error says Rex did not answer, the terminal may still have been made: look in **Terminals** before trying again.
 
-To start an Agent, open a New Terminal and start it there. It moves to **Agents** once it runs.
+## New Agent and project tools
+
+On a supported macOS or Linux Host, open **Agents → + → New Agent**. Choose the Rex Server, an installed Agent, and a Workspace. Pick a saved launch preset or supply arguments in the form. Choose **New Workspace** to enter a specific directory. **Start in a new worktree** branches from the selected Workspace's checkout and opens the new checkout in its own Rex session. The checkout remains on the Host if launching the Agent fails.
+
+In **Terminals**, tap the pencil beside a Workspace to **Rename Workspace**. Its Rex session takes the new label. **Rename Agent** in the Agent menu changes its Rex block label. Clearing it restores the default. The harness owns the separate conversation title. In the Agent detail, open **Files** or **Changes**, or use **Skills** in the keyboard. **Hosts → your Host → Rex** lists the Chat programs and actions available on that system.
 
 ## Chat
 
-**Chat** works for Claude Code, Codex, Pi, Oh My Pi, Droid and Devin CLI in Rex on macOS and Linux, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
+**Chat** works for Claude Code, Codex, Pi, Oh My Pi, Grok Build, Droid and Devin CLI in Rex on macOS and Linux, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
 
 | Program | Session notes |
 | --- | --- |
@@ -129,14 +133,15 @@ To start an Agent, open a New Terminal and start it there. It moves to **Agents*
 | Devin CLI | On macOS and Linux, open a [local Devin session](chat.md#devin-cli) with a foreground ACP writer. The Host needs Python 3. |
 | Droid | On macOS and Linux, [install the Droid hook](chat.md#droid) and resume Droid in this terminal. Chat checks its current session before sending. |
 | Codex | Binds once it holds its conversation file, after the first message. Start it with `--no-daemon` ([why](chat.md#set-up-the-host)); without it, Chat shows [**Codex Started Without --no-daemon**](chat-troubleshooting.md#codex-started-without---no-daemon) instead of the conversation. |
+| Grok Build | The local registry must identify a single conversation held by this foreground and process start. If several entries still match after a desktop `/new`, use the picker to read a history and the terminal to send. |
 | Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Pi starts. After `/new`, Chat checks again before it sends your next message. |
 | Oh My Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Oh My Pi starts. Without the extension, Chat follows the conversation after its first message. After `/new`, Chat checks again before it sends your next message. |
 | Other Agents | No Chat on Rex Hosts yet. They open on their terminal. On Windows, so do Codex, Pi, and Oh My Pi. |
 
-- **Can't Tell the Conversation:** When Chat cannot prove which conversation the Agent shows, it says so with **Check Again**. For Claude Code and Codex, tap **Choose a Conversation**, preview one, and tap **Use This Conversation**. Heeler keeps that choice on this device, for this terminal, until the Agent exits or Rex restarts. Nothing is written on the Host. For Pi and Oh My Pi, [add Heeler's extension](#pi-and-oh-my-pi) instead.
+- **Can't Tell the Conversation:** When Chat cannot prove which conversation the Agent shows, it says so with **Check Again**. For programs that offer **Choose a Conversation**, tap it, preview one, and tap **View This Conversation**. Heeler keeps that choice on this device, for this terminal, until the Agent exits or Rex restarts. A selected history stays readable. Sending a message, pressing Stop or answering a card requires independent evidence of the conversation on the terminal. Use **Terminal** while more than one conversation still fits. For Pi and Oh My Pi, [add Heeler's extension](#pi-and-oh-my-pi) instead.
 - **Send:** **Send** pastes your message and presses Enter once it checks that the same Agent still holds the terminal, is not **Blocked**, and accepts a paste. The Composer under the terminal sends the same way. If Rex does not answer, Heeler never sends the message again; check the terminal first.
-- **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Send** becomes **Stop**, which presses Esc once it checks that the same Agent still holds the terminal. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal. A Claude Code that has finished its turn while a command it put in the background still runs reads **Done** or **Idle**, so you can send its next message; **Stop** never ends that command, so end it in the terminal.
-- **Commands:** `/` offers `/compact` while the Agent reports it is idle, and not the Agent's skills. Use the terminal for the rest.
+- **Stop and Blocked prompts follow the Agent's status.** While the Agent reads **Working** and your message is empty, **Stop** checks the bound conversation and its current recorded turn. It then uses the stop key for that harness. A card with buttons appears while it reads **Blocked**. An Agent that reports no status to Rex reads **Unknown**: it gets no **Stop** and no card, so stop or answer it in its terminal. A Claude Code that has finished its turn while a command it put in the background still runs reads **Done** or **Idle**, so you can send its next message; **Stop** never ends that command, so end it in the terminal.
+- **Commands:** Open Skills from the keyboard on macOS or Linux. The slash menu also offers /compact when the Agent is idle.
 - **Images and files:** In Chat or on the Agent's terminal, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Heeler uploads the file over the Host's SSH connection, not through Rex, into a new folder in the temporary folder of the account you sign in with (on Windows, `AppData\Local\Temp` in its user folder), and adds its path to your message; **Send** types the path with your message, once. An image is sent as a JPEG or PNG of at most 16 MiB, and a file can be up to 64 MiB. Heeler never deletes uploaded files from the Host. If another Rex server takes over, one that did not bring back the Agent's session, an upload started afterwards stops with **This Terminal belongs to a Rex server that is gone**; one already under way finishes and its file stays on the Host, but **Send** then refuses the message with the same words. Open the Agent again from the list.
 
 ### Pi and Oh My Pi
@@ -154,21 +159,25 @@ Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extens
 - **What the extension does:** Pi and Oh My Pi load it for every session on the Host. In a Rex terminal it keeps one small file per running Agent in a `heeler-session` folder beside the extension folder, naming the conversation, and removes it when the Agent quits. Outside Rex, tmux, and herdr-core it does nothing.
 - **Removing it:** Delete `heeler-session.js` from the extension folder, and the `heeler-session` folder beside it.
 
+## Foreground alerts
+
+In **Settings → Notifications → Rex In-App Banners**, turn on a recognized macOS or Linux Rex Server on this device. Heeler keeps that choice if the Host temporarily disconnects. Blocked and Error are included. Turn on **Include Done** for completed turns. Tap a banner to open its Agent. Switching the Server off here stops these alerts without editing its configuration.
+
 ## What Heeler does not do yet
 
-- **Status, Chat and attachments only:** no Changes, Skills, Agent Notifications, Live Activities, Usage, or widgets for Rex. A Host's other Servers keep theirs.
-- **No New Agent, Rename, or Close:** Heeler starts only shells. Start an Agent in a [New Terminal](#new-terminal), and rename or close in Rex; Heeler shows the result.
-- **No Worktrees, Host Helper, or Add by Name** for Rex.
+- **Move, close and layout.** Use Rex on the Host to move or close an existing Agent or edit a split. Its protocol through revision 19 addresses a block even after another program takes it. Heeler follows the resulting inventory.
+- **Worktree removal.** Use Git on the Host to inspect and remove a linked checkout. Closing a window leaves its checkout intact.
+- **Background notifications, Live Activities and Usage widgets.** These need a Host-side producer that can run after the app disconnects. A Rex-only Server has no such integration. A Host's other Servers have their own settings.
 
 ## Known limits
 
 - **Rex API revisions 12 to 19:** Heeler offers revision 19 and accepts any from 12, and Rex picks the newest both speak. A Rex that speaks none of them is refused. Heeler was built against Rex 0.1.0-preview.14 (revision 12) and checked against 0.1.0-preview.23 (revision 19).
-- **Linux not yet tried:** Heeler looks where Rex keeps its socket on Linux, but no Linux Rex server has been tried yet.
+- **Linux.** The preview.25 lab used Debian 12 arm64. The [platform evidence](../agents/rex-linux-lab.md) identifies the operations and harnesses exercised there.
 - **Colors, cursor shape and history:** A Rex terminal wears its own colors, as Rex shows it, and your Heeler theme only where Rex keeps its built-in ones. Rex does not say a terminal's cursor shape, so the cursor keeps Heeler's shape until the program sets it again. While a full-screen program is open, the history behind it appears only after the program closes.
 - **Another device's size does not fit:** While a terminal stays at a size another device set wider than your screen (see [Sized for another device](#sized-for-another-device)), its lines wrap at your screen's width, so a full-width program can look jumbled. While its screen holds a line wider than yours, the cursor, new output and what you type can also land on the wrong row, over earlier text, until **Fit to Screen** paints it again. Heeler does not scale it down or cut it off.
-- **What has been tested so far:** Rex has been tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. Apart from one Chat message sent from an iPhone (below), they have not been tried on a physical iPhone or iPad. They have not been tried with the Rex app showing the same terminal either.
-- **Chat with real Agents tried only in the Simulator:** In the iOS Simulator, Chat was tried with a real Claude Code, Codex, Pi, and Oh My Pi running in Rex on macOS: reading the conversation, **Send**, and **Stop** for all four, and the buttons on **Blocked** prompts for Claude Code and Codex. On an iPhone, one message sent from Chat reached a real Codex 0.169.0 running in Rex, which answered it. That was an earlier build, which refused every later Send once Codex's answer drew links. Chat now reads such links, but Chat has not been tried again on an iPhone or iPad. Pi and Oh My Pi have not been tried on Linux, or with an Oh My Pi profile.
+- **Earlier preview.14 observations:** Rex was tried in the iOS Simulator against Rex 0.1.0-preview.14 on macOS, with test clients standing in for other devices. Apart from one Chat message sent from an iPhone (below), they have not been tried on a physical iPhone or iPad. They have not been tried with the Rex app showing the same terminal either.
+- **Earlier Simulator Chat runs:** In the iOS Simulator, Chat was tried with a real Claude Code, Codex, Pi, and Oh My Pi running in Rex on macOS: reading the conversation, **Send**, and **Stop** for all four, and the buttons on **Blocked** prompts for Claude Code and Codex. On an iPhone, one message sent from Chat reached a real Codex 0.169.0 running in Rex, which answered it. That was an earlier build, which refused every later Send once Codex's answer drew links. Chat now reads such links, but Chat has not been tried again on an iPhone or iPad. See the [Chat observations by harness](../agents/rex-chat-parity.md) for later POSIX runs.
 - **Uploads not yet tried on a device:** Images and files were tried in the iOS Simulator against a running Rex server: an image with a real Claude Code, Codex, Grok Build, Antigravity CLI, Pi, and Oh My Pi, and a text file with Claude Code and Codex. They have not been tried from a physical iPhone or iPad.
 - **Chat on Windows checked piece by piece:** Against Rex 0.1.0-preview.23 on Windows 11, three real Claude Code 2.1.332 Agents in Rex terminals were each found by the process read Chat runs there, held to their own conversation, and their conversation files read over SFTP. Making a staging folder, writing, renaming and removing a file over SFTP in the account's `AppData\Local\Temp` worked there too. Chat and uploads on Windows have not been tried end to end in the app.
 
-Last checked on 2026-11-18 against Rex 0.1.0-preview.14 (API revision 12) on macOS, with test programs and, in the iOS Simulator, real Agents.
+The November 27, 2026 lab ran Rex 0.1.0-preview.25 on macOS and Debian. Heeler negotiated revision 19. The earlier macOS observations used preview.14 at revision 12. [Platform and harness evidence](../agents/rex-daily-workflows.md)
