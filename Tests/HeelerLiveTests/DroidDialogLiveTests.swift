@@ -157,7 +157,8 @@ extension DroidChatLiveTests {
             defer { live.chat.end() }
             try await live.wait { live.chat.droidSessionID != nil }
             let original = try #require(live.chat.droidSessionID)
-            let next = live.fixture.directory + "/next folder"
+            let parent = (live.fixture.directory as NSString).deletingLastPathComponent
+            let next = RemoteFilePath.join(parent, "next folder")
             for accepts in [false, true] {
                 try await desktop("/cd " + next, in: live.fixture.pane, projection: projection)
                 let card = try await live.card(.droidWorkspaceTrust)
@@ -176,9 +177,8 @@ extension DroidChatLiveTests {
             let marker = "AFTER_CD_" + UUID().uuidString.prefix(8)
             try await live.send("Reply with exactly \(marker). No tools.")
             try await live.wait { live.reply(marker) }
-            let screen = try await projection.readAgentScreen(live.fixture.pane)
-            #expect(screen.rows.contains { $0.text.contains("next folder") }
-                    || live.chat.agent.foregroundCwd == next)
+            let current = try #require(try await projection.droidDialogTarget(paneID: live.fixture.pane))
+            #expect(current.directory == next && current.sessionID == live.chat.droidSessionID)
         }
     }
 
