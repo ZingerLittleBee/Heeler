@@ -180,6 +180,10 @@ struct DialogObservation: Sendable {
     var withoutDialog: DialogObservation {
         DialogObservation(screen: screen, result: .none, activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
     }
+
+    func requiringTerminal(_ excerpt: GenericDialogExcerpt) -> DialogObservation {
+        DialogObservation(screen: screen, result: .unrecognized(excerpt), activity: activity, resolvedToolUseIDs: resolvedToolUseIDs)
+    }
 }
 
 extension DialogExpectation {

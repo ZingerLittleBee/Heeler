@@ -1,0 +1,933 @@
+{
+  "candidate": "4bf211cf2f5965026e2cd33cf364ba0810d2c0a6",
+  "productionCommit": "8c89c78943e2d91fb4fa39bf86277b56be47fb4d",
+  "repairBase": "0488d63734b5d253867a80898a4296273b7378ee",
+  "versions": {
+    "macOS": "27.0.1 arm64",
+    "Linux": "Debian 13.7 arm64, 7.2.12-orbstack",
+    "Droid": "1.21.1",
+    "HerdrTUI": "0.9.5",
+    "herdr-core": "0.1.22",
+    "macTmux": "3.7b",
+    "linuxTmux": "3.5a",
+    "Rex": "0.1.0-preview.25 (b070aae645f5cbfac65d65d031a8b712b2ebca36), server API 24, client negotiated API 19",
+    "client": "Xcode 27.2 (27B52), iOS/iPadOS 27 Simulator"
+  },
+  "xcodeRuns": {
+    "unit": {
+      "selector": "DroidChatTests",
+      "scheme": "Heeler",
+      "selected": 20,
+      "executed": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "unit-4bf211cf.log"
+    },
+    "shared": {
+      "selector": "11 composer, transport, blocked card, hooks and input suites",
+      "scheme": "Heeler",
+      "selected": 321,
+      "executed": 321,
+      "passed": 321,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "shared-4bf211cf.log"
+    },
+    "mac-tui-frozen": {
+      "selector": "DroidChatLiveTests",
+      "scheme": "HeelerLiveTests",
+      "selected": 15,
+      "executed": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "mac-tui-frozen-4bf211cf.txt"
+    },
+    "linux-tui-full": {
+      "selector": "DroidChatLiveTests",
+      "scheme": "HeelerLiveTests",
+      "selected": 15,
+      "executed": 15,
+      "passed": 14,
+      "failed": 1,
+      "skipped": 0,
+      "receipt": "linux-tui-full-4bf211cf.txt",
+      "context": "The git executable was absent in the isolated container. The reviewed command returned exit code 127."
+    },
+    "linux-tui-patchretry": {
+      "selector": "DroidChatLiveTests.approvesOnlyTheTwoFilesInTheReviewedGitPatch",
+      "scheme": "HeelerLiveTests",
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "linux-tui-patchretry-4bf211cf-one.txt",
+      "context": "Fresh project after installing Git 2.47.3 in the disposable container."
+    },
+    "mac-backends-frozen": {
+      "selector": "DroidBackendChatLiveTests",
+      "scheme": "HeelerLiveTests",
+      "selected": 2,
+      "executed": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "receipt": "mac-backends-frozen-4bf211cf.txt",
+      "backendCases": {
+        "executed": 7,
+        "passed": 6
+      },
+      "context": "The isolated SSH account resolved New Agent to an unconfigured mise shim. Its core process exited before reporting a session."
+    },
+    "mac-backends-rerun": {
+      "selector": "DroidBackendChatLiveTests.bindsSendsAndReadsTheReply",
+      "scheme": "HeelerLiveTests",
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "mac-backends-rerun-4bf211cf-one.txt",
+      "backendCases": {
+        "executed": 3,
+        "passed": 3
+      },
+      "context": "Reran the complete parameterized method with the isolated account resolving droid to the installed executable."
+    },
+    "linux-backends-frozen": {
+      "selector": "DroidBackendChatLiveTests",
+      "scheme": "HeelerLiveTests",
+      "selected": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "linux-backends-frozen-4bf211cf.txt",
+      "backendCases": {
+        "executed": 7,
+        "passed": 7
+      }
+    },
+    "mac-backends-same": {
+      "selector": "DroidBackendChatLiveTests.staleCardAndDraftCannotWriteToAReplacementServer",
+      "scheme": "HeelerLiveTests",
+      "selected": 1,
+      "executed": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "receipt": "mac-backends-same-4bf211cf-one.txt",
+      "backendCases": {
+        "executed": 4,
+        "passed": 1
+      },
+      "context": "The external test driver used a truncated ps comm column. It did not launch the requested replacement for TUI, core or Rex. The tmux case completed."
+    },
+    "mac-backends-same2": {
+      "selector": "DroidBackendChatLiveTests.staleCardAndDraftCannotWriteToAReplacementServer",
+      "scheme": "HeelerLiveTests",
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "mac-backends-same2-4bf211cf-one.txt",
+      "backendCases": {
+        "executed": 4,
+        "passed": 4
+      },
+      "context": "Foreground-only fixture with full process arguments. The backend instance and terminal address were held constant for all four cases."
+    },
+    "linux-backends-same": {
+      "selector": "DroidBackendChatLiveTests.staleCardAndDraftCannotWriteToAReplacementServer",
+      "scheme": "HeelerLiveTests",
+      "selected": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "receipt": "linux-backends-same-4bf211cf-one.txt",
+      "backendCases": {
+        "executed": 4,
+        "passed": 4
+      },
+      "context": "Foreground-only fixture. The backend instance and terminal address were held constant for all four cases."
+    }
+  },
+  "tools": {
+    "make test-tools": {
+      "checks": 36,
+      "passed": 36,
+      "includes": "Two Python hook cases with private real tmux servers on macOS"
+    },
+    "python3 scripts/test-droid-hook.py on Linux": {
+      "executed": 2,
+      "passed": 2
+    }
+  },
+  "userFlows": {
+    "mac": {
+      "trustReplies": [
+        {
+          "foregroundSession": "02a263aa-40eb-4f8c-8486-5d1f6e09f6b7",
+          "assistantMessageID": "8f263a2c-fc98-4314-af38-6d268597a33b",
+          "reply": "DROID_TRUST_8A5D185D"
+        }
+      ],
+      "exitObserver": "ready",
+      "approvals": {
+        "firstBytes": "ALPHA-DROID\n",
+        "secondExists": false,
+        "requests": [
+          {
+            "file": "approval-a.txt",
+            "call": "call_7da69c6b2d118bd7_0",
+            "session": "1509020e-15c9-4420-b1f2-2c921bad942c"
+          },
+          {
+            "file": "approval-b.txt",
+            "call": "call_a6b1e819233439a3_0",
+            "session": "1509020e-15c9-4420-b1f2-2c921bad942c"
+          }
+        ]
+      },
+      "backgroundCommands": [
+        {
+          "marker": "RED_6AC710",
+          "call": "call_ed801005b346000a_0",
+          "session": "cc9f265a-d0bc-46a8-88bd-f05175c0d3c1",
+          "pid": 83934,
+          "terminalStatus": "signal SIGTERM",
+          "userStopped": true
+        },
+        {
+          "marker": "BLUE_6AC710",
+          "call": "call_ed801005b346000a_1",
+          "session": "cc9f265a-d0bc-46a8-88bd-f05175c0d3c1",
+          "pid": 83947,
+          "terminalStatus": "code 0",
+          "userStopped": false
+        }
+      ],
+      "lateChildReports": [
+        {
+          "childID": "cbd5bb93-b215-408d-b082-5907cb031d7e",
+          "parentSession": "cc9f265a-d0bc-46a8-88bd-f05175c0d3c1",
+          "messageID": "task-completion:63ad6551-747e-42a8-b7c3-c46b9ab22821",
+          "result": "CHILD_6AC710"
+        }
+      ],
+      "sameDirectoryTranscripts": [
+        {
+          "session": "351ace98-4068-4229-b972-3f3a82bf012d",
+          "assistantMarkers": [
+            "B_0D35AE7B"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "967af559-6720-45f4-ab68-c55a979c76f1",
+          "assistantMarkers": [
+            "A_0D35AE7B"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "f68d5caf-3d0f-44c1-8d4b-957382953ecf",
+          "assistantMarkers": [
+            "A_0D35AE7B"
+          ],
+          "unsentDraftRecords": 0
+        }
+      ]
+    },
+    "linux": {
+      "trustReplies": [
+        {
+          "foregroundSession": "2b52901c-068c-43ce-b2e6-6668714c4cd4",
+          "assistantMessageID": "373389c9-b246-4b81-93e1-d1223909431a",
+          "reply": "DROID_TRUST_5A153BBD"
+        }
+      ],
+      "exitObserver": "ready",
+      "approvals": {
+        "firstBytes": "ALPHA-DROID\n",
+        "secondExists": false,
+        "requests": [
+          {
+            "file": "approval-a.txt",
+            "call": "call_41018e69f27f7fe5_0",
+            "session": "301f006c-8a2b-43f0-90fe-ec379397dda4"
+          },
+          {
+            "file": "approval-b.txt",
+            "call": "call_9081853aeed6096a_0",
+            "session": "301f006c-8a2b-43f0-90fe-ec379397dda4"
+          }
+        ]
+      },
+      "backgroundCommands": [
+        {
+          "marker": "RED_235D97",
+          "call": "call_32ce2733c9b9e215_0",
+          "session": "c94f358a-85d9-46aa-ade1-680d5090e516",
+          "pid": 89766,
+          "terminalStatus": "signal SIGTERM",
+          "userStopped": true
+        },
+        {
+          "marker": "BLUE_235D97",
+          "call": "call_32ce2733c9b9e215_1",
+          "session": "c94f358a-85d9-46aa-ade1-680d5090e516",
+          "pid": 89771,
+          "terminalStatus": "code 0",
+          "userStopped": false
+        }
+      ],
+      "lateChildReports": [
+        {
+          "childID": "2787139a-205e-4cc2-958f-3b9808907ee1",
+          "parentSession": "c94f358a-85d9-46aa-ade1-680d5090e516",
+          "messageID": "task-completion:7beacf48-47c7-471b-b9dd-fea4007815ee",
+          "result": "CHILD_235D97"
+        }
+      ],
+      "sameDirectoryTranscripts": [
+        {
+          "session": "a0e47ecb-2016-4f21-85d9-593aeb35c073",
+          "assistantMarkers": [
+            "A_1DE4AC79"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "55b59e45-548c-4663-9943-081765e07fcb",
+          "assistantMarkers": [
+            "B_1DE4AC79"
+          ],
+          "unsentDraftRecords": 0
+        },
+        {
+          "session": "f677df00-ff24-4459-8d7c-7136ed000445",
+          "assistantMarkers": [
+            "A_1DE4AC79"
+          ],
+          "unsentDraftRecords": 0
+        }
+      ]
+    }
+  },
+  "replacementScenarios": [
+    {
+      "host": "mac",
+      "backend": "herdrTUI",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 11682,
+          "start": "Fri Nov 27 15:35:56 2026",
+          "instance": null,
+          "address": "w1:p1"
+        },
+        "after": {
+          "pid": 29845,
+          "start": "Fri Nov 27 15:51:28 2026",
+          "instance": null,
+          "address": "w2:p1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "23e0d911-8ada-4c94-afc9-db00c9c941c9",
+          "call": "call_ac4fc4455848caf5_0"
+        },
+        {
+          "session": "2c2c958e-7042-481c-a9cc-c6199ef9196e",
+          "call": "call_13847bec9ddfb4f5_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "herdrCore",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 11698,
+          "start": "Fri Nov 27 15:35:56 2026",
+          "instance": "d9b7d973e482712761330a63d5c396c3",
+          "address": "t1"
+        },
+        "after": {
+          "pid": 39356,
+          "start": "Fri Nov 27 15:52:15 2026",
+          "instance": "d9b7d973e482712761330a63d5c396c3",
+          "address": "t2"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "6fc503bb-1b4c-40ae-b3b3-a582f4674eea",
+          "call": "call_6f668c64d4740b1f_0"
+        },
+        {
+          "session": "e6a95762-76aa-4055-9e0a-90bad021f7b4",
+          "call": "call_1e34f96c69f491ba_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "tmux",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 11694,
+          "start": "Fri Nov 27 15:35:56 2026",
+          "instance": "1795764956",
+          "address": "%0"
+        },
+        "after": {
+          "pid": 51772,
+          "start": "Fri Nov 27 15:53:00 2026",
+          "instance": "1795765980",
+          "address": "%0"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "65934530-0424-4650-b70f-af9439b18e5f",
+          "call": "call_3ad4a53148da08af_0"
+        },
+        {
+          "session": "6a742d41-f615-4c70-8571-3640c243d931",
+          "call": "call_b0ca57ff3e9e40d3_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "rex",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 11683,
+          "start": "Fri Nov 27 15:35:56 2026",
+          "instance": "1b076e7d-abb5-4fc8-8e3f-3ffa7f0de2da",
+          "address": "block:01a21bee-ac47-7a9e-a7b9-9354c5b5f6e2"
+        },
+        "after": {
+          "pid": 62316,
+          "start": "Fri Nov 27 15:53:37 2026",
+          "instance": "08b75ad6-f562-4cfb-9db9-75fdb1317b6c",
+          "address": "block:01a21bfe-dc3b-7e34-8e10-048814f00ff2"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "e6d46019-7e00-4b06-b0bc-14eb92d07479",
+          "call": "call_14e5e176f7cdef09_0"
+        },
+        {
+          "session": "8d785631-3299-4437-856d-8753960cc1b1",
+          "call": "call_9cc89521528fd354_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "herdrTUI",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 3002,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": null,
+          "address": "w1:p1"
+        },
+        "after": {
+          "pid": 3002,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": null,
+          "address": "w1:p1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "d481e68e-2969-4b0c-b4b5-d51301f764fb",
+          "call": "call_fe105556c5b485db_0"
+        },
+        {
+          "session": "dae96bf0-69a7-4976-8b5c-39074ad48e7a",
+          "call": "call_95ac543b16989da2_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "herdrCore",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 3020,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "b6311fb211b12707d4651a4580609cad",
+          "address": "t1"
+        },
+        "after": {
+          "pid": 3020,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "b6311fb211b12707d4651a4580609cad",
+          "address": "t1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "89aab6b1-35e5-44db-a40f-fe8420632e8a",
+          "call": "call_db3108bf06255ee6_0"
+        },
+        {
+          "session": "be6c47a6-abbb-4e6d-bb99-b9091d73f33a",
+          "call": "call_5859a3793cb0ee9d_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "tmux",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 3016,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "1795766525",
+          "address": "%0"
+        },
+        "after": {
+          "pid": 3016,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "1795766525",
+          "address": "%0"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "93ff3042-c279-4a47-9ede-6ed522809634",
+          "call": "call_15d386283b6f1e70_0"
+        },
+        {
+          "session": "3b754fe8-9b5a-44e7-b58e-289dc8f900ca",
+          "call": "call_d9ef9aeb3bfdb466_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "mac",
+      "backend": "rex",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 3006,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "1146a95c-ab92-4c34-9498-2c4f4f5f7b5f",
+          "address": "block:01a21c06-a0e8-7d1b-9853-076bd85bfca9"
+        },
+        "after": {
+          "pid": 3006,
+          "start": "Fri Nov 27 16:02:05 2026",
+          "instance": "1146a95c-ab92-4c34-9498-2c4f4f5f7b5f",
+          "address": "block:01a21c06-a0e8-7d1b-9853-076bd85bfca9"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "e1afe25c-67e9-4b00-b0ca-40e491d46e04",
+          "call": "call_db4896f414bf0111_0"
+        },
+        {
+          "session": "b7271542-f883-4d0e-9ab6-af0a9ab20edf",
+          "call": "call_c436b0ad13252be4_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "herdrTUI",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 36635,
+          "start": "Fri Nov 27 07:36:01 2026",
+          "instance": null,
+          "address": "w1:p1"
+        },
+        "after": {
+          "pid": 72168,
+          "start": "Fri Nov 27 07:51:56 2026",
+          "instance": null,
+          "address": "w2:p1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "ac2eda56-aae9-4b8b-b08f-c4b13fb78af5",
+          "call": "call_f1e01f7309e02472_0"
+        },
+        {
+          "session": "199e7973-0102-44b8-96c5-c16089c37979",
+          "call": "call_593d2c4e4d55e31c_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "herdrCore",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 36671,
+          "start": "Fri Nov 27 07:36:01 2026",
+          "instance": "6d2acda310f3a9faa3e05307ced34509",
+          "address": "t1"
+        },
+        "after": {
+          "pid": 75100,
+          "start": "Fri Nov 27 07:52:57 2026",
+          "instance": "6d2acda310f3a9faa3e05307ced34509",
+          "address": "t2"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "7036bd5a-7a8c-4d85-adb1-229cc6208753",
+          "call": "call_715f1cf4faa85d63_0"
+        },
+        {
+          "session": "f35ace99-b4f3-425f-bfff-a1e4203352ef",
+          "call": "call_227b5549fe7f51a3_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "tmux",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 36780,
+          "start": "Fri Nov 27 07:36:01 2026",
+          "instance": "1795764961",
+          "address": "%0"
+        },
+        "after": {
+          "pid": 78979,
+          "start": "Fri Nov 27 07:53:53 2026",
+          "instance": "1795766034",
+          "address": "%0"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "de7d0b1b-5fb6-46c5-96f9-21ee262cd6db",
+          "call": "call_b4b456c82ff4578d_0"
+        },
+        {
+          "session": "0ab3a69c-ab5e-4fa3-90b9-663a89f35d1f",
+          "call": "call_96a5dcc5ddef17a5_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "rex",
+      "replacement": "server",
+      "server": {
+        "before": {
+          "pid": 36649,
+          "start": "Fri Nov 27 07:36:01 2026",
+          "instance": "70b456c8-cb7e-4f27-a02b-e3b4368b9c4a",
+          "address": "block:01a21bee-c200-7ea6-81ea-d533dde2cc97"
+        },
+        "after": {
+          "pid": 82894,
+          "start": "Fri Nov 27 07:54:48 2026",
+          "instance": "d466ad71-ca74-4bf0-8c91-0c98dae649ac",
+          "address": "block:01a21bff-f620-70e8-9b48-113d8aee2996"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "1e3dbba4-9b66-40e6-9239-14bb5fb34dde",
+          "call": "call_91b654ae5c901159_0"
+        },
+        {
+          "session": "f0fe6d5d-e3a4-4490-80f8-fcc92d7fb234",
+          "call": "call_e8f9d8dd70316017_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "herdrTUI",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 87522,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": null,
+          "address": "w1:p1"
+        },
+        "after": {
+          "pid": 87522,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": null,
+          "address": "w1:p1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "d7e9cf97-78e3-4e87-96d5-b0b83c76a3a0",
+          "call": "call_74efc08861271a0e_0"
+        },
+        {
+          "session": "ce279d52-34ec-42c6-aa55-a2e7436ba8e4",
+          "call": "call_4df776a5e180ac02_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "herdrCore",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 87530,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "e11f8b63a908eceba7d015209e34c51e",
+          "address": "t1"
+        },
+        "after": {
+          "pid": 87530,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "e11f8b63a908eceba7d015209e34c51e",
+          "address": "t1"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "fc212f78-c07b-41b1-b38a-b4bc2ab6c9f9",
+          "call": "call_839130b62b68265b_0"
+        },
+        {
+          "session": "038d593c-a2f4-4d86-b6bd-7a420bbcd4f7",
+          "call": "call_67e85f11e62c6caa_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "tmux",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 87651,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "1795766204",
+          "address": "%0"
+        },
+        "after": {
+          "pid": 87651,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "1795766204",
+          "address": "%0"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "81e29936-d539-4ee5-b4de-dda6976f84bf",
+          "call": "call_4e4b4a3819e3a083_0"
+        },
+        {
+          "session": "87b5f575-6f74-477c-bd5b-4c42b275da2b",
+          "call": "call_0a14ab80e2992261_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    },
+    {
+      "host": "linux",
+      "backend": "rex",
+      "replacement": "foreground",
+      "server": {
+        "before": {
+          "pid": 87550,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "357c514f-28f1-4914-ad01-32123204cb78",
+          "address": "block:01a21c01-b712-72dc-9723-4aa3e84647a5"
+        },
+        "after": {
+          "pid": 87550,
+          "start": "Fri Nov 27 07:56:43 2026",
+          "instance": "357c514f-28f1-4914-ad01-32123204cb78",
+          "address": "block:01a21c01-b712-72dc-9723-4aa3e84647a5"
+        }
+      },
+      "createCalls": [
+        {
+          "session": "c4da74f7-d3e5-4d62-803b-56709e55ff34",
+          "call": "call_1bd36c9682c6e082_0"
+        },
+        {
+          "session": "4a47b031-18fd-4806-8d4b-18774699ff29",
+          "call": "call_bd663edf8b297a3b_0"
+        }
+      ],
+      "oldDraftFoundInTranscripts": false,
+      "replacementFileExists": false
+    }
+  ],
+  "simulatorCards": {
+    "iPhone": [
+      {
+        "file": "screens-linux-full/native-approval-iphone.png",
+        "pixels": [
+          1206,
+          2622
+        ],
+        "sha256": "15b82dc7d3480918e417033ab02556d69444b63580f631cac30e3559be38b207"
+      },
+      {
+        "file": "screens-linux-full/native-command-iphone.png",
+        "pixels": [
+          1206,
+          2622
+        ],
+        "sha256": "a988955c1f84410973dd545342cbca1a75aab01f8e4bef963db338331a4fa97c"
+      },
+      {
+        "file": "screens-linux-full/native-question-iphone.png",
+        "pixels": [
+          1206,
+          2622
+        ],
+        "sha256": "1a4c0b424f5c8091ded8528d6cea3488fca190b63be875054259e9bf14352baa"
+      },
+      {
+        "file": "screens-linux-full/native-spec-iphone.png",
+        "pixels": [
+          1206,
+          2622
+        ],
+        "sha256": "844204cd8b8b473c6fc73129c57b16b46ac9aa8a1e28ca7904a795c7a2d5d23d"
+      },
+      {
+        "file": "screens-linux-full/native-trust-iphone.png",
+        "pixels": [
+          1206,
+          2622
+        ],
+        "sha256": "20248dd0b9dbf17ed15532c5a4d9bf96741795779a716d39ffb3ee849a55ce91"
+      }
+    ],
+    "iPad": [
+      {
+        "file": "screens-mac-frozen/native-approval-ipad.png",
+        "pixels": [
+          1668,
+          2420
+        ],
+        "sha256": "77984f662d79a855ed1415fa704efd102b68d03229ea13a1898060d9d568e72a"
+      },
+      {
+        "file": "screens-mac-frozen/native-command-ipad.png",
+        "pixels": [
+          1668,
+          2420
+        ],
+        "sha256": "87226363677ef2d1baf678403eb31084a855167576b5297afa25b72826e58910"
+      },
+      {
+        "file": "screens-mac-frozen/native-question-ipad.png",
+        "pixels": [
+          1668,
+          2420
+        ],
+        "sha256": "91f6ca44a3e0aec1ff98d20859fb612b4c494d5fb8bc95c5b994d5b42d49fdf7"
+      },
+      {
+        "file": "screens-mac-frozen/native-spec-ipad.png",
+        "pixels": [
+          1668,
+          2420
+        ],
+        "sha256": "41db14eb56c22caf803648ac832da553d313818cbf7873866c95e9e569531599"
+      },
+      {
+        "file": "screens-mac-frozen/native-trust-ipad.png",
+        "pixels": [
+          1668,
+          2420
+        ],
+        "sha256": "b0141d262147fd1fdf5b7e1edae2fdd83488c4392ff1c5561a51ffd39e851f35"
+      }
+    ]
+  },
+  "cleanup": {
+    "remainingMacDroidsWithFixtureSettings": 0,
+    "runningMacTmuxEndpoints": 0,
+    "runningMacRexEndpoints": 0,
+    "runningMacTuiEndpoints": 0,
+    "runningMacCoreEndpoints": 0,
+    "linuxContainerRemoved": true,
+    "persistentLinuxMounts": 0,
+    "macFixtureSSHClosed": true,
+    "linuxFixtureSSHClosed": true,
+    "removedMacTranscriptDirectories": 48,
+    "unidentifiedMacTranscriptDirectoriesKept": 0,
+    "removedMacProcessHints": 4,
+    "removedMacTmuxFixtureHookLocations": 4,
+    "removedMacFixtureTrustEntries": 50,
+    "simulatorShutdown": {
+      "iPhone": true,
+      "iPad": true
+    },
+    "extraSimulatorDeleted": true
+  },
+  "notRun": [
+    "Native Windows (tmux N/A)",
+    "Forced numeric PID reuse",
+    "Cross-client atomic compare-and-answer",
+    "Full-app navigation and physical-device touch input"
+  ]
+}

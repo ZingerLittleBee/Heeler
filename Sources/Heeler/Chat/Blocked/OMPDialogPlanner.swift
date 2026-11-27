@@ -17,7 +17,8 @@ struct OMPDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .grokPermission,
             .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission, .openCodeQuestion, .agyCommand,
-            .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust:
+            .agyFileEdit, .agyFileCreate, .agyQuestion, .agyWorkspaceTrust, .droidWorkspaceTrust, .droidPermission, .droidQuestion,
+            .droidQuestionReview, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
             throw .unsupported(String(localized: "Not an Oh My Pi dialog."))
         }
     }

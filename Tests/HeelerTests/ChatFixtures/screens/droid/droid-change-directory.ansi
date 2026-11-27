@@ -1,0 +1,14 @@
+[38;2;135;135;135m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│[39m [1m[38;2;255;175;0mTrust this folder?[0m                                                                                                           [38;2;135;135;135m│
+│[39m [1m/tmp/fixture/next folder[0m                                                                               [38;2;135;135;135m│
+│[39m                                                                                                                              [38;2;135;135;135m│
+│[39m Droid will read, edit, and run files in this folder, and load any project configuration it defines, including hooks and MCP  [38;2;135;135;135m│
+│[39m servers that can execute commands on your machine.                                                                           [38;2;135;135;135m│
+│[39m                                                                                                                              [38;2;135;135;135m│
+│[39m If you just cloned this folder or don't recognize its contents, review the files and any .factory configuration (hooks, MCP  [38;2;135;135;135m│
+│[39m servers) before trusting it.                                                                                                 [38;2;135;135;135m│
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+[38;2;215;95;0m> 1. Trust this folder[39m
+  2. Don't trust (cancel)
+
+[38;2;118;118;118mEnter to confirm · Esc to cancel

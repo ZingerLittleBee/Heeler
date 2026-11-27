@@ -57,8 +57,8 @@ server has been observed yet.
 - A Rex Agent opens the Agent detail, with its Chat and Terminal surfaces
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)):
   `HostCapabilities` offers Composer Send and Stop, and Chat for Claude
-  Code, Codex, Pi and Oh My Pi once `server.version` named a Linux or macOS
-  kernel; the Terminal
+  Code, Codex, Pi, Oh My Pi and Droid once `server.version` names a Linux or macOS
+  kernel. See the [Droid acceptance matrix](droid-chat-validation.md) for the tested controls. The Terminal
   surface takes the size under ADR 0053's rule and Chat takes none; the
   terminal pool holds no Agent's block, and windows take turns with a Rex
   Host's Agent terminals (`terminalsShowInOneWindow`).
@@ -195,6 +195,8 @@ in users' words.
   sessions whose blocks the desktop app owns were listed, never opened.
 
 ## Versioned observations
+
+- Rex 0.1.0-preview.25 on macOS 27.0.1 with Droid 1.21.1 (2026-11-27). The Simulator read the foreground Droid's hook record over SSH, checked the JSONL header, sent a prompt via the control link and displayed the reply. After `/new`, the UUID changed within the same block and a send for the prior session retained its draft. Installing the hook registers its handlers in the SSH account's Factory settings through checked SFTP writes.
 
 All below: Rex 0.1.0-preview.14, API revision 12, macOS 27.0, local socket,
 2026-11-15. Each bullet names where it was seen: a lab capture kept outside the

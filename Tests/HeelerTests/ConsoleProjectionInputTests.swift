@@ -453,7 +453,7 @@ private final class ScriptedCheckedSend: CheckedComposerSend {
     }
 
     func send(
-        _ text: String, route _: ComposerRoute, attach _: AgentAttachStore?
+        _ text: String, route _: ComposerRoute, attach _: AgentAttachStore?, verifying _: DroidSendVerification?
     ) async -> CheckedSendOutcome {
         deliver(text)
         return .submitted

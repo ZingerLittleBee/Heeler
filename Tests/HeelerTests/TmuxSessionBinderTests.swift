@@ -117,6 +117,31 @@ struct TmuxSessionBinderTests {
 
     // MARK: Scope matching
 
+    @Test func droidNeedsItsCurrentProcessRecordEvenWhenThePaneKeepsAnOlderLabel() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        let reported = "/tmp/tmux-501/default"
+        await table.add(.init(pid: 4000, name: "droid", start: Self.start, environment: Self.tmuxEnvironment(socket: reported)))
+        let folder = "\(Self.home)/.factory/sessions/-original"
+        let path = "\(Self.home)/.factory/heeler-session/4000.json"
+        func hint(_ session: String, pid: Int = 4000, start: String = Self.start) throws -> String {
+            try #require(HerdrCoreSessionHint.pickLabelValue(session: session, file: "\(folder)/\(session).jsonl", pid: pid, start: start))
+        }
+        let old = try hint(Self.first)
+        let record = Self.record(name: "droid", argv: ["droid"], labels: ["heeler.session": old])
+        let binder = HerdrCoreSessionBinder(program: .droid, processes: { try await table.read($0) },
+            files: files.hostFiles(), clearLabels: { _ in }, hostSystem: .macOS, processScope: Self.tmuxScope)
+        for stale in [try hint(Self.first, start: "another process"), try hint(Self.first, pid: 4001)] {
+            await files.write(stale, at: path)
+            #expect(try await binder.check(record) == .unavailable(.cannotTellSession(.droid)))
+        }
+        await files.write(try hint(Self.second), at: path)
+        #expect(try await binder.check(record) == .bound(sessionID: Self.second, transcriptRoot: folder, directory: nil))
+        let scope = HerdrCoreTerminalProcesses.TmuxEnvironment(socketPath: reported, serverPID: Self.serverPID)
+        #expect(!scope.matches(socket: Self.socketPath, pid: Self.serverPID, macOS: false))
+        #expect(!scope.matches(socket: Self.socketPath, pid: Self.serverPID + 1, macOS: true))
+    }
+
     @Test func bindsProcessMatchingTmuxPaneSocketAndServerPIDIncludingCommaSocket() async throws {
         let commaSocket = "/private/tmp/work,dir/default"
         let table = ScriptedProcessTable()

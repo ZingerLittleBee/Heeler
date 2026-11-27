@@ -94,7 +94,7 @@ extension RexTransport {
 /// waits on other reads and on stagings (`RexHostStaging`) only. Rex's links
 /// are direct-streamlocal channels, which sshd's `MaxSessions` does not
 /// count (rex-compatibility.md).
-protocol RexHostReads: Sendable {
+protocol RexHostReads: DroidForegroundReading {
     /// A range of a session file, on the SFTP channel Chat keeps open.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
@@ -140,7 +140,7 @@ protocol RexHostStaging: Sendable {
 /// one folder when the Agent's directory has none, then writes the file as a
 /// 0600 temporary file it renames into place. Nothing else is reachable from
 /// it: no other file name, no exec, and no read of the Host's files.
-protocol RexHostExtensionPlacing: Sendable {
+protocol RexHostExtensionPlacing: DroidChatHookHost {
     /// `folder` is an `extensions` folder by its absolute path; any other is
     /// refused before anything is written.
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
@@ -448,6 +448,10 @@ private struct RexReadsOnly: RexHostReads {
         try await connection.hostHomeDirectory()
     }
 
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession? {
+        try await connection.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd)
+    }
+
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         try await connection.readProcesses(request)
     }
@@ -475,6 +479,10 @@ private struct RexStagingOnly: RexHostStaging {
 /// A Rex Host connection's placing of Heeler's extension, and nothing else of it.
 private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
     let connection: any RexHostExtensionPlacing
+
+    func prepareDroidChatHook(_ action: DroidChatHook.Action) async throws -> String {
+        try await connection.prepareDroidChatHook(action)
+    }
 
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
         try await connection.placeHeelersExtension(contents, inFolder: folder)

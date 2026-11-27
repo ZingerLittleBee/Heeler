@@ -1,0 +1,3 @@
+{"type":"message","id":"offline-prompt","message":{"role":"user","content":[{"type":"text","text":"Reply with LOCAL_OFFLINE_MARKER. No tools."}]}}
+{"type":"message","id":"offline-notice","message":{"role":"user","visibility":"user_only","systemNotice":true,"content":[{"type":"text","text":"Unable to reach the server. Your internet connection may be offline or interrupted. Check your network connection and try again."}]}}
+{"type":"agent_turn_outcome","reason":"model_provider_unreachable","resultKind":"text","turnId":"offline-prompt"}

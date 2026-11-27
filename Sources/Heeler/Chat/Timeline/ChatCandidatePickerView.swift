@@ -14,7 +14,7 @@ struct ChatCandidatePickerView: View {
         case .amp: AmpChatProblem.noThread.explanation
         case .agy:
             String(localized: "Antigravity CLI keeps conversations by ID, not by directory, so Chat can offer only one this Agent holds open or names on its command line, and this Agent does neither.")
-        case .claude, .codex, .pi, .omp, .grok, .opencode:
+        case .claude, .codex, .pi, .omp, .grok, .opencode, .droid:
             String(localized: "This Agent's directory has no recent conversations, and its process holds none open.")
         }
     }

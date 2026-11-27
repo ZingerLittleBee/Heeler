@@ -80,7 +80,10 @@ private struct BlockedDialogCard: View {
     }
 
     private var dialog: BlockedDialog { card.dialog }
-    private var isReady: Bool { store.progress == .ready }
+    private var isReady: Bool {
+        store.progress == .ready && (dialog.program != .droid || (card.target != nil
+            && (dialog.kind == .droidWorkspaceTrust || card.request?.callID != nil)))
+    }
     private var hasText: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -138,7 +141,7 @@ private struct BlockedDialogCard: View {
     /// a phone, where the folder and the program's warning fill the card's
     /// share. The text gives up their room, so the card stays as tall.
     private var pinsChoices: Bool {
-        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust].contains(dialog.kind)
+        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind)
     }
 
     private var scrollingMaxHeight: CGFloat {
@@ -165,6 +168,22 @@ private struct BlockedDialogCard: View {
     private var content: some View {
         let subject = dialog.subject
         switch dialog.kind {
+        case .droidPermission:
+            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? subject.filePath ?? "",
+                           isCommand: subject.command != nil)
+            if let patch = card.patch {
+                BlockedChangeBox(lines: patch.components(separatedBy: "\n"), marksChanges: true)
+            }
+            if let change = card.request?.fileChanges?.files.first {
+                BlockedChangeBox(lines: change.hunks.flatMap(\.lines), marksChanges: true)
+                if !change.isComplete { Text("Diff excerpt").font(.caption).foregroundStyle(.secondary) }
+            } else if !subject.changeLines.isEmpty {
+                BlockedChangeBox(lines: subject.changeLines, marksChanges: true)
+            }
+        case .droidQuestion, .droidQuestionReview:
+            BlockedCardText(dialog.body.joined(separator: "\n"))
+        case .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
+            BlockedPlanBox(text: card.request?.summary ?? dialog.body.joined(separator: "\n"))
         case .claudeBash:
             if let description = card.request?.detail ?? subject.commandDescription {
                 BlockedCardText(description)
@@ -231,7 +250,8 @@ private struct BlockedDialogCard: View {
                 }
             }
             .padding(.horizontal, 2)
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .droidWorkspaceTrust:
+            if dialog.kind == .droidWorkspaceTrust, let host = store.hostName { BlockedCardText(host) }
             BlockedCodeBox(text: subject.workspacePath ?? "")
             // Codex's note on a folder below a repository's root, then the
             // root.
@@ -648,7 +668,7 @@ private struct BlockedDialogCard: View {
             noteEntry
         case .claudeQuestion where dialog.subject.showsPreviews:
             previewAnswer
-        case .claudeQuestion, .agyQuestion:
+        case .claudeQuestion, .agyQuestion, .droidQuestion, .droidSpecFeedback:
             // agy's `Write-in...` names a row, not what to type: its fields
             // say what the form's pages say. Claude's card keeps the row
             // label Claude draws.
@@ -795,7 +815,7 @@ private struct BlockedDialogCard: View {
 
     private func perform(_ action: DialogAction) {
         isTextFocused = false
-        Task { await store.perform(action) }
+        Task { await store.perform(action, shownCard: card) }
     }
 }
 
@@ -851,9 +871,9 @@ private struct BlockedCollapsedBar: View {
 
     @ViewBuilder
     private var buttons: some View {
-        if let dialog, dialog.canStop {
-            Button(dialog.stopTitle, role: .destructive) {
-                Task { await store.perform(.dismiss) }
+        if case .card(let shown) = store.content, shown.dialog.canStop {
+            Button(shown.dialog.stopTitle, role: .destructive) {
+                Task { await store.perform(.dismiss, shownCard: shown) }
             }
             .buttonStyle(.borderless)
             .disabled(!store.canStop)
@@ -909,7 +929,7 @@ extension DialogOption {
         case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
             return String(
                 localized: "Antigravity CLI won't ask again in this conversation for commands that start this way.")
-        case .claude, .codex, .pi, .agy, .amp:
+        case .claude, .codex, .pi, .agy, .droid, .amp:
             return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
             return String(localized: "Saves an OpenCode rule for this project that can allow more than this request.")
@@ -978,13 +998,13 @@ extension BlockedDialog {
         case .claudeFileEdit, .claudeFileCreate, .codexPatch, .agyFileEdit, .agyFileCreate: "pencil"
         case .claudeFileRead: "doc.text"
         case .claudeFetch, .codexNetwork: "globe"
-        case .claudePlan: "list.bullet"
+        case .claudePlan, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback: "list.bullet"
         case .claudeQuestion, .claudeQuestionReview, .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion,
-            .ompQuestion, .ompQuestionReview, .grokQuestion, .openCodeQuestion, .agyQuestion:
+            .ompQuestion, .ompQuestionReview, .grokQuestion, .openCodeQuestion, .agyQuestion, .droidQuestion, .droidQuestionReview:
             "questionmark.circle"
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust: "folder"
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .droidWorkspaceTrust: "folder"
         case .grokCancelTurn, .grokFork: "arrow.triangle.branch"
-        case .ompApproval, .grokPermission, .openCodePermission:
+        case .ompApproval, .grokPermission, .openCodePermission, .droidPermission:
             subject.command != nil ? "terminal" : subject.filePath != nil ? "doc.text" : "hand.raised"
         }
     }

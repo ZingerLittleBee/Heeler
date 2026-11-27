@@ -59,6 +59,10 @@ the code follows them:
   2026-11-18: a Pi or Oh My Pi's Chat names Heeler's extension and its
   folder, and still none of those.)
 
+## Update, 2026-11-27
+
+Droid Chat on macOS and Linux Rex Hosts uses a Factory lifecycle hook. Chat can register and remove the bundled hook in the SSH account’s Factory settings through a fixed SFTP operation. The same hook serves herdr-core and tmux. Each foreground Droid records its UUID, transcript path, PID and process start in `~/.factory/heeler-session/<pid>.json`. The binder reads that record before each send and the reader verifies the UUID in the transcript header. A labelled session can wake Chat while that process record controls the binding. See the [Rex observations](../agents/rex-compatibility.md#versioned-observations).
+
 ## Decision
 
 - **Capabilities by kernel.** `HostCapabilities` for a Rex record offers

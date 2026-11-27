@@ -3432,6 +3432,20 @@ actor HeelerSSHTransport: Transport {
         return try JSONDecoder().decode(AmpChatReply.self, from: data)
     }
 
+    func prepareDroidChatHook(_ action: DroidChatHook.Action) async throws -> String {
+        let timeout = requestTimeout
+        return try await DroidChatHook.place(on: self, action: action) { folder in
+            try await self.withHostFileClient(path: folder) { client in
+                if try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory { return }
+                do {
+                    try await client.createDirectory(at: folder, permissions: 0o700, timeout: timeout)
+                } catch {
+                    guard try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory else { throw error }
+                }
+            }
+        }
+    }
+
     func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
         let contents = String(decoding: try AmpPluginLocation.bundledContents(), as: UTF8.self)
         let result = try await runBoundedScript(
@@ -4623,6 +4637,15 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
         try await runBoundedScript(
             script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
+    }
+
+    func foregroundDroid(pid: String, start: String, home: String, cwd: String) async throws -> DroidForegroundSession? {
+        guard Int32(pid).map({ $0 > 0 }) == true, RemoteFilePath.isAcceptable(home), RemoteFilePath.isAcceptable(cwd) else { return nil }
+        let result = try await runBoundedScript(DroidForegroundSession.script(pid: pid, start: start, home: home, cwd: cwd),
+            feature: String(localized: "Droid session"), deadline: .seconds(6), remoteSeconds: 4,
+            timeoutMarkerPrefix: "__HEELER_DROID_SESSION_TIMEOUT_", timedOut: .hostFileTimedOut, priority: .interactive)
+        guard result.exitStatus == 0, result.stdout.count <= 8192 else { return nil }
+        return try? JSONDecoder().decode(DroidForegroundSession.self, from: result.stdout)
     }
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {

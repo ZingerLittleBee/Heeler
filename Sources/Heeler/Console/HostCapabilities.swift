@@ -35,6 +35,7 @@ struct HostCapabilities: Equatable, Sendable {
     /// machine's form, and Send, staging and Chat each read it for their own rule.
     var isNativeWindowsCore = false
     var offersAmpPlugin = false
+    var offersDroidChatHook = false
     /// Changes, Skills and Grok Build's status edit run POSIX scripts on the Host.
     /// A native Windows core Host offers none of them, rather than failing once
     /// opened; a native Windows Herdr TUI Host keeps what it has always shown.
@@ -148,7 +149,8 @@ extension HostCapabilities {
         guard serverKind != .rex else {
             let rexChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
-                case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
+                case HerdrCoreLocator.linuxKernel: Self.rexChatPrograms
+                case HerdrCoreLocator.macOSKernel: Self.rexChatPrograms
                 case HerdrCoreLocator.windowsKernel: Self.rexWindowsChatPrograms
                 default: nil
                 }
@@ -159,6 +161,7 @@ extension HostCapabilities {
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
+            offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
         // A tmux Host starts Agents and Terminals, renames a Workspace, closes
@@ -180,6 +183,7 @@ extension HostCapabilities {
                 tabNames: false, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true)
+            offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
         let offered = serverKind == .herdrTUI
@@ -214,6 +218,7 @@ extension HostCapabilities {
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
+        offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -244,7 +249,7 @@ extension HostCapabilities {
     /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
 
     /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
     /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
@@ -253,7 +258,7 @@ extension HostCapabilities {
     /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
     /// bound from its presence lock, sent from Chat and answered its trust prompt,
     /// permissions and questions from cards, and the colored one followed `/clear`.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid]
 
     /// The programs a Rex Host's Chat opens for (ADRs 0034 and 0056,
     /// rex-compatibility.md): Claude Code and Codex, each bound from its own process
@@ -261,7 +266,7 @@ extension HostCapabilities {
     /// extension, which Chat offers to add where the Agent's extension folder lacks
     /// it. Rex 0.1.0-preview.14 on macOS confirmed nothing for Grok Build or agy, and
     /// OpenCode binds only with Heeler's plugin, so none of those is offered.
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .pi, .omp, .droid]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound

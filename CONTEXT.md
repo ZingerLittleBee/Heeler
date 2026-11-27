@@ -513,8 +513,11 @@ _Avoid_: recent link, visible link, link history
 
 **Chat**:
 The native conversation a Claude Code, Codex, Pi, Oh My Pi, Grok Build,
-OpenCode, Antigravity CLI or Amp Agent's detail can show in its terminal's place.
-Most programs read from the Agent's Transcript. On POSIX Herdr TUI Hosts,
+OpenCode, Antigravity CLI, Amp or Droid Agent's detail can show in its terminal's place.
+Most programs read from the Agent's Transcript. On POSIX Herdr TUI Hosts, Droid
+follows the session UUID herdr's Droid integration reports for the pane. On macOS
+herdr-core, tmux and Rex Hosts, Droid's hook identifies the session and transcript
+of the foreground Droid by PID and process start. On POSIX Herdr TUI Hosts,
 Amp Chat reads the thread selected in the foreground Amp terminal through
 Heeler's Amp plugin. Confirm its installation in Chat, then reload plugins in
 Amp. Plain text goes to that same thread through the plugin (ADR 0066). Chat holds no Attach; its Composer and draft are the

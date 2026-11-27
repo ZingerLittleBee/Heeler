@@ -10,14 +10,13 @@ import Foundation
 /// command runs Heeler's script, and nothing else, so it needs no record of the
 /// addition and works from any device. A file whose shape leaves either in doubt
 /// is refused. `plugin/test-vectors/claude-code-hooks-v1.json` holds the forms.
-enum ClaudeCodeHooks {
+enum ClaudeCodeHooks: CommandHookSettings {
     static let addEditID = "claude-code.hooks"
     static let removeEditID = "claude-code.hooks.remove"
     /// A product name, persisted with each applied edit, so never localized.
     static let harness = "Claude Code"
     /// What every command running Heeler's script holds.
     static let marker = "/heeler/claude-code/hook.sh"
-    static let timeout = 5
     /// Heeler's own folder under the Host's data home, apart from the Helper's.
     static let folderSuffix = "heeler/claude-code"
     static let scriptName = "hook.sh"
@@ -25,13 +24,8 @@ enum ClaudeCodeHooks {
     static let launchSettingsName = "hooks.json"
     static let settingsName = "settings.json"
 
-    struct Entry: Equatable, Sendable {
-        let event: String
-        let matcher: String?
-    }
-
     /// The events Heeler hooks, in the order it writes them.
-    static let entries: [Entry] = [
+    static let entries: [CommandHookEntry] = [
         Entry(event: "SessionStart", matcher: "startup|resume|clear"),
         Entry(event: "UserPromptSubmit", matcher: nil),
         Entry(event: "PreToolUse", matcher: nil),
@@ -43,14 +37,6 @@ enum ClaudeCodeHooks {
         Entry(event: "StopFailure", matcher: nil),
         Entry(event: "SessionEnd", matcher: nil),
     ]
-
-    /// Whether a root's settings run Heeler's script for every event.
-    enum Presence: Equatable, Sendable {
-        case on
-        /// Some events, or a script at another path.
-        case partly
-        case off
-    }
 
     static func folder(dataHome: String) -> String { RemoteFilePath.join(dataHome, folderSuffix) }
     static func scriptPath(dataHome: String) -> String { RemoteFilePath.join(folder(dataHome: dataHome), scriptName) }
@@ -71,6 +57,39 @@ enum ClaudeCodeHooks {
         return "f=\(quoted); [ ! -r \"$f\" ] || exec /bin/sh \"$f\""
     }
 
+    static func addition(root: String, script: String) -> HarnessConfigEdit {
+        HarnessConfigEdit(id: addEditID, harness: harness, path: settingsPath(root: root), transform: adding(script: script))
+    }
+
+    static func removal(root: String) -> HarnessConfigEdit {
+        HarnessConfigEdit(id: removeEditID, harness: harness, path: settingsPath(root: root), transform: removing)
+    }
+
+    static let mixedFormReason =
+        String(localized: "This file sets Claude Code's hooks in a form Heeler won't change.")
+}
+
+/// Claude Code and Droid use the same command-hook JSON. A profile supplies
+/// only its events and command; the editor preserves the rest of the file.
+protocol CommandHookSettings {
+    static var entries: [CommandHookEntry] { get }
+    static var marker: String { get }
+    static var mixedFormReason: String { get }
+    static func command(script: String) -> String
+    static func includes(_ event: JSONTextTree.Value, entry: CommandHookEntry, script: String, tree: JSONTextTree) -> Bool
+    static func hasRelatedHandler(in event: JSONTextTree.Member, script: String, tree: JSONTextTree) -> Bool
+}
+
+struct CommandHookEntry: Equatable, Sendable {
+    let event: String
+    let matcher: String?
+}
+
+extension CommandHookSettings {
+    typealias Entry = CommandHookEntry
+    typealias Presence = CommandHookPresence
+    static var timeout: Int { 5 }
+
     /// One event's matcher group, on one line.
     static func group(_ entry: Entry, script: String) -> String {
         var fields: [String] = []
@@ -82,25 +101,15 @@ enum ClaudeCodeHooks {
     }
 
     /// What `--settings` gives a launch: the file an addition would create.
-    static func launchSettings(script: String) -> Data {
-        Data(wholeFile(script: script).utf8)
-    }
-
-    static func addition(root: String, script: String) -> HarnessConfigEdit {
-        HarnessConfigEdit(id: addEditID, harness: harness, path: settingsPath(root: root), transform: adding(script: script))
-    }
-
-    static func removal(root: String) -> HarnessConfigEdit {
-        HarnessConfigEdit(id: removeEditID, harness: harness, path: settingsPath(root: root), transform: removing)
+    static func launchSettings(script: String, using included: [Entry]? = nil) -> Data {
+        Data(wholeFile(script: script, using: included).utf8)
     }
 
     // MARK: Reading
 
-    private static let unreadableReason =
+    private static var unreadableReason: String {
         String(localized: "Heeler can't read this file as plain JSON, so it won't change it.")
-    private static let mixedFormReason =
-        String(localized: "This file sets Claude Code's hooks in a form Heeler won't change.")
-
+    }
     /// Nil when the file can't be read with certainty.
     static func presence(in settings: Data?, script: String) -> Presence? {
         guard let settings, !isBlank(settings) else { return .off }
@@ -108,15 +117,14 @@ enum ClaudeCodeHooks {
         let hooks = members.filter { $0.key == "hooks" }
         guard hooks.count <= 1, let value = hooks.first?.value else { return hooks.isEmpty ? .off : nil }
         guard case .object(let events, _) = value else { return .off }
-        let command = command(script: script)
         let hooked = entries.filter { entry in
             events.filter { $0.key == entry.event }.contains { event in
-                handlers(in: event.value).contains { $0.command == command }
+                includes(event.value, entry: entry, script: script, tree: tree)
             }
         }
         if hooked.count == entries.count { return .on }
         let anyOfHeelers = events.contains { event in
-            handlers(in: event.value).contains { $0.command.contains(marker) }
+            hasRelatedHandler(in: event, script: script, tree: tree)
         }
         return hooked.isEmpty && !anyOfHeelers ? .off : .partly
     }
@@ -132,7 +140,7 @@ enum ClaudeCodeHooks {
         guard let tree = try? JSONTextTree(settings), case .object(let members, let rootSpan) = tree.root else {
             return .refused(reason: unreadableReason)
         }
-        let style = Style(tree: tree)
+        let style = HookSettingsStyle(tree: tree)
         let hooks = members.filter { $0.key == "hooks" }
         guard hooks.count <= 1 else { return .refused(reason: mixedFormReason) }
         guard let hooksMember = hooks.first else {
@@ -144,7 +152,6 @@ enum ClaudeCodeHooks {
         guard case .object(let events, let hooksSpan) = hooksMember.value else {
             return .refused(reason: mixedFormReason)
         }
-        let command = command(script: script)
         var missing: [(String) -> String] = []
         var replacements: [JSONTextTree.Replacement] = []
         for entry in entries {
@@ -156,7 +163,7 @@ enum ClaudeCodeHooks {
                 continue
             }
             guard case .array(_, let span) = event.value else { return .refused(reason: mixedFormReason) }
-            guard !handlers(in: event.value).contains(where: { $0.command == command }) else { continue }
+            guard !includes(event.value, entry: entry, script: script, tree: tree) else { continue }
             let group = group(entry, script: script)
             replacements.append(insertion(into: event.value, span: span, items: [{ _ in group }], tree: tree, style: style))
         }
@@ -167,40 +174,17 @@ enum ClaudeCodeHooks {
         return .change(to: tree.replacing(replacements))
     }
 
-    /// How new lines are laid out: as the file lays out its own, or on one line
-    /// for a file on one line.
-    private struct Style {
-        var newline: String
-        var unit: String
-        /// The indentation of the line a new block opens on.
-        var indent = ""
-        var multiline: Bool
-
-        init(tree: JSONTextTree) {
-            newline = tree.newline
-            unit = tree.indentUnit ?? "  "
-            // An empty root has no layout of its own, and gets the whole block's.
-            multiline = tree.isMultiline || tree.root.elementSpans.isEmpty
-        }
-
-        func nested(at indent: String) -> Style {
-            var style = self
-            style.indent = indent
-            return style
-        }
-    }
-
-    private static func eventLines(script: String) -> [String] {
-        entries.map { entry in "\(jsonString(entry.event)): [\(group(entry, script: script))]" }
+    private static func eventLines(script: String, using included: [Entry]? = nil) -> [String] {
+        (included ?? entries).map { entry in "\(jsonString(entry.event)): [\(group(entry, script: script))]" }
     }
 
     /// `{ "hooks": { … } }` as a file of its own.
-    private static func wholeFile(script: String) -> String {
-        "{\n  \"hooks\": {\n" + eventLines(script: script).map { "    " + $0 }.joined(separator: ",\n") + "\n  }\n}\n"
+    private static func wholeFile(script: String, using included: [Entry]? = nil) -> String {
+        "{\n  \"hooks\": {\n" + eventLines(script: script, using: included).map { "    " + $0 }.joined(separator: ",\n") + "\n  }\n}\n"
     }
 
     /// The hooks object alone, opening on a line indented by `style.indent`.
-    private static func hooksObject(script: String, style: Style) -> String {
+    private static func hooksObject(script: String, style: HookSettingsStyle) -> String {
         let events = eventLines(script: script)
         guard style.multiline else { return "{" + events.joined(separator: ", ") + "}" }
         let inner = style.indent + style.unit
@@ -212,7 +196,7 @@ enum ClaudeCodeHooks {
     /// the line they go on.
     private static func insertion(
         into container: JSONTextTree.Value, span: Range<Int>, items: [(String) -> String],
-        tree: JSONTextTree, style: Style
+        tree: JSONTextTree, style: HookSettingsStyle
     ) -> JSONTextTree.Replacement {
         let elements = container.elementSpans
         guard let last = elements.last else {
@@ -248,6 +232,12 @@ enum ClaudeCodeHooks {
     // MARK: Removing
 
     @Sendable static func removing(_ settings: Data?) -> HarnessConfigEdit.Transform {
+        removing(from: settings) { _, _, handler, _ in isHeelers(handler) }
+    }
+
+    static func removing(from settings: Data?, matching owns: (
+        _ event: String, _ group: JSONTextTree.Value, _ handler: JSONTextTree.Value, _ tree: JSONTextTree
+    ) -> Bool) -> HarnessConfigEdit.Transform {
         guard let settings, !isBlank(settings) else { return .alreadyApplied }
         guard let tree = try? JSONTextTree(settings), case .object(let members, let rootSpan) = tree.root else {
             return .refused(reason: unreadableReason)
@@ -268,7 +258,7 @@ enum ClaudeCodeHooks {
                     let handlerList = fields.last(where: { $0.key == "hooks" })?.value,
                     case .array(let handlerValues, let handlersSpan) = handlerList
                 else { continue }
-                let ours = Set(handlerValues.indices.filter { isHeelers(handlerValues[$0]) })
+                let ours = Set(handlerValues.indices.filter { owns(event.key, group, handlerValues[$0], tree) })
                 guard !ours.isEmpty else { continue }
                 if ours.count == handlerValues.count {
                     emptiedGroups.insert(groupIndex)
@@ -295,14 +285,18 @@ enum ClaudeCodeHooks {
 
     // MARK: Plumbing
 
-    private struct Handler {
-        let command: String
+    static func includes(_ event: JSONTextTree.Value, entry: Entry, script: String, tree: JSONTextTree) -> Bool {
+        handlers(in: event).contains { $0.command == command(script: script) }
+    }
+
+    static func hasRelatedHandler(in event: JSONTextTree.Member, script: String, tree: JSONTextTree) -> Bool {
+        handlers(in: event.value).contains { $0.command.contains(marker) }
     }
 
     /// The command handlers of an event's matcher groups.
-    private static func handlers(in event: JSONTextTree.Value) -> [Handler] {
+    private static func handlers(in event: JSONTextTree.Value) -> [HookSettingsHandler] {
         guard case .array(let groups, _) = event else { return [] }
-        return groups.flatMap { group -> [Handler] in
+        return groups.flatMap { group -> [HookSettingsHandler] in
             guard case .object(let fields, _) = group,
                 case .array(let handlers, _) = fields.last(where: { $0.key == "hooks" })?.value
             else { return [] }
@@ -310,7 +304,7 @@ enum ClaudeCodeHooks {
                 guard case .object(let fields, _) = handler,
                     case .string(let command, _) = fields.last(where: { $0.key == "command" })?.value
                 else { return nil }
-                return Handler(command: command)
+                return HookSettingsHandler(command: command)
             }
         }
     }
@@ -342,6 +336,41 @@ enum ClaudeCodeHooks {
         }
         return escaped + "\""
     }
+}
+
+/// Whether a root's settings run Heeler's script for every event.
+enum CommandHookPresence: Equatable, Sendable {
+    case on
+    /// Some events, or a script at another path.
+    case partly
+    case off
+}
+
+/// How new lines are laid out: as the file lays out its own, or on one line
+/// for a file on one line.
+private struct HookSettingsStyle {
+    var newline: String
+    var unit: String
+    /// The indentation of the line a new block opens on.
+    var indent = ""
+    var multiline: Bool
+
+    init(tree: JSONTextTree) {
+        newline = tree.newline
+        unit = tree.indentUnit ?? "  "
+        // An empty root has no layout of its own, and gets the whole block's.
+        multiline = tree.isMultiline || tree.root.elementSpans.isEmpty
+    }
+
+    func nested(at indent: String) -> HookSettingsStyle {
+        var style = self
+        style.indent = indent
+        return style
+    }
+}
+
+private struct HookSettingsHandler {
+    let command: String
 }
 
 /// A strict JSON document's values with the bytes each spans, read only as far as

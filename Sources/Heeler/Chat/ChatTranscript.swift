@@ -14,6 +14,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case opencode
     case agy
     case amp
+    case droid
 
     /// Whether live, non-stale Background Work promotes an Idle or Done
     /// Agent's displayed Console and Composer status to Working (and keeps
@@ -21,7 +22,7 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     var promotesBackgroundWorkToWorking: Bool {
         switch self {
         case .agy, .claude: true
-        case .codex, .pi, .omp, .grok, .opencode, .amp: false
+        case .codex, .pi, .omp, .grok, .opencode, .droid, .amp: false
         }
     }
 }
@@ -1242,6 +1243,8 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     /// Host, whose modification time is a sign it still runs; nil when the
     /// transcript does not say.
     var outputPath: String?
+    /// The task-specific output delivered by its finishing record.
+    var reportedOutput: String?
     /// Claude Code's id for a background command's task, which a stop or a
     /// Monitor's closing event names in place of the launching call; for a
     /// teammate, its agent id, which names its files under `subagents/`.

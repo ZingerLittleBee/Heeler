@@ -449,6 +449,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
             .check(chatRecord(at: address, details: details))
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
+              let active = server, let scope = chatCacheScope, agentsByPane[paneID]?.agent.status != .unknown else { return nil }
+        let details = await detailsWithCurrentForeground(at: address, listed: listed, server: active)
+        let target = try await chatBinder(at: address, details: details, program: .droid, server: active)
+            .droidDialogTarget(chatRecord(at: address, details: details), scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let address = RexPaneAddress(paneID: paneID),
             let listed = listedDetails(at: address), let activeServer = server
@@ -552,6 +561,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
         return HerdrCoreSessionBinder(
             program: program,
             processes: { request in try await Self.reads(session).readProcesses(request) },
+            foregroundDroid: { pid, start, home, cwd in
+                try await Self.reads(session).foregroundDroid(pid: pid, start: start, home: home, cwd: cwd)
+            },
             files: chatHostFiles(),
             clearLabels: { stale in await self.clearStalePick(stale, at: paneID, on: core) },
             currentLabels: { await self.pickLabels(at: paneID, on: core) },
@@ -938,6 +950,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// (`RexHostExtensionPlacing`), for the Agent on the server `corePin`
     /// keeps to, then has its Chat look again. Another server throws
     /// `TransportError.rexServerGone` before anything is written.
+    func configureDroidChatHook(_ action: DroidChatHook.Action, keepingTo pin: TerminalCorePin?) async throws {
+        let (placing, core) = try await session.withConnection { ($0.transport.extensionPlacing, $0.server.coreID) }
+        if let pin { guard admits(pin), pin.admits(core) else { throw TransportError.rexServerGone } }
+        _ = try await placing.prepareDroidChatHook(action)
+    }
+
     func placeChatExtension(_ contents: Data, inFolder folder: String, keepingTo pin: TerminalCorePin?) async throws {
         if let pin { guard admits(pin) else { throw TransportError.rexServerGone } }
         let (placing, core) = try await session.withConnection {

@@ -13,9 +13,9 @@ extension ComposerDeliveryPolicy {
     /// not Blocked: Chat registers the send there, so a send witness's mark
     /// is on its way before `agent.read` rather than after it.
     ///
-    /// `confirmSession`, for a program that can leave its conversation
-    /// without herdr reporting it (`ChatProgram.confirmsSessionBeforeSend`),
-    /// and for any on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
+    /// `confirmSession`, for a program that checks the current conversation
+    /// before sending (`ChatProgram.confirmsSessionBeforeSend`) and for any
+    /// on herdr-core (`AgentChatStore.confirmsSessionBeforeSend`),
     /// runs before `willReadScreen` and the screen read: why the message
     /// would land outside the conversation Chat shows, or nil to go on.
     /// A reported Working holds a program Chat never sends to during a turn
@@ -26,6 +26,8 @@ extension ComposerDeliveryPolicy {
         rules: ChatSendRules,
         activity: @escaping @MainActor () -> ChatAgentActivity,
         readScreen: @escaping @MainActor () async throws -> ANSIScreen,
+        droidTarget: (@Sendable () async throws -> DroidDialogTarget?)? = nil,
+        displayedDroidTarget: (@MainActor () -> DroidDialogTarget?)? = nil,
         confirmSession: (@MainActor () async -> String?)? = nil,
         heldSession: (@MainActor () -> String?)? = nil,
         sendConcern: @escaping @MainActor (_ outgoing: String, _ screen: ANSIScreen) -> String? = { _, _ in nil },
@@ -78,7 +80,7 @@ extension ComposerDeliveryPolicy {
             }
         }
         var policy = ComposerDeliveryPolicy(
-            route: .chat,
+            route: .chat, requiresSinglePrompt: program == .droid,
             insertsIntoAttachWhenBlocked: false,
             outgoingText: { rules.outgoingText($0) },
             validate: { rules.validate($0) },
@@ -97,6 +99,9 @@ extension ComposerDeliveryPolicy {
                 return true
             })
         policy.conversation = conversation
+        policy.droidTarget = droidTarget
+        policy.displayedDroidTarget = displayedDroidTarget
+        if program == .droid { policy.droidScreen = readScreen }
         return policy
     }
 
@@ -118,7 +123,7 @@ extension InputBoxState {
             String(localized: "The Agent's input box is ready.")
         case .text:
             switch program {
-            case .claude:
+            case .claude, .droid:
                 String(localized: "The Agent's input box already has text. Send or clear it in the terminal first.")
             case .codex:
                 // Codex 0.162.1's Esc puts follow-ups queued with Tab back

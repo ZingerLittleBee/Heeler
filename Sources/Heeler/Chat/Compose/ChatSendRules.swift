@@ -52,12 +52,12 @@ enum ChatCommandMenu {
         // (its changelog, 1.1.12), so Chat leaves that one out too.
         case .agy:
             !skill.isSlashCommandDisabled && !AgySlashCommands.builtIns.contains(skill.name.lowercased())
-        case .opencode, .amp: false
+        case .opencode, .droid, .amp: false
         }
     }
 
     static func commands(skills: [AgentSkill], agentIsIdle: Bool, program: ChatProgram) -> [ChatCommand] {
-        if program == .amp { return [] }
+        if program == .amp || program == .droid { return [] }
         var commands = [
             ChatCommand(
                 name: "compact", summary: String(localized: "Summarize the conversation to free up context"),
@@ -185,7 +185,7 @@ struct ChatSendProfile: Sendable {
             ChatSendProfile(
                 exitWords: ["exit", "quit", ":q", ":q!", ":wq", ":wq!"],
                 refusal: { GrokSlashCommands.refusal($0, $1) })
-        case .codex, .pi:
+        case .codex, .pi, .droid:
             ChatSendProfile(exitWords: [])
         case .omp:
             // Oh My Pi quits for these whole inputs, in any case, before the

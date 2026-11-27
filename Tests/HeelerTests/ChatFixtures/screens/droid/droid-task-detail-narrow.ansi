@@ -1,0 +1,10 @@
+╰──────────────────────────────────────────────────────────────────────────────╯
+ bash: For i in 1 2 3 4 5; do echo LONG_87654_TEST; sleep 17; don (pid: 103804)
+
+ Started: 2s ago
+
+ --- Latest output ---
+ LONG_87654_TEST
+
+ [K] Kill [Esc] Back
+[⏱ 43s] ? for help                                                         IDE ◌

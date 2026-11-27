@@ -83,6 +83,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
         /// The counts the program reported as the work ended.
         let usage: String?
         let agents: [Agent]
+        var reportedOutput: String? = nil
         let accessibilityLabel: String
 
         static func singleLine(_ text: String) -> String {
@@ -316,7 +317,7 @@ struct ChatBackgroundWorkPresentation: Equatable, Sendable {
                 id: item.id, kind: item.kind, status: status, title: item.title, caption: caption,
                 detail: item.kind == .workflow || item.kind == .command ? item.subtitle : nil, fraction: fraction,
                 time: seconds.map { ChatBackgroundWorkPresentation.duration($0, width: .narrow, locale: locale) },
-                note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status),
+                note: note, shortNote: shortNote, usage: usage(item.usage), agents: agents(of: row, status: status), reportedOutput: item.reportedOutput,
                 accessibilityLabel: spoken.joined(separator: ", "))
         }
 

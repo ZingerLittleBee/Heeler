@@ -1,0 +1,11 @@
+   [1m[38;2;215;135;95mAsk User[0m
+   [38;2;175;175;95m● Color[38;2;118;118;118m → [1m[38;2;215;95;0m○ Size[0m[38;2;118;118;118m → Submit[39m
+
+   这个一次性夹具需要哪种尺寸？
+   [38;2;118;118;118m选择夹具的规格尺寸，也可以输入自定义尺寸。[39m
+
+   [1m[38;2;238;238;238m1. Small[0m
+   [38;2;168;168;168m2. Large[39m
+   [90mOr type your own answer...[39m
+
+   [38;2;118;118;118mTab/⇧Tab or ←/→ Questions • ↑/↓ Navigate • Space/Enter/1–9 Select • ESC stop agent[39m

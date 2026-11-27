@@ -1100,7 +1100,11 @@ private final class AgyPane: @unchecked Sendable {
             sendKeys: { [self] in try type(.keys($0), check: nil) },
             paste: { [self] in try type(.paste($0), check: nil) })
         if typingChecksTheScreen {
-            io.typeWhileShowing = { [self] typing, check in try type(typing, check: check) }
+            io.typeWhileShowing = { [self] typing, check in
+                let screen = lock.withLock { screens[current] ?? ANSIScreen(rows: []) }
+                guard await check(screen) else { throw HerdrCoreChatTyping.Refusal(message: "The screen changed.") }
+                try type(typing, check: { $0.rows == screen.rows })
+            }
         }
         return io
     }

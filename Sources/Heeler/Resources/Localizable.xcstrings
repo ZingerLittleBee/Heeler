@@ -14771,6 +14771,7 @@
         }
       }
     },
+    "Chat could not read this terminal. Reopen it to check whether Droid has started." : {},
     "Chat follows the conversation you choose until the program restarts, or until a message you send from Chat doesn't appear in it." : {
       "localizations" : {
         "ja" : {
@@ -15169,6 +15170,7 @@
         }
       }
     },
+    "Check this Droid session and its message box before sending." : {},
     "Check this Host's session." : {
       "localizations" : {
         "ja" : {
@@ -15191,6 +15193,7 @@
         }
       }
     },
+    "Check this terminal to see whether Droid received your feedback." : {},
     "Checked" : {
       "comment" : "VoiceOver: a task in a message's or description's checklist that is done.",
       "localizations" : {
@@ -16858,6 +16861,7 @@
         }
       }
     },
+    "Close the skills picker in the Droid terminal to return to Chat." : {},
     "Closed without merging" : {
       "localizations" : {
         "ja" : {
@@ -18811,6 +18815,7 @@
         }
       }
     },
+    "Continue the side chat in the Droid terminal. Its messages stay separate from the main session." : {},
     "Continue to Sign In" : {
       "localizations" : {
         "ja" : {
@@ -22856,6 +22861,7 @@
         }
       }
     },
+    "Diff excerpt" : {},
     "Direct" : {
       "localizations" : {
         "ja" : {
@@ -23540,6 +23546,17 @@
         }
       }
     },
+    "Droid Chat Hook" : {},
+    "Droid Chat hooks" : {},
+    "Droid has not reported its session ID. Finish startup in the terminal and check the Droid integration on the Host if this persists." : {},
+    "Droid has not shown any output yet." : {},
+    "Droid is not ready for feedback. Check the Spec message box in this terminal." : {},
+    "Droid is ready, but its session has not been reported. Check the Droid hook on this Host and resume the session." : {},
+    "Droid reported an unrecognized session ID. Chat cannot identify its transcript." : {},
+    "Droid session" : {},
+    "Droid session %@" : {},
+    "Droid's settings contain a hooks entry Heeler couldn't update." : {},
+    "Droid’s active turn could not be verified. Check the current conversation before stopping it." : {},
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -25545,6 +25562,7 @@
         }
       }
     },
+    "Exit Bash mode in the Droid terminal to send a Chat message." : {},
     "Exit Claude Code" : {
       "localizations" : {
         "ja" : {
@@ -25904,6 +25922,7 @@
         }
       }
     },
+    "Factory hooks are disabled in this account’s settings. Enable hooks and resume Droid in this terminal." : {},
     "Failed" : {
       "localizations" : {
         "ja" : {
@@ -26836,6 +26855,10 @@
         }
       }
     },
+    "Finish Droid startup in this terminal. Chat is waiting for its session." : {},
+    "Finish choosing a slash command in the Droid terminal." : {},
+    "Finish choosing the model in the Droid terminal." : {},
+    "Finish editing the answer in the Droid terminal." : {},
     "Finish signing in or answer any prompt in the terminal." : {
       "localizations" : {
         "ja" : {
@@ -29964,6 +29987,7 @@
         }
       }
     },
+    "Heeler adds its Python 3 hook to this SSH account’s Droid settings. The hook names the conversation open in each terminal and reports when a turn starts or ends." : {},
     "Heeler adds notes only to None of the above." : {
       "localizations" : {
         "ja" : {
@@ -34618,6 +34642,9 @@
         }
       }
     },
+    "Install Droid Hook" : {},
+    "Install Droid Hook…" : {},
+    "Install Heeler’s Droid hook, then restart or resume Droid in this terminal so Chat can follow its conversation." : {},
     "Install Heeler’s plugin on the Host to read and reply to the thread open in this Amp terminal." : {
       "localizations" : {
         "zh-Hans" : {
@@ -44677,6 +44704,7 @@
         }
       }
     },
+    "Open Droid's message box in the terminal to send a message." : {},
     "Open Heeler Settings" : {
       "localizations" : {
         "ja" : {
@@ -44743,6 +44771,7 @@
         }
       }
     },
+    "Open Mission Control in the Droid terminal to view or manage missions." : {},
     "Open Settings" : {
       "localizations" : {
         "ja" : {
@@ -45084,6 +45113,8 @@
         }
       }
     },
+    "Open the Droid terminal for this action." : {},
+    "Open the Droid terminal to review the full prompt." : {},
     "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
       "localizations" : {
         "ja" : {
@@ -45138,6 +45169,12 @@
         }
       }
     },
+    "Open the terminal to stop Droid. Its interrupt prompt is not visible." : {},
+    "Open this Agent’s terminal and check that Herdr’s Droid integration reports the running session." : {},
+    "Open this Agent’s terminal to check the prompt. Chat could not verify a Droid action on this screen." : {},
+    "Open this Agent’s terminal to review the complete patch and answer Droid." : {},
+    "Open this Droid terminal to inspect the task. Its current selection could not be verified." : {},
+    "Open this proposal’s empty Spec message box in the Droid terminal." : {},
     "OpenCode asks what to do differently before it rejects. Answer it in the terminal." : {
       "localizations" : {
         "ja" : {
@@ -52273,6 +52310,7 @@
         }
       }
     },
+    "Remove Hook from Droid Settings" : {},
     "Remove Hooks" : {},
     "Remove Host" : {
       "localizations" : {
@@ -53773,6 +53811,7 @@
         }
       }
     },
+    "Restart or resume Droid in the terminal, then return to Chat." : {},
     "Restarting" : {
       "localizations" : {
         "ja" : {
@@ -54063,6 +54102,7 @@
         }
       }
     },
+    "Return to the Droid session that owns this draft before sending it." : {},
     "Review" : {
       "localizations" : {
         "ja" : {
@@ -54262,6 +54302,9 @@
         }
       }
     },
+    "Review the full command in this Droid terminal. Chat could not verify its approval details." : {},
+    "Review the full folder path and choose whether to trust it in this Droid terminal." : {},
+    "Review this tool and its permissions in the Droid terminal. Factory has not identified a matching tool request in this session." : {},
     "Review your answers" : {
       "localizations" : {
         "ja" : {
@@ -56368,6 +56411,7 @@
         }
       }
     },
+    "Send Feedback" : {},
     "Send Keywords" : {
       "localizations" : {
         "ja" : {
@@ -59044,6 +59088,7 @@
         }
       }
     },
+    "Sign in to Factory in this terminal. Chat will check for the session after sign-in." : {},
     "Sign in to add this device to the tailnet again." : {
       "localizations" : {
         "ja" : {
@@ -59782,6 +59827,7 @@
         }
       }
     },
+    "Spec feedback" : {},
     "Speech Model" : {
       "localizations" : {
         "ja" : {
@@ -60798,6 +60844,7 @@
         }
       }
     },
+    "Stop Task" : {},
     "Stop cancels the question and ends Oh My Pi's turn." : {
       "localizations" : {
         "ja" : {
@@ -60892,6 +60939,7 @@
     "Stop is still ending the turn's background commands in Antigravity CLI. Try again in a moment." : {
       "comment" : "Why a Chat or terminal send waits while Stop types into Antigravity CLI's task list"
     },
+    "Stop requested. Waiting for Droid’s task result." : {},
     "Stop running" : {
       "localizations" : {
         "ja" : {
@@ -64405,6 +64453,7 @@
         }
       }
     },
+    "The Droid session or its input changed. Check the text in the terminal before sending again." : {},
     "The EasyTier console then lists this device as a new one, which needs a network assigned again. Hosts on this network reconnect afterwards." : {
       "localizations" : {
         "ja" : {
@@ -77625,6 +77674,16 @@
         }
       }
     },
+    "Update Amp Plugin" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 Amp 插件"
+          }
+        }
+      }
+    },
     "Update Failed" : {
       "localizations" : {
         "ja" : {
@@ -77643,16 +77702,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新失敗"
-          }
-        }
-      }
-    },
-    "Update Amp Plugin" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新 Amp 插件"
           }
         }
       }
@@ -79800,6 +79849,7 @@
         }
       }
     },
+    "View Output" : {},
     "View Rendered" : {
       "localizations" : {
         "ja" : {
@@ -80027,6 +80077,7 @@
         }
       }
     },
+    "Wait for Droid to finish this turn before sending another message." : {},
     "Wait for the title rename to finish before sending input." : {
       "localizations" : {
         "ja" : {
@@ -80190,6 +80241,7 @@
         }
       }
     },
+    "Waiting for Droid to identify this request. You can also answer in its terminal." : {},
     "Waiting for Input" : {
       "localizations" : {
         "ja" : {

@@ -1086,6 +1086,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let locations = try await claudeCodeHookLocations()
         let files = TmuxClaudeCodeHooks.files(
             script: try TmuxClaudeCodeHooks.bundledScript(), paths: paths, dataHome: locations.dataHome)
+        try await placeHookFiles(files)
+        return locations
+    }
+
+    private func placeHookFiles(_ files: [TmuxClaudeCodeHooks.File]) async throws {
         let nonce = HostProcessReader.makeNonce()
         let script = TmuxClaudeCodeHooks.placeScript(files, nonce: nonce)
         let result = try await session.withTransport { transport in
@@ -1094,7 +1099,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         guard TmuxClaudeCodeHooks.isPlaced(result, nonce: nonce) else {
             throw TransportError.malformedResponse(String(localized: "The Host refused Heeler's hook script."))
         }
-        return locations
+    }
+
+    func configureDroidChatHook(_ action: DroidChatHook.Action, keepingTo pin: TerminalCorePin? = nil) async throws -> String {
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        if action != .removeRegistration {
+            let paths = try await launchServer().paths
+            let locations = try await claudeCodeHookLocations()
+            if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+            try await placeHookFiles([TmuxClaudeCodeHooks.droidPathsFile(dataHome: locations.dataHome, paths: paths)])
+        }
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        return try await session.withTransport { try await $0.hostServices.prepareDroidChatHook(action) }
     }
 
     /// The Host's home and data home, as the Helper's own script finds them.
@@ -1120,6 +1136,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// way. A root Heeler can't read with certainty gets them too, since one
     /// handler in two settings files runs once.
     private func hookSettings(for request: AgentLaunchRequest) async -> String? {
+        if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: request.arguments, kernel: kernel) {
+            return try? await configureDroidChatHook(.launch)
+        }
         guard request.kind == SupportedAgentKind.claude.rawValue,
             let locations = try? await placeClaudeCodeHooks()
         else { return nil }
@@ -1288,13 +1307,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         keepingTo corePin: TerminalCorePin,
         agentKeys: ChatAgentKeysStore? = nil,
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget: ChatStopVerification? = nil,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? {
         let plan = ChatStopPlan.standard(for: program)
         let stop = TmuxComposerStop(
             paneID: paneID, program: program, plan: plan,
             projection: { live() as? TmuxConsoleProjection },
-            corePin: corePin, clock: sendClock, seat: .chat)
+            corePin: corePin, clock: sendClock, seat: .chat, confirmTarget: confirmTarget)
         return AgentComposerInterrupt(
             wait: plan.wait, accessibilityHint: plan.accessibilityHint
         ) {
@@ -1426,6 +1446,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             .check(HerdrCoreTerminalRecord(tmuxPane: pane), coreCarries: leakedEnvironmentNames)
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead, let active = server,
+              let scope = chatCacheScope else { return nil }
+        let target = try await chatBinder(paneID: paneID, program: .droid, server: active)
+            .droidDialogTarget(.init(tmuxPane: pane), scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead,
             let activeServer = server
@@ -1503,6 +1531,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             program: program,
             processes: { request in
                 try await session.withTransport { try await $0.hostServices.readProcesses(request) }
+            },
+            foregroundDroid: { pid, start, home, cwd in
+                try await session.withTransport { try await $0.hostServices.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
             },
             files: chatHostFiles(),
             clearLabels: { stale in

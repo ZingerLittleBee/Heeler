@@ -51,11 +51,11 @@ final class RexComposerSend: CheckedComposerSend {
 
     /// `attach` is the terminal the user is viewing, which only records what
     /// was submitted: the draft itself goes on the control link either way.
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
-            let outcome = await deliver(text, route: route, attach: attach)
+            let outcome = await deliver(text, route: route, attach: attach, verifying: verifying)
             if outcome == .outcomeUnknown { lastSendHasNoAnswer = true }
             return outcome
         }
@@ -65,7 +65,7 @@ final class RexComposerSend: CheckedComposerSend {
 
     // MARK: Checked steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         let requests: RexBlockRequests
@@ -112,9 +112,13 @@ final class RexComposerSend: CheckedComposerSend {
             let submit = String(validating: enter, as: UTF8.self)
         else { return .refused(.inputNotReady(Self.notConnected)) }
 
-        let pasteStart = clock.now()
+        var pasteStart = clock.now()
         switch await sendInLane([.paste(text)], on: requests, check: { @MainActor in
             try await self.stillHeld(held, on: requests, in: projection)
+            if let verifying {
+                if let refusal = await verifying.refusal() { throw Halt(outcome: .refused(refusal)) }
+                pasteStart = self.clock.now()
+            }
         }) {
         case .success(.sent): break
         case .success(.notSent(let failure)):
@@ -125,6 +129,10 @@ final class RexComposerSend: CheckedComposerSend {
 
         let submitted = await sendInLane([.text(submit)], on: requests, check: { @MainActor in
             try await self.stillHoldsAfterPaste(held, on: requests, in: projection, pasteStart: pasteStart)
+            if let verifying {
+                if let refusal = await verifying.refusal(staged: text) { throw Halt(outcome: .refused(refusal)) }
+                guard self.clock.now() - pasteStart < Self.submitWindow else { throw Halt(outcome: .refused(.notSubmitted(Self.windowPassed))) }
+            }
         })
         switch submitted {
         case .success(.sent):
@@ -135,7 +143,7 @@ final class RexComposerSend: CheckedComposerSend {
         case .success(.notSent): return .refused(.notSubmitted(Self.submitKeyLost))
         case .success(.unknown): return .outcomeUnknown
         case .failure(let halt):
-            if let process = halt.tookOver { return await giveUp(after: process, on: requests) }
+            if verifying == nil, let process = halt.tookOver { return await giveUp(after: process, on: requests) }
             return halt.outcome
         }
     }

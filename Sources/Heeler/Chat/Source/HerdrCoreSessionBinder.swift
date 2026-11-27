@@ -3,7 +3,7 @@ import Foundation
 /// What a check of a herdr-core Agent's process found (ADR 0034).
 enum ChatSessionEvidence: Equatable, Sendable {
     /// `transcriptRoot` is the Agent's own config dir, which its Transcript and
-    /// session folders are under. `directory` is where the program says it
+    /// session folders are under, or the exact session folder Droid's hook reported. `directory` is where the program says it
     /// started the session, when it says. A program that keeps no Transcript
     /// file has no root.
     case bound(sessionID: String, transcriptRoot: String?, directory: String?)
@@ -120,6 +120,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// Facts for each process the request reaches: one exec. An empty answer
     /// is an exec that failed on the Host, which tells nothing.
     var processes: @Sendable (HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts]
+    var foregroundDroid: (@Sendable (String, String, String, String) async throws -> DroidForegroundSession?)?
     var files: ChatHostFiles
     /// Removes labels from the Terminal, each with the value that was found stale.
     var clearLabels: @Sendable ([String: String]) async throws -> Void
@@ -167,6 +168,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 case .claude: try await checkClaudeCode(record, tree: tree, coreCarries: coreCarries)
                 case .codex: try await checkCodex(record, tree: tree)
                 case .grok: try await checkGrokBuild(tree)
+                case .droid: try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd)
                 case .amp: .unavailable(.amp(.unidentified))
                 case .opencode: try await checkOpenCode(record, tree: tree)
                 case .pi, .omp: try await checkPiFamily(record, tree: tree)
@@ -239,6 +241,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 namesOf: ChatTranscriptOffVariable.allCases.map(\.rawValue))
         case .codex: codexProcessAsk
         case .grok: grokProcessAsk
+        case .droid: ProcessAsk(values: [Self.homeVariable])
         case .opencode, .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         case .agy: antigravityProcessAsk
@@ -261,6 +264,7 @@ struct HerdrCoreSessionBinder: Sendable {
         case .grok:
             isOnWindows
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
+        case .droid: tree.agent(isAgent: { $0?.name == "droid" })
         case .amp: nil
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
@@ -278,10 +282,52 @@ struct HerdrCoreSessionBinder: Sendable {
         case .claude: Self.configRoot(of: process, variable: Self.configVariable, underHome: ".claude")
         case .codex: codexHome(of: process)
         case .grok: grokHome(of: process)
-        case .opencode, .amp: nil
+        case .opencode, .droid, .amp: nil
         case .pi, .omp: piFamilySessions(of: process)
         case .agy: antigravityRoot(of: process)
         }
+    }
+
+    /// The hook atomically replaces one file per foreground Droid. A label can
+    /// wake Chat, but only the process's current record authorizes a send.
+    func droidDialogTarget(_ record: HerdrCoreTerminalRecord, scope: String) async throws -> DroidDialogTarget? {
+        guard let tree = try await readTerminalProcesses(of: record, ask: processAsk),
+              let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
+              case .value(let start) = process.start else { return nil }
+        let id: String?
+        let folder: String?
+        switch try await checkDroid(tree, directory: record.foreground?.cwd ?? record.cwd) {
+        case .bound(let session, let root, _): (id, folder) = (session, root)
+        case .unavailable(.cannotTellSession(.droid)): (id, folder) = (nil, nil)
+        default: return nil
+        }
+        var disabled = false
+        if id == nil, case .value(let home)? = process.variables[Self.homeVariable], RemoteFilePath.isAcceptable(home),
+           let settings = try? await files.read(.init(path: RemoteFilePath.join(home, ".factory", "settings.json"), offset: 0, maxBytes: 256 << 10)) {
+            disabled = DroidChatHook.disabled(in: settings.data)
+        }
+        return .init(scope: scope, pid: pid, start: start, directory: record.foreground?.cwd ?? record.cwd,
+                     sessionID: id, transcriptFolder: folder, userHooksDisabled: disabled)
+    }
+
+    private func checkDroid(_ tree: HerdrCoreTerminalProcesses, directory: String) async throws -> ChatSessionEvidence {
+        guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "droid",
+              case .value(let start) = process.start,
+              case .value(let home)? = process.variables[Self.homeVariable],
+              RemoteFilePath.isAcceptable(home) else { return cannotTell }
+        let path = RemoteFilePath.join(home, ".factory", "heeler-session", "\(pid).json")
+        let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.entryLimit))
+        guard slice.length != nil, slice.data.count < Self.entryLimit,
+              let hint = HerdrCoreSessionHint(label: String(decoding: slice.data, as: UTF8.self)),
+              String(hint.pid) == pid, hint.start == start,
+              let id = ConversationReference.canonicalUUID(hint.session), let file = hint.file,
+              let folder = DroidTranscriptLocator.reportedFolder(file: file, sessionID: id)
+        else { return cannotTell }
+        if let foregroundDroid {
+            guard let active = try await foregroundDroid(pid, start, home, directory),
+                  active.session == id, active.file == file else { return cannotTell }
+        }
+        return .bound(sessionID: id, transcriptRoot: folder, directory: nil)
     }
 
     private func checkClaudeCode(
@@ -377,7 +423,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 descendantsOf: root)
             let facts = try await processes(request)
             let expected = HerdrCoreTerminalProcesses.Scope.tmux(
-                paneID: paneID, socketPath: socketPath, serverPID: serverPID)
+                paneID: paneID, socketPath: socketPath, serverPID: serverPID, macOS: isOnMacOS)
             let tree = HerdrCoreTerminalProcesses(
                 facts: facts, root: root, scope: expected, rootIsForeground: foregroundPID != nil)
             if tree.sharesScope(root) || terminal.map(tree.sharesScope) == true {
@@ -558,11 +604,26 @@ struct HerdrCoreTerminalProcesses: Sendable {
     struct TmuxEnvironment: Equatable, Sendable {
         let socketPath: String
         let serverPID: Int
+
+        /// tmux keeps the spelling it started with in TMUX. On a Mac the
+        /// locator can report the physical /private/tmp or /private/var path.
+        func matches(socket: String, pid: Int, macOS: Bool) -> Bool {
+            guard serverPID == pid else { return false }
+            if socketPath == socket { return true }
+            guard macOS else { return false }
+            func physical(_ path: String) -> String {
+                if RemoteFilePath.isAcceptable(path), path.hasPrefix("/tmp/") || path.hasPrefix("/var/") {
+                    return "/private" + path
+                }
+                return path
+            }
+            return physical(socketPath) == physical(socket)
+        }
     }
 
     enum Scope: Equatable, Sendable {
         case herdrCore(String)
-        case tmux(paneID: String, socketPath: String, serverPID: Int)
+        case tmux(paneID: String, socketPath: String, serverPID: Int, macOS: Bool = false)
         /// `outer` is what the terminal's foreground carries of each of
         /// `nestedMultiplexerVariables` the read asked for, a value or unset,
         /// which a process in the terminal carries too.
@@ -613,12 +674,12 @@ struct HerdrCoreTerminalProcesses: Sendable {
         switch scope {
         case .herdrCore(let expected):
             return variables[Self.scopeVariable] == .value(expected)
-        case .tmux(let paneID, let socketPath, let serverPID):
+        case .tmux(let paneID, let socketPath, let serverPID, let macOS):
             guard variables[Self.tmuxPaneVariable] == .value(paneID),
                 case .value(let rawTmux)? = variables[Self.tmuxVariable],
                 let parsed = Self.parseTmuxEnvironment(rawTmux)
             else { return false }
-            return parsed == TmuxEnvironment(socketPath: socketPath, serverPID: serverPID)
+            return parsed.matches(socket: socketPath, pid: serverPID, macOS: macOS)
         case .rex(let sessionID, let blockID, let outer):
             // A server that sets no session id leaves the block's to say it.
             guard variables[Self.rexBlockVariable] == .value(blockID),

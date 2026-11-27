@@ -202,6 +202,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
         keepingTo corePin: TerminalCorePin,
         agentKeys: ChatAgentKeysStore?,
         followThrough: (@MainActor () -> ChatStopFollowThrough?)?,
+        confirmTarget: ChatStopVerification?,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt?
 
@@ -217,6 +218,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     func writeChatPick(_ candidate: ChatSessionCandidate, of list: ChatSessionCandidates, paneID: String) async throws
     func dropChatPick(paneID: String, scope: String?, program: ChatProgram)
     func settleChatPick(paneID: String, program: ChatProgram)
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget?
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch?
 }
 
@@ -236,8 +238,14 @@ enum CheckedSendOutcome: Equatable, Sendable {
 @MainActor
 protocol CheckedComposerSend: AnyObject {
     func send(
-        _ text: String, route: ComposerRoute, attach: AgentAttachStore?
+        _ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?
     ) async -> CheckedSendOutcome
+}
+
+extension CheckedComposerSend {
+    func send(_ text: String, route: ComposerRoute, attach: AgentAttachStore?) async -> CheckedSendOutcome {
+        await send(text, route: route, attach: attach, verifying: nil)
+    }
 }
 
 /// A projection's terminal Stop for one Pane. `.keepSend` is a Pane that gets
@@ -323,6 +331,7 @@ extension ConsoleHostProjection {
         keepingTo _: TerminalCorePin,
         agentKeys _: ChatAgentKeysStore? = nil,
         followThrough _: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget _: ChatStopVerification? = nil,
         live _: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? { nil }
 
@@ -360,5 +369,6 @@ extension ConsoleHostProjection {
         await revalidate()
     }
 
+    func droidDialogTarget(paneID _: String) async throws -> DroidDialogTarget? { nil }
     func claudePermissionLaunch(paneID _: String) async throws -> ClaudePermissionMode.Launch? { nil }
 }

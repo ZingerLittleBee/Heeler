@@ -1246,6 +1246,17 @@ final class ConsoleStore {
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
+        if program == .droid {
+            source.screen.hostName = host.name
+            source.screen.herdrReportsDroidSession = host.serverKind == .herdrTUI
+            source.screen.droidTarget = { [weak self] in
+                guard let live = await self?.projections[hostID] else { return nil }
+                return try await live.droidDialogTarget(paneID: paneID)
+            }
+        }
+        if program == .droid, let tui = hostProjection as? HostConsoleProjection {
+            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID) }
+        }
         if let amp = files.amp {
             source.sessionEvidence = { try await amp.evidence() }
         }
@@ -1331,18 +1342,22 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
+        let verification: ChatStopVerification? = program == .droid
+            ? chatStores[agent.id]?.droidStopVerification() ?? { false }
+            : nil
         if let stop = projections[hostID]?.checkedChatStop(
             for: agent.agent.paneID,
             program: program,
             keepingTo: corePin,
             agentKeys: agentKeys,
             followThrough: followThrough,
+            confirmTarget: verification,
             live: { [weak self] in self?.projections[hostID] })
         {
             return stop
         }
         return chatStopPlan(for: agent, program: program).composerInterrupt(
-            context: context, agentKeys: agentKeys, followThrough: followThrough)
+            context: context, agentKeys: agentKeys, followThrough: followThrough, confirmTarget: verification)
     }
 
     /// A confirmation is an action a detail takes on an address, so it keeps to the
@@ -3534,6 +3549,25 @@ final class ConsoleStore {
                 guard let self else { throw TransportError.cancelled }
                 _ = try await tmux(of: self).placeClaudeCodeHooks()
             })
+    }
+
+    func configureDroidChatHook(_ action: DroidChatHook.Action, on hostID: Host.ID, keepingTo pin: TerminalCorePin?) async throws {
+        guard capabilities(for: hostID).offersDroidChatHook else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Droid Chat hooks"))
+        }
+        guard !hasLeftCore(pin, on: hostID) else {
+            throw leftCoreError(on: hostID)
+        }
+        if let rex = projections[hostID] as? RexConsoleProjection {
+            return try await rex.configureDroidChatHook(action, keepingTo: pin)
+        }
+        if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            _ = try await tmux.configureDroidChatHook(action, keepingTo: pin)
+            return
+        }
+        let services = try await harnessEditServices(on: hostID)
+        guard !hasLeftCore(pin, on: hostID) else { throw leftCoreError(on: hostID) }
+        _ = try await services.prepareDroidChatHook(action)
     }
 
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {

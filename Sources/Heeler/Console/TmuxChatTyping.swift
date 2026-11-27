@@ -195,7 +195,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     func press(
         _ keys: [String], heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         var steps: [TmuxInput] = []
         for key in keys {
@@ -247,7 +247,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     func paste(
         _ text: String, heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let attach = try await attachToType(heldSinceScreenRead: heldSinceScreenRead, stillShows: stillShows)
         do {
@@ -281,7 +281,7 @@ final class TmuxChatTyping: CheckedChatTyping {
     }
 
     private func attachToType(
-        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) -> Bool)?
+        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
     ) async throws -> TmuxChatAttach {
         let projection = try liveProjection()
         let holder = try await checkHolder(in: projection, heldSinceScreenRead: heldSinceScreenRead)
@@ -306,7 +306,7 @@ final class TmuxChatTyping: CheckedChatTyping {
                 } catch {
                     throw Refusal(message: Self.noAnswer)
                 }
-                guard stillShows(currentScreen) else {
+                guard await stillShows(currentScreen) else {
                     throw Refusal(message: BlockedCardStore.changedMessage)
                 }
             }

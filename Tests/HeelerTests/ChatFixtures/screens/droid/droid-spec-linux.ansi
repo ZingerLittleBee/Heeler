@@ -1,0 +1,10 @@
+Will save to: /tmp/fixture/.factory/specs/2026-11-27-two-step-greeting-plan.md
+
+ ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ │ 1. Proceed with the proposal                                                                                      │
+ │ 2. Proceed with comment                                                                                           │
+ │ 3. Proceed and handoff to a new session (1% context savings)                                                      │
+ │ 4. Manually edit spec (xdg-open via system default)                                                               │
+ │ 5. No and explain why                                                                                             │
+ ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+   ↑↓ navigate   1-5 select   Enter select   Tab reasoning   Esc cancel

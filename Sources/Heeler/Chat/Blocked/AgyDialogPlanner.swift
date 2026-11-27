@@ -31,7 +31,8 @@ struct AgyDialogPlanner {
             .claudeQuestion, .claudeQuestionReview, .claudeWorkspaceTrust, .codexExec, .codexPatch, .codexNetwork,
             .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion, .codexWorkspaceTrust, .ompApproval, .ompQuestion,
             .ompQuestionReview, .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork, .openCodePermission,
-            .openCodeQuestion:
+            .openCodeQuestion, .droidPermission, .droidWorkspaceTrust, .droidQuestion, .droidQuestionReview,
+            .droidSpec, .droidSpecFeedback, .droidSpecAutonomy:
             throw .unsupported(String(localized: "Not an Antigravity CLI dialog."))
         }
     }

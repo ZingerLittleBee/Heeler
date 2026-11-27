@@ -1445,9 +1445,9 @@ private actor NoteDialogPane {
         self.anotherDialog = anotherDialog
     }
 
-    func type(_ typing: BlockedScreenIO.Typing, whileShowing check: @Sendable (ANSIScreen) -> Bool) {
-        answersOnItsDialog.append(check(screen))
-        answersOnAnotherDialog.append(check(anotherDialog))
+    func type(_ typing: BlockedScreenIO.Typing, whileShowing check: @Sendable (ANSIScreen) async -> Bool) async {
+        answersOnItsDialog.append(await check(screen))
+        answersOnAnotherDialog.append(await check(anotherDialog))
         switch typing {
         case .paste(let text):
             typed.append("paste \(text)")

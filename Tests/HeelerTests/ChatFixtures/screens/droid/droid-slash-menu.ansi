@@ -1,0 +1,9 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ > /                                                                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+  ── Configs ──
+   /account                        Open Factory account in your browser
+   /billing                        Open Factory billing in your browser
+   /cd                             Change the current session working directory
+   /cwd                            Change the current session working directory
+   /droids                         Manage custom Droids (subagents)

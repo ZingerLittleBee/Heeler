@@ -1,0 +1,130 @@
+{
+  "candidate": "1f09b9552a6cdfdef18471580f99595bcc88fb56",
+  "droid": "1.21.1",
+  "focusedAppTests": {
+    "executed": 21,
+    "passed": 21,
+    "skipped": 0
+  },
+  "capturedInput": {
+    "paneWidths": [
+      27,
+      42,
+      64,
+      80
+    ],
+    "unchangedAccepted": 40,
+    "editedRefused": [
+      "indent/backspace",
+      "indent/insert",
+      "blank/backspace",
+      "blank/insert",
+      "caret moved by padding edit"
+    ],
+    "checkedInFrame": "Tests/HeelerTests/ChatFixtures/screens/droid/droid-multiline-paste.ansi",
+    "previousVerification": {
+      "commit": "144af126fdcb35977780e155c661eb47b8853b9e",
+      "unchanged": "refused",
+      "edited": "accepted"
+    },
+    "fixedVerification": {
+      "unchanged": "accepted",
+      "edited": "refused"
+    }
+  },
+  "liveMethod": "HeelerLiveTests/DroidBackendChatLiveTests/bindsSendsAndReadsTheReply(_:)",
+  "promptShape": {
+    "newlinesBeforeMarker": 2,
+    "spacesBeforeMarker": 4,
+    "userMessagesPerMarker": 1,
+    "assistantRepliesPerMarker": 1
+  },
+  "desktopCheck": "After the Host pasted a marker, a separate terminal input added four leading spaces and moved the cursor back to the end. The same pre-Enter verifier refused the original and recognized the edited text. The fixture then cleared the box without pressing Enter.",
+  "hosts": {
+    "macOS 27.0.1": {
+      "client": "iPhone simulator",
+      "casesPassed": 3,
+      "casesExecuted": 3,
+      "cases": [
+        {
+          "backend": "herdr-core",
+          "session": "ddef8c52-bc16-4ccb-90ba-b62fd0882f0d",
+          "marker": "HEELER_DROID_D5481F29",
+          "userMessage": "1af4fc6f-a27f-4bea-ad43-4c4682b379ce",
+          "assistantReply": "7e29d0c6-07e5-4b70-bacc-655ac22dd3bb",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        },
+        {
+          "backend": "tmux",
+          "session": "34298902-0aa7-4918-9493-8c05d9621b7d",
+          "marker": "HEELER_DROID_2907B9A3",
+          "userMessage": "c05a4c3d-b083-462a-b22d-ed0cdae01dc7",
+          "assistantReply": "ac850f9d-f31a-434e-8628-75a1a1d05a1d",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        },
+        {
+          "backend": "Rex",
+          "session": "8f613073-8f9e-49f1-aa2a-8e156cca0cb5",
+          "marker": "HEELER_DROID_3F36ADA5",
+          "userMessage": "9a01faab-1f45-4245-bbb1-e2633f30b00e",
+          "assistantReply": "705d8d70-1599-47d8-9d1f-68df9019cccb",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        }
+      ]
+    },
+    "Debian 13.7": {
+      "client": "iPad simulator",
+      "casesPassed": 3,
+      "casesExecuted": 3,
+      "cases": [
+        {
+          "backend": "herdr-core",
+          "session": "702b2673-9426-45e8-a5d7-2417a42e77a3",
+          "marker": "HEELER_DROID_9AA06E50",
+          "userMessage": "031d63ef-7e4d-47d0-bf97-412bc29e2b4e",
+          "assistantReply": "e77c3285-9132-4340-a1d1-36673c8019d7",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        },
+        {
+          "backend": "tmux",
+          "session": "f5264123-b273-4fe6-9667-cfc990b06f4a",
+          "marker": "HEELER_DROID_87008CF6",
+          "userMessage": "d64cd64d-6149-46d5-893d-a7cbad1ac015",
+          "assistantReply": "39399b87-dd76-4e53-a671-587e49d381b6",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        },
+        {
+          "backend": "Rex",
+          "session": "85390c05-5b3c-48d5-976b-afa59a6f8787",
+          "marker": "HEELER_DROID_E55BCEC9",
+          "userMessage": "fed7e763-0fe4-49d0-bab6-10bf5e045093",
+          "assistantReply": "f828dd70-f259-4947-921f-81c30e7ac7cf",
+          "desktopEditRefused": true,
+          "heldDraftInTranscript": false
+        }
+      ]
+    }
+  },
+  "initialLinuxRun": {
+    "passed": [
+      "tmux",
+      "Rex"
+    ],
+    "herdr-core": {
+      "backend": "herdrCore",
+      "session": "7489ba0d-10d8-4008-80e9-c87fdbca2e46",
+      "firstAttempt": "refused before paste",
+      "initialMarkerCount": 0,
+      "sameSessionAfterReopen": {
+        "marker": "HEELER_DROID_4671FDAC",
+        "userMessage": "26edb495-9494-4c97-9d9e-b5e91374a43d",
+        "assistantReply": "e1ef8f68-5e3d-4b30-a46e-bb91c2f8fa13"
+      }
+    }
+  }
+}

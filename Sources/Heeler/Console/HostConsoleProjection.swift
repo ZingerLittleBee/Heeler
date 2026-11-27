@@ -393,6 +393,40 @@ final class HostConsoleProjection: ConsoleHostProjection {
 
     /// The processes in the Agent's foreground job, which say how its
     /// program was launched.
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        let generation = transportGeneration
+        let agent = try await agentInfo(paneID: paneID)
+        guard agent.kind == "droid" else { return nil }
+        let foreground = try await processInfo(paneID: paneID)
+        let candidates = (foreground.foregroundProcesses ?? []).filter { ($0.name as NSString).lastPathComponent == "droid" }
+        guard let group = foreground.foregroundProcessGroupID,
+              let process = candidates.first(where: { $0.pid == group }),
+              candidates.filter({ $0.pid != group }).allSatisfy({
+                  $0.argv?.dropFirst().elementsEqual(["exec", "--input-format", "stream-jsonrpc", "--output-format", "stream-jsonrpc"]) == true
+              }), let cwd = process.cwd ?? agent.foregroundCwd else { return nil }
+        let pid = String(process.pid)
+        let facts = try await withHostServices { try await $0.readProcesses(.init(pids: [pid], readsStart: true, valuesOf: ["HOME"])) }
+        guard case .value(let start)? = facts[pid]?.start, case .value(let home)? = facts[pid]?.variables["HOME"] else { return nil }
+        let active = try await withHostServices { try await $0.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
+        let current = try await processInfo(paneID: paneID)
+        let currentDroids = (current.foregroundProcesses ?? []).filter { ($0.name as NSString).lastPathComponent == "droid" }
+        guard generation == transportGeneration, current.foregroundProcessGroupID == group,
+              candidates.count == currentDroids.count, candidates.allSatisfy(currentDroids.contains) else { return nil }
+        let folder = active.flatMap { DroidTranscriptLocator.reportedFolder(file: $0.file, sessionID: $0.session) }
+        return .init(scope: "\(generation)/\(agent.terminalID)", pid: active?.controller ?? pid,
+                     start: active?.controllerStart ?? start, directory: cwd,
+                     sessionID: folder == nil ? nil : active?.session, transcriptFolder: folder)
+    }
+
+    func droidSessionEvidence(paneID: String) async throws -> ChatSessionEvidence {
+        guard let target = try await droidDialogTarget(paneID: paneID) else { return .unavailable(.cannotTellSession(.droid)) }
+        if let id = target.sessionID {
+            return .bound(sessionID: id, transcriptRoot: target.transcriptFolder, directory: target.directory)
+        }
+        let agent = try await agentInfo(paneID: paneID)
+        return .unavailable(agent.agentSession == nil ? .noSession(.droid) : .cannotTellSession(.droid))
+    }
+
     func processInfo(paneID: String) async throws -> PaneProcessInfo {
         try await session.withTransport { transport in
             try await transport.paneProcessInfo(paneID: paneID)

@@ -157,6 +157,33 @@ struct AgentChatStoreTests {
         store.conversation.transcript.entries.map(\.id.rawValue)
     }
 
+    @Test(arguments: [true, false])
+    func droidKeepsTheDraftWhenTheReportedSessionChanges(isMissing: Bool) async {
+        let fixture = Fixture(session: Self.first, program: .droid)
+        defer { fixture.store.end() }
+        #expect(await fixture.store.confirmSessionBeforeSend() == nil)
+        let reported = Self.agent(session: isMissing ? nil : Self.second, program: .droid)
+        await fixture.server.set(reported)
+
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Issue.record("Sent to an unconfirmed session")
+            return reported
+        }
+        let policy = ComposerDeliveryPolicy.chat(
+            rules: .init(program: .droid, commands: []), activity: { .idle },
+            readScreen: {
+                Issue.record("Read the input box after the session changed")
+                return try ScreenFixture.screen("droid-01-idle")
+            },
+            confirmSession: { await fixture.store.confirmSessionBeforeSend() })
+        composer.replaceDraft(with: "Continue the first conversation")
+        guard case .refused(.inputNotReady) = await composer.send(policy: policy) else {
+            Issue.record("A changed or missing session should refuse the send")
+            return
+        }
+        #expect(composer.draft == "Continue the first conversation")
+    }
+
     /// A Claude Code or Codex store following lines 0..<2 of its transcript
     /// while herdr reports the Agent idle, with the session and the path.
     private static func followed(

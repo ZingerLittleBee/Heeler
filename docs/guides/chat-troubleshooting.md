@@ -4,15 +4,17 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, and Amp (with Heeler's Amp plugin, installed from Chat and reloaded in Amp; Heeler 0.1.24 or newer). On a herdr-core (native Windows included), tmux, or Rex (native Windows included) Host, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) list the programs Chat opens for on each system. After Heeler starts, **Show Chat** also stays hidden until the Host connects.
+On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, Amp, and Factory Droid. Amp requires Heeler 0.1.24 or newer. Install Heeler's Amp plugin from Chat and reload it in Amp. The [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) guides list the programs supported on each Host system, including native Windows for herdr-core and Rex. **Show Chat** appears after the Host connects.
 
 ## Waiting for Conversation
 
 herdr hasn't told Heeler which conversation the Agent is in yet.
 
-1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there.
+1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there. For Droid, check the Host and full directory on the folder trust card. If Chat directs you to the terminal, finish trust in that Agent’s terminal.
 2. On the Host, run `herdr integration status` and install the program's integration if it isn't `current` ([Set up the Host](chat.md#set-up-the-host)), then restart the Agent.
 3. Tap **Check Again**.
+
+For an externally started Droid on herdr-core, tmux or Rex, use **Install Droid Hook…** if Chat reports a missing hook, then resume Droid in that terminal. [Droid setup](chat.md#droid)
 
 If Codex still waits after you have sent prompts, it was probably started without `--no-daemon`: see the next section.
 

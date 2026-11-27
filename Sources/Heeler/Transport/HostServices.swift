@@ -4,7 +4,7 @@ import Foundation
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032). Its gh runs are
 /// `GitHubHostCLI`'s (ADR 0065).
-protocol HostServices: GitHubHostCLI {
+protocol HostServices: GitHubHostCLI, DroidChatHookHost, DroidForegroundReading {
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive
     /// permissions, partial-file handling, and atomic completion (ADR 0006).
@@ -200,6 +200,7 @@ extension HostServices {
     }
 
     func hostPlatform() async throws -> HostPlatform { .posix }
+
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Process facts"))

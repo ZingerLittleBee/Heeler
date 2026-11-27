@@ -7,7 +7,9 @@ import Foundation
 /// call order.
 enum BlockedRequestMatch {
     static func request(for dialog: BlockedDialog, in requests: [ChatPendingRequest]) -> ChatPendingRequest? {
-        requests.first { matches($0, dialog) }
+        let candidates = requests.filter { matches($0, dialog) }
+        if dialog.program == .droid, candidates.count != 1 { return nil }
+        return candidates.first
     }
 
     /// Every request the dialog could be asking about, oldest first: those
@@ -21,6 +23,21 @@ enum BlockedRequestMatch {
     private static func matches(_ request: ChatPendingRequest, _ dialog: BlockedDialog) -> Bool {
         let subject = dialog.subject
         switch dialog.kind {
+        case .droidWorkspaceTrust: return false
+        case .droidPermission:
+            if let command = subject.command {
+                guard request.toolName == "Execute" else { return false }
+                return request.summary == command || DroidDialog.matchesCommandRows(subject.commandRows, command: request.summary)
+                    || DroidDialog.elidedCommand(command, matches: request.summary)
+            }
+            guard let path = subject.filePath, ["Create", "Edit", "Update"].contains(request.toolName),
+                  request.toolName == subject.toolName || subject.toolName == "Update" else { return false }
+            return request.summary == path || (!path.hasPrefix("/") && request.summary.hasSuffix("/" + path))
+        case .droidQuestion:
+            guard let title = subject.question else { return false }
+            return request.toolName == "AskUser" && request.summary.contains(title)
+        case .droidQuestionReview: return request.toolName == "AskUser"
+        case .droidSpec, .droidSpecAutonomy, .droidSpecFeedback: return request.toolName == "ExitSpecMode"
         case .claudeBash:
             return ["Bash", "PowerShell"].contains(request.toolName) && begins(request.summary, with: subject.command)
         case .claudeFileEdit, .claudeFileCreate:

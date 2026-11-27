@@ -42,6 +42,11 @@ extension ChatTranscriptAdapter {
                 },
                 identity: { PiTranscriptLocator.sessionID(inHead: $0) },
                 echoesByEntry: true)
+        case .droid:
+            ChatTranscriptAdapter(
+                revision: 1, wantsFirstLine: true, joinsCachedHistory: false,
+                makeReducer: { DroidTranscriptReducer(firstLine: $0.firstLine) },
+                identity: DroidTranscriptLocator.sessionID(inHead:), echoesByEntry: true)
         case .grok:
             .grok
         case .agy:

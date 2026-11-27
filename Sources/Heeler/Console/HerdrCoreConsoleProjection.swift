@@ -941,10 +941,15 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
+        var arguments = request.arguments
+        if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: arguments, kernel: kernel),
+           let settings = try? await transport.hostServices.prepareDroidChatHook(.launch) {
+            arguments = ["--settings", settings] + arguments
+        }
         let record = try fold(
             runReply: try await transport.runTerminal(
                 params: HerdrCoreLaunch.agentRequest(
-                    kind: kind, name: request.name, arguments: request.arguments,
+                    kind: kind, name: request.name, arguments: arguments,
                     environment: request.environment, shell: shell,
                     openCodeVersion: openCodeVersion, placement: placement)))
         return agent(at: record, kind: kind.rawValue)
@@ -1711,6 +1716,14 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         HerdrCoreHostSystem(kernel: kernel).cannotTellSession(program)
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        guard hasInventory, departedAgentsByPane[paneID] == nil, let scope = chatCacheScope else { return nil }
+        let record = try await inventoryTransport().terminalRecord(paneID)
+        let target = try await chatBinder(paneID: paneID, program: .droid, core: inventoryCore)
+            .droidDialogTarget(record, scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard hasInventory, departedAgentsByPane[paneID] == nil else { return nil }
         let core = inventoryCore
@@ -1731,6 +1744,9 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             program: program,
             processes: { request in
                 try await session.withTransport { try await $0.readProcesses(request) }
+            },
+            foregroundDroid: { pid, start, home, cwd in
+                try await session.withTransport { try await $0.hostServices.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
             },
             files: chatHostFiles(),
             clearLabels: { stale in
