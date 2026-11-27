@@ -1,10 +1,10 @@
-<!-- Translated from docs/guides/windows-setup.md at d418c957 -->
+<!-- Translated from docs/guides/windows-setup.md at 03606d07 -->
 # Windows 配置
 
 在 Windows 11 上配置 OpenSSH 与原生 Herdr TUI，以便在 Heeler 中使用实时 Agent 与终端（不含 Chat 或配对），并配置 SSH 与 herdr 开机自启。
 
 > [!NOTE]
-> 如果你想在 Windows 上使用原生 Chat（Claude Code、Grok Build、Pi 与 Oh My Pi），请完成[第 1 步](#1-启用-ssh)配置 OpenSSH 后，转到[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。如需在 Windows 上体验实验性的 Rex 支持（支持 Claude Code 的 Chat），请参阅[连接 Rex](rex.md)。
+> 如果你想在 Windows 上使用原生 Chat（Claude Code、Grok Build、Pi 与 Oh My Pi），请完成[第 1 步](#1-启用-ssh)配置 OpenSSH 后，转到[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。如需在 Windows 上使用 Rex（支持 Claude Code 的 Chat），请参阅[连接 Rex](rex.md)。
 
 ## 开始之前
 

@@ -1,11 +1,11 @@
-<!-- Translated from docs/guides/chat-troubleshooting.md at d418c957 -->
+<!-- Translated from docs/guides/chat-troubleshooting.md at 03606d07 -->
 # Chat 疑难排解
 
 这里是 [Chat](chat.md) 中最常见问题的处理方法。Chat 里的其他提示大多会直接说明该怎么做。如果 Chat 做不到某件事，轻点 **Show Agent Terminal**，在终端中继续。
 
 ## 没有 Show Chat
 
-在 macOS 和 Linux 的 Herdr TUI Host 上，Chat 支持 Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI 以及 Amp（需在 Heeler 0.1.24 或更新版本中通过 Chat 安装 Heeler 的 Amp 插件并在 Amp 中重新加载插件）。herdr-core（包括原生 Windows 上的）、tmux 或实验性 Rex（包括原生 Windows 上的）Host 在各系统上为哪些程序打开 Chat，请参阅 [herdr-core](herdr-core.md#chat)、[tmux](tmux.md#chat) 和 [Rex](rex.md#chat)。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
+在 macOS 和 Linux 的 Herdr TUI Host 上，Chat 支持 Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode、Antigravity CLI 以及 Amp（需在 Heeler 0.1.24 或更新版本中通过 Chat 安装 Heeler 的 Amp 插件并在 Amp 中重新加载插件）。herdr-core（包括原生 Windows 上的）、tmux 或 Rex（包括原生 Windows 上的）Host 在各系统上为哪些程序打开 Chat，请参阅 [herdr-core](herdr-core.md#chat)、[tmux](tmux.md#chat) 和 [Rex](rex.md#chat)。此外，Heeler 启动后，在 Host 连接上之前，**Show Chat** 也不会出现。
 
 ## Waiting for Conversation
 

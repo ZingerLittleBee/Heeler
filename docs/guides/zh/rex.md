@@ -1,14 +1,14 @@
-<!-- Translated from docs/guides/rex.md at d418c957 -->
+<!-- Translated from docs/guides/rex.md at 03606d07 -->
 # 连接 Rex
 
 通过 SSH 将 Heeler 连接到 Mac、Linux 或 Windows Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
 
-> [!IMPORTANT]
-> Rex 支持仍处于实验阶段。Heeler 支持 macOS、Linux 和 Windows 上的 Rex API revision 12 到 19（基于 Rex 0.1.0-preview.14 开发，并在 0.1.0-preview.23 上核对过），可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
+> [!NOTE]
+> Heeler 支持 macOS、Linux 和 Windows 上的 Rex API revision 12 到 19（基于 Rex 0.1.0-preview.14 开发，并在 0.1.0-preview.23 上核对过），可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
 
 ## 开始之前
 
-- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 或更新版本（用于在 macOS 和 Linux 上实验性连接 Rex，支持 API revision 12），或 0.1.24 及更新版本（支持原生 Windows 上的 Rex、New Terminal 以及 API revision 12 到 19）。
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 或更新版本（用于在 macOS 和 Linux 上连接 Rex，支持 API revision 12），或 0.1.24 及更新版本（支持原生 Windows 上的 Rex、New Terminal 以及 API revision 12 到 19）。
 - Host 上的 Rex 以你通过 SSH 登录的账户运行。Heeler 只连接已在运行的 Rex 服务端，绝不会自行启动。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。在 Windows 上运行 Win32-OpenSSH，并让 `rex.exe` 位于该账户的 PATH 中（WinGet 安装时即如此）；Heeler 通过 Rex 自带的 stdio 桥接连接服务端，那里的 [Chat](#chat) 支持 Claude Code。
 - 在 Mac 或 Linux 上，SSH 服务端允许转发到 Unix socket，OpenSSH 默认即允许。如果它的 `sshd_config` 设置了 `AllowStreamLocalForwarding no` 或 `AllowTcpForwarding no`，Heeler 将无法连接 Rex。
