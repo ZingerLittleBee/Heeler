@@ -391,7 +391,7 @@ struct RexHostOnboardingTests {
         #expect(await server.requests.isEmpty)
         #expect(store.report == .allPassed)
         #expect(store.pluginStatus == .unsupportedServerKind)
-        #expect(store.hostHelper == nil)
+        #expect(store.hostHelper != nil)
     }
 
     /// A Host whose socket did not read has it looked up again, and the

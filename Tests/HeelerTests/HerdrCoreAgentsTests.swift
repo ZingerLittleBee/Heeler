@@ -527,7 +527,10 @@ struct HerdrCoreAgentsTests {
 
         let offers = ConsoleAgentRowOffers(
             capabilities: store.capabilities(for: host.id), supportsMultipleWindows: true)
-        #expect(offers == ConsoleAgentRowOffers(opensInNewWindow: true, closes: true))
+        #expect(
+            offers
+                == ConsoleAgentRowOffers(
+                    opensInNewWindow: true, closes: true, copiesPaneID: true, moves: true))
 
         try await waitUntil("the Workspace's checkout") { transport.hostServicesBorrows == 1 }
         store.rowChanges.rowAppeared(row)

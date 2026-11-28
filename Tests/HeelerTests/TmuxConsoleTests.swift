@@ -119,7 +119,7 @@ struct TmuxConsoleTests {
         #expect(offers.tabNames)
         #expect(offers.renameAgent)
         #expect(offers.movesPanes)
-        #expect(!offers.renamesConversationTitles)
+        #expect(offers.renamesConversationTitles)
         #expect(!offers.takeOver)
         #expect(offers.chat)
         #expect(offers.uploads)

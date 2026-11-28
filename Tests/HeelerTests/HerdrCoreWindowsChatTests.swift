@@ -433,10 +433,12 @@ struct HerdrCoreWindowsChatTests {
         }
 
         try await transport(.herdrCore).requireChatFileHost()
+        try await transport(.herdrTUI).requireChatFileHost()
+        try await transport(.rex).requireChatFileHost()
         await #expect(
             throws: TransportError.hostFeatureUnavailable(feature: "Chat is not yet supported on native Windows")
         ) {
-            try await transport(.herdrTUI).requireChatFileHost()
+            try await transport(.tmux).requireChatFileHost()
         }
     }
 

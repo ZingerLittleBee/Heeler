@@ -316,7 +316,8 @@ struct RexChatTests {
         #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp])
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).offersChat(for: .grok))
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel).offersChat(for: .grok))
-        #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))
+        #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))
+        #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .codex))
         #expect(!rig.host.capabilities.chat)
 
         world.restart(as: "instance-0002")

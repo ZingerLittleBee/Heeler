@@ -1703,7 +1703,7 @@ struct StartAgentStoreTests {
         store.selectedHostID = rex.id
         store.name = "heeler-lab-picker"
         for blocked in [rex.capabilities,
-                        HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel, rexAcceptsCommand: true),
+                        HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel, rexAPIRevision: 19),
                         HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAPIRevision: 19)] {
             rexCapabilities = blocked
             #expect(store.launchUnavailableMessage != nil)
@@ -1711,6 +1711,8 @@ struct StartAgentStoreTests {
             await store.submit()
             #expect(!store.canSubmit && probes.isEmpty && recorder.hostIDs.isEmpty)
         }
+        rexCapabilities = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel, rexAcceptsCommand: true)
+        #expect(store.launchUnavailableMessage == nil && store.offersWorkspaceAndTabNames)
         rexCapabilities = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAcceptsCommand: true)
         #expect(store.launchUnavailableMessage == nil && store.offersWorkspaceAndTabNames)
         await store.discoverAgents()

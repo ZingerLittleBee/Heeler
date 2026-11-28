@@ -327,20 +327,25 @@ struct HerdrCoreWorktreesTests {
         #expect(!form.worktreeBranch.isEmpty)
         #expect(!form.worktreeBranch.contains("/"))
         #expect(form.canSubmit)
-        form.worktreeBranch = ""
-        #expect(!form.canSubmit)
-        form.worktreeBranch = "   "
-        #expect(!form.canSubmit)
-
-        await form.submit()
-        await #expect(throws: HerdrCoreWorktreeError.invalidBranch("Enter a branch name.")) {
-            _ = try await fixture.start(branch: nil)
-        }
-
-        #expect(await fixture.git("worktree").isEmpty)
-        #expect(await fixture.transport.runs.isEmpty)
         form.worktreeBranch = "typed"
         #expect(form.canSubmit)
+        form.worktreeBranch = ""
+        #expect(form.canSubmit)
+        form.worktreeBranch = "   "
+        #expect(form.canSubmit)
+
+        await form.submit()
+        let added = try #require(await fixture.git("worktree").first)
+        #expect(added.arguments.count == 6)
+        #expect(added.arguments[0] == "worktree")
+        #expect(added.arguments[1] == "add")
+        #expect(added.arguments[2] == "-b")
+        #expect(added.arguments[3].hasPrefix("worktree/"))
+        #expect(
+            added.arguments[4]
+                == "/home/dev/.herdr/worktrees/app/\(HerdrCoreWorktrees.slug(added.arguments[3]))")
+        #expect(added.arguments[5] == "HEAD")
+        #expect(await fixture.transport.runs.count == 1)
     }
 
     @Test func aBaseTypedForAHerdrTUIHostDoesNotReachACoreOne() async throws {
@@ -355,7 +360,7 @@ struct HerdrCoreWorktreesTests {
         await form.submit()
 
         #expect(await fixture.git("worktree").map(\.arguments) == [
-            ["worktree", "add", "-b", "typed", "/home/dev/.herdr/worktrees/app/typed", "HEAD"]
+            ["worktree", "add", "-b", "typed", "/home/dev/.herdr/worktrees/app/typed", "origin/main"]
         ])
     }
 

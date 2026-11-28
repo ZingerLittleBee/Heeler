@@ -140,6 +140,8 @@ import Testing
         ("codex", "Codex"),
         ("grok", "Grok Build"),
         ("opencode", "OpenCode"),
+        ("omp", "Oh My Pi"),
+        ("agy", "Antigravity CLI"),
     ])
     func aUserPipedTmuxAgentSaysHeelerLeavesItsPipeAlone(command: String, program: String) throws {
         let pane = TmuxInventory.Pane.make(
@@ -195,7 +197,12 @@ import Testing
         let omp = TmuxInventory.Pane.make(command: "omp", arguments: ["omp"])
         #expect(
             HerdrCoreStatusExplanation(pane: omp, agentStatus: .unknown)?.text
-                == "Oh My Pi hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+                == "Oh My Pi hasn't reported a status. In tmux its status is read by the Host Helper, from Oh My Pi 18.8.7.")
+
+        let agy = TmuxInventory.Pane.make(command: "agy", arguments: ["agy"])
+        #expect(
+            HerdrCoreStatusExplanation(pane: agy, agentStatus: .unknown)?.text
+                == "Antigravity CLI hasn't reported a status. In tmux its status is read by the Host Helper, from Antigravity CLI 1.4.0.")
 
         let gemini = TmuxInventory.Pane.make(command: "gemini", arguments: ["gemini"])
         #expect(

@@ -545,8 +545,8 @@ struct HerdrCoreWindowsLaunchTests {
     /// A Herdr TUI Host on Windows keeps its own answers.
     @Test func aHerdrTUIHostOnWindowsStillOpensNoTerminalAtAWindowsPath() {
         let offers = HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows)
-        #expect(offers.newTerminalRequest(workspaceID: "w", cwd: #"C:\work"#) == nil)
-        #expect(!offers.startsIn(#"C:\work"#))
+        #expect(offers.newTerminalRequest(workspaceID: "w", cwd: #"C:\work"#) != nil)
+        #expect(offers.startsIn(#"C:\work"#))
     }
 
     @Test func aWindowsCoreHostRefusesADirectoryThatIsNotAPath() {

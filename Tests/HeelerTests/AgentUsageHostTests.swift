@@ -31,9 +31,9 @@ struct AgentUsageHostTests {
 
         let hosts = AgentUsageHost.grouped(catalog.integratedHosts)
 
-        #expect(hosts.map(\.id) == [tmux.id])
-        #expect(hosts.map(\.name) == ["Studio Mac"])
-        #expect(hosts.map { $0.records.map(\.id) } == [[tmux.id]])
+        #expect(hosts.map(\.id) == [rex.id, rexOnly.id])
+        #expect(hosts.map(\.name) == ["Studio Mac", "Rex Box"])
+        #expect(hosts.map { $0.records.map(\.id) } == [[rex.id, tmux.id], [rexOnly.id]])
     }
 
     @Test func aHostIsReadThroughTheFirstServerThatReports() throws {
