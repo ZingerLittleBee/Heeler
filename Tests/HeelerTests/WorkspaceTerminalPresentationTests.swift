@@ -70,8 +70,11 @@ struct CreatedWorkspaceTerminalTests {
         // Not listed yet: the inventory has not caught up, so it stays.
         #expect(terminal.resolve(in: [], hostID: host.id) == nil)
         #expect(terminal.identity == created)
+        // Open Terminal waits for the listing only while it has never come.
+        #expect(!terminal.wasListed)
 
         #expect(terminal.resolve(in: [listed], hostID: host.id) == listed)
+        #expect(terminal.wasListed)
 
         // Closed: Open Terminal no longer routes to it.
         #expect(terminal.resolve(in: [], hostID: host.id) == nil)
