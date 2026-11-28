@@ -186,6 +186,7 @@ final class StartAgentStore {
     /// iOS 27.3 that write invalidates the parent's `@AppStorage`, which
     /// builds the form again, without end.
     @ObservationIgnored private var remembersHostPicks = false
+    @ObservationIgnored private var isApplyingAutomaticPreset = false
 
     var selectedHostID: Host.ID? {
         didSet {
@@ -199,10 +200,12 @@ final class StartAgentStore {
                 }
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
-                selectedAgentKind = nil
+                withAutomaticPreset {
+                    selectedAgentKind = nil
+                    selectedPresetID = nil
+                }
                 availableTemplates = []
                 selectedTemplate = nil
-                selectedPresetID = nil
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
                 newWorkspaceDirectory = ""
@@ -302,30 +305,65 @@ final class StartAgentStore {
     var name: String = ""
     /// The canonical kind selected from the Host availability probe. Each
     /// probe defaults it to the kind last started, when this Host has it,
-    /// else the Host's first.
+    /// else the Host's first. Switching harnesses restores that harness's
+    /// remembered Launch Preset when available.
     var selectedAgentKind: SupportedAgentKind? {
         didSet {
             if selectedAgentKind != nil { selectedTemplate = nil }
-            // Another harness leaves the preset behind.
-            if selectedPresetID != nil,
-                selectedPreset == nil || selectedPreset?.kind != selectedAgentKind
-            {
-                selectedPresetID = nil
+            guard selectedAgentKind != oldValue else { return }
+            if let selectedPreset, selectedPreset.kind == selectedAgentKind {
+                return
             }
+            applyRememberedPreset(for: selectedAgentKind)
         }
     }
     /// The Launch Preset the Agent starts from (#622); nil starts the
-    /// harness as the form describes it. Picking one picks its harness.
+    /// harness as the form describes it. Picking one picks its harness and
+    /// remembers the choice for that harness.
     var selectedPresetID: LaunchPreset.ID? {
         didSet {
-            guard selectedPresetID != nil else { return }
+            guard !isApplyingAutomaticPreset else { return }
+            if selectedPresetID == nil {
+                if oldValue != nil, let selectedAgentKind {
+                    recents.rememberPreset(nil, for: selectedAgentKind)
+                }
+                return
+            }
             guard let selectedPreset else {
-                selectedPresetID = nil
+                withAutomaticPreset { selectedPresetID = nil }
                 return
             }
             if selectedAgentKind != selectedPreset.kind {
                 selectedAgentKind = selectedPreset.kind
             }
+            recents.rememberPreset(selectedPreset.id, for: selectedPreset.kind)
+        }
+    }
+
+    private func withAutomaticPreset(_ body: () -> Void) {
+        let previous = isApplyingAutomaticPreset
+        isApplyingAutomaticPreset = true
+        defer { isApplyingAutomaticPreset = previous }
+        body()
+    }
+
+    private func applyRememberedPreset(for kind: SupportedAgentKind?) {
+        let chosen: LaunchPreset.ID?
+        if let kind {
+            let matching = availablePresets.filter { $0.kind == kind }
+            switch recents.presetChoice(for: kind) {
+            case .preset(let id) where matching.contains(where: { $0.id == id }):
+                chosen = id
+            case .noPreset:
+                chosen = nil
+            case .preset, nil:
+                chosen = matching.count == 1 ? matching[0].id : nil
+            }
+        } else {
+            chosen = nil
+        }
+        withAutomaticPreset {
+            selectedPresetID = chosen
         }
     }
     /// The Template selected in place of a kind.
@@ -370,11 +408,23 @@ final class StartAgentStore {
     /// Remote directory for a New Workspace launch. Optional: empty resolves
     /// to the Host's home directory at submit. Trimmed before use.
     var newWorkspaceDirectory: String = ""
+    var initialBrowseDirectory: String? {
+        if let current = Self.nonEmptyTrimmed(newWorkspaceDirectory), RemoteHostPath.isAbsolute(current) {
+            return current
+        }
+        guard let connection = selectedHostConnection else { return nil }
+        return recents.directory(for: connection)
+    }
+
     /// Selecting a directory switches the draft destination without starting
-    /// an Agent. Dismissing the browser never changes the current selection.
+    /// an Agent, and remembers the path for this Host. Dismissing the browser
+    /// never changes the current selection.
     func applyBrowsedDirectory(_ path: String) {
         guard offersNewWorkspace, RemoteHostPath.isAbsolute(path) else { return }
         newWorkspaceDirectory = path
+        if let connection = selectedHostConnection {
+            recents.rememberDirectory(path, for: connection)
+        }
         selectNewWorkspace()
     }
 
@@ -832,8 +882,10 @@ final class StartAgentStore {
 
     func discoverAgents() async {
         availableAgentKinds = []
-        selectedAgentKind = nil
-        selectedPresetID = nil
+        withAutomaticPreset {
+            selectedAgentKind = nil
+            selectedPresetID = nil
+        }
         availableTemplates = []
         selectedTemplate = nil
         guard let hostID = discoveryHostID else {
@@ -1016,7 +1068,14 @@ final class StartAgentStore {
             } else if let workspaceID {
                 recents.rememberWorkspace(workspaceID, for: hostID)
             }
-            if case .kind(let kind, _, _) = launch { recents.rememberAgentKind(kind) }
+            if case .kind(let kind, _, _) = launch {
+                recents.rememberAgentKind(kind)
+                if let preset {
+                    recents.rememberPreset(preset.id, for: kind)
+                } else if availablePresets.contains(where: { $0.kind == kind }) {
+                    recents.rememberPreset(nil, for: kind)
+                }
+            }
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.

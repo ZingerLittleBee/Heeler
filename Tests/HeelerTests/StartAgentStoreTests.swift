@@ -1548,34 +1548,30 @@ struct StartAgentStoreTests {
                 == ["CLAUDE_CONFIG_DIR": "/home/you/.claude-work", "ANTHROPIC_LOG": "debug"])
     }
 
-    /// Picking another harness leaves the preset; the Preset picker offers
-    /// only the selected harness's presets, while the Agent picker's preset
-    /// choices jump to their harness.
     @Test func choosingAnotherHarnessLeavesThePresetAndScopesPresetChoices() async {
         let agyPreset = LaunchPreset(
             name: "agy", kind: .antigravity, arguments: "--dangerously-skip-permissions")
+        let claudeOther = LaunchPreset(name: "Personal", kind: .claude, arguments: "--model sonnet")
         let recorder = StartRecorder()
         let store = makeStore(
             hosts: [Host.fixture()], workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Existing")] },
-            agentKinds: { _ in [.claude, .antigravity] }, presets: [Self.work, agyPreset, Self.yolo], recorder: recorder)
+            agentKinds: { _ in [.claude, .antigravity] },
+            presets: [Self.work, claudeOther, agyPreset, Self.yolo], recorder: recorder)
         await store.discoverAgents()
         #expect(store.selectedAgentKind == .claude)
-        #expect(store.availablePresets.map(\.name) == ["Work", "agy"])
-        #expect(store.selectedAgentPresets.map(\.name) == ["Work"])
+        #expect(store.selectedPresetID == nil)
+        #expect(store.availablePresets.map(\.name) == ["Work", "Personal", "agy"])
+        #expect(store.selectedAgentPresets.map(\.name) == ["Work", "Personal"])
 
-        // Picking another harness's preset from the Agent menu jumps to its
-        // harness and scopes Preset to that harness alone.
         store.selectedAgent = .preset(agyPreset.id)
         #expect(store.selectedAgentKind == .antigravity)
         #expect(store.selectedAgent == .kind(.antigravity))
         #expect(store.selectedPresetID == agyPreset.id)
         #expect(store.selectedAgentPresets.map(\.name) == ["agy"])
 
-        // Switching back to Claude Code clears agy's preset and hides agy from
-        // Claude Code's Preset list; uninstalled presets cannot be selected.
         store.selectedAgent = .kind(.claude)
         #expect(store.selectedPresetID == nil)
-        #expect(store.selectedAgentPresets.map(\.name) == ["Work"])
+        #expect(store.selectedAgentPresets.map(\.name) == ["Work", "Personal"])
         store.selectedAgent = .preset(Self.yolo.id)
         #expect(store.selectedPresetID == nil)
         #expect(store.selectedAgentKind == .claude)
@@ -1797,5 +1793,126 @@ struct StartAgentStoreTests {
 
         let withWin = makeStore(hosts: [win, m3], recents: recents, recorder: StartRecorder())
         #expect(withWin.selectedHostID == m3.id)
+    }
+
+    @Test func remembersTheLastBrowsedDirectoryPerHostAcrossServersAndReopenings() throws {
+        let m3Rex = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .rex)
+        let m3TUI = Host(name: "m3", address: "m3.example", username: "dev", serverKind: .herdrTUI)
+        let linux = Host(name: "linux", address: "linux.example", username: "dev", serverKind: .herdrTUI)
+        let recents = makeRecents()
+
+        let first = makeStore(hosts: [m3Rex, m3TUI, linux], recents: recents, recorder: StartRecorder())
+        first.selectedHostID = m3Rex.id
+        #expect(first.initialBrowseDirectory == nil)
+
+        first.applyBrowsedDirectory("/Users/dev/Documents/Heeler")
+        #expect(first.initialBrowseDirectory == "/Users/dev/Documents/Heeler")
+
+        first.selectedHostID = m3TUI.id
+        #expect(first.newWorkspaceDirectory.isEmpty)
+        #expect(first.initialBrowseDirectory == "/Users/dev/Documents/Heeler")
+
+        first.selectedHostID = linux.id
+        #expect(first.initialBrowseDirectory == nil)
+        first.applyBrowsedDirectory("/srv/work")
+        #expect(first.initialBrowseDirectory == "/srv/work")
+
+        let reopened = makeStore(hosts: [m3Rex, m3TUI, linux], recents: recents, recorder: StartRecorder())
+        #expect(reopened.selectedHostID == linux.id)
+        #expect(reopened.initialBrowseDirectory == "/srv/work")
+        reopened.selectedHostID = m3Rex.id
+        #expect(reopened.initialBrowseDirectory == "/Users/dev/Documents/Heeler")
+    }
+
+    @Test func remembersAndAutoSelectsThePresetPerAgentKind() async throws {
+        let host = Host.fixture(name: "m3", address: "m3.example")
+        let otherHost = Host.fixture(name: "linux", address: "linux.example")
+        let agyWork = LaunchPreset(name: "agy-work", kind: .antigravity, arguments: "--yolo")
+        let agyFast = LaunchPreset(name: "agy-fast", kind: .antigravity, arguments: "--fast")
+        let templates = [AgentTemplate(name: "deploy", description: "Deploy")]
+        let suite = "preset-recents-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let recents = RecentLaunchStore(defaults: defaults)
+
+        let first = StartAgentStore(
+            hosts: [host, otherHost],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            existingAgentNames: { _ in [] },
+            discoverAgentKinds: { _ in [.claude, .antigravity] },
+            discoverTemplates: { _ in templates },
+            remoteHome: { _ in "/home/you" },
+            start: { _, _, _ in Agent(.fixture(paneID: "w1:pnew", status: .working)) },
+            awaitAgentVisible: { _ in },
+            recents: recents,
+            presets: { [Self.work, agyWork, agyFast] })
+        first.selectedHostID = host.id
+        await first.discoverAgents()
+        #expect(first.selectedAgentKind == .claude)
+        #expect(first.selectedPresetID == Self.work.id)
+        #expect(defaults.object(forKey: "recent-preset-by-agent-kind") == nil)
+
+        first.selectedAgent = .kind(.antigravity)
+        #expect(first.selectedPresetID == nil)
+        first.selectedAgent = .preset(agyWork.id)
+        #expect(first.selectedAgentKind == .antigravity)
+        #expect(first.selectedPresetID == agyWork.id)
+
+        first.selectedAgent = .kind(.claude)
+        #expect(first.selectedPresetID == Self.work.id)
+        first.selectedAgent = .kind(.antigravity)
+        #expect(first.selectedPresetID == agyWork.id)
+
+        first.selectedAgent = .template(templates[0])
+        #expect(first.selectedPresetID == nil)
+        first.selectedAgent = .kind(.antigravity)
+        #expect(first.selectedPresetID == agyWork.id)
+
+        await first.submit()
+
+        let reopened = makeStore(
+            hosts: [host, otherHost],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.claude, .antigravity] },
+            recents: recents,
+            presets: [Self.work, agyWork, agyFast],
+            recorder: StartRecorder())
+        await reopened.discoverAgents()
+        #expect(reopened.selectedAgentKind == .antigravity)
+        #expect(reopened.selectedPresetID == agyWork.id)
+
+        reopened.selectedHostID = otherHost.id
+        await reopened.discoverAgents()
+        #expect(reopened.selectedAgentKind == .antigravity)
+        #expect(reopened.selectedPresetID == agyWork.id)
+
+        reopened.selectedPresetID = nil
+        reopened.selectedAgent = .kind(.claude)
+        #expect(reopened.selectedPresetID == Self.work.id)
+        reopened.selectedPresetID = nil
+
+        let afterNone = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.claude, .antigravity] },
+            recents: recents,
+            presets: [Self.work, agyWork, agyFast],
+            recorder: StartRecorder())
+        await afterNone.discoverAgents()
+        #expect(afterNone.selectedAgentKind == .antigravity)
+        #expect(afterNone.selectedPresetID == nil)
+        afterNone.selectedAgent = .kind(.claude)
+        #expect(afterNone.selectedPresetID == nil)
+
+        let afterDelete = makeStore(
+            hosts: [host],
+            workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
+            agentKinds: { _ in [.antigravity] },
+            recents: recents,
+            presets: [agyFast],
+            recorder: StartRecorder())
+        await afterDelete.discoverAgents()
+        #expect(afterDelete.selectedAgentKind == .antigravity)
+        #expect(afterDelete.selectedPresetID == nil)
     }
 }

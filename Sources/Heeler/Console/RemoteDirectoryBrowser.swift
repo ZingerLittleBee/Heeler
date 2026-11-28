@@ -29,12 +29,19 @@ final class RemoteDirectoryBrowser: Identifiable {
     /// Narrows the current listing only; it never walks the tree.
     var filter = ""
 
+    private let initialPath: String?
     private let resolveHome: ResolveHome
     private let list: ListDirectories
     private var loadTask: Task<Void, Never>?
     private var requestedPath: String?
+    private var requestedFallbackToHome = false
 
-    init(resolveHome: @escaping ResolveHome, list: @escaping ListDirectories) {
+    init(
+        initialPath: String? = nil,
+        resolveHome: @escaping ResolveHome,
+        list: @escaping ListDirectories
+    ) {
+        self.initialPath = initialPath.flatMap { RemoteHostPath.isAbsolute($0) ? $0 : nil }
         self.resolveHome = resolveHome
         self.list = list
     }
@@ -64,14 +71,13 @@ final class RemoteDirectoryBrowser: Identifiable {
         return Self.parentPath(of: currentPath) != nil
     }
 
-    /// Resolves the remote home and loads it.
     func start() {
-        load(path: nil)
+        load(path: initialPath, fallbackToHome: initialPath != nil)
     }
 
     /// Retries the failed destination instead of sending the user home.
     func retry() {
-        load(path: requestedPath)
+        load(path: requestedPath, fallbackToHome: requestedFallbackToHome)
     }
 
     /// Enters one of the current listing's subdirectories.
@@ -106,22 +112,40 @@ final class RemoteDirectoryBrowser: Identifiable {
         RemoteHostPath.parentPath(of: path)
     }
 
-    private func load(path: String?) {
+    private func load(path: String?, fallbackToHome: Bool = false) {
         loadTask?.cancel()
         requestedPath = path
+        requestedFallbackToHome = fallbackToHome
         errorMessage = nil
         isLoading = true
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let target: String
+                let listing: RemoteDirectoryListing
                 if let path {
-                    target = path
+                    do {
+                        listing = try await self.list(path)
+                        target = path
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        guard fallbackToHome, Self.shouldFallBackToHome(after: error) else {
+                            throw error
+                        }
+                        try Task.checkCancellation()
+                        self.requestedPath = nil
+                        self.requestedFallbackToHome = false
+                        let home = try await self.resolveHome()
+                        try Task.checkCancellation()
+                        listing = try await self.list(home)
+                        target = home
+                    }
                 } else {
                     target = try await self.resolveHome()
                     try Task.checkCancellation()
+                    listing = try await self.list(target)
                 }
-                let listing = try await self.list(target)
                 try Task.checkCancellation()
                 guard !Task.isCancelled else { return }
                 if self.currentPath != target {
@@ -143,6 +167,17 @@ final class RemoteDirectoryBrowser: Identifiable {
                 self.errorMessage = Self.message(for: error)
                 self.isLoading = false
             }
+        }
+    }
+
+    private static func shouldFallBackToHome(after error: any Error) -> Bool {
+        guard let transportError = error as? TransportError else { return true }
+        switch transportError {
+        case .sshUnreachable, .timedOut, .hostFileTimedOut, .hostFeatureUnavailable,
+            .authenticationFailed, .hostKeyRejected, .hostKeyMismatch, .cancelled:
+            return false
+        default:
+            return true
         }
     }
 
