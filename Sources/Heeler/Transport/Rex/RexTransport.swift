@@ -181,6 +181,13 @@ extension RexHostExtensionPlacing {
 /// The SSH operations behind project reads, Agent discovery and Worktree creation.
 protocol RexHostProjects: HostProjectReading, HostWorktreeAccess {
     func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice]
+}
+
+extension RexHostProjects {
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice] {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Antigravity models"))
+    }
 }
 
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the

@@ -22,6 +22,15 @@ enum RexControlProtocol {
     /// Every Rex server accepts messages at least this large; used when a
     /// welcome names no limit.
     static let minimumMessageLimit = 65536
+    static let setWindowLabelMethod = "session.set_window_label"
+
+    static func setWindowLabelPayload(sessionID: String, windowID: String, label: String) -> JSONValue {
+        .object([
+            "session_id": .string(sessionID),
+            "window_id": .string(windowID),
+            "label": .string(label),
+        ])
+    }
 }
 
 /// Who this client says it is in its hello. It never claims to be a Rex app

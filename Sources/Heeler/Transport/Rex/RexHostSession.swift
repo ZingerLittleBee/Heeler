@@ -831,6 +831,40 @@ actor RexHostSession {
         return created
     }
 
+    func setWindowLabel(
+        sessionID: String, windowID: String, label: String, keepingTo server: RexServerStatus? = nil
+    ) async throws {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        if let server, server != ready.server { throw TransportError.rexServerGone }
+        let control = ready.control
+        let target = JSONValue.object(["session_id": .string(sessionID)])
+        do {
+            let view = try await control.call("session.view", payload: target).result(JSONValue.self)
+            guard view["session_id"]?.stringValue == sessionID,
+                let parsed = RexInventoryWire.view(view),
+                parsed.windows.contains(where: { $0.id == windowID })
+            else { throw TransportError.rexServerGone }
+            _ = try await control.call(
+                RexControlProtocol.setWindowLabelMethod,
+                payload: RexControlProtocol.setWindowLabelPayload(
+                    sessionID: sessionID, windowID: windowID, label: label))
+            let updated = try await control.call("session.view", payload: target).result(JSONValue.self)
+            let expected = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard updated["session_id"]?.stringValue == sessionID,
+                let updatedView = RexInventoryWire.view(updated),
+                let window = updatedView.windows.first(where: { $0.id == windowID }),
+                expected.isEmpty ? window.customLabel == nil : window.label == expected
+            else {
+                throw TransportError.rexAnswerUnreadable(
+                    String(localized: "Rex did not confirm the new Tab name. Check the Tab before renaming it again."))
+            }
+        } catch let error as RexControlError {
+            throw TransportError(rexControl: error)
+        }
+    }
+
     /// Attaches the control client to `sessionID`, as Rex asks of a client
     /// acting on a session. An attach with no answer comes before a new
     /// window's request leaves, so it says nothing was made.

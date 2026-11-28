@@ -51,6 +51,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// The Agents as last listed, for a detail open on one while the Host
     /// recovers. Another server's are not these.
     private(set) var lastKnownAgentsByPane: [String: ConsoleAgent] = [:]
+    private(set) var statusExplanations: [String: HerdrCoreStatusExplanation] = [:]
     private(set) var sidebarRevision: UInt64 = 0
     /// The last inventory folded into rows.
     private(set) var inventory: RexInventory?
@@ -369,6 +370,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         workspaces = []
         terminalsByPane = [:]
         agentsByPane = [:]
+        statusExplanations = [:]
     }
 
     /// Each inventory is the server's whole list, so Pins on Panes it no
@@ -381,6 +383,16 @@ final class RexConsoleProjection: ConsoleHostProjection {
         terminalsByPane = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         agentsByPane = agents
         lastKnownAgentsByPane = agents
+        var explanations: [String: HerdrCoreStatusExplanation] = [:]
+        for session in inventory.sessions {
+            for terminal in session.terminals {
+                let paneID = RexPaneAddress(sessionID: session.id, blockID: terminal.blockID).paneID
+                if let explanation = Self.statusExplanation(of: terminal.details, paneID: paneID) {
+                    explanations[paneID] = explanation
+                }
+            }
+        }
+        statusExplanations = explanations
         panesAwaitingForeground = Set(
             inventory.sessions.flatMap { session in
                 session.terminals.lazy.filter(\.details.awaitsForeground)
@@ -396,6 +408,25 @@ final class RexConsoleProjection: ConsoleHostProjection {
         workspaces = builder.workspaceRows(launchDirectory: { directories[$0] })
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
+    }
+
+    private static func statusExplanation(
+        of details: RexTerminalDetails, paneID: String
+    ) -> HerdrCoreStatusExplanation? {
+        guard let name = details.program,
+            let kind = RexAgentRule.agentKind(in: details),
+            RexAgentRule.status(of: details, heldBy: kind) == .unknown
+        else { return nil }
+        var record = HerdrCoreTerminalRecord(rexTerminal: details, paneID: paneID, chatPick: nil)
+        let arguments = [details.argv0 ?? name] + (details.script.map { [$0] } ?? [])
+        record.foreground = HerdrCoreForeground(
+            pid: details.processID, name: name, argv: arguments, cwd: details.directory ?? "")
+        if let report = RexAgentRule.report(of: details, heldBy: kind) {
+            record.reported = true
+            record.status = HerdrCoreTerminalStatus(
+                state: report.state, kind: nil, progress: nil, app: report.app ?? "", title: "", message: "")
+        }
+        return HerdrCoreStatusExplanation(record: record)
     }
 
     func refreshTerminalInventory() async {
@@ -854,6 +885,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
         return found.kinds
     }
 
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice] {
+        let (server, projects) = try await projectConnection()
+        let models = try await projects.listAgyModels()
+        guard self.server == server else { throw TransportError.rexServerGone }
+        return models
+    }
+
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String {
         if !asked.isEmpty { return asked }
         return inventory?.sessions.first { $0.id == workspaceID }?.launchDirectory ?? ""
@@ -914,7 +952,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             return launch
         }
         let program = try RexNewTerminal.Program(request: launchRequest, cwd: cwd, openCodeVersion: openCodeVersion)
-        let made = try await session.createTerminal(placement, cwd: cwd, program: program, keepingTo: server)
+        let made = try await session.createTerminal(
+            placement, cwd: cwd, program: program, windowLabel: request.tabLabel, keepingTo: server)
         guard self.server == server else { throw TransportError.rexServerGone }
         let pane = made.address.paneID
         return Agent(terminalID: pane, kind: request.kind, title: "", status: .unknown,
@@ -926,7 +965,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// the background, which lists once the server's events say so.
     func createShellTerminal(_ request: ShellTerminalCreationRequest) async throws -> ShellTerminalIdentity {
         Self.identity(of: try await session.createTerminal(.window(sessionID: request.workspaceID), cwd: request.cwd,
-                                                          windowLabel: supportsProjectOperations ? request.label : nil))
+                                                          windowLabel: kernel != nil ? request.label : nil))
     }
 
     /// New Workspace: a new session whose one window holds the shell,
@@ -939,7 +978,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
             workspace.label.flatMap { $0.isEmpty ? nil : $0 }
             ?? RexNewTerminal.sessionLabel(for: workspace.directory)
         return Self.identity(of: try await session.createTerminal(.session(label: label), cwd: workspace.directory,
-                                                                 windowLabel: supportsProjectOperations ? tabLabel : nil))
+                                                                 windowLabel: kernel != nil ? tabLabel : nil))
     }
 
     /// A Rex terminal's Pane and Terminal ids are both its address, and its
@@ -961,7 +1000,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// A Rex Agent name is its block label. A later program in the same block
     /// must not receive an edit prepared while another foreground was listed.
     func renameBlockAction(for paneID: String) -> ((String?) async throws -> Void)? {
-        guard let server, supportsProjectOperations, let address = RexPaneAddress(paneID: paneID),
+        guard let server, kernel != nil, let address = RexPaneAddress(paneID: paneID),
             let listed = listedDetails(at: address), let pid = listed.processID,
             let kind = RexAgentRule.agentKind(in: listed) else { return nil }
         return { [self] name in
@@ -992,8 +1031,19 @@ final class RexConsoleProjection: ConsoleHostProjection {
         try await rename(name)
     }
 
+    func renameTab(_ tabID: String, label: String) async throws {
+        guard let server, kernel != nil,
+            let owningSession = inventory?.sessions.first(where: { session in
+                tabID != RexOrganization.detachedTabID(ofSession: session.id)
+                    && session.windows.contains(where: { $0.id == tabID })
+            })
+        else { throw Self.unavailable }
+        try await session.setWindowLabel(
+            sessionID: owningSession.id, windowID: tabID, label: label, keepingTo: server)
+    }
+
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
-        guard let server, supportsProjectOperations, inventory?.sessions.contains(where: { $0.id == workspaceID }) == true
+        guard let server, kernel != nil, inventory?.sessions.contains(where: { $0.id == workspaceID }) == true
         else { throw Self.unavailable }
         try await session.withConnection { connection in
             guard connection.server == server else { throw TransportError.rexServerGone }
@@ -1296,6 +1346,32 @@ final class RexConsoleProjection: ConsoleHostProjection {
         try await session.withConnection { $0.transport.extensionPlacing }
     }
 
+    func grokBuildEditFiles() async throws -> any HarnessConfigFileAccess {
+        guard supportsProjectOperations else { throw Self.unavailable }
+        return try await openCodeEditServices()
+    }
+
+    func grokBuildProcessVariable(_ name: String, processID: Int) async -> HostProcessReader.Variable {
+        guard supportsProjectOperations, processID > 0 else { return .unavailable }
+        let key = String(processID)
+        let request = HostProcessReader.Request(pids: [key], valuesOf: [name])
+        guard let facts = try? await Self.reads(session).readProcesses(request) else { return .unavailable }
+        return facts[key]?.variables[name] ?? .unavailable
+    }
+
+    func grokBuildEditContext(process: Int) async throws -> (grokHome: String?, home: String) {
+        guard supportsProjectOperations else { throw Self.unavailable }
+        guard process > 0 else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let grokHome: String?
+        switch await grokBuildProcessVariable("GROK_HOME", processID: process) {
+        case .value(let value): grokHome = value
+        case .unset: grokHome = nil
+        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let home = try await Self.reads(session).hostHomeDirectory()
+        return (grokHome: grokHome, home: home)
+    }
+
     func openCodeEditContext(paneID: String) async throws -> (version: String?, home: String, xdgConfigHome: String?) {
         guard !isAwaitingSnapshot, inventory != nil,
             let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
@@ -1356,7 +1432,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func sessionFileReader() -> SessionFileReader {
         let session = session
-        return { range in try await Self.reads(session).readFileSlice(range) }
+        return { range in try await Self.reads(session).readFileSlice(Self.sftpFileRange(range)) }
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver { { _ in nil } }
@@ -1366,12 +1442,39 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func chatHostFiles() -> ChatHostFiles {
         let session = session
         return ChatHostFiles(
-            status: { path in try await Self.reads(session).fileStatus(atPath: path) },
-            list: { request in try await Self.reads(session).listFiles(request) },
-            read: { range in try await Self.reads(session).readHostFileRange(range) },
-            home: { try await Self.reads(session).hostHomeDirectory() },
+            status: { path in
+                try await Self.reads(session).fileStatus(atPath: RemoteFilePath.windowsForSFTP(path))
+            },
+            list: { request in
+                try await Self.reads(session).listFiles(Self.sftpListingRequest(request))
+            },
+            read: { range in
+                try await Self.reads(session).readHostFileRange(Self.sftpFileRange(range))
+            },
+            home: { RemoteFilePath.windowsForSFTP(try await Self.reads(session).hostHomeDirectory()) },
             queryDevin: { try await Self.reads(session).queryDevin($0) },
             queryOpenCode: { try await Self.reads(session).queryOpenCode($0) })
+    }
+
+    private nonisolated static func sftpListingRequest(
+        _ request: RemoteFileListingRequest
+    ) -> RemoteFileListingRequest {
+        let directory = RemoteFilePath.windowsForSFTP(request.directory)
+        guard directory != request.directory else { return request }
+        return RemoteFileListingRequest(
+            directory: directory,
+            kinds: request.kinds,
+            namePrefix: request.namePrefix,
+            nameSuffixes: request.nameSuffixes,
+            nameContains: request.nameContains,
+            maximumEntries: request.maximumEntries,
+            maximumScanned: request.maximumScanned)
+    }
+
+    private nonisolated static func sftpFileRange(_ range: RemoteFileRange) -> RemoteFileRange {
+        let path = RemoteFilePath.windowsForSFTP(range.path)
+        guard path != range.path else { return range }
+        return RemoteFileRange(path: path, offset: range.offset, maxBytes: range.maxBytes)
     }
 
     /// New Terminal starts in the account's home directory and browses with
