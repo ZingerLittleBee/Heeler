@@ -1242,6 +1242,34 @@ struct RexConsoleTests {
         #expect(console.terminals.count == 6)
     }
 
+    /// The create answers before the server's events list the new block, so
+    /// a look right after it finds nothing. Open Terminal on an Agent and an
+    /// open terminal's New Terminal wait for the listing, as the Terminals
+    /// list does, rather than report a Workspace that has not refreshed.
+    @Test func aNewTerminalOpensOnceItsLateEventsListIt() async throws {
+        let (console, server, _) = await newTerminalRig()
+        defer { console.setHosts([]) }
+        let rex = rex
+        console.setHosts([rex])
+        await console.resume()
+        try await waitUntil("the terminals") { console.terminals.count == 5 }
+
+        let identity = try await console.createShellTerminal(
+            ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev"), on: rex.id)
+        #expect(!console.terminals.contains { $0.hostID == rex.id && $0.terminalID == identity.terminalID })
+
+        let events = Task {
+            try await Task.sleep(for: .milliseconds(300))
+            await server.push("block_created", ["block_id": "block:made-1"], session: "session:studio")
+            await server.push(
+                "window_created", ["window_id": "window:made-1", "label": "Window 1"], session: "session:studio")
+        }
+        defer { events.cancel() }
+        let terminal = try #require(await console.waitForTerminal(identity, on: rex.id))
+        #expect(terminal.terminalID == identity.terminalID)
+        #expect(terminal.workspaceID == "session:studio")
+    }
+
     /// New Workspace makes a new session holding one shell in the directory
     /// asked, labeled with the name given, else the directory's name; a tab
     /// name is optional. It lists once the server announces it.
