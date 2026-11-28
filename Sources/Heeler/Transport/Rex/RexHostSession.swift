@@ -1244,15 +1244,21 @@ enum RexNewTerminal {
         let arguments: [String]
         let blockLabel: String
 
-        init(request: AgentLaunchRequest, cwd: String, openCodeVersion: String?) throws {
+        init(request: AgentLaunchRequest, cwd: String, openCodeVersion: String?, onWindows: Bool = false) throws {
             guard let kind = SupportedAgentKind(rawValue: request.kind),
                 request.environment.keys.allSatisfy(UsageAccountFile.isVariable)
             else { throw TransportError.malformedResponse(String(localized: "Check the Agent and its environment variables.")) }
             let start = HerdrCoreLaunch.agentStart(
                 kind: kind, arguments: request.arguments, environment: request.environment, openCodeVersion: openCodeVersion)
-            let environment = start.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
-            arguments = ["/bin/sh", "-c", #"cd "$1" && shift && exec "$@""#, "heeler", cwd, "/usr/bin/env"]
-                + environment + start.program
+            if onWindows || RemoteHostPath.isWindowsAbsolute(cwd) {
+                arguments = HerdrCoreShellLaunch.argv(
+                    shell: HerdrCoreShellLaunch.windowsShell, program: start.program, cwd: cwd,
+                    environment: start.environment)
+            } else {
+                let environment = start.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+                arguments = ["/bin/sh", "-c", #"cd "$1" && shift && exec "$@""#, "heeler", cwd, "/usr/bin/env"]
+                    + environment + start.program
+            }
             blockLabel = request.name
         }
     }

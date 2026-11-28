@@ -11,9 +11,10 @@ import Foundation
 /// is neither offered nor prefetched, so its `ChatProgram` case can land
 /// before its adapter.
 enum AgentChatAvailability {
-    /// Whether Chat can read the program's transcript: the lookup both checks
-    /// use unless the caller passes its own, as `ConsoleStore` does with the
-    /// adapters it was given.
+    static let nativeWindowsFilePrograms: Set<ChatProgram> = [
+        .claude, .codex, .grok, .pi, .omp, .agy, .droid,
+    ]
+
     static func hasStandardAdapter(_ program: ChatProgram) -> Bool {
         ChatTranscriptAdapter.standard(for: program) != nil
     }
@@ -22,10 +23,17 @@ enum AgentChatAvailability {
         for agent: Agent, platform: HostPlatform?, readsChatOnNativeWindows: Bool = false,
         hasAdapter: (ChatProgram) -> Bool = AgentChatAvailability.hasStandardAdapter
     ) -> ChatProgram? {
-        guard platform == .posix || (platform == .nativeWindows && readsChatOnNativeWindows), let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
+        guard let program = ChatProgram(rawValue: agent.kind), hasAdapter(program) else {
             return nil
         }
-        return program
+        switch platform {
+        case .posix:
+            return program
+        case .nativeWindows:
+            return readsChatOnNativeWindows && nativeWindowsFilePrograms.contains(program) ? program : nil
+        case nil:
+            return nil
+        }
     }
 
     /// Whether the Agent's program has a Chat adapter at all, before the
