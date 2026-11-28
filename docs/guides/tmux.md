@@ -7,7 +7,7 @@ Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH,
 - [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for tmux Hosts.
 - tmux 3.3 or newer (`tmux -V`) on your login shell's `PATH`. Ubuntu 22.04 and AlmaLinux or Rocky Linux 9 ship tmux 3.2a, so install a newer build there first.
-- A running tmux server on the Mac (`tmux` or `tmux -L <name>`). On Linux, you can start tmux ahead of time or let **New Workspace** start it later.
+- A running tmux server on the Mac (`tmux` or `tmux -L <name>`). On Linux, you can start tmux ahead of time, tap **Start tmux** on the Server's page, or let **New Workspace** start it later.
 - A way for your iPhone or iPad to reach the Host: directly on the same network, over an [overlay network](overlay-networks.md), or through a [Jump Host](vps-jump-host-setup.md). A Host can have [multiple routes](host-routes.md).
 
 ## Add a Host
@@ -54,12 +54,12 @@ While the tmux server is stopped, Heeler rechecks on its own, or you can tap **R
 
 | Host reads | What to do |
 | --- | --- |
-| **No tmux server running** | Start `tmux` (or `tmux -L <name>`) on the Host, or on Linux use **New Workspace** in **New Agent** or **New Terminal**. |
+| **No tmux server running** | Start `tmux` (or `tmux -L <name>`) on the Host, or on Linux tap **Start tmux** on the Server's page or use **New Workspace** in **New Agent** or **New Terminal**. |
 | **Start tmux on the Mac first** | Shown on macOS when **New Workspace** runs with no server, because a server started over SSH would lack your Mac login session and keychain. Start `tmux` in Terminal on the Mac. |
 | **tmux is not installed** | Install tmux 3.3 or newer on your login shell's `PATH`, then tap **Run Checks Again**. |
 | **Update required** | Upgrade tmux on the Host to 3.3 or newer, then tap **Run Checks Again**. |
 
-On Linux when no tmux server is running, choosing **New Workspace** in **New Agent** or **New Terminal** starts the server through your interactive login shell so new windows inherit your shell setup.
+On Linux when no tmux server is running, tap **Start tmux** under the checks on the Server's page and confirm **Start**, or choose **New Workspace** in **New Agent** or **New Terminal** to start the server through your interactive login shell so new windows inherit your shell setup.
 
 > [!NOTE]
 > The Server's page warns if variables from an agent session leaked into tmux and shows how to clear them.
@@ -91,7 +91,7 @@ When Grok Build shows **Unknown**, tap **Unknown**, then **Turn On Grok Build's 
 - **Move to Workspace:** Choose an existing Workspace or **New Workspace** from the Pane menu. In a split window, the selected Pane becomes a detached window in the destination. The other panes stay in the original window, including its other session links. A window containing just this Pane moves with it. If another user session also holds that single-pane window, Heeler leaves its links intact and explains the conflict.
 - **Rename Agent:** Set or clear the management name shown in the Console. Heeler associates it with the foreground Agent process. The program can continue updating its terminal title and its conversation title independently.
 - **Rename Tab:** Set the window name from the Pane menu. All links to that window show its new name. tmux turns off automatic naming for an explicitly named window. Leave **Tab Name** blank when creating a window to use the Host's naming policy.
-- **Worktrees:** Turn on **Start in a new worktree** in **New Agent** and enter a **Branch** to check out `~/.heeler/worktrees/<repository>/<branch>` in its own tmux session. To remove it, tap **More > Worktree Details > Remove Worktree**; Heeler closes that worktree session's panes first, then removes the checkout.
+- **Worktrees:** Turn on **Start in a new worktree** in **New Agent** (leaving **Branch** empty generates a `worktree/` branch, and **Base (optional)** picks a starting ref off `HEAD` by default) to check out `~/.heeler/worktrees/<repository>/<branch>` in its own tmux session. To remove it, tap **More > Worktree Details > Remove Worktree**; Heeler closes that worktree session's panes first, then removes the checkout.
 
 ## Working with an Agent
 
@@ -146,7 +146,6 @@ In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and
 | Pi | Binds when started from **New Agent** or with the [Host Helper](#host-helper); otherwise use **Choose a Conversation**. |
 | Oh My Pi | Binds with the [Host Helper](#host-helper), or after its first message opens its session file; otherwise use **Choose a Conversation**. |
 | Antigravity CLI | Chat follows a verified local Agent session. |
-| Devin | Chat follows the local session held by the foreground CLI. Use the Terminal when a first-trust screen cannot be matched to its directory. |
 | Amp | On macOS and Linux, install Heeler's Amp plugin from Chat and reload plugins in Amp (**Ctrl+O** → **plugins › reload**). Chat reads and sends in the active thread; use the terminal for attachments, commands, and approvals. |
 | OpenCode | Opens on macOS and Linux. Binds when Heeler started it or with Heeler's OpenCode plugin (offered from Chat). Otherwise use **Choose a Conversation**. |
 
@@ -158,7 +157,7 @@ Everyday terminal and Chat use do not require the Host Helper. Install it on mac
 
 - **Agent Notifications** (**Blocked**, **Error**, and **Done**), in-app banners, and **Live Activity**;
 - **[Usage](usage.md)** (Token Usage, Usage Limits, and Home Screen and Lock Screen widgets);
-- **Codex, Grok Build, and OpenCode status:** reports status for panes running those programs (Grok Build also needs **Turn On Grok Build's Status**);
+- **Codex, Grok Build, OpenCode, Oh My Pi, and Antigravity CLI status:** reports OSC 7501 status for panes running those programs (Grok Build also needs **Turn On Grok Build's Status**);
 - **Pi and Oh My Pi status and Chat:** installs Heeler's extension so panes you start yourself report **Idle**, **Working**, **Done**, **Error**, and their active Chat conversation;
 - **Desktop Esc cleanup for Claude Code:** clears **Blocked** when you decline a permission prompt with Esc on the desktop.
 
@@ -170,9 +169,8 @@ Open the Host in **Hosts**, tap its **tmux** Server, tap **Host Helper**, review
 - **tmux older than 3.5:** **Shift-Return** never reaches the Agent; use **Control-J** (or **Option-Return** outside Pi).
 - **Desktop terminal shrinking under `window-size largest`:** tmux sends no notice when another terminal resizes on its own, so under `window-size largest` a desktop terminal that shrinks without detaching or changing windows is re-capped on the next window or client change rather than right away, and if reading client sizes fails Heeler leaves the window size alone.
 - **Concurrent viewers:** Open the same Pane on the desktop and in Heeler. Both can type. Templates and pane zoom are unavailable.
-- **OpenCode Chat is off:** OpenCode Agents offer the live terminal only, and OpenCode status inside tmux comes from source review rather than a live run.
 - **Pi and Oh My Pi extensions:** They report **Idle**, **Working**, **Done**, and **Error**, not **Blocked**, and starting Pi via `npx` does not load the extension.
-- **Panes already redirecting output:** If you already redirect a pane's output in tmux, Heeler leaves it alone and Codex, Grok Build, or OpenCode in that pane stays **Unknown**.
+- **Panes already redirecting output:** If you already redirect a pane's output in tmux, Heeler leaves it alone and Codex, Grok Build, OpenCode, Oh My Pi, or Antigravity CLI in that pane stays **Unknown**.
 - **Wrapper scripts:** A script that starts an Agent as a child process stays in **Terminals**; end the script with `exec`, such as `exec claude "$@"`, so the Agent leads the pane.
 - **What has been tested so far:** tmux Hosts have been exercised against the automated SSH test fixture on macOS with tmux 3.3a and 3.7b; Linux Hosts (including starting a stopped server from **New Workspace**) and end-to-end app runs with live Agents, **Chat**, Claude Code hooks, and the Host Helper on a real machine have not been run yet.
 

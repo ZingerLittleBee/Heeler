@@ -26,11 +26,14 @@ observation to a newer server. The [Linux lab](rex-linux-lab.md) and
   its accept queue empty. An unavailable lookup or two different stream
   endpoints with conflicting listener state leave the diagnosis unknown.
 - One WebSocket control connection per Host carries everything but terminal
-  data: hello at API revisions 12 to 19, `server.status`, `session.attach_all`
+  data: hello at API revisions 12 to 24, `server.status`, `session.attach_all`
   and the inventory reads
   ([ADR 0050](../adr/0050-rex-hosts-follow-inventory-on-one-control-connection.md)).
   `RexHostSession` owns it; `RexInventoryFollower` and `RexInventoryBook` read
-  and order the inventory.
+  and order the inventory. On negotiated revision 20+, Heeler enables undoable
+  `closeTab` / `closePane` (`block.close` / `session.close_window`); on
+  revision 22+, Heeler enables `movesPanes` for single-pane windows via
+  `session.transfer_window` (rejecting detached blocks and multi-pane windows).
 - A terminal's output arrives on a data connection of its own
   (`RexDataLink`). Heeler skips the stream's snapshot (`RexStreamScanner`) and
   paints from the server's `vt` redraw instead (`RexTerminalPaint`);
@@ -64,9 +67,13 @@ observation to a newer server. The [Linux lab](rex-linux-lab.md) and
   and `program_status_removed` events keep it current.
 - A Rex Agent opens the Agent detail, with its Chat and Terminal surfaces
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)):
-  `HostCapabilities` offers Composer Send and Stop, and Chat for Claude
-  Code, Codex, Pi, Oh My Pi and Droid once `server.version` names a Linux or macOS
-  kernel. See the [Droid acceptance matrix](droid-chat-validation.md) for the tested controls. The Terminal
+  `HostCapabilities` offers Composer Send and Stop, and Chat for all 10 POSIX
+  harnesses (Claude Code, Codex, Grok Build, Pi, Oh My Pi, Antigravity CLI,
+  Droid, Devin CLI, OpenCode, and Amp) once `server.version` names a Linux or
+  macOS kernel, or for Claude Code, Grok Build, Pi, and Oh My Pi on native
+  Windows. See the [Droid acceptance matrix](droid-chat-validation.md) for the
+  tested controls. On macOS and Linux, the Host Helper (`plugin/helper/rex/`)
+  adds Agent Notifications, Live Activities, Usage, and Accounts. The Terminal
   surface takes the size under ADR 0053's rule and Chat takes none; the
   terminal pool holds no Agent's block, and windows take turns with a Rex
   Host's Agent terminals (`terminalsShowInOneWindow`).
@@ -108,14 +115,14 @@ revision 19), most of it first seen on 0.1.0-preview.14 (API revision 12).
 The user guide, [Connect Rex](../guides/rex.md), says the same
 in users' words.
 
-- **Revisions 12 to 19.** The hello offers 19 with a floor of 12; a welcome
+- **Revisions 12 to 24.** The hello offers 24 with a floor of 12; a welcome
   at any other revision, or a close before the welcome, is refused as
   `rexUnsupportedRevision`, naming the revision the server offers when it says
   ([ADR 0049](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-api-revisions-12-to-19)).
-  Preview.14 has been seen at 12, and preview.23 and preview.25 at 19.
-  Preview.25 says revision 24 and supports 0 to 24; the eight local-socket
-  live suites passed against it on 2026-11-26 (`RexSSHLiveTests` was not
-  run).
+  Preview.14 has been seen at 12, preview.23 at 19, and preview.25 at 24.
+  Undoable Close (`block.close` / `session.close_window`) requires negotiated
+  revision 20+, and Move to Workspace (`session.transfer_window`) requires
+  revision 22+.
 - **A restarted server continues only with its sessions.** Rex restores its
   sessions with the same ids under a new `instance_id`, and resumes programs
   that report (OSC 7577). Heeler continues the server when the new instance
@@ -154,13 +161,17 @@ in users' words.
   ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
-- **POSIX project operations.** New Agent passes a literal argument vector, a
-  management name, a working directory and a preset environment to a new Rex
-  window or session. Changes and Skills run on the existing SSH connection.
-  A new linked checkout lives in the account's `.heeler/worktrees`. Workspace
-  rename addresses the session. See [object operations and protocol
-  limits](rex-object-operations.md), [Host services](rex-host-services-parity.md)
-  and [Chat by harness](rex-chat-parity.md).
+- **POSIX project operations and Host Helper.** New Agent passes a literal
+  argument vector, a management name, a working directory and a preset
+  environment to a new Rex window or session. Changes and Skills run on the
+  existing SSH connection, Grok Build status edits and Antigravity CLI model
+  lists (`agy models`) run over SSH, and a new linked checkout lives in the
+  account's `.heeler/worktrees`. Workspace rename addresses the session, Tab
+  rename uses `session.set_window_label`, and on macOS and Linux the Host
+  Helper provides Agent Notifications, Live Activities, Usage, and Accounts.
+  See [object operations and protocol limits](rex-object-operations.md),
+  [Host services](rex-host-services-parity.md) and
+  [Chat by harness](rex-chat-parity.md).
 - **Attachments where Chat is.** Once the server has named a Linux or macOS
   kernel, an Agent's Composer can attach images and files. Heeler stages them
   over the Host's own SSH connection (one `mktemp -d` exec, then an SFTP
@@ -177,18 +188,16 @@ in users' words.
   into `AppData\Local\Temp`, with no exec; that has been tried over SFTP but
   not yet from the app
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md#update-2026-11-25-native-windows)).
-- **Chat for four programs.** Chat is offered for Claude Code, Codex, Pi and
-  Oh My Pi only, and on native Windows for Claude Code alone. A Pi or Oh My
-  Pi names its conversation through Heeler's
-  extension, which no Host Helper brings to a Rex Host: Chat offers to add it
-  to that Agent's own extension folder, and the Agent loads it when it is
-  next started. An Agent whose program reports nothing to Rex reads Unknown,
-  and then has no Stop and no Blocked Card; the user acts on its Terminal
-  surface
+- **Chat coverage and host extensions.** Chat is offered for all 10 POSIX
+  harnesses (Claude Code, Codex, Grok Build, Pi, Oh My Pi, Antigravity CLI,
+  Droid, Devin CLI, OpenCode, and Amp) on macOS and Linux, and for Claude
+  Code, Grok Build, Pi, and Oh My Pi on native Windows. A Pi or Oh My Pi names
+  its conversation through Heeler's extension (installed with the POSIX Host
+  Helper or offered on demand from Chat), and OpenCode, Amp, and Droid offer
+  their respective plugin/hook installers from Chat. An Agent whose program
+  reports nothing to Rex reads Unknown, and then has no Stop and no Blocked
+  Card; the user acts on its Terminal surface
   ([ADR 0056](../adr/0056-rex-agents-open-the-agent-detail-with-chat.md)).
-  Real agents have been bound and typed into only from the iOS Simulator, on
-  one Mac ([Real agents in the Simulator](#real-agents-in-the-simulator),
-  [Pi and Oh My Pi in a Rex terminal](#pi-and-oh-my-pi-in-a-rex-terminal)).
   A Claude Code waiting on a command it put in the background has ended its
   turn, whatever its record says, and Heeler never stops that command
   ([Claude Code's record after a turn](#claude-codes-record-after-a-turn)).

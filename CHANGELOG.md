@@ -9,6 +9,14 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Install and update the **Host Helper** on macOS and Linux Rex Hosts to enable encrypted **Agent Notifications**, **Live Activities**, **Usage** (Token Usage, Usage Limits, and widgets), and **Accounts**.
+- Rename a Rex Tab (`session.set_window_label`), create and remove Git worktrees from **New Agent**, inspect **Unknown** status explanations and apply Grok Build's `program_status = "on"` configuration edit, and pick Antigravity CLI models and effort levels (`agy models`) once bound in Chat on macOS and Linux Rex Hosts.
+- Close a Rex Agent or Terminal (undoable `block.close` / `session.close_window` on Rex servers offering API revision 20 or newer) and **Move to Workspace** (transferring a single-pane window to another existing or new Rex session via `session.transfer_window` on servers offering revision 22 or newer).
+- Rename an Agent's conversation title across `herdr-core`, `tmux`, and POSIX Rex Hosts (including deferred queueing while the Agent is working), and keep process-bound offline **Saved Chats** across `herdr-core`, `tmux`, and Rex Hosts.
+- Use **Copy Pane ID**, **Rename Agent** (console management alias), and **Move to Workspace** (between desktop spaces or into a new desktop space while the Herdr desktop app runs) on `herdr-core` Hosts.
+- Start a stopped Linux `tmux` server from its Server page with **Start tmux**, read OSC 7501 status for **Oh My Pi** and **Antigravity CLI** through the `tmux` Host Helper `pipe-pane` reader, and track **Droid** `done` status on `tmux` and `herdr-core` Hosts.
+- Show Oh My Pi's live context-window usage strip in the Agent terminal across backends, resolving the session file automatically when the backend does not report a direct path.
+- Expand Native Windows support: launch Agents from **New Agent** on Native Windows Rex Hosts over PowerShell, open Native Windows Rex **Chat** for **Grok Build**, **Pi**, and **Oh My Pi** alongside **Claude Code**, browse **Files** on Native Windows Rex Hosts, and open file-backed **Chat** over SFTP on Native Windows Herdr TUI Hosts (Claude Code, Codex, Grok Build, Pi, Oh My Pi, Antigravity CLI, and Droid).
 - Start an Agent in a new worktree of a browsed directory's repository from **New Agent** on Herdr TUI, tmux, Rex, and macOS or Linux herdr-core Hosts, without first picking an existing Workspace in that repository. (PR #881)
 - Show each Rex Workspace's directory, with the home folder as `~`, under its session name in the Workspace menu of **New Agent** and **New Terminal**, shortened in the middle when it is long, and under the selected Workspace. (PR #881)
 - Read and send messages from **Chat** for **Amp** and **OpenCode** on macOS and Linux across herdr-core, tmux, and Rex Hosts, refresh outdated OpenCode plugin files from Chat when the plugin is already configured, and attach images and files from Chat in Antigravity CLI on macOS and Linux Rex Hosts. [Chat guide](docs/guides/chat.md), [Rex guide](docs/guides/rex.md#chat) (PR #879)
@@ -30,6 +38,8 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Speak Rex API revisions 12 to 24 (raising the protocol ceiling from 19 while staying compatible with older servers offering revisions 12 to 23).
+- Allow leaving **Branch** empty in **New Agent** worktrees on `herdr-core`, `tmux`, and Rex Hosts to auto-generate a `worktree/` branch, and optionally specify a custom **Base** ref instead of always branching from `HEAD`.
 - Browse for a directory with **New Workspace** in the **Workspace** menu of **New Agent** and **New Terminal**, which replaces the separate **Browse Directory…** button and shows the chosen directory under its name. On a Rex Host, the chosen directory shows the home folder as `~`. (PR #881)
 - Keep the selected directory on one line in **New Agent** and **New Terminal**, put the **Workspace** picker at the trailing edge of the first line above the full-width path (which **New Agent** no longer repeats in a folder row below), reopen **Browse Directories** at each Host's last selected folder (falling back to home if it is gone), and remember each Agent harness's **Launch Preset** (selecting a harness's sole preset by default while respecting an explicit **None** choice). (PR #878)
 - Show a Codex subagent in Chat as one line like the Agent's other steps, with its name, latest event and event count, where it was a card. Tap the line to see its path and events. Its robot icon, also shown on other Agents' subagent calls, is now as large as the icons beside it. (PR #869)
