@@ -232,6 +232,7 @@ struct ChatConversationSnapshot: Equatable, Sendable {
     /// The live window starts at the source's first record, so nothing it holds is
     /// before what was read.
     var readsFromStart = false
+    var windowStart: UInt64?
     /// Bumped when offsets read before may now locate other records: the
     /// file was rewritten, replaced or moved, or is shorter than the saved
     /// document read it to.
@@ -1754,6 +1755,7 @@ actor ChatConversationEngine {
             $0.olderAwaitsUser = cached.olderAwaitsUser ?? false
             $0.older = cached.reachedStart ? .reachedStart : .available
             $0.readOffset = cached.coverageEnd
+            $0.windowStart = cached.coverageStart
             if movedLayout { $0.layoutGeneration += 1 }
         }
         lastSave = (snapshot.revision, now())
@@ -1929,6 +1931,7 @@ actor ChatConversationEngine {
             $0.transcript = transcript
             $0.older = older
             $0.readOffset = source.readOffset
+            $0.windowStart = windowStart
         }
     }
 

@@ -228,6 +228,7 @@ final class AgentChatStore {
         case automatic
         /// The user: Load Earlier Messages or Retry.
         case user
+        case send
     }
 
     let agentID: ConsoleAgent.ID
@@ -567,6 +568,7 @@ final class AgentChatStore {
     /// A page above the oldest message shown that waits for the loop, by
     /// who asked for it.
     @ObservationIgnored private var olderRequest: OlderRequest?
+    @ObservationIgnored private var sendReadBackStart: (layout: Int, windowStart: UInt64)?
     /// A long request for older history takes turns with looking for what
     /// the Agent writes, so the newest rows never wait for the oldest.
     @ObservationIgnored private var pollsBeforeNextOlderPage = false
@@ -1465,6 +1467,7 @@ final class AgentChatStore {
             if !snapshot.hasUnreadRecords { readToEndStartedAt = readStart }
         }
         matchSends()
+        if startSendReadBack() { matchSends() }
         // Persist the transcript before optional journal requests can wait
         // on an unavailable connection.
         await engine.save()
@@ -2150,6 +2153,7 @@ final class AgentChatStore {
         appliedRevision = nil
         claimedImageRevision = 0
         olderRequest = nil
+        sendReadBackStart = nil
         pollsBeforeNextOlderPage = false
         needsRelocate = false
         nextOpen = nil
@@ -2380,7 +2384,9 @@ final class AgentChatStore {
             switch sendStatuses[send.id] {
             case .misdirected?: missing = true
             case .awaiting?, .overdue?:
-                let isInReadWindow = send.layout == conversation.layoutGeneration || conversation.readsFromStart
+                let isInReadWindow =
+                    conversation.readsFromStart
+                    || (send.layout == conversation.layoutGeneration && !isAboveWindow(send))
                 missing = missing || (!send.mayNotHaveGone && isInReadWindow)
             default: break
             }
@@ -2948,6 +2954,35 @@ final class AgentChatStore {
         }
     }
 
+    private func isAboveWindow(_ send: TrackedSend) -> Bool {
+        guard !source.adapter.readsByQuery, send.generation == conversationGeneration,
+            send.layout == conversation.layoutGeneration, let windowStart = conversation.windowStart
+        else { return false }
+        return send.floor < windowStart
+    }
+
+    private func isWithinSendReadBack(_ send: TrackedSend) -> Bool {
+        guard isAboveWindow(send), let windowStart = conversation.windowStart else { return false }
+        return windowStart - send.floor <= UInt64(source.adapter.limits.sendReadBack)
+    }
+
+    private func startSendReadBack() -> Bool {
+        guard isVisible, olderRequest == nil, case .following = conversation.phase, conversation.older == .available,
+            let windowStart = conversation.windowStart
+        else { return false }
+        let layout = conversation.layoutGeneration
+        if let start = sendReadBackStart, start.layout == layout, start.windowStart <= windowStart { return false }
+        let wanted = sends.contains { send in
+            guard send.deliveredAt != nil, !send.isOrphan, isWithinSendReadBack(send) else { return false }
+            return sendStatuses[send.id] == .awaiting || sendStatuses[send.id] == .overdue
+        }
+        guard wanted else { return false }
+        sendReadBackStart = (layout, windowStart)
+        olderRequest = .send
+        conversation.older = .loading
+        return true
+    }
+
     private func scheduleNextOpen(after snapshot: ChatConversationSnapshot) {
         switch snapshot.phase {
         case .following, .unavailable(.awaitingFirstMessage):
@@ -3175,7 +3210,7 @@ final class AgentChatStore {
                 // compaction, it never ran, whatever the screen read found.
                 statuses[send.id] = .abandoned
             } else if isUnwritten || echoClock(for: send, at: date) < timing.echoTimeout
-                || awaitsCompaction(send, at: date)
+                || awaitsCompaction(send, at: date) || (olderRequest == .send && isWithinSendReadBack(send))
             {
                 statuses[send.id] = .awaiting
             } else if send.generation == conversationGeneration {
