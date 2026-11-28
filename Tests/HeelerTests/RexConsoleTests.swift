@@ -129,6 +129,7 @@ struct RexConsoleTests {
     }
 
     @Test func noIntegrationTreatsARexHostAsItsOwn() {
+        let rex = self.rex
         #expect(ServerKind.rex.hasHostIntegrations)
         #expect(PreflightCheck.cases(for: .rex) == [.connection, .herdrInstalled, .serverRunning, .protocolCompatible])
         #expect(PreflightCheck.herdrInstalled.title(for: .rex) == "Rex installed")
