@@ -38,6 +38,7 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Show **Close Agent**'s trash icon in red, like its title, in an Agent's **More** menus.
 - Speak Rex API revisions 12 to 24 (raising the protocol ceiling from 19 while staying compatible with older servers offering revisions 12 to 23).
 - Allow leaving **Branch** empty in **New Agent** worktrees on `herdr-core`, `tmux`, and Rex Hosts to auto-generate a `worktree/` branch, and optionally specify a custom **Base** ref instead of always branching from `HEAD`.
 - Browse for a directory with **New Workspace** in the **Workspace** menu of **New Agent** and **New Terminal**, which replaces the separate **Browse Directory…** button and shows the chosen directory under its name. On a Rex Host, the chosen directory shows the home folder as `~`. (PR #881)

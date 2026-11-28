@@ -259,7 +259,7 @@ struct AgentActionMenuContent: View {
                 actions: actions,
                 restoreComposerThen: restoreComposerThen)
         } label: {
-            Label(AgentActionMenuPolicy.title(of: item, actions: actions), glyph: item.glyph)
+            Label(AgentActionMenuPolicy.title(of: item, actions: actions), glyph: item.glyph, role: item.role)
         }
         .disabled(!AgentActionMenuPolicy.isEnabled(item, actions: actions))
     }
@@ -267,8 +267,16 @@ struct AgentActionMenuContent: View {
 
 extension Label where Title == Text, Icon == Image {
     @MainActor
-    init(_ title: String, glyph: AgentGlyph) {
+    init(_ title: String, glyph: AgentGlyph, role: ButtonRole? = nil) {
         switch glyph {
+        case .symbol(let name) where role == .destructive:
+            self.init {
+                Text(title)
+            } icon: {
+                Image(
+                    uiImage: UIImage(systemName: name)?
+                        .withTintColor(.systemRed, renderingMode: .alwaysOriginal) ?? UIImage())
+            }
         case .symbol(let name):
             self.init(title, systemImage: name)
         case .codeBubble:
