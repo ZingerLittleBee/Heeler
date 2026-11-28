@@ -47,7 +47,7 @@ enum CoreStartState: Equatable, Sendable {
         case .started(let session):
             String(localized: "Started session \"\(session)\" with the environment of your own terminal.")
         case .alreadyRunning(let session):
-            String(localized: "herdr-core was already running for session \"\(session)\", so Start changed nothing.")
+            String(localized: "Herdr Core was already running for session \"\(session)\", so Start changed nothing.")
         case .failed(let message):
             message
         }
@@ -101,7 +101,7 @@ struct HerdrCoreStartSection: View {
             store.requestCoreStart()
         } label: {
             HStack {
-                Text(store.coreStart == .running ? String(localized: "Starting herdr-core…") : String(localized: "Start herdr-core"))
+                Text(store.coreStart == .running ? String(localized: "Starting Herdr Core…") : String(localized: "Start Herdr Core"))
                 if store.coreStart == .running {
                     Spacer()
                     ProgressView()
@@ -111,7 +111,7 @@ struct HerdrCoreStartSection: View {
         .disabled(store.coreStart == .running)
         .accessibilityIdentifier("hosts.detail.coreStart")
         .alert(
-            "Start herdr-core?",
+            "Start Herdr Core?",
             isPresented: confirmationPresented,
             presenting: store.coreStartConfirmation
         ) { _ in
@@ -127,7 +127,7 @@ struct HerdrCoreStartSection: View {
             store.requestTmuxStart()
         } label: {
             HStack {
-                Text(store.tmuxStart == .running ? String(localized: "Starting tmux…") : String(localized: "Start tmux"))
+                Text(store.tmuxStart == .running ? String(localized: "Starting Tmux…") : String(localized: "Start Tmux"))
                 if store.tmuxStart == .running {
                     Spacer()
                     ProgressView()
@@ -137,7 +137,7 @@ struct HerdrCoreStartSection: View {
         .disabled(store.tmuxStart == .running)
         .accessibilityIdentifier("hosts.detail.tmuxStart")
         .alert(
-            "Start tmux?",
+            "Start Tmux?",
             isPresented: tmuxConfirmationPresented,
             presenting: store.tmuxStartConfirmation
         ) { _ in
@@ -203,7 +203,7 @@ enum TmuxStartOffer: Equatable, Sendable {
         case .start:
             nil
         case .instructions:
-            String(localized: "A tmux server started over SSH would run outside the desktop login session, so Heeler does not start one here. In a terminal on that machine, run:")
+            String(localized: "A Tmux server started over SSH would run outside the desktop login session, so Heeler does not start one here. In a terminal on that machine, run:")
         }
     }
 }
@@ -213,9 +213,9 @@ struct TmuxStartConfirmation: Equatable, Sendable {
 
     var message: String {
         if socket == TmuxSocketName.defaultName {
-            return String(localized: "This starts a tmux server on the default socket through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
+            return String(localized: "This starts a Tmux server on the default socket through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
         }
-        return String(localized: "This starts a tmux server on socket \"\(socket)\" through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
+        return String(localized: "This starts a Tmux server on socket \"\(socket)\" through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
     }
 }
 
@@ -232,12 +232,12 @@ enum TmuxStartState: Equatable, Sendable {
             nil
         case .started(let socket):
             socket == TmuxSocketName.defaultName
-                ? String(localized: "Started tmux with the environment of your own terminal.")
-                : String(localized: "Started tmux on socket \"\(socket)\" with the environment of your own terminal.")
+                ? String(localized: "Started Tmux with the environment of your own terminal.")
+                : String(localized: "Started Tmux on socket \"\(socket)\" with the environment of your own terminal.")
         case .alreadyRunning(let socket):
             socket == TmuxSocketName.defaultName
-                ? String(localized: "tmux was already running, so Start changed nothing.")
-                : String(localized: "tmux was already running on socket \"\(socket)\", so Start changed nothing.")
+                ? String(localized: "Tmux was already running, so Start changed nothing.")
+                : String(localized: "Tmux was already running on socket \"\(socket)\", so Start changed nothing.")
         case .failed(let message):
             message
         }

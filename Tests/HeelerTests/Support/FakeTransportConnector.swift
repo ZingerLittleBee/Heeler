@@ -236,7 +236,7 @@ final actor FakeTransportConnector: TransportConnector {
             break
         }
         guard let core else {
-            throw TransportError.hostFeatureUnavailable(feature: "herdr-core Hosts")
+            throw TransportError.hostFeatureUnavailable(feature: "Herdr Core Hosts")
         }
         return core.transport(session: settings.coreSessionName)
     }
@@ -279,7 +279,7 @@ final actor FakeTransportConnector: TransportConnector {
             break
         }
         guard let tmux else {
-            throw TransportError.hostFeatureUnavailable(feature: "tmux Hosts")
+            throw TransportError.hostFeatureUnavailable(feature: "Tmux Hosts")
         }
         return await tmux.transport(socketName: settings.tmuxSocketName, storedPaths: settings.tmuxPaths)
     }

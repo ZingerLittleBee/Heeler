@@ -200,7 +200,7 @@ struct HeelerPluginPresentationTests {
         let cases: [(HeelerPluginStatus, String)] = [
             (.checking, "Checking…"),
             (.unsupportedPlatform, "Not supported on Windows"),
-            (.unsupportedServerKind, "Not supported on herdr-core"),
+            (.unsupportedServerKind, "Not supported on Herdr Core"),
             (.unavailable, "Unknown"),
             (.installed(HeelerPluginInstallation(version: "0.6.0")), "0.6.0"),
             // The plugin branch moved ahead of this build.
@@ -425,7 +425,7 @@ struct HeelerPluginPresentationTests {
         let status = HeelerPluginStatus(.failure(HeelerPluginUnavailableError.herdrCore))
         #expect(status == .unsupportedServerKind)
         let presentation = HeelerPluginPresentation(status, session: "")
-        #expect(presentation.value == "Not supported on herdr-core")
+        #expect(presentation.value == "Not supported on Herdr Core")
         #expect(presentation.notice == nil)
         #expect(status.confirmedVersion == nil)
     }

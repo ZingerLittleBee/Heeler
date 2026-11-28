@@ -2151,7 +2151,7 @@ struct ConsoleView: View {
         ContentUnavailableView {
             Label("No Hosts", systemImage: "server.rack")
         } description: {
-            Text("Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here.")
+            Text("Add a machine that runs herdr, Tmux or Rex to see its Agents and Terminals here.")
         } actions: {
             Button("Add Host") { presentHosts() }
                 .buttonStyle(.borderedProminent)

@@ -4450,7 +4450,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
     /// startup files; one with stored paths asks tmux alone.
     func runTmuxProbe(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "tmux Hosts"),
+            script, feature: String(localized: "Tmux Hosts"),
             deadline: throughLoginShell ? .seconds(26) : .seconds(14),
             remoteSeconds: throughLoginShell ? 20 : 10,
             timeoutMarkerPrefix: "__HEELER_TMUX_PROBE_TIMEOUT_", timedOut: .timedOut)
@@ -4460,7 +4460,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
     /// shell and gets the longer one; every other command asks tmux alone.
     func runTmuxCommand(_ script: Data, throughLoginShell: Bool) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "tmux Hosts"),
+            script, feature: String(localized: "Tmux Hosts"),
             deadline: throughLoginShell ? .seconds(26) : .seconds(14),
             remoteSeconds: throughLoginShell ? 20 : 10,
             timeoutMarkerPrefix: "__HEELER_TMUX_COMMAND_TIMEOUT_", timedOut: .timedOut)
@@ -4468,7 +4468,7 @@ extension HeelerSSHTransport: TmuxHostConnection {
 
     func runTmuxForeground(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "tmux Hosts"),
+            script, feature: String(localized: "Tmux Hosts"),
             deadline: .seconds(14), remoteSeconds: 10,
             timeoutMarkerPrefix: "__HEELER_TMUX_FOREGROUND_TIMEOUT_", timedOut: .timedOut)
     }
@@ -4611,7 +4611,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     static func platformWithUnreadableHome(isWindowsHost: Bool) throws -> HostPlatform {
         guard isWindowsHost else { return .posix }
         throw TransportError.channelFailed(
-            detail: String(localized: "herdr-core: This Windows Host's home folder could not be read."))
+            detail: String(localized: "Herdr Core: This Windows Host's home folder could not be read."))
     }
 
     /// The same answer the Herdr TUI path acts on (ADR 0018), and reading it turns on
@@ -4663,7 +4663,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// One bounded exec, cut off on the Host if a `--version` hangs.
     func runCoreLocator(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "Herdr Core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_CORE_LOCATOR_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -4671,7 +4671,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// if one of them waits for input the exec never gives it.
     func runCoreStart(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(40), remoteSeconds: 30,
+            script, feature: String(localized: "Herdr Core Hosts"), deadline: .seconds(40), remoteSeconds: 30,
             timeoutMarkerPrefix: "__HEELER_CORE_START_TIMEOUT_", timedOut: .timedOut)
     }
 
@@ -4727,7 +4727,7 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// One bounded exec. A process read takes a shell, `od` and `awk`, or `perl`.
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "Herdr Core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_PROCESS_READ_TIMEOUT_", timedOut: .timedOut,
             priority: .interactive)
     }
@@ -4736,13 +4736,13 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
     /// or a program's `--version` hangs.
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(25), remoteSeconds: 20,
+            script, feature: String(localized: "Herdr Core Hosts"), deadline: .seconds(25), remoteSeconds: 20,
             timeoutMarkerPrefix: "__HEELER_AGENT_DISCOVERY_TIMEOUT_", timedOut: .timedOut)
     }
 
     func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
         try await runBoundedScript(
-            script, feature: String(localized: "herdr-core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
+            script, feature: String(localized: "Herdr Core Hosts"), deadline: .seconds(12), remoteSeconds: 8,
             timeoutMarkerPrefix: "__HEELER_HERDR_APP_TIMEOUT_", timedOut: .timedOut)
     }
 

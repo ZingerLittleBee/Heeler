@@ -289,7 +289,7 @@ struct HostOnboardingCoreStartTests {
 
         let store = await started(core)
 
-        #expect(store.coreStart == .failed(message: "herdr-core did not start: disk full."))
+        #expect(store.coreStart == .failed(message: "Herdr Core did not start: disk full."))
         #expect(store.report?[.serverRunning] == .failed(hint: Self.notRunningMessage))
         #expect(store.coreStartOffer == .start)
         // A failure runs no second preflight.
@@ -302,7 +302,7 @@ struct HostOnboardingCoreStartTests {
 
         let store = await started(core)
 
-        #expect(store.coreStart == .failed(message: "herdr-core did not start."))
+        #expect(store.coreStart == .failed(message: "Herdr Core did not start."))
     }
 
     @Test func aStartThatTimesOutPointsAtTheStartupFiles() async {
@@ -327,6 +327,6 @@ struct HostOnboardingCoreStartTests {
             Issue.record("A lost connection should read as failed, got \(store.coreStart)")
             return
         }
-        #expect(message.hasPrefix("herdr-core did not start:"))
+        #expect(message.hasPrefix("Herdr Core did not start:"))
     }
 }

@@ -34,12 +34,12 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.remoteEnvironment, _): String(localized: "remote environment")
         case (.herdrInstalled, .herdrTUI), (.herdrInstalled, .unconfirmed):
             String(localized: "herdr installed")
-        case (.herdrInstalled, .herdrCore): String(localized: "herdr-core installed")
+        case (.herdrInstalled, .herdrCore): String(localized: "Herdr Core installed")
         case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed):
             String(localized: "herdr server running")
-        case (.serverRunning, .herdrCore): String(localized: "herdr-core running")
-        case (.herdrInstalled, .tmux): String(localized: "tmux installed")
-        case (.serverRunning, .tmux): String(localized: "tmux server running")
+        case (.serverRunning, .herdrCore): String(localized: "Herdr Core running")
+        case (.herdrInstalled, .tmux): String(localized: "Tmux installed")
+        case (.serverRunning, .tmux): String(localized: "Tmux server running")
         case (.herdrInstalled, .rex): String(localized: "Rex installed")
         case (.serverRunning, .rex): String(localized: "Rex server running")
         case (.protocolCompatible, _): String(localized: "protocol compatible")

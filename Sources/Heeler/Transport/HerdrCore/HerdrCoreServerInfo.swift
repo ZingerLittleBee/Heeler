@@ -58,7 +58,7 @@ struct HerdrCoreServerInfo: Equatable, Sendable {
             throw HerdrCoreUpdateRequired(kind: "framed")
         }
         guard let coreID = hello["core"]?["id"]?.stringValue, !coreID.isEmpty else {
-            throw TransportError.malformedResponse(String(localized: "herdr-core: The hello response has no core id."))
+            throw TransportError.malformedResponse(String(localized: "Herdr Core: The hello response has no core id."))
         }
         self.generation = generation
         self.features = features
@@ -86,7 +86,7 @@ struct HerdrCoreServerStatus: Equatable, Sendable {
             let uptime = HerdrCoreWire.integer(result["uptime_ms"])
         else {
             throw TransportError.malformedResponse(
-                String(localized: "herdr-core: The server status has no core, pid or uptime."))
+                String(localized: "Herdr Core: The server status has no core, pid or uptime."))
         }
         self.coreID = coreID
         self.pid = pid

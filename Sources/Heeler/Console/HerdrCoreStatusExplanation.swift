@@ -83,7 +83,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
             text =
                 hasHelperPipe
                 ? String(localized: "Grok Build hasn't reported a status.")
-                : String(localized: "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper.")
+                : String(localized: "Grok Build hasn't reported a status. In Tmux its status is read by the Host Helper.")
         case "codex", "opencode", "omp", "agy":
             if let release = noted?.release {
                 text =
@@ -93,16 +93,16 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
                             "\(program) hasn't reported a status. It reports one from version \(release), so an older version stays Unknown.")
                     : String(
                         localized:
-                            "\(program) hasn't reported a status. In tmux its status is read by the Host Helper, from \(program) \(release).")
+                            "\(program) hasn't reported a status. In Tmux its status is read by the Host Helper, from \(program) \(release).")
             } else {
                 text = String(localized: "\(program) hasn't reported a status.")
             }
         case "claude":
             text = String(
-                localized: "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks.")
+                localized: "Claude Code hasn't reported a status. In Tmux its status comes from Heeler's Claude Code hooks.")
         case "pi":
             text = String(
-                localized: "\(program) hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+                localized: "\(program) hasn't reported a status. In Tmux its status comes from the Host Helper's extension.")
         default:
             text = String(localized: "\(program) hasn't reported a status.")
         }

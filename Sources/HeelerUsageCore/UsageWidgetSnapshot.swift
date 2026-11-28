@@ -203,7 +203,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
         case .needsHostHelper: String(localized: "Needs the Host Helper")
         case .updateHostHelper: String(localized: "Update the Host Helper")
         case .waitingForCore: String(localized: "Waiting for the core")
-        case .waitingForTmux: String(localized: "Waiting for tmux")
+        case .waitingForTmux: String(localized: "Waiting for Tmux")
         case .waitingForRex: String(localized: "Waiting for Rex")
         case .repairHostHelper: String(localized: "Repair the Host Helper")
         case .hostHelperNotOnWindows: String(localized: "Comes with the Host Helper, not available yet")

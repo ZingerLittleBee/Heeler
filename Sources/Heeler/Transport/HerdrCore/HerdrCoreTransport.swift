@@ -374,11 +374,11 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let nonce = nonce()
         let result = try await runLocator(nonce: nonce)
         if HerdrCoreLocator.wasCutShort(stdout: result.stdout, exitStatus: result.exitStatus, nonce: nonce) {
-            throw TransportError.channelFailed(detail: String(localized: "herdr-core: The locator was cut short."))
+            throw TransportError.channelFailed(detail: String(localized: "Herdr Core: The locator was cut short."))
         }
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
-                String(localized: "herdr-core: The locator exited with status \(result.exitStatus)."))
+                String(localized: "Herdr Core: The locator exited with status \(result.exitStatus)."))
         }
         do {
             let location = try HerdrCoreLocator.parse(stdout: result.stdout, nonce: nonce)
@@ -386,7 +386,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
             return location
         } catch {
             throw TransportError.malformedResponse(
-                String(localized: "herdr-core: The locator's output is unreadable."))
+                String(localized: "Herdr Core: The locator's output is unreadable."))
         }
     }
 
@@ -437,7 +437,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         let executablePath = try Self.installedExecutable(at: location)
         guard location.appMayStartCore else {
             throw TransportError.hostFeatureUnavailable(
-                feature: String(localized: "Starting herdr-core on \(location.kernel)"))
+                feature: String(localized: "Starting Herdr Core on \(location.kernel)"))
         }
         let script = try HerdrCoreStart.script(executablePath: executablePath, session: session)
         let clock = ContinuousClock()
@@ -799,7 +799,7 @@ actor HerdrCoreSSHTransport: HerdrCoreTransport {
         if let executablePath = location.executablePath { return executablePath }
         if let unanswered = location.unansweredExecutablePath {
             throw TransportError.channelFailed(
-                detail: String(localized: "herdr-core at \(unanswered) did not report its version"))
+                detail: String(localized: "Herdr Core at \(unanswered) did not report its version"))
         }
         throw TransportError.herdrCoreNotInstalled
     }

@@ -614,7 +614,7 @@ final class HostOnboardingStore {
         } catch {
             return .failed(
                 message: String(
-                    localized: "tmux did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
+                    localized: "Tmux did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
         }
         let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
         let settings = SSHTransportSettings(
@@ -623,7 +623,7 @@ final class HostOnboardingStore {
         do {
             transport = try await connector.connectTmux(settings: settings)
         } catch {
-            return .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+            return .failed(message: String(localized: "Tmux did not start: \(Self.reason(error))"))
         }
         let result: CoreStartResult
         do {
@@ -637,7 +637,7 @@ final class HostOnboardingStore {
             }
             guard let paths = facts.paths ?? host.tmuxPaths else {
                 try? await transport.close()
-                return .failed(message: String(localized: "tmux did not start: Could not locate tmux on this Host."))
+                return .failed(message: String(localized: "Tmux did not start: Could not locate Tmux on this Host."))
             }
             let home = (try? await transport.hostServices.hostHomeDirectory()).flatMap { $0.isEmpty ? nil : $0 } ?? "/"
             let server = TmuxLaunch.Server(
@@ -657,17 +657,17 @@ final class HostOnboardingStore {
                     let detail = String(decoding: output.stderr, as: UTF8.self)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     result = detail.isEmpty
-                        ? .failed(message: String(localized: "tmux did not start."))
-                        : .failed(message: String(localized: "tmux did not start: \(detail)"))
+                        ? .failed(message: String(localized: "Tmux did not start."))
+                        : .failed(message: String(localized: "Tmux did not start: \(detail)"))
                 }
             } catch TransportError.timedOut {
                 result = .failed(
-                    message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether tmux came up."))
+                    message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether Tmux came up."))
             } catch {
-                result = .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+                result = .failed(message: String(localized: "Tmux did not start: \(Self.reason(error))"))
             }
         } catch {
-            result = .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+            result = .failed(message: String(localized: "Tmux did not start: \(Self.reason(error))"))
         }
         try? await transport.close()
         return result
@@ -738,7 +738,7 @@ final class HostOnboardingStore {
         } catch {
             return .failed(
                 message: String(
-                    localized: "herdr-core did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
+                    localized: "Herdr Core did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
         }
         let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
         let settings = SSHTransportSettings(
@@ -747,7 +747,7 @@ final class HostOnboardingStore {
         do {
             transport = try await connector.connectCore(settings: settings)
         } catch {
-            return .failed(message: String(localized: "herdr-core did not start: \(Self.reason(error))"))
+            return .failed(message: String(localized: "Herdr Core did not start: \(Self.reason(error))"))
         }
         let outcome: Result<HerdrCoreStart.Outcome, any Error>
         do {
@@ -762,14 +762,14 @@ final class HostOnboardingStore {
         case .success(.alreadyRunning):
             return .alreadyRunning
         case .success(.failed(let detail?)):
-            return .failed(message: String(localized: "herdr-core did not start: \(detail)."))
+            return .failed(message: String(localized: "Herdr Core did not start: \(detail)."))
         case .success(.failed(nil)):
-            return .failed(message: String(localized: "herdr-core did not start."))
+            return .failed(message: String(localized: "Herdr Core did not start."))
         case .failure(TransportError.timedOut):
             return .failed(
                 message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether the core came up."))
         case .failure(let error):
-            return .failed(message: String(localized: "herdr-core did not start: \(Self.reason(error))"))
+            return .failed(message: String(localized: "Herdr Core did not start: \(Self.reason(error))"))
         }
     }
 

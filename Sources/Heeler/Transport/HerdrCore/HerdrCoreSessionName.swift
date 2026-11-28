@@ -19,7 +19,7 @@ enum HerdrCoreSessionName {
     /// Why herdr-core refuses this name, nil when it takes it.
     static func refusal(_ value: String) -> String? {
         guard !isValid(value) else { return nil }
-        return String(localized: "herdr-core refuses the session name \"\(normalized(value))\". A name cannot be \".\" or \"..\", or contain control characters or any of / \\ : * ? \" < > |.")
+        return String(localized: "Herdr Core refuses the session name \"\(normalized(value))\". A name cannot be \".\" or \"..\", or contain control characters or any of / \\ : * ? \" < > |.")
     }
 
     /// Why a native Windows Host cannot carry this name, which the core may accept.

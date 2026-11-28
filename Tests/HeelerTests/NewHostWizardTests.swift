@@ -467,7 +467,7 @@ struct NewHostWizardTests {
         #expect(saved == rig.wizard.recordID)
         #expect(rig.serversOn == [Self.tui])
         #expect(
-            rig.wizard.saveFailure == "The saved tmux Hosts could not be read, so no tmux Host can be added.")
+            rig.wizard.saveFailure == "The saved Tmux Hosts could not be read, so no Tmux Host can be added.")
 
         rig.wizard.dismissSaveFailure()
         #expect(rig.wizard.saveFailure == nil)

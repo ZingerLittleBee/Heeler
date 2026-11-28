@@ -15,7 +15,7 @@ struct HostsTransportLocalizationTests {
     @Test func theClosedLinkDetailIsAPlainTokenLocalizedOnlyWhenShown() {
         #expect(HerdrCoreLink.closedDetail == "The herdr-core link closed.")
         let presentation = TransportError.channelFailed(detail: HerdrCoreLink.closedDetail).presentation
-        #expect(presentation.detail == "The herdr-core link closed.")
+        #expect(presentation.detail == "The Herdr Core link closed.")
         #expect(TransportError.displayedChannelDetail("connection reset") == "connection reset")
     }
 

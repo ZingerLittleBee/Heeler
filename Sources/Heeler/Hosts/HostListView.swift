@@ -400,7 +400,7 @@ struct HostListView: View {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
-                        Text("Add a machine that runs herdr, tmux or Rex to get started.")
+                        Text("Add a machine that runs herdr, Tmux or Rex to get started.")
                     } actions: {
                         // Scan to Pair is the primary add-Host action; the
                         // manual form is the fallback (ADR 0007).
@@ -417,7 +417,7 @@ struct HostListView: View {
                             Section {
                                 Label {
                                     Text(
-                                        String(localized: "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added.")
+                                        String(localized: "The saved Herdr Core Hosts could not be read. Their original data was preserved, and no Herdr Core Host can be added.")
                                     )
                                     .font(.footnote)
                                 } icon: {

@@ -465,7 +465,7 @@ struct HerdrCoreLaunchTests {
         #expect(
             form.state
                 == .failed(
-                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                    "Herdr Core is not running: Nothing is listening at /run/core.sock. "
                         + "Start the core on the Host, then check again."))
     }
 
@@ -482,7 +482,7 @@ struct HerdrCoreLaunchTests {
         #expect(
             form.agentDiscoveryState
                 == .failed(
-                    "herdr-core is not running: Nothing is listening at /run/core.sock. "
+                    "Herdr Core is not running: Nothing is listening at /run/core.sock. "
                         + "Start the core on the Host, then check again."))
     }
 

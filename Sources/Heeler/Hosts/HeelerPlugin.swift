@@ -353,7 +353,7 @@ struct HeelerPluginPresentation: Equatable {
             value = String(localized: "Not supported on Windows")
             notice = nil
         case .unsupportedServerKind:
-            value = String(localized: "Not supported on herdr-core")
+            value = String(localized: "Not supported on Herdr Core")
             notice = nil
         case .unavailable:
             value = String(localized: "Unknown")

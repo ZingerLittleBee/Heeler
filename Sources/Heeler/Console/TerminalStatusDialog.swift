@@ -71,7 +71,7 @@ struct TerminalStatusPresentation: Equatable {
 
     /// Why a tmux Pane's terminal ended when the Host's server was replaced.
     static let tmuxServerGoneMessage = String(
-        localized: "This Pane belongs to a tmux server that is gone. Open it again from the list.")
+        localized: "This Pane belongs to a Tmux server that is gone. Open it again from the list.")
 
     /// Why a Rex terminal ended when the Host's server was replaced.
     static let rexServerGoneMessage = String(

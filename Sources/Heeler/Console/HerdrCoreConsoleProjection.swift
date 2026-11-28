@@ -940,7 +940,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     ) async throws -> Agent {
         guard let kind = SupportedAgentKind(rawValue: request.kind) else {
             throw TransportError.hostFeatureUnavailable(
-                feature: String(localized: "Starting \(request.kind) on a herdr-core Host"))
+                feature: String(localized: "Starting \(request.kind) on a Herdr Core Host"))
         }
         let transport = try await session.withTransport { $0 }
         let shell = try await transport.launchShell()
@@ -1123,7 +1123,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let services = try await session.withTransport { $0.hostServices }
         guard try await services.hostPlatform() == .posix else {
             throw TransportError.hostFeatureUnavailable(
-                feature: String(localized: "Worktrees on a herdr-core Host"))
+                feature: String(localized: "Worktrees on a Herdr Core Host"))
         }
         return HerdrCoreWorktreeGit(services: services, gate: gitGate)
     }
@@ -1334,7 +1334,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID)
         else {
             throw TransportError.hostFeatureUnavailable(
-                feature: String(localized: "Rename Workspace on a herdr-core Host"))
+                feature: String(localized: "Rename Workspace on a Herdr Core Host"))
         }
         let transport = try await session.withTransport { $0 }
         do {
@@ -1401,7 +1401,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     func agentInfo(paneID: String) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "Agents on a herdr-core Host"))
+            feature: String(localized: "Agents on a Herdr Core Host"))
     }
 
     func titleRenameSessionToken(paneID: String) -> String? {
@@ -1484,12 +1484,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {
         throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "Agents on a herdr-core Host"))
+            feature: String(localized: "Agents on a Herdr Core Host"))
     }
 
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "The Composer on a herdr-core Host"))
+            feature: String(localized: "The Composer on a Herdr Core Host"))
     }
 
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {

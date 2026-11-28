@@ -475,7 +475,7 @@ struct HerdrCoreWindowsConsoleTests {
         let presentation = TransportError.herdrCoreNotRunning(
             socketPath: ScriptedCoreHost.windowsPipe, socketFilePresent: false
         ).presentation
-        #expect(presentation.summary == "herdr-core is not running")
+        #expect(presentation.summary == "Herdr Core is not running")
         #expect(presentation.detail?.contains(ScriptedCoreHost.windowsPipe) == true)
         #expect(presentation.recoverySuggestion?.contains("desktop session") == true)
         #expect(presentation.recoverySuggestion?.contains("PowerShell") == true)

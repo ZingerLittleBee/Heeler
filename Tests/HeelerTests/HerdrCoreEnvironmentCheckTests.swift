@@ -232,7 +232,7 @@ struct HerdrCoreEnvironmentCheckTests {
             .exits(status: 0, stdout: "TMUX=/tmp/from-a-banner\n"),
             .throwsError(.timedOut),
             .throwsError(.channelFailed(detail: "refused")),
-            .throwsError(.hostFeatureUnavailable(feature: "herdr-core Hosts")),
+            .throwsError(.hostFeatureUnavailable(feature: "Herdr Core Hosts")),
         ]
         for failure in failures {
             let host = ScriptedCoreHost(
@@ -394,7 +394,7 @@ struct HerdrCoreEnvironmentNoticeTests {
                 breaks: "Herdr's agent hooks report to the pane this names, not to the Terminal they run in."),
             .init(
                 name: "TMUX",
-                breaks: "Grok Build turns its status off inside tmux, so its Agents read Unknown."),
+                breaks: "Grok Build turns its status off inside Tmux, so its Agents read Unknown."),
             .init(
                 name: "PI_PROGRAM_STATUS",
                 breaks: "Set to 0, it turns Pi's status off, so its Agents read Unknown."),
