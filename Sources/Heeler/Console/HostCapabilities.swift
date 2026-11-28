@@ -35,8 +35,6 @@ struct HostCapabilities: Equatable, Sendable {
     /// The programs Chat opens for; nil for every one it can read.
     var chatPrograms: Set<ChatProgram>?
     var readOnlyChatPrograms: Set<ChatProgram> = []
-    /// Antigravity on Linux Rex offers plain chat only after its foreground has
-    /// published a conversation. A fresh prompt and other controls use Terminal.
     var requiresBoundAntigravity = false
     /// A core on a native Windows machine. Its Terminals start in directories of that
     /// machine's form, and Send, staging and Chat each read it for their own rule.
@@ -167,9 +165,6 @@ extension HostCapabilities {
             if posix {
                 readOnlyChatPrograms = [.opencode, .amp]
                 offersAmpPlugin = true
-            }
-            if coreKernel == HerdrCoreLocator.linuxKernel {
-                self.chatPrograms?.insert(.agy)
                 requiresBoundAntigravity = true
             }
             self.rexAPIRevision = rexAPIRevision
@@ -287,7 +282,7 @@ extension HostCapabilities {
     /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
     /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
     /// process start in the local account registry (rex-chat-parity.md).
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound

@@ -495,7 +495,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
     /// The published status must still belong to the Antigravity process
     /// named by this server's inventory. A bare shell never has a binding.
     func antigravityForeground(in paneID: String) -> Int? {
-        guard kernel == HerdrCoreLocator.linuxKernel, status == .connected, !isAwaitingSnapshot,
+        guard (kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel),
+              status == .connected, !isAwaitingSnapshot,
               let address = RexPaneAddress(paneID: paneID), let details = listedDetails(at: address),
               RexAgentRule.agentKind(in: details) == ChatProgram.agy.rawValue else { return nil }
         switch RexAgentRule.status(of: details, heldBy: ChatProgram.agy.rawValue) {
@@ -512,10 +513,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
         guard HostCapabilities(serverKind: .rex, coreKernel: kernel).offersChat(for: program), let address = RexPaneAddress(paneID: paneID),
             let listed = listedDetails(at: address), let activeServer = server
         else { return .unavailable(chatCannotTell(program)) }
-        let details = try await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
         let unavailable = ChatSessionEvidence.unavailable(chatCannotTell(program))
+        let antigravityPID = program == .agy ? antigravityForeground(in: paneID) : nil
+        guard program != .agy || antigravityPID != nil else { return unavailable }
+        let details = try await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
         if program == .agy {
-            guard let pid = antigravityForeground(in: paneID), details.processID == pid,
+            guard details.processID == antigravityPID,
                   RexAgentRule.agentKind(in: details) == program.rawValue else { return unavailable }
         }
         let evidence = try await chatBinder(at: address, details: details, program: program, server: activeServer)

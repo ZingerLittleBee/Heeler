@@ -843,7 +843,7 @@ private extension RexForegroundChatLiveTests {
 /// A and B have separate signed-in Antigravity sessions in one disposable
 /// directory. A third foreground has never received a prompt.
 @MainActor
-@Suite("Bound Antigravity on a private Linux Rex Host", .serialized, .timeLimit(.minutes(4)))
+@Suite("Bound Antigravity on a private POSIX Rex Host", .serialized, .timeLimit(.minutes(4)))
 struct RexAntigravityChatLiveTests {
     private struct Peer: Decodable {
         let session, block: String
@@ -905,7 +905,7 @@ struct RexAntigravityChatLiveTests {
         #expect(AgentDetailView.openingSurface(for: row, console: console, preferred: .chat, keepingTo: nil) == .terminal)
         let block = try await session.blockRequests(at: peer.address, readDeadline: .sharedLinkRead)
         let process = try await RexInventoryWire.process(block.read(.process))
-        #expect(process.processID == peer.pid && process.program == "agy")
+        #expect(process.processID == peer.pid && ["agy", "antigravity"].contains(process.program ?? ""))
         let screen = try await console.readAgentScreen(peer.address.paneID, on: host.id, keepingTo: console.composerSession(for: row).corePin)
         let prompt = screen.rows.map(\.text).joined(separator: " ").lowercased()
         let offersNativeApproval = prompt.contains("run command") && prompt.contains("allow")
@@ -1082,7 +1082,7 @@ struct RexAntigravityChatLiveTests {
         try await wait("the native exit prompt or its replacement shell") {
             let foreground = RexInventoryWire.process(try await request(a, "process"))
             if foreground.program == "bash" { return true }
-            guard foreground.program == "agy", foreground.processID == a.pid else { return false }
+            guard ["agy", "antigravity"].contains(foreground.program ?? ""), foreground.processID == a.pid else { return false }
             let screen = try await RexChatScreen.read(on: exitRequests).screen
             let requestsExit = screen.rows.map(\.text).joined(separator: " ").lowercased().contains("press ctrl+d again to exit")
             guard requestsExit else { return false }
