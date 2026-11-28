@@ -197,7 +197,7 @@ final class HostOnboardingStore {
         notRunningTmux = nil
         tmuxStartConfirmation = nil
         tmuxStart = .idle
-        if host.serverKind == .herdrCore || host.serverKind == .tmux {
+        if host.serverKind.usesHostHelper {
             let hostHelper = hostHelper ?? makeHostHelper()
             hostHelper.checkStarted()
             self.hostHelper = hostHelper
@@ -467,10 +467,6 @@ final class HostOnboardingStore {
         }
     }
 
-    /// A Rex Host's checks reach its server's socket and say hello, then close
-    /// with a close frame, which changes nothing on the server (ADR 0049). A
-    /// Host that stores no socket has it looked up again, and the catalog keeps
-    /// what was found. They never run `rex` or start a server.
     private func performRexChecks(settings: SSHTransportSettings) async {
         pluginStatus = .unsupportedServerKind
         do {
@@ -479,13 +475,50 @@ final class HostOnboardingStore {
                 host.rexSocket = found
                 noteRexSocket(host.id, found)
             }
+            if !Task.isCancelled {
+                report = .allPassed
+            }
+            if let helperConnection = transport.hostHelperConnection, !Task.isCancelled {
+                if let confirmation = await hostHelper?.beginRefresh(over: helperConnection), !Task.isCancelled {
+                    hostHelperConfirmation = Task {
+                        await confirmation()
+                        await transport.close()
+                    }
+                    return
+                }
+            }
             await transport.close()
-            guard !Task.isCancelled else { return }
-            report = .allPassed
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
             report = failureReport(error)
+            if Self.isRexServerOnlyFailure(error),
+                let coreTransport = try? await connector.connectCore(settings: settings)
+            {
+                guard !Task.isCancelled else {
+                    try? await coreTransport.close()
+                    return
+                }
+                if let confirmation = await hostHelper?.beginRefresh(over: coreTransport), !Task.isCancelled {
+                    hostHelperConfirmation = Task {
+                        await confirmation()
+                        try? await coreTransport.close()
+                    }
+                    return
+                }
+                try? await coreTransport.close()
+            }
+        }
+    }
+
+    private static func isRexServerOnlyFailure(_ error: any Error) -> Bool {
+        switch error {
+        case TransportError.rexNotInstalled, TransportError.rexServerNotRunning,
+            TransportError.rexForwardingRefused, TransportError.rexSocketUnreachable,
+            TransportError.rexAccountRefused, TransportError.rexUnsupportedRevision:
+            true
+        default:
+            false
         }
     }
 
@@ -521,6 +554,7 @@ final class HostOnboardingStore {
                 return try await connector.connectCore(settings: settings)
             },
             tmuxPaths: { [weak self] in self?.host.tmuxPaths ?? initialHost.tmuxPaths },
+            rexSocket: { [weak self] in self?.host.rexSocket ?? initialHost.rexSocket },
             healthGap: hostHelperHealthGap,
             undoEdits: { [harnessEdits, hostID = initialHost.id] services in
                 try await harnessEdits?.undoEditsGoingWithTheHelper(on: hostID, over: services)

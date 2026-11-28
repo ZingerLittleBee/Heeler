@@ -348,7 +348,7 @@ extension Host {
             return "tmux/\(tmuxSocketName)"
         }
         if serverKind == .rex {
-            return "rex/"
+            return "rex"
         }
         if let herdrEndpoint {
             return herdrEndpoint.session

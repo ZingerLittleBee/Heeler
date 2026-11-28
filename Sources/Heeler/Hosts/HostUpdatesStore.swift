@@ -514,6 +514,7 @@ extension HostHelperStore {
                 }
                 return try await connector.connectCore(settings: settings)
             },
-            tmuxPaths: { host.storedTmuxPaths })
+            tmuxPaths: { host.storedTmuxPaths },
+            rexSocket: { host.rexSocket })
     }
 }

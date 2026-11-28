@@ -8,6 +8,7 @@ import { join } from "node:path";
 export const helperStateDirectory = (directory) => join(directory, "state");
 export const sessionRuntimeDirectory = (directory, session) => join(directory, "sessions", session);
 export const tmuxRuntimeDirectory = (directory, socket) => join(directory, "tmux", socket);
+export const rexRuntimeDirectory = (directory) => join(directory, "rex");
 
 /** The sessions with a folder here. */
 export function usageSessions(directory) {

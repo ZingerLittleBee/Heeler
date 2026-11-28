@@ -199,6 +199,8 @@ final class NotificationPreferencesStore {
         var b = rhs
         a.tmuxPaths = nil
         b.tmuxPaths = nil
+        a.rexSocket = nil
+        b.rexSocket = nil
         return a == b
     }
 
@@ -372,7 +374,7 @@ final class NotificationPreferencesStore {
         operations[host.id] = operation
         if states[host.id] != .loading {
             settingsDuringReRead[host.id] =
-                (host.serverKind == .herdrCore || host.serverKind == .tmux)
+                host.serverKind.usesHostHelper
                 ? confirmedSettings(for: host.id) : nil
             settledBeforeReRead[host.id] = states[host.id]
         }
@@ -524,7 +526,7 @@ final class NotificationPreferencesStore {
     /// Each core or tmux Host's gate, for whoever follows them changing.
     var coreLiveActivityGates: [Host.ID: LiveActivityGate] {
         var gates: [Host.ID: LiveActivityGate] = [:]
-        for host in hosts where host.serverKind == .herdrCore || host.serverKind == .tmux {
+        for host in hosts where host.serverKind.usesHostHelper {
             gates[host.id] = liveActivityGate(forCoreHost: host.id)
         }
         return gates
@@ -567,7 +569,7 @@ final class NotificationPreferencesStore {
         core: String, marks: [String: HerdrCoreTurnState.Mark], for hostID: Host.ID
     ) {
         guard hosts.contains(where: {
-            $0.id == hostID && ($0.serverKind == .herdrCore || $0.serverKind == .tmux)
+            $0.id == hostID && $0.serverKind.usesHostHelper
         }) else { return }
         pendingSeenMarks[hostID] = PendingSeenMarks(core: core, marks: marks)
         writeSeenMarks(for: hostID)

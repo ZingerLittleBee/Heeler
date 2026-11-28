@@ -101,8 +101,8 @@ enum ServerKind: String, Codable, Hashable, Sendable {
     /// the Host Helper behind Usage and Accounts. A Rex Host has neither.
     var hasHostIntegrations: Bool {
         switch self {
-        case .herdrTUI, .herdrCore, .tmux: true
-        case .rex, .unconfirmed: false
+        case .herdrTUI, .herdrCore, .tmux, .rex: true
+        case .unconfirmed: false
         }
     }
 

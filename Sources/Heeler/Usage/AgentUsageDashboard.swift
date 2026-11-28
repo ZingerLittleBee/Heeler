@@ -783,9 +783,7 @@ struct AgentUsageDashboard: View {
 
     private func message(_ scope: AgentUsageScope) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            if entries.isEmpty, hasOnlyRexServersOn {
-                Text("Usage comes from herdr and tmux Servers. Rex Servers report none.")
-            } else if entries.isEmpty {
+            if entries.isEmpty {
                 Text("Add a Host to read its Usage.")
             } else if let entry = scopedEntries.first, scopedEntries.count == 1, entry.isConnected {
                 AgentUsageContent(state: entry.store.state)

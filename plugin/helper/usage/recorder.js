@@ -3,12 +3,15 @@
 // the pid `server.status` reported, on every connection (ADR 0033). It never logs
 // a value.
 
+import { homedir, userInfo } from "node:os";
+
+import { REX_SESSION } from "../rex/socket.js";
 import { noteAgentDirectory } from "../shared/usage/agent-directories.js";
 import { readProcessEnvironment } from "../shared/usage/process-environment.js";
 import { ACCOUNT_PROGRAMS } from "../shared/usage/programs.js";
 import { ENVIRONMENT_NAMES, writeUsageRuntime } from "../shared/usage/runtime-record.js";
 import { accountAgentOf } from "./account-agent.js";
-import { helperStateDirectory, sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./layout.js";
+import { helperStateDirectory, rexRuntimeDirectory, sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./layout.js";
 import { readTmuxGlobalEnvironment } from "./tmux-environment.js";
 
 const READ_TIME_LIMIT_MS = 3000;
@@ -140,6 +143,119 @@ export function tmuxUsageListener({ directory, log = () => {} }) {
     },
     panesUpdated({ socket, instance, panes }) {
       notePanes(socket, instance, panes);
+    },
+  };
+}
+
+export function rexUsageListener({ directory, log = () => {} }) {
+  let currentInstance = null;
+  let recordedFromProcess = false;
+  let noted = { instance: null, keys: new Set() };
+  const say = (line) => log(`rex: ${line}`);
+
+  const fallbackEnvironment = () => {
+    const env = {};
+    for (const name of ENVIRONMENT_NAMES) {
+      if (typeof process.env[name] === "string") env[name] = process.env[name];
+    }
+    if (typeof env.HOME !== "string" || env.HOME === "") {
+      const home = homedir();
+      if (typeof home === "string" && home !== "") env.HOME = home;
+    }
+    if (typeof env.USER !== "string" || env.USER === "") {
+      try {
+        const user = userInfo().username;
+        if (typeof user === "string" && user !== "") env.USER = user;
+      } catch {}
+    }
+    return env;
+  };
+
+  const recordEnvironment = (environment, source) => {
+    if (typeof environment?.HOME !== "string" || environment.HOME === "") return false;
+    writeUsageRuntime(environment, {
+      configDir: rexRuntimeDirectory(directory),
+      stateDir: helperStateDirectory(directory),
+      node: process.execPath,
+      herdr: null,
+    });
+    say(`recorded the Usage environment from ${source}`);
+    return true;
+  };
+
+  const recordRuntime = async (instanceId, serverPid, inventory) => {
+    const candidatePids = [];
+    if (Number.isSafeInteger(serverPid) && serverPid > 0) candidatePids.push(serverPid);
+    for (const pane of inventory.values()) {
+      if (Number.isSafeInteger(pane.pid) && pane.pid > 0 && !candidatePids.includes(pane.pid)) {
+        candidatePids.push(pane.pid);
+      }
+    }
+    for (const pid of candidatePids) {
+      const environment = await readProcessEnvironment(pid, ENVIRONMENT_NAMES, Date.now() + READ_TIME_LIMIT_MS);
+      if (currentInstance !== instanceId) return;
+      if (recordEnvironment(environment, `pid ${pid}`)) {
+        recordedFromProcess = true;
+        return;
+      }
+    }
+    if (currentInstance !== instanceId) return;
+    if (!recordEnvironment(fallbackEnvironment(), "Host Helper environment")) {
+      say("cannot determine HOME for Usage, so Usage keeps its last record");
+    }
+  };
+
+  let notes = Promise.resolve();
+  const notePanes = (instanceId, inventory) => {
+    if (noted.instance !== instanceId) {
+      noted = { instance: instanceId, keys: new Set() };
+    }
+    for (const [paneID, pane] of inventory) {
+      const program = pane.agentKind;
+      if (!ACCOUNT_PROGRAMS.includes(program)) continue;
+      const pid = pane.pid;
+      if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+      const key = `${paneID}:${pid}:${program}`;
+      if (noted.keys.has(key)) continue;
+      noted.keys.add(key);
+      notes = notes
+        .then(() =>
+          noteAgentDirectory({
+            stateDir: helperStateDirectory(directory),
+            session: REX_SESSION,
+            paneId: `${instanceId}:${paneID}:${pid}`,
+            program,
+            pidOf: async () => pid,
+          }),
+        )
+        .catch(() => say(`could not note the ${program} directory of ${JSON.stringify(paneID)}`));
+    }
+  };
+
+  return {
+    connected({ instanceId, serverPid, inventory }) {
+      currentInstance = instanceId;
+      recordedFromProcess = false;
+      noted = { instance: instanceId, keys: new Set() };
+      recordRuntime(instanceId, serverPid, inventory).catch(() => say("could not save the Usage environment"));
+      notePanes(instanceId, inventory);
+    },
+    updated({ instanceId, serverPid, inventory }) {
+      if (currentInstance !== instanceId) {
+        currentInstance = instanceId;
+        recordedFromProcess = false;
+      }
+      if (!recordedFromProcess) {
+        recordRuntime(instanceId, serverPid, inventory).catch(() => {});
+      }
+      notePanes(instanceId, inventory);
+    },
+    ended({ instanceId }) {
+      if (currentInstance === instanceId) {
+        currentInstance = null;
+        recordedFromProcess = false;
+      }
+      if (noted.instance === instanceId) noted = { instance: null, keys: new Set() };
     },
   };
 }

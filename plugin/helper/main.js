@@ -5,13 +5,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { combineListeners, followRegisteredSessions } from "./core/follower.js";
-import { liveActivityListener, tmuxLiveActivityListener } from "./notifications/activity.js";
-import { notificationListener, tmuxNotificationListener } from "./notifications/notifier.js";
+import { liveActivityListener, rexLiveActivityListener, tmuxLiveActivityListener } from "./notifications/activity.js";
+import { notificationListener, rexNotificationListener, tmuxNotificationListener } from "./notifications/notifier.js";
+import { combineRexListeners, followRexServer } from "./rex/follower.js";
 import { combineTmuxListeners, followStoredTmuxServers } from "./tmux/follower.js";
 import { tmuxPipeReaderListener } from "./tmux/pipe-reader.js";
 import { tmuxTranscriptListener } from "./tmux/transcript-watcher.js";
 import { usageSessions } from "./usage/layout.js";
-import { tmuxUsageListener, usageListener } from "./usage/recorder.js";
+import { rexUsageListener, tmuxUsageListener, usageListener } from "./usage/recorder.js";
 
 const { version } = JSON.parse(readFileSync(new URL("./version.json", import.meta.url), "utf8"));
 
@@ -40,6 +41,15 @@ followStoredTmuxServers({
     tmuxTranscriptListener(),
     tmuxNotificationListener({ directory, log }),
     tmuxLiveActivityListener({ directory, log }),
+  ),
+});
+followRexServer({
+  directory,
+  log,
+  listener: combineRexListeners(
+    rexUsageListener({ directory, log }),
+    rexNotificationListener({ directory, log }),
+    rexLiveActivityListener({ directory, log }),
   ),
 });
 

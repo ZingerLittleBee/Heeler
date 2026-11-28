@@ -51,10 +51,7 @@ struct AgentsAndAccountsSettingsView: View {
             }
 
             Section {
-                if hosts.isEmpty, hasOnlyRexServersOn {
-                    Text("Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none.")
-                        .foregroundStyle(.secondary)
-                } else if hosts.isEmpty {
+                if hosts.isEmpty {
                     Text("Add a Host to keep its Accounts.").foregroundStyle(.secondary)
                 }
                 // A Host's Servers keep one set of Accounts on it, so the Host

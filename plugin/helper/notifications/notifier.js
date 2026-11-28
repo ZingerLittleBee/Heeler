@@ -25,6 +25,8 @@ import { pruneAlertTokens, readAlertDevices, registeredSessions } from "../share
 import { forDisplay } from "../shared/display-text.js";
 import { readNotificationConfig } from "../shared/notification-config.js";
 import { encryptNotificationEnvelope, notificationKeyId } from "../shared/notification-envelope.js";
+import { REX_SESSION } from "../rex/socket.js";
+import { RexTurnState, foldRexPane, rexDecisionSignature, rexKindLabel } from "../rex/turn-state.js";
 import { normalizeTmuxSocketName } from "../tmux/socket-name.js";
 import {
   TmuxTurnState,
@@ -498,6 +500,64 @@ export function tmuxNotificationListener({ directory, log = () => {}, retryTimer
     }),
     followerStopped: guarded(({ socket }) => {
       notifier.noteEnded(socket);
+    }),
+  };
+}
+
+export function rexNotificationListener({ directory, log = () => {}, retryTimers = realRetryTimers }) {
+  const say = (_key, line) => log(`rex: ${line}`);
+  const notifier = createNotifier({
+    directory,
+    say,
+    memoryPath: () => join(directory, "rex", "notify.json"),
+    registrationSession: () => REX_SESSION,
+    isRegistered: () => registeredSessions(directory).includes(REX_SESSION),
+    TurnModel: RexTurnState,
+    foldItem: foldRexPane,
+    signatureOf: rexDecisionSignature,
+    inspectItem(pane, turns) {
+      if (!pane.agentKind) return null;
+      const status = turns.agentStatus;
+      const attention = ATTENTION_STATUSES.has(status) ? status : null;
+      return {
+        kind: pane.agentKind,
+        status,
+        attention,
+        wireAttention: attention,
+        project:
+          typeof pane.sessionLabel === "string" && pane.sessionLabel !== ""
+            ? pane.sessionLabel
+            : typeof pane.cwd === "string" && pane.cwd !== ""
+              ? basename(pane.cwd)
+              : null,
+        title: strippedSidebarTitle(pane.title) ?? rexKindLabel(pane.agentKind),
+      };
+    },
+    retryTimers,
+  });
+
+  const guarded = (body) => (report) => {
+    try {
+      body(report);
+    } catch (error) {
+      say(REX_SESSION, `could not follow for notifications: ${error.message}`);
+    }
+  };
+
+  return {
+    connected: guarded(({ instanceId, inventory }) => {
+      notifier.noteConnected(REX_SESSION, instanceId, inventory);
+    }),
+    updated: guarded(({ instanceId, inventory }) => {
+      const memory = notifier.sessionNamed(REX_SESSION);
+      if (memory.core !== instanceId) {
+        notifier.noteConnected(REX_SESSION, instanceId, inventory);
+        return;
+      }
+      notifier.foldSnapshot(REX_SESSION, memory, inventory, { settled: false, armUnchanged: false });
+    }),
+    ended: guarded(() => {
+      notifier.noteEnded(REX_SESSION);
     }),
   };
 }

@@ -8,6 +8,7 @@ struct HostHelperFiles: HostNotificationFiles {
     enum Target: Sendable, Equatable {
         case coreSession(String)
         case tmuxSocket(String, TmuxPaths?)
+        case rex(socketPath: String?)
     }
 
     let host: any HostHelperHost
@@ -29,6 +30,15 @@ struct HostHelperFiles: HostNotificationFiles {
     ) {
         self.host = host
         target = .tmuxSocket(tmuxSocket, tmuxPaths)
+        self.nonce = nonce
+    }
+
+    init(
+        host: any HostHelperHost, rexSocket: RexSocket?,
+        nonce: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
+        self.host = host
+        target = .rex(socketPath: rexSocket.flatMap { $0.isWindowsPipe ? nil : $0.path })
         self.nonce = nonce
     }
 
@@ -56,6 +66,10 @@ struct HostHelperFiles: HostNotificationFiles {
             step = .tmuxUsageQuery(
                 timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
                 agyLimits: agyLimits, socket: normalized, storedPaths: storedPaths)
+        case .rex(let socketPath):
+            step = .rexUsageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, socketPath: socketPath)
         }
         let script = HostHelperScript(step, nonce: nonce())
         let result = try await host.runHostHelperScript(script)
@@ -89,6 +103,13 @@ struct HostHelperFiles: HostNotificationFiles {
                     .refreshTmuxPaths(socket: normalized, storedPaths: stored), nonce: nonce())
                 _ = try? await host.runHostHelperScript(script)
             }
+        }
+        if case .rex(let socketPath?) = target,
+            let file = try? NotificationRegistrationFile.decode(contents),
+            file.devices.contains(where: { $0["session"] == .string("rex") })
+        {
+            let script = HostHelperScript(.refreshRexSocket(socketPath: socketPath), nonce: nonce())
+            _ = try? await host.runHostHelperScript(script)
         }
     }
 

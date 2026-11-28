@@ -103,7 +103,8 @@ export function followRegisteredSessions({ directory, log = () => {}, pollMs = P
 
   const wantedSessions = () => {
     const wanted = new Set();
-    for (const raw of [...registeredSessions(directory), ...alsoFollow()]) {
+    const registered = registeredSessions(directory).filter((raw) => !raw.startsWith("tmux/") && raw !== "rex" && raw !== "rex/");
+    for (const raw of [...registered, ...alsoFollow()]) {
       if (raw.startsWith("tmux/")) continue;
       const session = normalizeSessionName(raw);
       if (session !== null) {
