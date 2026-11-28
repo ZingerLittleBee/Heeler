@@ -9,7 +9,7 @@ import { REX_SESSION } from "../rex/socket.js";
 import { noteAgentDirectory } from "../shared/usage/agent-directories.js";
 import { readProcessEnvironment } from "../shared/usage/process-environment.js";
 import { ACCOUNT_PROGRAMS } from "../shared/usage/programs.js";
-import { ENVIRONMENT_NAMES, writeUsageRuntime } from "../shared/usage/runtime-record.js";
+import { agySearchPath, ENVIRONMENT_NAMES, executableOnPath, writeUsageRuntime } from "../shared/usage/runtime-record.js";
 import { accountAgentOf } from "./account-agent.js";
 import { helperStateDirectory, rexRuntimeDirectory, sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./layout.js";
 import { readTmuxGlobalEnvironment } from "./tmux-environment.js";
@@ -149,7 +149,8 @@ export function tmuxUsageListener({ directory, log = () => {} }) {
 
 export function rexUsageListener({ directory, log = () => {} }) {
   let currentInstance = null;
-  let recordedFromProcess = false;
+  let recorded = null;
+  let triedPids = new Set();
   let noted = { instance: null, keys: new Set() };
   const say = (line) => log(`rex: ${line}`);
 
@@ -183,26 +184,50 @@ export function rexUsageListener({ directory, log = () => {} }) {
     return true;
   };
 
+  const findsAProgram = (environment) =>
+    executableOnPath("claude", environment.PATH) !== null
+    || executableOnPath("codex", environment.PATH) !== null
+    || executableOnPath("agy", agySearchPath(environment)) !== null;
+
   const recordRuntime = async (instanceId, serverPid, inventory) => {
-    const candidatePids = [];
-    if (Number.isSafeInteger(serverPid) && serverPid > 0) candidatePids.push(serverPid);
+    const agentPids = [];
+    const otherPids = [];
     for (const pane of inventory.values()) {
-      if (Number.isSafeInteger(pane.pid) && pane.pid > 0 && !candidatePids.includes(pane.pid)) {
-        candidatePids.push(pane.pid);
-      }
+      if (!Number.isSafeInteger(pane.pid) || pane.pid <= 0) continue;
+      (ACCOUNT_PROGRAMS.includes(pane.agentKind) ? agentPids : otherPids).push(pane.pid);
     }
+    const serverPids = Number.isSafeInteger(serverPid) && serverPid > 0 ? [serverPid] : [];
+    const candidatePids = [...new Set([...agentPids, ...serverPids, ...otherPids])]
+      .filter((pid) => !triedPids.has(pid));
+    for (const pid of candidatePids) triedPids.add(pid);
+    let partial = null;
     for (const pid of candidatePids) {
       const environment = await readProcessEnvironment(pid, ENVIRONMENT_NAMES, Date.now() + READ_TIME_LIMIT_MS);
-      if (currentInstance !== instanceId) return;
-      if (recordEnvironment(environment, `pid ${pid}`)) {
-        recordedFromProcess = true;
+      if (currentInstance !== instanceId || recorded === "programs") return;
+      if (typeof environment?.HOME !== "string" || environment.HOME === "") continue;
+      if (findsAProgram(environment)) {
+        recordEnvironment(environment, `pid ${pid}`);
+        recorded = "programs";
         return;
       }
+      partial ??= { environment, source: `pid ${pid}` };
     }
-    if (currentInstance !== instanceId) return;
-    if (!recordEnvironment(fallbackEnvironment(), "Host Helper environment")) {
+    if (currentInstance !== instanceId || recorded !== null) return;
+    if (partial !== null) {
+      recordEnvironment(partial.environment, `${partial.source}, whose PATH finds no Claude Code, Codex or Antigravity`);
+      recorded = "partial";
+    } else if (recordEnvironment(fallbackEnvironment(), "Host Helper environment")) {
+      recorded = "partial";
+    } else {
       say("cannot determine HOME for Usage, so Usage keeps its last record");
     }
+  };
+
+  let recording = Promise.resolve();
+  const scheduleRecord = (instanceId, serverPid, inventory) => {
+    recording = recording
+      .then(() => recordRuntime(instanceId, serverPid, inventory))
+      .catch(() => say("could not save the Usage environment"));
   };
 
   let notes = Promise.resolve();
@@ -235,25 +260,26 @@ export function rexUsageListener({ directory, log = () => {} }) {
   return {
     connected({ instanceId, serverPid, inventory }) {
       currentInstance = instanceId;
-      recordedFromProcess = false;
+      recorded = null;
+      triedPids = new Set();
       noted = { instance: instanceId, keys: new Set() };
-      recordRuntime(instanceId, serverPid, inventory).catch(() => say("could not save the Usage environment"));
+      scheduleRecord(instanceId, serverPid, inventory);
       notePanes(instanceId, inventory);
     },
     updated({ instanceId, serverPid, inventory }) {
       if (currentInstance !== instanceId) {
         currentInstance = instanceId;
-        recordedFromProcess = false;
+        recorded = null;
+        triedPids = new Set();
       }
-      if (!recordedFromProcess) {
-        recordRuntime(instanceId, serverPid, inventory).catch(() => {});
-      }
+      if (recorded !== "programs") scheduleRecord(instanceId, serverPid, inventory);
       notePanes(instanceId, inventory);
     },
     ended({ instanceId }) {
       if (currentInstance === instanceId) {
         currentInstance = null;
-        recordedFromProcess = false;
+        recorded = null;
+        triedPids = new Set();
       }
       if (noted.instance === instanceId) noted = { instance: null, keys: new Set() };
     },
