@@ -436,6 +436,19 @@ final class AgentChatStore {
         }
     }
 
+    private func readRexRecord() async -> ChatConversationSnapshot? {
+        guard let engine, let followed else { return nil }
+        let snapshot = await engine.poll(context: projectionContext)
+        guard case .following(let file) = snapshot.phase, snapshot.readFailure == nil,
+              !snapshot.isFromCache, !snapshot.hasUnreadRecords, snapshot.readOffset > 0 else { return nil }
+        // A JSONL writer can append a result while the card is open, or leave its newest line incomplete.
+        let end = try? await source.files.read(.init(path: file, offset: snapshot.readOffset - 1, maxBytes: 2))
+        guard end?.length == snapshot.readOffset, end?.data == Data([0x0a]),
+              !Task.isCancelled, engine === self.engine, self.followed?.namesSameSession(as: followed) == true
+        else { return nil }
+        return snapshot
+    }
+
     /// A Rex Stop is addressed to the independently bound conversation and
     /// its open recorded turn. A manual pick can show either of two rollouts
     /// the same process is holding, while Esc always goes to its current one.
@@ -745,16 +758,10 @@ final class AgentChatStore {
                 return (session, self.independentInputSession())
             }
             blocked.readRexRequests = { [weak self] in
-                guard let self, let engine, let followed else { return nil }
-                let snapshot = await engine.poll(context: projectionContext)
-                guard case .following(let file) = snapshot.phase, snapshot.readFailure == nil,
-                      !snapshot.isFromCache, !snapshot.hasUnreadRecords, snapshot.readOffset > 0 else { return nil }
-                // A JSONL writer can append a result while the card is open, or leave its newest line incomplete.
-                let end = try? await source.files.read(.init(path: file, offset: snapshot.readOffset - 1, maxBytes: 2))
-                guard end?.length == snapshot.readOffset, end?.data == Data([0x0a]),
-                      !Task.isCancelled, engine === self.engine, self.followed?.namesSameSession(as: followed) == true
-                else { return nil }
-                return snapshot.transcript.pendingRequests
+                await self?.readRexRecord()?.transcript.pendingRequests
+            }
+            blocked.readRexRecordEnd = { [weak self] in
+                await self?.readRexRecord()?.readOffset
             }
         }
         if program.pinsComposerToSession {
@@ -2650,7 +2657,10 @@ final class AgentChatStore {
         {
             sessionConcern = nil
         }
-        blocked.update(transcript: next.transcript)
+        let recordEnd: UInt64? =
+            if case .following = next.phase, snapshot.readFailure == nil, !next.isFromCache, !next.hasUnreadRecords,
+               next.readOffset > 0 { next.readOffset } else { nil }
+        blocked.update(transcript: next.transcript, recordEnd: recordEnd)
         if program == .agy, !hasUnresolvedAgySession, case .following(let path) = next.phase,
             let rootID = AgyTranscriptLocator.sessionID(ofTranscript: path)
         {
