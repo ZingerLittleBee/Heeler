@@ -103,10 +103,6 @@ struct RexConsoleTests {
             HostCapabilities(serverKind: .tmux).terminalAccess(.liveInAnotherWindow(canTakeOver: true)) == .holds)
     }
 
-    /// The Agent detail's menus offer only what the Host serves, alike on
-    /// Chat and the terminal: on a Rex Host no New Agent, rename or Close,
-    /// and attachments once the server has named Linux or macOS; a saved
-    /// Chat is still removed on any Host. The other kinds offer what they did.
     @Test func aRexAgentsDetailMenusOfferNothingTheHostCannotServe() {
         let rex = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel, rexAcceptsCommand: true),
@@ -127,7 +123,7 @@ struct RexConsoleTests {
         let tmux = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .tmux, coreKernel: HerdrCoreLocator.linuxKernel),
             workspaceID: "$1", removesSavedChat: false)
-        #expect(tmux.newAgent && tmux.attachments && !tmux.renameAgent && tmux.renameWorkspace && tmux.close)
+        #expect(tmux.newAgent && tmux.attachments && tmux.renameAgent && tmux.renameWorkspace && tmux.close)
         let core = AgentDetailMenuOffers(
             capabilities: HostCapabilities(
                 serverKind: .herdrCore, platform: .posix, coreKernel: HerdrCoreLocator.linuxKernel),
