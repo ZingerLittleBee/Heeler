@@ -893,7 +893,10 @@ run at once, and until it ends the report already leaves the Account out.
   a one-shot `gui/<uid>` launchd job that runs `usage-agy-reader.js` in the
   desktop session, and reads in place only when no desktop session takes the
   job (ADR 0067). Per-Host Antigravity limits are on by default and can be
-  turned off (`--no-agy-limits`).
+  turned off (`--no-agy-limits`). A bucket whose `reset_time` is the Unix epoch
+  has no reset time: agy 1.5.19 sends `1970-01-01T00:00:00Z` with a
+  `remaining_fraction` of 1 for a Claude & GPT window not yet used, so its
+  `resetsAt` is null rather than a past reset that would read as expired.
 - Antigravity CLI signs in once per Host rather than per Account directory, so
   added `programs.agy` Accounts report their own Token Usage while reporting
   Usage Limits `unavailable` with reason `singleSignIn` (the Default Account

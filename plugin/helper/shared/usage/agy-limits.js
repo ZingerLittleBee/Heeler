@@ -96,7 +96,7 @@ function parseAgyReading(stdout) {
           id: `agy:${bucket.id}`,
           durationMinutes,
           usedPercent: Number(usedPercent.toFixed(4)),
-          resetsAt: milliseconds === null ? null : new Date(milliseconds).toISOString(),
+          resetsAt: milliseconds === null || milliseconds <= 0 ? null : new Date(milliseconds).toISOString(),
           expired: false,
           label,
         });
