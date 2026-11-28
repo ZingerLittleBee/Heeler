@@ -63,7 +63,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     let syncError: String? = nil
     let leakedEnvironmentNames: Set<String> = []
-    let removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
+    private(set) var removedWorktreesByAgent: [ConsoleAgent.ID: WorktreeRemovalReceipt] = [:]
     let terminalLabelKeys: [String] = []
 
     /// What this device keeps of the Host by server, and its Pins.
@@ -74,13 +74,20 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private(set) var acceptsAgentCommand = false
     private var commandSchemaTask: Task<Void, Never>?
     private let pins: PinnedAgentsStore
+    private let onSeenMarksChanged: @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void
     private let onLatencyChange: (@MainActor @Sendable () -> Void)?
     private let onChange: @MainActor @Sendable () -> Void
     private var consumeTask: Task<Void, Never>?
     private var latencyTask: Task<Void, Never>?
     private var kernelTask: Task<Void, Never>?
+    private var checkoutTask: Task<Void, Never>?
     private var hasEnded = false
     private var inventoryRefreshes: [UUID: CheckedContinuation<Void, Never>] = [:]
+    private var knownCheckouts: [String: HostCheckout] = [:]
+    private var askedCheckouts: Set<String> = []
+    private var checkoutRefresh = 0
+    private var worktreesBeingRemoved: Set<WorktreeIdentity> = []
+    private var titleRenameTokens: [String: String] = [:]
     /// The Panes this device shows now, whose finished turns are seen as
     /// they are noted.
     private var shownAgents: Set<String> = []
@@ -106,6 +113,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         host: Host, session: RexHostSession, memory: HerdrCoreHostMemory = HerdrCoreHostMemory(),
         pins: PinnedAgentsStore, gitGate: GitExecGate = GitExecGate(), chatReadDeadline: RexDeliveryDeadline = RexConsoleProjection.chatReadDeadline,
         sendClock: BlockedCardClock = .live,
+        onSeenMarksChanged: @escaping @MainActor (String, [String: HerdrCoreTurnState.Mark]) -> Void = { _, _ in },
         onLatencyChange: (@MainActor @Sendable () -> Void)? = nil,
         onChange: @escaping @MainActor @Sendable () -> Void
     ) {
@@ -116,6 +124,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         self.gitGate = gitGate
         self.chatReadDeadline = chatReadDeadline
         self.sendClock = sendClock
+        self.onSeenMarksChanged = onSeenMarksChanged
         self.onLatencyChange = onLatencyChange
         self.onChange = onChange
         kernel = memory.kernel(for: host.id)
@@ -203,10 +212,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
         consumeTask?.cancel()
         latencyTask?.cancel()
         kernelTask?.cancel()
+        checkoutTask?.cancel()
         commandSchemaTask?.cancel()
         consumeTask = nil
         latencyTask = nil
         kernelTask = nil
+        checkoutTask = nil
         Task { [session] in await session.end() }
     }
 
@@ -260,8 +271,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 invalidateInventory()
             }
         case .server(let server):
-            // What was listed came from the server that answered before, and
-            // its Pane ids may repeat under this one.
+            let previousInstance = inventoryInstance
             if inventoryCore != server.coreID {
                 invalidateInventory()
                 if inventoryCore != nil {
@@ -271,14 +281,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
                     sessionEventCounts = [:]
                     droppedPicks = [:]
                     chatTypings = [:]
+                    titleRenameTokens = [:]
                 }
             } else if inventoryInstance != server.instanceID {
-                // The same server restarted: its terminals and Pins stay, but
-                // each program in them runs anew, so no pick a send guard
-                // dropped is the new one's. Chat's typing stays, as a Chat
-                // holds its screen reads: it reads the program started again
-                // as another holder, and types nothing over an earlier screen.
                 droppedPicks = [:]
+                titleRenameTokens = [:]
             }
             if let previous = memory.coreID(for: host.id), previous != server.coreID {
                 kernelTask?.cancel()
@@ -290,9 +297,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
             checkCommandSchema(on: server)
             inventoryCore = server.coreID
             inventoryInstance = server.instanceID
-            // Turns, seen marks and picks this device kept of another
-            // server, in this run or an earlier one, go with it.
             memory.noteCore(server.coreID, for: host.id)
+            if server.instanceID != previousInstance {
+                let marks = seenMarks
+                if !marks.isEmpty {
+                    onSeenMarksChanged(server.instanceID, marks)
+                }
+            }
             learnKernel()
         case .inventory(let inventory):
             guard status == .connected, let server else { return }
@@ -300,7 +311,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 RexServerLineage(server, sessionIDs: inventory.sessions.map(\.id)), for: host.id)
             noteSessionEvidence(in: inventory, previous: self.inventory)
             self.inventory = inventory
+            let marksBefore = seenMarks
             noteTurns(in: inventory)
+            reportSeenMarks(ifChangedFrom: marksBefore)
             notePicks(in: inventory)
             rebuildRows()
         }
@@ -347,8 +360,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             guard !hasEnded, kernel == nil, let found else { return }
             kernel = found
             memory.noteKernel(found, for: host.id)
-            // A check made before could read a Mac's processes as another system's.
             inventoryReplacements &+= 1
+            if let inventory { refreshMissingCheckouts(in: inventory) }
             onChange()
         }
     }
@@ -371,6 +384,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
         terminalsByPane = [:]
         agentsByPane = [:]
         statusExplanations = [:]
+        checkoutTask?.cancel()
+        checkoutTask = nil
+        askedCheckouts = Set(knownCheckouts.keys)
+        titleRenameTokens = [:]
     }
 
     /// Each inventory is the server's whole list, so Pins on Panes it no
@@ -378,7 +395,9 @@ final class RexConsoleProjection: ConsoleHostProjection {
     private func rebuildRows() {
         guard let inventory else { return }
         let builder = ConsolePaneRowBuilder(
-            host: host, inventory: RexOrganization.build(inventory, doneTerminals: doneTerminals))
+            host: host,
+            inventory: RexOrganization.build(
+                inventory, doneTerminals: doneTerminals, checkouts: knownCheckouts))
         let agents = builder.agentRows(liveChange: { _ in nil })
         terminalsByPane = builder.terminalRows(agents: agents, liveChange: { _ in nil })
         agentsByPane = agents
@@ -408,6 +427,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
         workspaces = builder.workspaceRows(launchDirectory: { directories[$0] })
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
+        refreshMissingCheckouts(in: inventory)
     }
 
     private static func statusExplanation(
@@ -482,6 +502,23 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// Marks each newly shown Agent's finished turn seen. A turn that ends
     /// while one stays shown is seen as it is noted, so it never reads Done.
+    private var seenMarks: [String: HerdrCoreTurnState.Mark] {
+        memory.rexTurnStates(for: host.id).compactMapValues { state in
+            state.seen.map { HerdrCoreTurnState.Mark(turn: $0.processID ?? 0, word: $0.updatedAt) }
+        }
+    }
+
+    var currentSeenMarks: (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
+        let instance = server?.instanceID ?? inventoryInstance ?? memory.rexServerLineage(for: host.id)?.instanceID
+        return instance.map { ($0, seenMarks) }
+    }
+
+    private func reportSeenMarks(ifChangedFrom before: [String: HerdrCoreTurnState.Mark]) {
+        let marks = seenMarks
+        guard marks != before, let instance = server?.instanceID ?? inventoryInstance else { return }
+        onSeenMarksChanged(instance, marks)
+    }
+
     func setShownAgents(_ paneIDs: Set<String>) {
         let opened = paneIDs.subtracting(shownAgents)
         shownAgents = paneIDs
@@ -489,9 +526,11 @@ final class RexConsoleProjection: ConsoleHostProjection {
         let opening = opened.filter { known[$0] != nil }
         guard !opening.isEmpty else { return }
         let wasDone = doneTerminals
+        let marksBefore = seenMarks
         for paneID in opening {
             memory.updateRexTurnState(of: paneID, for: host.id) { $0.markSeen() }
         }
+        reportSeenMarks(ifChangedFrom: marksBefore)
         guard doneTerminals != wasDone, inventory != nil else { return }
         rebuildRows()
         onChange()
@@ -858,8 +897,21 @@ final class RexConsoleProjection: ConsoleHostProjection {
         kernel == HerdrCoreLocator.macOSKernel || kernel == HerdrCoreLocator.linuxKernel
     }
 
+    private var supportsAgentLaunch: Bool {
+        supportsProjectOperations || kernel == HerdrCoreLocator.windowsKernel
+    }
+
     private func projectConnection() async throws -> (RexServerStatus, any RexHostProjects) {
         guard supportsProjectOperations, let server, !isAwaitingSnapshot else { throw Self.unavailable }
+        return try await session.withConnection { connection in
+            guard connection.server == server else { throw TransportError.rexServerGone }
+            guard let projects = connection.transport.projects else { throw Self.unavailable }
+            return (server, projects)
+        }
+    }
+
+    private func agentDiscoveryConnection() async throws -> (RexServerStatus, any RexHostProjects) {
+        guard supportsAgentLaunch, let server, !isAwaitingSnapshot else { throw Self.unavailable }
         return try await session.withConnection { connection in
             guard connection.server == server else { throw TransportError.rexServerGone }
             guard let projects = connection.transport.projects else { throw Self.unavailable }
@@ -878,7 +930,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func availableAgentKinds() async throws -> [SupportedAgentKind] {
         guard acceptsAgentCommand else { throw Self.unavailable }
-        let (server, projects) = try await projectConnection()
+        let (server, projects) = try await agentDiscoveryConnection()
         let found = try await projects.discoverRexAgents()
         guard self.server == server else { throw TransportError.rexServerGone }
         openCodeVersion = found.openCodeVersion
@@ -899,13 +951,13 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     func startAgent(_ request: AgentLaunchRequest) async throws -> Agent {
         guard let workspace = request.workspaceID, inventory?.sessions.contains(where: { $0.id == workspace }) == true,
-            let server, supportsProjectOperations else { throw Self.unavailable }
+            let server, supportsAgentLaunch else { throw Self.unavailable }
         let cwd = launchDirectory(ofWorkspace: workspace, asked: request.cwd ?? "")
         return try await launch(request, cwd: cwd, placement: .window(sessionID: workspace), server: server)
     }
 
     func startAgentInNewWorkspace(_ request: AgentLaunchRequest, workspace: NewWorkspaceSpec) async throws -> Agent {
-        guard let server, supportsProjectOperations, !isAwaitingSnapshot else { throw Self.unavailable }
+        guard let server, supportsAgentLaunch, !isAwaitingSnapshot else { throw Self.unavailable }
         let label = workspace.label ?? RexNewTerminal.sessionLabel(for: workspace.directory)
         return try await launch(request, cwd: workspace.directory, placement: .session(label: label), server: server)
     }
@@ -924,8 +976,14 @@ final class RexConsoleProjection: ConsoleHostProjection {
         guard RemoteFilePath.isAcceptable(source) else { throw HerdrCoreWorktreeError.notInGitRepository }
         let (server, projects) = try await projectConnection()
         let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")
-        let branch = worktree.branch ?? ""
+        let trimmedBranch = worktree.branch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let branch = trimmedBranch.flatMap { $0.isEmpty ? nil : $0 } ?? HerdrCoreWorktrees.fallbackBranchName()
         let checkout = try await git.create(branch: branch, from: source, startPoint: worktree.base)
+        knownCheckouts[checkout.path] = HostCheckout(
+            root: checkout.path, mainCheckout: checkout.mainCheckout, isLinkedWorktree: true)
+        knownCheckouts[checkout.mainCheckout] = HostCheckout(
+            root: checkout.mainCheckout, mainCheckout: checkout.mainCheckout, isLinkedWorktree: false)
+        askedCheckouts.insert(checkout.path)
         do {
             return try await launch(request, cwd: checkout.path, placement: .session(label: branch), server: server)
         } catch {
@@ -937,10 +995,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
         _ request: AgentLaunchRequest, cwd: String, placement: RexNewTerminal.Placement, server: RexServerStatus
     ) async throws -> Agent {
         guard acceptsAgentCommand, self.server == server else { throw Self.unavailable }
-        guard RemoteFilePath.isAcceptable(cwd) else { throw TransportError.invalidDirectoryPath(path: cwd) }
+        let isWindows = kernel == HerdrCoreLocator.windowsKernel
+        let checkPath = isWindows ? RemoteFilePath.windowsForSFTP(cwd) : cwd
+        guard RemoteFilePath.isAcceptable(checkPath) else { throw TransportError.invalidDirectoryPath(path: cwd) }
         let launchRequest = try await session.withConnection { [kernel] connection in
             guard connection.server == server else { throw TransportError.rexServerGone }
-            let directory = try await connection.transport.reads.fileStatus(atPath: cwd)
+            let directory = try await connection.transport.reads.fileStatus(atPath: checkPath)
             guard directory?.kind == .directory else {
                 throw TransportError.rexRejected(code: "directory_missing", message: ChangesReadError.directoryMissing.message)
             }
@@ -951,7 +1011,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
             }
             return launch
         }
-        let program = try RexNewTerminal.Program(request: launchRequest, cwd: cwd, openCodeVersion: openCodeVersion)
+        let program = try RexNewTerminal.Program(
+            request: launchRequest, cwd: cwd, openCodeVersion: openCodeVersion, onWindows: isWindows)
         let made = try await session.createTerminal(
             placement, cwd: cwd, program: program, windowLabel: request.tabLabel, keepingTo: server)
         guard self.server == server else { throw TransportError.rexServerGone }
@@ -989,10 +1050,169 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
     func closePane(_: String) async throws { throw Self.unavailable }
     func closeTab(_: String) async throws { throw Self.unavailable }
-    func listWorktrees(forWorkspaceID _: String) async throws -> WorktreeListResponse { throw Self.unavailable }
-    func removeWorktree(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt { throw Self.unavailable }
-    func worktreeRemovalRisk(_: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
-        throw Self.unavailable
+
+    func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
+        guard supportsProjectOperations else { throw Self.unavailable }
+        guard let path = workspaces.first(where: { $0.id == workspaceID })?.checkoutPath,
+            let checkout = knownCheckouts[path], let main = checkout.mainCheckout
+        else { throw WorktreeRemovalError.staleIdentity }
+        let (_, projects) = try await projectConnection()
+        let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")
+        let entries = try await git.list(in: path)
+        return WorktreeListResponse(
+            source: WorktreeSourceInfo(
+                repoKey: main,
+                repoName: HerdrCoreWorktrees.repositoryName(mainCheckout: main),
+                repoRoot: main,
+                sourceCheckoutPath: path,
+                sourceWorkspaceID: workspaceID),
+            worktrees: entries.map { entry in
+                let open = workspaces.first { $0.checkoutPath == entry.path }?.id
+                return WorktreeInfo(
+                    isBare: entry.isBare,
+                    isDetached: entry.isDetached,
+                    isLinkedWorktree: entry.isLinkedWorktree,
+                    isPrunable: entry.isPrunable,
+                    label: entry.label,
+                    path: entry.path,
+                    branch: entry.branch,
+                    openWorkspaceID: open)
+            })
+    }
+
+    func worktreeRemovalRisk(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalRisk? {
+        guard supportsProjectOperations else { throw Self.unavailable }
+        let (_, projects) = try await projectConnection()
+        let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")
+        return try await git.removalRisk(ofCheckout: request.identity.checkoutPath)
+    }
+
+    func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt {
+        guard supportsProjectOperations else { throw Self.unavailable }
+        let identity = request.identity
+        guard identity.hostID == host.id else { throw WorktreeRemovalError.staleIdentity }
+        guard !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        guard worktreesBeingRemoved.insert(identity).inserted else {
+            throw WorktreeRemovalError.alreadyInProgress
+        }
+        defer { worktreesBeingRemoved.remove(identity) }
+
+        await refreshTerminalInventory()
+        guard !isAwaitingSnapshot else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        if hasLiveTerminals(inCheckout: identity.checkoutPath, workspaceID: identity.workspaceID) {
+            throw TransportError.rexRejected(
+                code: "live_terminals",
+                message: String(localized: "Close the open terminals in this worktree in Rex before removing it."))
+        }
+
+        let (_, projects) = try await beforeEndingWorktree { try await projectConnection() }
+        let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")
+        let mainCheckout = try await beforeEndingWorktree { try await git.verifiedMainCheckout(of: identity) }
+        let risk = try await beforeEndingWorktree { try await git.removalRisk(ofCheckout: identity.checkoutPath) }
+        guard risk.isCovered(by: request.toldRisk) else {
+            throw WorktreeRemovalError.changedSinceConfirmation
+        }
+
+        await refreshTerminalInventory()
+        if hasLiveTerminals(inCheckout: identity.checkoutPath, workspaceID: identity.workspaceID) {
+            throw TransportError.rexRejected(
+                code: "live_terminals",
+                message: String(localized: "Close the open terminals in this worktree in Rex before removing it."))
+        }
+
+        try await git.remove(
+            path: identity.checkoutPath, mainCheckout: mainCheckout, force: risk.requiresForce)
+
+        let receipt = WorktreeRemovalReceipt(request: request, affectedAgentIDs: [])
+        knownCheckouts[identity.checkoutPath] = nil
+        askedCheckouts.remove(identity.checkoutPath)
+        rebuildRows()
+        onChange()
+        return receipt
+    }
+
+    private func beforeEndingWorktree<T>(_ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch let error as TransportError where error.isRetryable && error != .cancelled {
+            throw WorktreeRemovalError.connectionFailedBeforeEnding
+        }
+    }
+
+    private func hasLiveTerminals(inCheckout checkoutPath: String, workspaceID: String) -> Bool {
+        guard let inventory else { return true }
+        let normalized = checkoutPath.hasSuffix("/") ? String(checkoutPath.dropLast()) : checkoutPath
+        let prefix = normalized + "/"
+        for session in inventory.sessions {
+            if session.id == workspaceID, !session.terminals.isEmpty {
+                return true
+            }
+            if let directory = session.launchDirectory,
+                directory == normalized || directory.hasPrefix(prefix),
+                !session.terminals.isEmpty
+            {
+                return true
+            }
+            for terminal in session.terminals {
+                if let directory = terminal.details.directory,
+                    directory == normalized || directory.hasPrefix(prefix)
+                {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func refreshMissingCheckouts(in inventory: RexInventory) {
+        guard supportsProjectOperations else { return }
+        let missing = Array(Set(inventory.sessions.compactMap { session -> String? in
+            guard let directory = session.launchDirectory, !directory.isEmpty, directory != session.home,
+                RemoteFilePath.isAcceptable(directory), knownCheckouts[directory] == nil,
+                !askedCheckouts.contains(directory)
+            else { return nil }
+            return directory
+        })).sorted()
+        guard !missing.isEmpty else { return }
+        for path in missing { askedCheckouts.insert(path) }
+        checkoutRefresh &+= 1
+        let generation = checkoutRefresh
+        checkoutTask?.cancel()
+        checkoutTask = Task { [weak self] in
+            await self?.fetchCheckouts(missing, generation: generation)
+        }
+    }
+
+    private func fetchCheckouts(_ directories: [String], generation: Int) async {
+        guard !hasEnded, supportsProjectOperations else { return }
+        guard let (_, projects) = try? await projectConnection() else {
+            for path in directories { askedCheckouts.remove(path) }
+            return
+        }
+        var noted = false
+        var remaining = directories
+        while !remaining.isEmpty {
+            let batch = Array(remaining.prefix(GitProbe.checkoutRootsPerCall))
+            remaining.removeFirst(batch.count)
+            let answers = try? await gitGate.run { try await projects.checkouts(for: batch) }
+            guard !Task.isCancelled, !hasEnded, generation == checkoutRefresh else { return }
+            if let answers {
+                for (asked, checkout) in answers {
+                    knownCheckouts[asked] = checkout
+                    knownCheckouts[checkout.root] = checkout
+                    noted = true
+                }
+            } else {
+                for path in batch { askedCheckouts.remove(path) }
+            }
+        }
+        guard noted, !hasEnded, generation == checkoutRefresh else { return }
+        rebuildRows()
+        onChange()
     }
     /// Done is per device, as `setAgentShown` reads it: nothing to tell the
     /// server.
@@ -1066,6 +1286,98 @@ final class RexConsoleProjection: ConsoleHostProjection {
     func agentInfo(paneID _: String) async throws -> Agent { throw Self.unavailable }
     func processInfo(paneID _: String) async throws -> PaneProcessInfo { throw Self.unavailable }
     func promptAgent(_: AgentPromptParams) async throws -> Agent { throw Self.unavailable }
+
+    func titleRenameSessionToken(paneID: String) -> String? {
+        titleRenameTokens[paneID]
+    }
+
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent {
+        guard status == .connected, !isAwaitingSnapshot,
+            let activeServer = server,
+            let address = RexPaneAddress(paneID: paneID),
+            let listed = listedDetails(at: address)
+        else {
+            throw TransportError.rexServerGone
+        }
+        let payload = JSONValue.object([
+            "session_id": .string(address.sessionID),
+            "block_id": .string(address.blockID),
+        ])
+        let deadline = chatReadDeadline
+        let (processAnswer, statusAnswer, titleAnswer) = try await session.withConnection { connection in
+            guard connection.server == activeServer else { throw TransportError.rexServerGone }
+            async let processReply = connection.control.call(
+                RexInventoryWire.terminalMethod("process"), payload: payload, waiting: deadline
+            ).result(JSONValue.self)
+            async let statusReply = connection.control.call(
+                RexInventoryWire.terminalMethod("program_status"), payload: payload, waiting: deadline
+            ).result(JSONValue.self)
+            async let titleReply = connection.control.call(
+                RexInventoryWire.terminalMethod("title"), payload: payload, waiting: deadline
+            ).result(JSONValue.self)
+            return (
+                try await processReply,
+                try? await statusReply,
+                try? await titleReply
+            )
+        }
+        guard server == activeServer, listedDetails(at: address) != nil else {
+            throw TransportError.rexServerGone
+        }
+        var details = listed
+        details.noteForeground(RexInventoryWire.process(processAnswer))
+        if let statusAnswer {
+            details.status = RexInventoryWire.rootStatus(statusAnswer)
+        }
+        if let titleAnswer {
+            details.title = RexInventoryWire.title(titleAnswer)
+        }
+        guard let kind = RexAgentRule.agentKind(in: details),
+            let pid = details.processID
+        else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent is no longer running in this Terminal."),
+                confirmedFailure: true)
+        }
+        var agentStatus = RexAgentRule.status(of: details, heldBy: kind)
+        if agentStatus == .idle, doneTerminals.contains(paneID) {
+            agentStatus = .done
+        }
+        let pick = memory.rexChatPicks(for: host.id)[paneID]?.label ?? ""
+        titleRenameTokens[paneID] = "rex:\(activeServer.instanceID):\(pid):\(kind):\(pick)"
+        let terminalTitle = details.title
+        let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
+        let listedAgent = agentsByPane[paneID]?.agent
+        let tabID = listedAgent?.tabID ?? terminalsByPane[paneID]?.tabID ?? ""
+        return Agent(
+            terminalID: paneID,
+            kind: kind,
+            title: stripped ?? "",
+            status: agentStatus,
+            workspaceID: address.sessionID,
+            tabID: tabID,
+            paneID: paneID,
+            cwd: details.directory ?? "",
+            revision: 0,
+            name: listedAgent?.name,
+            terminalTitle: terminalTitle,
+            terminalTitleStripped: stripped,
+            foregroundCwd: details.directory)
+    }
+
+    func titleRenamePrompt(_ text: String, paneID: String) async throws {
+        guard let address = RexPaneAddress(paneID: paneID) else { throw Self.unavailable }
+        let corePin = TerminalCorePin(joined: inventoryCore)
+        let sender = RexComposerSend(
+            address: address,
+            projection: { [weak self] in self },
+            corePin: corePin,
+            clock: sendClock)
+        let outcome = await sender.send(text, route: .terminal, attach: nil)
+        if let error = AgentTitleRenameError.fromCheckedSend(outcome) {
+            throw error
+        }
+    }
 
     // MARK: Chat's typing (ADR 0055)
 
@@ -1453,7 +1765,15 @@ final class RexConsoleProjection: ConsoleHostProjection {
             },
             home: { RemoteFilePath.windowsForSFTP(try await Self.reads(session).hostHomeDirectory()) },
             queryDevin: { try await Self.reads(session).queryDevin($0) },
-            queryOpenCode: { try await Self.reads(session).queryOpenCode($0) })
+            queryOpenCode: { try await Self.reads(session).queryOpenCode($0) },
+            accountDirectories: { kind in
+                let (helperHost, socket) = try await session.withConnection {
+                    ($0.transport.hostHelperHost, $0.transport.socket)
+                }
+                guard let helperHost else { return [] }
+                let data = try await HostHelperFiles(host: helperHost, rexSocket: socket).readUsageAccountFile()
+                return try UsageAccountFile.decode(data).directories(for: kind)
+            })
     }
 
     private nonisolated static func sftpListingRequest(

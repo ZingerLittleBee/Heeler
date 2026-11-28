@@ -115,6 +115,7 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     /// Moves a Pane to another Workspace and answers the id it has there,
     /// which differs from `paneID` on a Host whose ids name the Workspace.
     func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String
+    var movableWorkspaceIDs: Set<String>? { get }
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse
     func removeWorktree(_ request: WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     /// What removing this Worktree would lose, to warn of. Nil where the Host
@@ -132,6 +133,9 @@ protocol ConsoleHostProjection: AnyObject, Sendable {
     // MARK: One Agent
 
     func agentInfo(paneID: String) async throws -> Agent
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent
+    func titleRenamePrompt(_ text: String, paneID: String) async throws
+    func titleRenameSessionToken(paneID: String) -> String?
     func processInfo(paneID: String) async throws -> PaneProcessInfo
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen
@@ -308,6 +312,18 @@ extension ConsoleHostProjection {
     func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
         throw TransportError.hostFeatureUnavailable(feature: String(localized: "Move to Workspace"))
     }
+
+    var movableWorkspaceIDs: Set<String>? { nil }
+
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent {
+        try await agentInfo(paneID: paneID)
+    }
+
+    func titleRenamePrompt(_ text: String, paneID: String) async throws {
+        _ = try await promptAgent(AgentPromptParams(target: paneID, text: text))
+    }
+
+    func titleRenameSessionToken(paneID _: String) -> String? { nil }
 
     func launchDirectory(ofWorkspace workspaceID: String, asked: String) -> String { asked }
 

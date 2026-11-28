@@ -123,6 +123,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private let isNativeWindows: @MainActor () -> Bool
     private let stopClock: BlockedCardClock
     private var chatTypings: [String: HerdrCoreChatTyping] = [:]
+    private var titleRenameTokens: [String: String] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
     private var desktopAppCheck: Task<Void, Never>?
@@ -340,6 +341,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         desktopAppCheck?.cancel()
         desktopAppCheck = nil
         isDesktopAppRunning = false
+        titleRenameTokens = [:]
     }
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
@@ -474,6 +476,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
             chatTypings[terminal] = nil
+            titleRenameTokens[terminal] = nil
             sidebarRevision &+= 1
             notifyProgramWatches(of: terminal, .ended)
         case .missed(let snapshot):
@@ -1342,9 +1345,141 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    var movableWorkspaceIDs: Set<String>? {
+        Set(workspaces.map(\.id).filter { HerdrCoreOrganization.desktopSpace(ofWorkspace: $0) != nil })
+    }
+
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        guard !isAwaitingSnapshot, hasInventory else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        guard let record = terminalRecord(at: paneID), !record.hasFinished else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let currentSpace = record.labels["herdr.space"].flatMap { $0.isEmpty ? nil : $0 }
+        let targetSpace: String
+        switch destination {
+        case .workspace(let workspaceID):
+            guard let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) else {
+                throw TransportError.malformedResponse(
+                    String(localized: "Move into a desktop Workspace or a New Workspace. Directory Workspaces follow a Terminal's launch folder."))
+            }
+            guard space != currentSpace, workspaces.contains(where: { $0.id == workspaceID }) else {
+                throw TransportError.malformedResponse(String(localized: "The destination Workspace has changed."))
+            }
+            targetSpace = space
+        case .newWorkspace:
+            targetSpace = HerdrCoreLaunch.Placement.newDesktopSpaceID()
+        }
+        let targetTab = "tb" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let core = inventoryCore
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        let fresh: HerdrCoreTerminalRecord
+        do {
+            fresh = try await transport.terminalRecord(paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard !fresh.hasFinished, inventoryCore == core else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object([
+                "herdr.space": .string(targetSpace),
+                "herdr.tab": .string(targetTab),
+            ]),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
+        if !hasEnded, var labels = terminalLabels(at: paneID, on: core) {
+            labels["herdr.space"] = targetSpace
+            labels["herdr.tab"] = targetTab
+            apply(.labels(terminal: paneID, labels))
+        }
+        return paneID
+    }
+
     func agentInfo(paneID: String) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(
             feature: String(localized: "Agents on a herdr-core Host"))
+    }
+
+    func titleRenameSessionToken(paneID: String) -> String? {
+        titleRenameTokens[paneID]
+    }
+
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent {
+        guard hasInventory, departedAgentsByPane[paneID] == nil, let core = inventoryCore else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let record: HerdrCoreTerminalRecord
+        do {
+            record = try await readTerminalRecord(at: paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard inventoryCore == core, !record.hasFinished, !record.isRestarting,
+            var coreAgent = HerdrCoreAgentRule.agent(in: record)
+        else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent is no longer running in this Terminal."),
+                confirmedFailure: true)
+        }
+        guard let foreground = record.foreground, let pid = foreground.pid else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent process could not be identified."),
+                confirmedFailure: true)
+        }
+        if isNativeWindows(), !HerdrCoreAgentRule.windowsTerminalEndsWithItsProgram(foreground) {
+            throw AgentTitleRenameError(
+                message: String(localized: "This terminal's PowerShell stays open after the Agent exits, so Heeler cannot rename it safely."),
+                confirmedFailure: true)
+        }
+        if doneTerminals.contains(record.address) {
+            coreAgent = coreAgent.markedDone
+        }
+        let sessionLabel = record.labels[HerdrCoreSessionHint.sessionLabel] ?? ""
+        let pickLabel = record.labels[HerdrCoreSessionHint.pickLabel] ?? ""
+        titleRenameTokens[paneID] = "core:\(core):\(pid):\(coreAgent.kind):\(sessionLabel):\(pickLabel)"
+        let terminalTitle = record.title.isEmpty ? nil : record.title
+        let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
+        let workspaceID =
+            agentsByPane[paneID]?.agent.workspaceID
+            ?? HerdrCoreOrganization.workspaceID(
+                of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id))
+        let tabID =
+            agentsByPane[paneID]?.agent.tabID
+            ?? terminalsByPane[paneID]?.tabID
+            ?? "tab-\(record.address)"
+        let cwd = foreground.cwd.isEmpty ? record.cwd : foreground.cwd
+        return Agent(
+            terminalID: record.address,
+            kind: coreAgent.kind,
+            title: stripped ?? "",
+            status: coreAgent.status,
+            workspaceID: workspaceID,
+            tabID: tabID,
+            paneID: record.address,
+            cwd: cwd,
+            revision: 0,
+            name: HerdrCoreOrganization.agentName(of: record, kind: coreAgent.kind) ?? record.name,
+            terminalTitle: terminalTitle,
+            terminalTitleStripped: stripped,
+            foregroundCwd: foreground.cwd.isEmpty ? nil : foreground.cwd)
+    }
+
+    func titleRenamePrompt(_ text: String, paneID: String) async throws {
+        let corePin = TerminalCorePin(joined: inventoryCore)
+        let sender = HerdrCoreComposerSend(
+            address: paneID,
+            projection: { [weak self] in self },
+            corePin: corePin,
+            clock: chatTypingClock,
+            isOnWindows: isNativeWindows)
+        let outcome = await sender.send(text, route: .chat, attach: nil)
+        if let error = AgentTitleRenameError.fromCheckedSend(outcome) {
+            throw error
+        }
     }
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {

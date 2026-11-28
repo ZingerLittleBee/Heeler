@@ -16,7 +16,10 @@ enum RexOrganization {
 
     /// `doneTerminals` are the panes whose Agent finished a turn this device
     /// has not seen (`RexTurnState`); one reads Done while it reads Idle.
-    static func build(_ inventory: RexInventory, doneTerminals: Set<String> = []) -> SessionSnapshot {
+    static func build(
+        _ inventory: RexInventory, doneTerminals: Set<String> = [],
+        checkouts: [String: HostCheckout] = [:]
+    ) -> SessionSnapshot {
         var workspaces: [WorkspaceInfo] = []
         var tabs: [TabInfo] = []
         var panes: [PaneInfo] = []
@@ -29,12 +32,16 @@ enum RexOrganization {
                 sessionTabs.append(
                     (detachedTabID(ofSession: session.id), String(localized: "Detached"), session.detached))
             }
+            let directory = session.launchDirectory
+            let checkout = directory.flatMap { path in
+                path == session.home ? nil : checkouts[path]
+            }
             workspaces.append(
                 WorkspaceInfo(
                     activeTabID: session.activeWindowID ?? sessionTabs.first?.id ?? "", agentStatus: .unknown,
                     focused: false, label: session.label, number: position + 1,
                     paneCount: session.terminals.count, tabCount: sessionTabs.count, workspaceID: session.id,
-                    worktree: nil))
+                    worktree: checkout.flatMap(Self.worktreeInfo)))
             for (number, tab) in sessionTabs.enumerated() {
                 tabs.append(
                     TabInfo(
@@ -70,6 +77,17 @@ enum RexOrganization {
     /// An Agent reads as its terminal's title, or before the program sets one
     /// as its kind, and is named as its block is, as a herdr-core Agent is.
     /// Its directory is where its program runs.
+    private static func worktreeInfo(_ checkout: HostCheckout) -> WorkspaceWorktreeInfo? {
+        checkout.mainCheckout.map { mainCheckout in
+            WorkspaceWorktreeInfo(
+                checkoutPath: checkout.root,
+                isLinkedWorktree: checkout.isLinkedWorktree,
+                repoKey: mainCheckout,
+                repoName: HerdrCoreWorktrees.repositoryName(mainCheckout: mainCheckout),
+                repoRoot: mainCheckout)
+        }
+    }
+
     private static func agentInfo(
         _ terminal: RexInventory.Terminal, kind: String, status: AgentStatus, paneID: String, tabID: String,
         workspaceID: String
