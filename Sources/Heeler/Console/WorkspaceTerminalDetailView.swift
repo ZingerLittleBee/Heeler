@@ -280,9 +280,7 @@ struct WorkspaceTerminalDetailView: View {
             defer { isCreatingTerminal = false }
             do {
                 let created = try await console.createShellTerminal(creationRequest, on: terminal.hostID)
-                guard let target = console.terminals.first(where: {
-                    $0.hostID == terminal.hostID && $0.terminalID == created.terminalID
-                }) else {
+                guard let target = await console.waitForTerminal(created, on: terminal.hostID) else {
                     keyboardHandoff?.cancelShellTerminal()
                     createFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return

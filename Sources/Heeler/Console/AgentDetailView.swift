@@ -889,6 +889,11 @@ struct AgentDetailView: View {
                 if createdTerminal.identity == nil {
                     createdTerminal.created(try await console.createShellTerminal(request, on: agent.hostID))
                 }
+                // A Host whose inventory follows events (Rex) lists the new
+                // tab a moment after the create answers.
+                if let identity = createdTerminal.identity, !createdTerminal.wasListed {
+                    _ = await console.waitForTerminal(identity, on: agent.hostID)
+                }
                 guard let target = createdTerminal.resolve(in: console.terminals, hostID: agent.hostID) else {
                     keyboardHandoff.cancelShellTerminal()
                     terminalOpenFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it.")
