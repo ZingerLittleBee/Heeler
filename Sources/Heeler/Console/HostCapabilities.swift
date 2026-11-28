@@ -63,6 +63,8 @@ struct HostCapabilities: Equatable, Sendable {
     var rexProjects = false
     var readsProjects: Bool { hostScripts || rexProjects }
     var createsWorktrees: Bool { worktrees || (rexProjects && startsAgents) }
+    var worktreesFromDirectories = false
+    var createsWorktreesFromDirectories: Bool { worktreesFromDirectories || (rexProjects && startsAgents) }
 
     /// Whether an Agent in this directory offers Changes, wherever it does.
     func offersChanges(directory: String?) -> Bool {
@@ -200,6 +202,7 @@ extension HostCapabilities {
                 hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
             renamesExistingTabs = true
+            worktreesFromDirectories = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
@@ -237,6 +240,7 @@ extension HostCapabilities {
             movesPanes: offered)
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
         renamesConversationTitles = offered
+        worktreesFromDirectories = coreOnPosix
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and

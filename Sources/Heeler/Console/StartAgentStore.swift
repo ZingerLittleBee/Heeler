@@ -695,12 +695,27 @@ final class StartAgentStore {
     /// defined by landing in the origin agent's directory, and a worktree
     /// launch lands in a brand-new checkout instead — the two cannot both
     /// hold, so the origin flow drops the option rather than silently
-    /// ignoring the requested directory. New Workspace likewise has no
-    /// source Workspace to branch from.
+    /// ignoring the requested directory.
     var offersWorktree: Bool {
-        origin == nil && launchTarget == .existingWorkspace
+        origin == nil
             && (selectedHost?.capabilities.worktrees != false
                 || selectedHostID.map(offersConnectedWorktrees) == true)
+    }
+
+    var canStartInNewWorktree: Bool {
+        switch launchTarget {
+        case .existingWorkspace: selectedWorkspaceID != nil
+        case .newWorkspace: worktreeSourceDirectory != nil
+        }
+    }
+
+    var makesWorktreesFromDirectories: Bool {
+        selectedHost.map { capabilities($0).createsWorktreesFromDirectories } == true
+    }
+
+    private var worktreeSourceDirectory: String? {
+        guard launchTarget == .newWorkspace, makesWorktreesFromDirectories else { return nil }
+        return Self.nonEmptyTrimmed(newWorkspaceDirectory)
     }
 
     /// A herdr-core Host, and a tmux Host, have no generated branch: Heeler makes
@@ -1018,7 +1033,8 @@ final class StartAgentStore {
                     state = .editing
                     return
                 }
-                destination = .newWorktree(WorktreeSpec(branch: spec.branch, base: commit))
+                destination = .newWorktree(
+                    WorktreeSpec(branch: spec.branch, base: commit, sourceDirectory: spec.sourceDirectory))
             } catch let failure as GitHubWorktreeStartFailure {
                 state = .failed(failure.message)
                 return
@@ -1031,6 +1047,8 @@ final class StartAgentStore {
         let workspaceID: String?
         switch destination {
         case .newWorkspace:
+            workspaceID = nil
+        case .newWorktree(let spec) where spec.sourceDirectory != nil:
             workspaceID = nil
         case .existingWorkspace, .newWorktree:
             workspaceID = target.workspaceID
@@ -1063,11 +1081,7 @@ final class StartAgentStore {
             if origin == nil {
                 recents.rememberHost(hostID)
             }
-            if case .newWorkspace = destination {
-                recents.rememberWorkspace(agent.workspaceID, for: hostID)
-            } else if let workspaceID {
-                recents.rememberWorkspace(workspaceID, for: hostID)
-            }
+            recents.rememberWorkspace(workspaceID ?? agent.workspaceID, for: hostID)
             if case .kind(let kind, _, _) = launch {
                 recents.rememberAgentKind(kind)
                 if let preset {
@@ -1127,6 +1141,10 @@ final class StartAgentStore {
         case .newWorkspace:
             guard let directory = Self.nonEmptyTrimmed(newWorkspaceDirectory) else {
                 return nil
+            }
+            if offersWorktree && startsInNewWorktree, let source = worktreeSourceDirectory {
+                return .newWorktree(
+                    WorktreeSpec(branch: Self.nonEmptyTrimmed(worktreeBranch), sourceDirectory: source))
             }
             return .newWorkspace(
                 NewWorkspaceSpec(

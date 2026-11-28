@@ -120,7 +120,7 @@ struct StartAgentView: View {
                             onSelectNewWorkspace: store.selectNewWorkspace,
                             onNewWorkspace: openDirectoryBrowser)
                         if store.launchTarget == .newWorkspace {
-                            if store.offersWorkspaceName {
+                            if store.offersWorkspaceName && !store.startsInNewWorktree {
                                 TextField(
                                     String(localized: "Workspace name (optional)"),
                                     text: $store.newWorkspaceLabel)
@@ -140,7 +140,9 @@ struct StartAgentView: View {
                     } header: {
                         Text("Workspace")
                     } footer: {
-                        if store.launchTarget == .newWorkspace {
+                        if store.launchTarget == .newWorkspace && store.startsInNewWorktree {
+                            Text("Creates a fresh Workspace in the new worktree, named after its branch.")
+                        } else if store.launchTarget == .newWorkspace {
                             Text(store.offersWorkspaceName
                                 ? String(localized: "Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                                 : String(localized: "Creates a Workspace in this directory, named after its folder."))
@@ -153,7 +155,7 @@ struct StartAgentView: View {
                 if store.offersWorktree {
                     Section {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
-                            .disabled(store.selectedWorkspaceID == nil)
+                            .disabled(!store.canStartInNewWorktree)
                         if store.startsInNewWorktree {
                             let branchTitle: LocalizedStringKey =
                                 store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
@@ -207,6 +209,18 @@ struct StartAgentView: View {
                     } footer: {
                         if let note = store.gitHubWorktreeNote {
                             Text(note)
+                        } else if store.launchTarget == .newWorkspace {
+                            if !store.makesWorktreesFromDirectories {
+                                Text("On this Host, a new worktree starts from an existing Workspace. Choose one above.")
+                            } else if !store.canStartInNewWorktree {
+                                Text("Browse to a directory in a git repository to start in a new worktree of it.")
+                            } else if store.startsInNewWorktree {
+                                Text(
+                                    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD."
+                                )
+                            } else {
+                                Text("Run the agent in a clean checkout of the directory's repository instead of the directory itself.")
+                            }
                         } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                             Text(
                                 "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."

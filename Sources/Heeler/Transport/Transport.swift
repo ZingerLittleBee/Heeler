@@ -593,10 +593,12 @@ typealias ModelContextWindowResolver = @Sendable (String) async throws -> Int?
 struct WorktreeSpec: Sendable, Equatable {
     let branch: String?
     let base: String?
+    let sourceDirectory: String?
 
-    init(branch: String? = nil, base: String? = nil) {
+    init(branch: String? = nil, base: String? = nil, sourceDirectory: String? = nil) {
         self.branch = branch
         self.base = base
+        self.sourceDirectory = sourceDirectory
     }
 }
 

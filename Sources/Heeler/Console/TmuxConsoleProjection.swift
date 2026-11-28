@@ -618,7 +618,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     func startAgentInNewWorktree(
         _ request: AgentLaunchRequest, worktree: WorktreeSpec
     ) async throws -> Agent {
-        let directory = try sourceDirectory(for: request)
+        let directory = try worktree.sourceDirectory ?? sourceDirectory(for: request)
         let server = try await launchServer()
         let hooks = await hookSettings(for: request)
         let created = try await worktreeGit().create(

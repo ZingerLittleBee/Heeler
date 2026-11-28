@@ -868,10 +868,16 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
 
     func startAgentInNewWorktree(_ request: AgentLaunchRequest, worktree: WorktreeSpec) async throws -> Agent {
-        guard acceptsAgentCommand, let workspace = request.workspaceID,
-            inventory?.sessions.contains(where: { $0.id == workspace }) == true
-        else { throw Self.unavailable }
-        let source = launchDirectory(ofWorkspace: workspace, asked: request.cwd ?? "")
+        guard acceptsAgentCommand else { throw Self.unavailable }
+        let source: String
+        if let directory = worktree.sourceDirectory {
+            source = directory
+        } else {
+            guard let workspace = request.workspaceID,
+                inventory?.sessions.contains(where: { $0.id == workspace }) == true
+            else { throw Self.unavailable }
+            source = launchDirectory(ofWorkspace: workspace, asked: request.cwd ?? "")
+        }
         guard RemoteFilePath.isAcceptable(source) else { throw HerdrCoreWorktreeError.notInGitRepository }
         let (server, projects) = try await projectConnection()
         let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")

@@ -295,7 +295,8 @@ sessions share, grouped or linked, shows once, under the one with the lowest
 id, and the sessions Heeler keeps for showing Panes are not Workspaces. On
 Rex it is a Rex session, named and ordered as Rex shows it; one with no
 terminal is not listed. New
-Agent can start in an existing Workspace, a new Worktree of one, or a
+Agent can start in an existing Workspace, a new Worktree of one, a new
+Worktree of a remote directory's repository (except on Herdr TUI), or a
 new Workspace opened at a remote directory. The id is an opaque string.
 _Avoid_: project, folder, window, space (the desktop app's word)
 

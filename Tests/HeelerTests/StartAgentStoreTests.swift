@@ -1352,7 +1352,7 @@ struct StartAgentStoreTests {
 
         store.launchTarget = .newWorkspace
 
-        #expect(!store.offersWorktree)
+        #expect(!store.canStartInNewWorktree)
         #expect(store.startsInNewWorktree == false)
         #expect(store.worktreeBranch.isEmpty)
         #expect(store.worktreeBase.isEmpty)

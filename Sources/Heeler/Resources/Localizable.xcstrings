@@ -6668,6 +6668,7 @@
         }
       }
     },
+    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD." : {},
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {
         "ja" : {
@@ -7383,6 +7384,7 @@
         }
       }
     },
+    "A worktree of a directory" : {},
     "API Key" : {
       "localizations" : {
         "ja" : {
@@ -13517,6 +13519,7 @@
         }
       }
     },
+    "Browse to a directory in a git repository to start in a new worktree of it." : {},
     "Browsing directories" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -21407,6 +21410,7 @@
         }
       }
     },
+    "Creates a fresh Workspace in the new worktree, named after its branch." : {},
     "Creates a fresh Workspace on the Host. An empty name uses the directory's name." : {
       "localizations" : {
         "ja" : {
@@ -44366,6 +44370,7 @@
         }
       }
     },
+    "On this Host, a new worktree starts from an existing Workspace. Choose one above." : {},
     "On this branch" : {
       "localizations" : {
         "ja" : {
@@ -55029,6 +55034,7 @@
         }
       }
     },
+    "Run the agent in a clean checkout of the directory's repository instead of the directory itself." : {},
     "Run the command on the Host and compare what it prints with this fingerprint." : {
       "localizations" : {
         "ja" : {
