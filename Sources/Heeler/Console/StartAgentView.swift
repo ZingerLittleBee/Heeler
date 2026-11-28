@@ -132,15 +132,6 @@ struct StartAgentView: View {
                                     systemImage: "house")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
-                            } else {
-                                Label {
-                                    Text(store.newWorkspaceDirectory)
-                                        .font(.footnote.monospaced())
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                } icon: {
-                                    Image(systemName: "folder")
-                                }
                             }
                             Button("Browse Directory…", systemImage: "folder.badge.plus") {
                                 openDirectoryBrowser()
