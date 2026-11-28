@@ -285,6 +285,12 @@ struct WorkspaceTerminalDetailView: View {
                     createFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet.")
                     return
                 }
+                // The user may have gone Back or picked another terminal
+                // while the new one waited to list.
+                guard isSelected() else {
+                    keyboardHandoff?.cancelShellTerminal()
+                    return
+                }
                 onSelectTerminal(target)
             } catch {
                 keyboardHandoff?.cancelShellTerminal()
