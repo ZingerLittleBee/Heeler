@@ -192,9 +192,17 @@ final class HarnessConfigEditFlow: Identifiable {
         do {
             let edit = try await makeEdit()
             remember(edit)
-            // The file holds Heeler's own edit, so its Undo is what is left to offer.
-            guard applied == nil else {
-                phase = .idle
+            if applied != nil {
+                guard edit.folder != nil else {
+                    phase = .idle
+                    return
+                }
+                switch try await HarnessConfigEditor(files: try await services()).propose(edit) {
+                case .change(let change) where !change.changesFile && change.writesFolderFiles:
+                    phase = .review(change)
+                default:
+                    phase = .idle
+                }
                 return
             }
             switch try await HarnessConfigEditor(files: try await services()).propose(edit) {
@@ -217,33 +225,46 @@ final class HarnessConfigEditFlow: Identifiable {
         do {
             let files = try await services()
             do {
-                let applied = try await HarnessConfigEditor(
+                let written = try await HarnessConfigEditor(
                     files: files, foldersInUse: store.foldersInUse(on: hostID)
                 ).apply(change)
-                store.note(applied, on: hostID)
+                noteApplied(written, for: change)
                 phase = .idle
             } catch let lost as TransportError {
                 unconfirmedWrite = change
-                await settleUnconfirmedWrite()
-                phase = applied == nil ? .failed(HarnessConfigEditMessage.text(for: lost)) : .idle
+                let confirmed = await settleUnconfirmedWrite()
+                phase = confirmed ? .idle : .failed(HarnessConfigEditMessage.text(for: lost))
             }
         } catch {
             phase = .failed(HarnessConfigEditMessage.text(for: error))
         }
     }
 
-    /// Reads the file for the write nobody confirmed.
-    private func settleUnconfirmedWrite() async {
-        guard let change = unconfirmedWrite else { return }
+    @discardableResult
+    private func settleUnconfirmedWrite() async -> Bool {
+        guard let change = unconfirmedWrite else { return false }
         do {
             let written = try await HarnessConfigEditor(
                 files: try await services(), foldersInUse: store.foldersInUse(on: hostID)
             ).record(ofWritten: change)
             unconfirmedWrite = nil
-            if let written { store.note(written, on: hostID) }
+            if let written {
+                noteApplied(written, for: change)
+                return true
+            }
+            return false
         } catch {
-            // Still unknown, so the next review asks again.
+            return false
         }
+    }
+
+    private func noteApplied(_ written: HarnessConfigAppliedEdit, for change: HarnessConfigPendingChange) {
+        if !change.changesFile, var existing = applied {
+            existing.folder = written.folder
+            store.note(existing, on: hostID)
+            return
+        }
+        store.note(written, on: hostID)
     }
 
     func cancel() {

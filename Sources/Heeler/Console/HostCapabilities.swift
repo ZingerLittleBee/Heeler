@@ -255,18 +255,6 @@ extension HostCapabilities {
     /// box under the profile's band (`π-hwa > `).
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
-    /// The programs whose Chat a Linux core Host opens, each once the owner's check of
-    /// it passed and was recorded (ADR 0034). On hc-lab: Claude Code 2.1.288 and 2.1.316
-    /// against a mock API (2026-11-02), and, on herdr-core 0.1.13 (2026-11-03), Codex
-    /// 0.165.0 started with `--no-daemon` and Grok Build 1.0.70 signed in, and Pi 1.4.0
-    /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
-    /// turns a program on for every release: 2.2.2 passed, but on the recheck
-    /// (2026-11-04) a 1.19.5 Agent's last turn never ended in Chat, and every Send from
-    /// Chat found no input box on screen. Antigravity CLI 1.5.3 passed in core
-    /// Terminals on a boxd VM, not hc-lab, with Ubuntu 24.04.5 and herdr-core 0.1.18
-    /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
-    /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
-    /// trust prompt, permissions and questions from cards, and both followed `/clear`.
     static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
     static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]

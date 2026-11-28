@@ -581,4 +581,79 @@ import Testing
         }
         #expect(await files.journal.isEmpty)
     }
+
+    @Test func proposingRefreshesStaleFolderFilesWhenConfigAlreadyListsPlugin() async throws {
+        let staleTui = "\(Self.folder)/tui.js"
+        let files = InMemoryHostFiles(
+            files: [
+                Self.config: Self.edited,
+                Self.pluginPaths[0]: Self.plugin[0].contents,
+                Self.pluginPaths[1]: Self.plugin[1].contents,
+                staleTui: Data("// stale tui.js\n".utf8),
+            ])
+        try await files.createHostFolder(path: Self.folder)
+        await files.clearJournal()
+        let editor = HarnessConfigEditor(files: files)
+
+        let proposal = try await editor.propose(Self.edit)
+        guard case .change(let change) = proposal else {
+            Issue.record("expected folder refresh change, got \(proposal)")
+            return
+        }
+        #expect(!change.changesFile)
+        #expect(change.shownLines.isEmpty)
+        #expect(change.writesFolderFiles)
+        #expect(change.folderFilesInPlace == [Self.pluginPaths[0], Self.pluginPaths[1]])
+
+        let record = try await editor.apply(change)
+        #expect(await files.files[Self.config] == Self.edited)
+        #expect(await files.files[staleTui] == Self.plugin[2].contents)
+        #expect(await files.journal == ["mkdir \(Self.folder)", "write \(staleTui)"])
+
+        #expect(try await editor.propose(Self.edit) == .alreadyApplied(path: Self.config))
+
+        try await editor.undo(record)
+        #expect(await files.files[Self.config] == Data("{\n  \"plugin\": [],\n  \"theme\": \"dark\"\n}\n".utf8))
+        #expect(await files.folders.isEmpty)
+    }
+
+    @Test func failedFolderRefreshDoesNotDeleteExistingPluginFolder() async throws {
+        let staleTui = "\(Self.folder)/tui.js"
+        let files = InMemoryHostFiles(
+            files: [
+                Self.config: Self.edited,
+                Self.pluginPaths[0]: Self.plugin[0].contents,
+                Self.pluginPaths[1]: Self.plugin[1].contents,
+                staleTui: Data("// stale tui.js\n".utf8),
+            ])
+        try await files.createHostFolder(path: Self.folder)
+        let editor = HarnessConfigEditor(files: files)
+        let change = try await pending(files)
+        await files.setFolderFailure(TransportError.hostFileTimedOut)
+
+        await #expect(throws: TransportError.hostFileTimedOut) {
+            _ = try await editor.apply(change)
+        }
+        #expect(await files.folders.contains(Self.folder))
+        #expect(await files.files[Self.pluginPaths[0]] == Self.plugin[0].contents)
+        #expect(await files.files[staleTui] == Data("// stale tui.js\n".utf8))
+    }
+
+    @Test func recordOfWrittenRequiresUpdatedFolderFilesForFolderOnlyRefresh() async throws {
+        let staleTui = "\(Self.folder)/tui.js"
+        let files = InMemoryHostFiles(
+            files: [
+                Self.config: Self.edited,
+                Self.pluginPaths[0]: Self.plugin[0].contents,
+                Self.pluginPaths[1]: Self.plugin[1].contents,
+                staleTui: Data("// stale tui.js\n".utf8),
+            ])
+        try await files.createHostFolder(path: Self.folder)
+        let editor = HarnessConfigEditor(files: files)
+        let change = try await pending(files)
+
+        #expect(try await editor.record(ofWritten: change) == nil)
+        await files.set(staleTui, Self.plugin[2].contents)
+        #expect(try await editor.record(ofWritten: change) != nil)
+    }
 }

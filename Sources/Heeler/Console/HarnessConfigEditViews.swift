@@ -86,11 +86,17 @@ struct HarnessConfigEditOffer: View {
         case .idle:
             if let applied = flow.applied {
                 Section("Applied") {
-                    HarnessConfigChangeLines(path: applied.path, lines: applied.shownLines)
+                    if !applied.shownLines.isEmpty {
+                        HarnessConfigChangeLines(path: applied.path, lines: applied.shownLines)
+                    }
                     if let folder = applied.folder {
                         HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
                     }
                     Text(afterApplying).font(.footnote).foregroundStyle(.secondary)
+                    if applied.folder != nil {
+                        Button("Check for Plugin Update") { Task { await flow.review() } }
+                            .accessibilityIdentifier("harness-edit.check-update")
+                    }
                     Button("Undo") { Task { await flow.undo() } }
                         .accessibilityIdentifier("harness-edit.undo")
                 }
@@ -108,7 +114,9 @@ struct HarnessConfigEditOffer: View {
             }
         case .review(let change):
             Section {
-                HarnessConfigChangeLines(path: change.path, lines: change.shownLines)
+                if change.changesFile {
+                    HarnessConfigChangeLines(path: change.path, lines: change.shownLines)
+                }
                 if let folder = change.folder {
                     HarnessConfigFolderLines(
                         path: folder.path, filePaths: folder.filePaths, inPlace: change.folderFilesInPlace)
@@ -307,7 +315,9 @@ private struct HarnessConfigEditRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: edit.harness)
-            HarnessConfigChangeLines(path: edit.path, lines: edit.shownLines)
+            if !edit.shownLines.isEmpty {
+                HarnessConfigChangeLines(path: edit.path, lines: edit.shownLines)
+            }
             if let folder = edit.folder {
                 HarnessConfigFolderLines(path: folder.path, filePaths: folder.filePaths)
             }
