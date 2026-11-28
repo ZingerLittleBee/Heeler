@@ -6,9 +6,6 @@ import SwiftUI
 struct AgentsAndAccountsSettingsView: View {
     let console: ConsoleStore
     let hosts: [Host]
-    /// Hosts has Hosts, and only Rex Servers are on: there is no Host to add,
-    /// only none that keeps Accounts.
-    var hasOnlyRexServersOn = false
     @State private var editing: Editing?
 
     private struct Editing: Identifiable {

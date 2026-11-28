@@ -144,16 +144,7 @@ struct RexConsoleTests {
         #expect(notifications.hosts == [rex])
         #expect(notifications.confirmedTriggers(for: rex.id) == nil)
         #expect(HostStore(volatileHosts: [rex]).supportsLiveActivities(for: rex.id))
-
-        let tmux = Host(
-            name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
-        let held = Host(name: "Held", address: "held.example", username: "dev", serverKind: .unconfirmed)
         #expect(HostStore(volatileHosts: [rex]).integratedHosts == [rex])
-        #expect(!HostStore(volatileHosts: [rex]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: [rex, held]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: [rex, tmux]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: [held]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: []).hasOnlyRexServersOn)
     }
 
     /// What the Console dialed, in order.

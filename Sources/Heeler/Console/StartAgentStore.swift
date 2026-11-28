@@ -714,11 +714,6 @@ final class StartAgentStore {
         return Self.nonEmptyTrimmed(newWorkspaceDirectory)
     }
 
-    /// A herdr-core Host, and a tmux Host, have no generated branch: Heeler makes
-    /// the Worktree on the branch the user names, from the Workspace's HEAD
-    /// (ADR 0032, ADR 0045).
-    var worktreeNeedsBranch: Bool { false }
-
     /// Whether the form asks for Workspace and tab names. Its Agent name is
     /// independent of them.
     var offersWorkspaceAndTabNames: Bool {
@@ -840,13 +835,7 @@ final class StartAgentStore {
             && nameErrorMessage == nil
             && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
-            && !isMissingNeededBranch
             && state != .starting
-    }
-
-    private var isMissingNeededBranch: Bool {
-        offersWorktree && startsInNewWorktree && worktreeNeedsBranch
-            && Self.nonEmptyTrimmed(worktreeBranch) == nil
     }
 
     /// A Template goes through no shell, so it stays open when discovery failed.
@@ -937,7 +926,6 @@ final class StartAgentStore {
             let hostID = discoveryHostID,
             let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
-            !isMissingNeededBranch,
             nameErrorMessage == nil
         else { return }
         let preset = selectedPreset

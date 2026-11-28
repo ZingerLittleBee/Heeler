@@ -450,7 +450,6 @@ struct TmuxWorktreesTests {
         await form.discoverAgents()
 
         #expect(form.offersWorktree)
-        #expect(!form.worktreeNeedsBranch)
         form.startsInNewWorktree = true
         #expect(!form.worktreeBranch.isEmpty)
         #expect(!form.worktreeBranch.contains("/"))

@@ -97,8 +97,6 @@ enum ServerKind: String, Codable, Hashable, Sendable {
 
     var isConfirmed: Bool { self != .unconfirmed }
 
-    /// Whether Heeler's side of the Host exists for this kind: the plugin or
-    /// the Host Helper behind Usage and Accounts. A Rex Host has neither.
     var hasHostIntegrations: Bool {
         switch self {
         case .herdrTUI, .herdrCore, .tmux, .rex: true
