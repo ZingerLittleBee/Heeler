@@ -347,6 +347,61 @@ struct HostLiveActivityCoordinatorTests {
             try await waitPastSettle()
             #expect(controller.updates.count == 1)
             #expect(controller.updates[0].content.counts == .init(working: 0, blocked: 0, done: 1))
+            #expect(controller.updates[0].refreshesRelevance)
+        }
+    }
+
+    @Test func swappingAgentStatusesRefreshesRelevanceWithTheSameCounts() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            let otherPaneID = "wV:p2"
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working), agent(otherPaneID, .blocked)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+
+            coordinator.agentsDidChange([agent(observedPaneID, .blocked), agent(otherPaneID, .working)])
+            try await waitUntil("the status swap should update the activity") { !controller.updates.isEmpty }
+
+            let update = try #require(controller.updates.first)
+            #expect(update.content.counts == .init(working: 1, blocked: 1, done: 0))
+            #expect(update.refreshesRelevance)
+        }
+    }
+
+    @Test func replacingAWorkingAgentRefreshesRelevanceWithTheSameCounts() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+
+            coordinator.agentsDidChange([agent("wV:p2", .working)])
+            try await waitUntil("the replacement Agent should update the activity") { !controller.updates.isEmpty }
+
+            let update = try #require(controller.updates.first)
+            #expect(update.content.counts == .init(working: 1, blocked: 0, done: 0))
+            #expect(update.refreshesRelevance)
+        }
+    }
+
+    @Test func changingAnAgentTitleKeepsRelevance() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working, title: "First task")])
+            try await waitUntil("the activity should start") { !controller.requested.isEmpty }
+
+            coordinator.agentsDidChange([agent(observedPaneID, .working, title: "Next task")])
+            try await waitUntil("the new title should update the activity") { !controller.updates.isEmpty }
+
+            let update = try #require(controller.updates.first)
+            #expect(!update.refreshesRelevance)
         }
     }
 
@@ -611,6 +666,22 @@ struct HostLiveActivityCoordinatorTests {
             try await waitUntil("adopting should write the current push token") {
                 try await liveActivityToken() == "ee"
             }
+        }
+    }
+
+    @Test func theFirstUpdateOfAnAdoptedActivityKeepsRelevance() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            controller.seed(id: "act-cold", hostID: host.id)
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the adopted activity should be updated") { !controller.updates.isEmpty }
+
+            let update = try #require(controller.updates.first)
+            #expect(update.id == "act-cold")
+            #expect(!update.refreshesRelevance)
         }
     }
 
@@ -892,6 +963,7 @@ struct HostLiveActivityCoordinatorTests {
             }
             #expect(try openedPaneIDs(controller.updates[0].content) == ["w:p-work", "w:p-block"])
             #expect(controller.updates[0].content.counts == .init(working: 1, blocked: 1, done: 0))
+            #expect(!controller.updates[0].refreshesRelevance)
             try await waitUntil("the Host should receive the new pin list") {
                 try await filePinnedPaneIDs() == ["w:p-work"]
             }

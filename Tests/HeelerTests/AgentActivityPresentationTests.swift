@@ -29,68 +29,128 @@ struct AgentActivityPresentationTests {
             counts: total)
     }
 
-    @Test func freshShowsFourRowsWhenTotalIsFour() {
+    @Test func lockScreenTilesTakeBlockedThenDoneThenWorkingAndKeepSenderOrderWithinStatus() {
+        let cases = [
+            (["working", "done", "blocked"], ["w1:p2", "w1:p1"]),
+            (["working", "blocked", "done", "blocked", "blocked"], ["w1:p1", "w1:p3"]),
+            (["working", "done", "done"], ["w1:p1", "w1:p2"]),
+            (["unknown", "working", "working"], ["w1:p1", "w1:p2"]),
+            (["unknown", "idle"], ["w1:p0", "w1:p1"]),
+            (["working"], ["w1:p0"]),
+        ]
+        for (statuses, expected) in cases {
+            let agents = statuses.enumerated().map {
+                agentDetail(paneID: "w1:p\($0.offset)", status: $0.element)
+            }
+            let presentation = AgentActivityPresentation.detailed(
+                details: .init(hostName: "Laptop", agents: agents),
+                counts: .init(
+                    working: statuses.filter { $0 == "working" }.count,
+                    blocked: statuses.filter { $0 == "blocked" }.count,
+                    done: statuses.filter { $0 == "done" }.count))
+            let screen = AgentActivityLockScreenPresentation(presentation: presentation, isStale: false)
+            #expect(screen.tiles.map(\.paneID) == expected)
+            #expect(screen.countColumns.isEmpty)
+        }
+    }
+
+    @Test func lockScreenFooterUsesPlaintextCountsMinusTilesInAttentionOrder() {
+        let presentation = AgentActivityPresentation.detailed(
+            details: .init(hostName: "Laptop", agents: [
+                agentDetail(paneID: "w1:p1", status: "working"),
+                agentDetail(paneID: "w1:p2", status: "blocked"),
+                agentDetail(paneID: "w1:p3", status: "done"),
+                agentDetail(paneID: "w1:p4", status: "done"),
+                agentDetail(paneID: "w1:p5", status: "blocked"),
+            ]),
+            counts: .init(working: 2, blocked: 3, done: 2))
+
+        let fresh = AgentActivityLockScreenPresentation(presentation: presentation, isStale: false)
+        let stale = AgentActivityLockScreenPresentation(presentation: presentation, isStale: true)
+        #expect(fresh.footer == .phrases(["+1 needs you", "+2 done", "+2 working"]))
+        #expect(stale.footer == .phrases(["+1 needs you", "+2 done", "+2 working", "May be out of date"]))
+        #expect(stale.tiles == fresh.tiles)
+    }
+
+    @Test func lockScreenFooterShowsTotalOrStaleNoteWhenAllAgentsHaveTiles() {
         let presentation = detailedPresentation(
-            agentCount: 4, total: .init(working: 4, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 4)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
+            agentCount: 1, total: .init(working: 1, blocked: 0, done: 0))
+        #expect(AgentActivityLockScreenPresentation(presentation: presentation, isStale: false)
+            .footer == .total("1 agent"))
+        #expect(AgentActivityLockScreenPresentation(presentation: presentation, isStale: true)
+            .footer == .phrases(["May be out of date"]))
     }
 
-    @Test func freshShowsFourRowsAndOverflowWhenTotalIsFive() {
-        let presentation = detailedPresentation(
-            agentCount: 5, total: .init(working: 5, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 4)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 1)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+1 more")
+    @Test func lockScreenCountsOnlyShowsOneColumnPerNonzeroStatusAndNoOverflow() {
+        typealias CountColumn = AgentActivityLockScreenPresentation.CountColumn
+        let counts = AgentActivityAttributes.ContentState.Counts(working: 12, blocked: 1, done: 4)
+        let cases: [(AgentActivityPresentation, [CountColumn], String)] = [
+            (.countsOnly(counts: counts), [
+                CountColumn(status: "blocked", count: 1),
+                CountColumn(status: "done", count: 4),
+                CountColumn(status: "working", count: 12),
+            ], "17 agents"),
+            (.detailed(details: .init(hostName: "Mac mini", agents: []),
+                counts: .init(working: 2, blocked: 1, done: 0)), [
+                CountColumn(status: "blocked", count: 1),
+                CountColumn(status: "working", count: 2),
+            ], "3 agents"),
+            (.countsOnly(counts: .init(working: 3, blocked: 0, done: 0)), [
+                CountColumn(status: "working", count: 3),
+            ], "3 agents"),
+            (.countsOnly(counts: .init(working: 0, blocked: 0, done: 0)), [], "0 agents"),
+        ]
+        for (presentation, columns, total) in cases {
+            let fresh = AgentActivityLockScreenPresentation(presentation: presentation, isStale: false)
+            let stale = AgentActivityLockScreenPresentation(presentation: presentation, isStale: true)
+            #expect(fresh.tiles.isEmpty)
+            #expect(stale.tiles.isEmpty)
+            #expect(fresh.countColumns == columns)
+            #expect(stale.countColumns == columns)
+            #expect(fresh.footer == .total(total))
+            #expect(stale.footer == .phrases(["May be out of date"]))
+        }
     }
 
-    @Test func freshShowsFourRowsAndOverflowWhenTotalExceedsEnvelopeLimit() {
-        let presentation = detailedPresentation(
-            agentCount: 5, total: .init(working: 6, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).count == 4)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 2)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == "+2 more")
+    @Test func lockScreenTileUsesSecondFieldRowForTaskAndAppendsKindToFirstRow() {
+        var agent = agentDetail(paneID: "w1:p1", status: "blocked")
+        agent.rows = [
+            [.init(text: "herdr", bold: true)],
+            [.init(text: "Redesign"), .init(text: " live activity")],
+            [.init(text: "Third row")],
+        ]
+        let text = AgentActivityLockScreenPresentation.TileText(agent: agent)
+        #expect(text.task == "Redesign live activity")
+        #expect(text.byline == "herdr · Claude")
+
+        agent.rows = [
+            [.init(text: "herdr"), .init(text: " · "), .init(text: "Claude")],
+            [.init(text: "Redesign live activity")],
+        ]
+        #expect(AgentActivityLockScreenPresentation.TileText(agent: agent).byline == "herdr · Claude")
     }
 
-    @Test func staleShowsFourRowsWhenTotalIsFour() {
-        let presentation = detailedPresentation(
-            agentCount: 4, total: .init(working: 4, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: true).count == 4)
-        #expect(presentation.lockScreenOverflowCount(isStale: true) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: true) == "May be out of date")
-    }
+    @Test func lockScreenTileUsesOnlyFieldRowForTaskAndOmitsDuplicateKind() {
+        var agent = agentDetail(paneID: "w1:p1")
+        agent.rows = [[.init(text: "Redesign live activity")]]
+        let text = AgentActivityLockScreenPresentation.TileText(agent: agent)
+        #expect(text.task == "Redesign live activity")
+        #expect(text.byline == "Claude")
 
-    @Test func staleShowsFourRowsAndOverflowWhenTotalExceedsFour() {
-        let presentation = detailedPresentation(
-            agentCount: 5, total: .init(working: 5, blocked: 0, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: true).count == 4)
-        #expect(presentation.lockScreenOverflowCount(isStale: true) == 1)
-        #expect(presentation.lockScreenTrailingCaption(isStale: true) == "+1 more · May be out of date")
-    }
+        agent.rows = [[.init(text: "Claude")]]
+        let kindOnly = AgentActivityLockScreenPresentation.TileText(agent: agent)
+        #expect(kindOnly.task == "Claude")
+        #expect(kindOnly.byline == nil)
 
-    @Test func staleShowsAllRowsWhenTotalIsThreeOrLess() {
-        let presentation = detailedPresentation(
-            agentCount: 3, total: .init(working: 1, blocked: 1, done: 1))
-        #expect(presentation.lockScreenAgents(isStale: true).count == 3)
-        #expect(presentation.lockScreenOverflowCount(isStale: true) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: true) == "May be out of date")
-    }
+        agent.rows = []
+        let empty = AgentActivityLockScreenPresentation.TileText(agent: agent)
+        #expect(empty.task == nil)
+        #expect(empty.byline == nil)
 
-    @Test func staleCountsOnlyHasNoRowsAndNoOverflow() {
-        let presentation = AgentActivityPresentation.countsOnly(
-            counts: .init(working: 2, blocked: 1, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: true).isEmpty)
-        #expect(presentation.lockScreenOverflowCount(isStale: true) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: true) == "May be out of date")
-    }
-
-    @Test func freshCountsOnlyHasNoRowsOrCaption() {
-        let presentation = AgentActivityPresentation.countsOnly(
-            counts: .init(working: 2, blocked: 1, done: 0))
-        #expect(presentation.lockScreenAgents(isStale: false).isEmpty)
-        #expect(presentation.lockScreenOverflowCount(isStale: false) == 0)
-        #expect(presentation.lockScreenTrailingCaption(isStale: false) == nil)
+        agent.rows = nil
+        let legacy = AgentActivityLockScreenPresentation.TileText(agent: agent)
+        #expect(legacy.task == "Claude")
+        #expect(legacy.byline == "Heeler · Claude")
     }
 
     @Test func attentionOrderPrefersBlockedThenDoneThenWorking() {
@@ -109,33 +169,141 @@ struct AgentActivityPresentationTests {
         #expect(workingOnly.attentionItems.map(\.count) == [3])
     }
 
-    @Test func islandMarksUseAttentionOrderAndReplaceTheLastSlotOnOverflow() {
-        let mixed = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(mixed.marks.map(\.status) == ["blocked", "done", "working"])
-        #expect(mixed.marks.allSatisfy { !$0.isOverflow })
+    private typealias Counts = AgentActivityAttributes.ContentState.Counts
+    private typealias Compact = AgentActivityIslandCompact
 
-        let seven = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 7, blocked: 0, done: 0)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(seven.marks.count == 4)
-        #expect(seven.marks.dropLast().map(\.status) == ["working", "working", "working"])
-        #expect(seven.marks.last?.isOverflow == true)
-
-        let four = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(four.marks.map(\.status) == ["blocked", "blocked", "done", "working"])
-        #expect(four.marks.allSatisfy { !$0.isOverflow })
-
-        let empty = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 0, blocked: 0, done: 0)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(empty.marks.isEmpty)
+    private func compact(_ counts: Counts, letter: String? = nil, width: CGFloat = 430) -> Compact {
+        AgentActivityIslandCompact(
+            tallies: counts.attentionItems.map { .init(status: $0.status, count: $0.count) },
+            letter: letter, screenWidth: width)
     }
 
-    @Test func islandTileRequiresTwoHostsAndAComputedLabel() {
+    @Test func compactShowsEveryStatusSplitAcrossTheCamera() {
+        let working = compact(.init(working: 2, blocked: 0, done: 0))
+        #expect(working.leading == [.symbol("working")])
+        #expect(working.trailing == [.count("working", 2)])
+
+        let two = compact(.init(working: 0, blocked: 1, done: 2))
+        #expect(two.leading == [.pair("blocked", 1)])
+        #expect(two.trailing == [.pair("done", 2)])
+
+        let three = compact(.init(working: 1, blocked: 1, done: 1))
+        #expect(three.leading == [.pair("blocked", 1), .pair("done", 1)])
+        #expect(three.trailing == [.pair("working", 1)])
+        #expect(three.letter == nil)
+    }
+
+    @Test func compactGathersStatusesLeftOfTheHostLetter() {
+        let one = compact(.init(working: 0, blocked: 1, done: 0), letter: "L")
+        #expect(one.leading == [.pair("blocked", 1)])
+        #expect(one.trailing.isEmpty)
+        #expect(one.letter == "L")
+
+        let two = compact(.init(working: 3, blocked: 0, done: 2), letter: "L")
+        #expect(two.leading == [.pair("done", 2), .pair("working", 3)])
+        #expect(two.trailing.isEmpty)
+
+        let three = compact(.init(working: 1, blocked: 1, done: 1), letter: "MB")
+        #expect(three.leading == [.pair("blocked", 1), .pair("done", 1)])
+        #expect(three.trailing == [.pair("working", 1)])
+        #expect(three.letter == "MB")
+    }
+
+    @Test func compactStepsDownToSmallerSymbolsThenNumbersOnlyAndKeepsTheLetter() {
+        let allThree = Counts(working: 1, blocked: 1, done: 1)
+        #expect(compact(allThree, width: 430).level == .full)
+        #expect(compact(allThree, width: 393).level == .small)
+
+        let big = Counts(working: 15, blocked: 1, done: 12)
+        #expect(compact(big, width: 430).level == .small)
+        let narrow = compact(big, width: 393)
+        #expect(narrow.level == .numbersOnly)
+        #expect(narrow.leading == [.count("blocked", 1), .count("done", 12)])
+        #expect(narrow.trailing == [.count("working", 15)])
+
+        let lettered = compact(.init(working: 15, blocked: 10, done: 12), letter: "MB", width: 393)
+        #expect(lettered.level == .numbersOnly)
+        #expect(lettered.letter == "MB")
+    }
+
+    @Test func compactShrinksLargeCountsToTheSideLimit() {
+        let layout = compact(.init(working: 1, blocked: 100, done: 100), width: 430)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit < 15)
+        #expect(layout.sideWidth <= 58)
+        #expect(abs(layout.sideWidth - 58) < 0.001)
+        #expect(layout.leading == [.count("blocked", 100), .count("done", 100)])
+        #expect(layout.trailing == [.count("working", 1)])
+    }
+
+    @Test func compactShrinksALongHostLetterToTheSideLimit() {
+        let layout = compact(.init(working: 1, blocked: 0, done: 0), letter: "100.101", width: 393)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit < 15)
+        #expect(layout.sideWidth <= 47)
+        #expect(abs(layout.sideWidth - 47) < 0.001)
+        #expect(layout.leading == [.count("working", 1)])
+        #expect(layout.letter == "100.101")
+    }
+
+    @Test func compactUsesTheMinimumUnitWhenTheCountsCannotFit() {
+        let layout = compact(.init(working: Int.max, blocked: 0, done: 0), width: 393)
+        #expect(!layout.level.showsSymbols)
+        #expect(layout.level.unit == 9)
+        #expect(layout.leading == [.symbol("working")])
+        #expect(layout.trailing == [.count("working", Int.max)])
+    }
+
+    @Test func compactSidesShareTheWiderSidesWidth() {
+        let level = Compact.Level.full
+        let one = compact(.init(working: 2, blocked: 0, done: 0))
+        #expect(one.sideWidth == level.symbol)
+
+        let lettered = compact(.init(working: 1, blocked: 1, done: 1), letter: "L")
+        let digit = level.unit * 0.6
+        let pair = level.symbol + level.symbolGap + digit
+        let trailing = pair + level.itemSpacing + digit
+        let leading = pair * 2 + level.itemSpacing
+        #expect(abs(lettered.sideWidth - max(leading, trailing)) < 0.001)
+    }
+
+    @Test func expandedShowsThreeCardsThenTheAgentsLeftOutByStatus() {
+        let agents = ["blocked", "done", "done", "done", "working"].enumerated().map {
+            agentDetail(paneID: "w1:p\($0.offset)", status: $0.element)
+        }
+        let six = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: agents),
+            counts: .init(working: 2, blocked: 1, done: 3)))
+        #expect(six.cards.map(\.paneID) == ["w1:p0", "w1:p1", "w1:p2"])
+        #expect(six.summary == [.init(status: "done", count: 1), .init(status: "working", count: 2)])
+        #expect(six.isOverflow)
+        #expect(six.total == 6)
+
+        let two = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: Array(agents.prefix(2))),
+            counts: .init(working: 0, blocked: 1, done: 1)))
+        #expect(two.cards.count == 2)
+        #expect(two.summary.isEmpty)
+
+        let countsOnly = AgentActivityIslandExpanded(
+            presentation: .countsOnly(counts: .init(working: 2, blocked: 1, done: 0)))
+        #expect(countsOnly.cards.isEmpty)
+        #expect(countsOnly.summary == [.init(status: "blocked", count: 1), .init(status: "working", count: 2)])
+        #expect(countsOnly.isOverflow == false)
+    }
+
+    @Test func expandedKeepsAPinnedAgentFirstOnlyWithinItsStatus() {
+        // The Host sends pinned Agents first: here a pinned Working Agent.
+        let agents = [("w1:p9", "working"), ("w1:p1", "done"), ("w1:p2", "blocked"), ("w1:p3", "working")]
+            .map { agentDetail(paneID: $0.0, status: $0.1) }
+        let expanded = AgentActivityIslandExpanded(presentation: .detailed(
+            details: .init(hostName: "Laptop", agents: agents),
+            counts: .init(working: 2, blocked: 1, done: 1)))
+        #expect(expanded.cards.map(\.paneID) == ["w1:p2", "w1:p1", "w1:p9"])
+        #expect(expanded.summary == [.init(status: "working", count: 1)])
+    }
+
+    @Test func islandLetterRequiresTwoHostsAndAComputedLabel() {
         let oneHost = LiveActivityHostSnapshot(v: 1, hosts: [
             .init(id: "host", name: "Laptop", label: "L"),
         ])
@@ -146,61 +314,28 @@ struct AgentActivityPresentationTests {
         let one = AgentActivityIslandPresentation(
             presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 0)),
             hostID: "host", hostSnapshot: oneHost)
-        #expect(one.hasMultipleHosts == false)
         #expect(one.hostLabel == nil)
-        #expect(one.minimalTileStatus == nil)
+        #expect(one.compact(screenWidth: 430).letter == nil)
         #expect(one.accessibilityLabel == "1 working")
 
         let two = AgentActivityIslandPresentation(
             presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 0)),
             hostID: "host", hostSnapshot: twoHosts)
-        #expect(two.hostLabel == "L")
-        #expect(two.minimalTileStatus == "blocked")
+        #expect(two.compact(screenWidth: 430).letter == "L")
+        #expect(two.tallies == [.init(status: "blocked", count: 1), .init(status: "working", count: 1)])
         #expect(two.accessibilityLabel == "Laptop, 1 needs you, 1 working")
 
-        let missing = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 0, done: 1)),
-            hostID: "missing", hostSnapshot: twoHosts)
-        #expect(missing.hasMultipleHosts)
-        #expect(missing.hostLabel == nil)
-        #expect(missing.minimalTileStatus == nil)
-    }
-
-    @Test func islandMinimalTileUsesTheMostUrgentCount() {
-        let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
-            .init(id: "host", name: "Laptop", label: "L"),
-            .init(id: "other", name: "Oak4d", label: "O"),
-        ])
-        let cases: [(AgentActivityAttributes.ContentState.Counts, String)] = [
-            (.init(working: 5, blocked: 1, done: 1), "blocked"),
-            (.init(working: 5, blocked: 0, done: 1), "done"),
-            (.init(working: 5, blocked: 0, done: 0), "working"),
-        ]
-        for (counts, status) in cases {
-            let island = AgentActivityIslandPresentation(
-                presentation: .countsOnly(counts: counts), hostID: "host", hostSnapshot: snapshot)
-            #expect(island.minimalTileStatus == status)
-        }
-    }
-
-    @Test func islandMissingLabelsOmitTilesButKeepTheFullAccessibilitySummary() {
         for label in [nil, ""] as [String?] {
             let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
                 .init(id: "host", name: "Laptop", label: label),
                 .init(id: "other", name: "Oak4d", label: "O"),
             ])
-            let island = AgentActivityIslandPresentation(
+            let unlabeled = AgentActivityIslandPresentation(
                 presentation: .countsOnly(counts: .init(working: 1, blocked: 2, done: 1)),
                 hostID: "host", hostSnapshot: snapshot)
-            #expect(island.hostLabel == nil)
-            #expect(island.minimalTileStatus == nil)
-            #expect(island.accessibilityLabel == "Laptop, 2 need you, 1 working, 1 done")
+            #expect(unlabeled.hostLabel == nil)
+            #expect(unlabeled.accessibilityLabel == "Laptop, 2 need you, 1 working, 1 done")
         }
-        let noSnapshot = AgentActivityIslandPresentation(
-            presentation: .countsOnly(counts: .init(working: 1, blocked: 1, done: 1)),
-            hostID: "host", hostSnapshot: nil)
-        #expect(noSnapshot.hostLabel == nil)
-        #expect(noSnapshot.accessibilityLabel == "1 needs you, 1 working, 1 done")
     }
 
     @Test func narrationIncludesStatusForIslandAccessibility() {
@@ -227,13 +362,6 @@ struct AgentActivityPresentationTests {
             == "Checkout, Claude, Needs you")
     }
 
-    @Test func lockScreenRowsUseComfortableAndDenseAppleTargetHeights() {
-        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 1) == 44)
-        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 2) == 44)
-        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 3) == 28)
-        #expect(AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: 4) == 28)
-    }
-
     @Test func lockScreenChromeRemainsDynamicAcrossSystemAppearances() {
         #expect(AgentActivityLockScreenChrome.backgroundTint == nil)
         #expect(
@@ -245,9 +373,15 @@ struct AgentActivityPresentationTests {
         #expect(
             rgba(AgentActivityLockScreenChrome.actionColor, .light)
                 != rgba(AgentActivityLockScreenChrome.actionColor, .dark))
+        let tile = UIColor(AgentActivityLockScreenChrome.hostTile)
+        #expect(rgba(tile, .light) == [225, 223, 224])
+        #expect(rgba(tile, .dark) == [65, 65, 70])
+        let cut = UIColor(AgentActivityLockScreenChrome.glyphCut)
+        #expect(rgba(cut, .light) == [255, 255, 255])
+        #expect(rgba(cut, .dark) == [30, 30, 34])
     }
 
-    @Test func lockScreenHeaderPrefersTheCatalogAndFallsBackToTheEnvelope() {
+    @Test func lockScreenHostNamePrefersTheCatalogAndFallsBackToTheEnvelope() {
         let presentation = detailedPresentation(
             agentCount: 1, total: .init(working: 1, blocked: 0, done: 0))
         let snapshot = LiveActivityHostSnapshot(v: 1, hosts: [
@@ -272,14 +406,6 @@ struct AgentActivityPresentationTests {
             #expect(AgentActivityNarration.rowLabel(for: agent, on: .lockScreen)
                 == "Heeler, Claude, \(word)")
         }
-    }
-
-    @Test func countsOnlyUsesStatusPhrasesWithEnglishPlurals() {
-        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 2, blocked: 1, done: 0))
-            == "1 needs you · 2 working")
-        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 0, blocked: 2, done: 1))
-            == "2 need you · 1 done")
-        #expect(AgentActivityCopy.lockScreenCounts(.init(working: 0, blocked: 0, done: 0)).isEmpty)
     }
 
     @Test func lockScreenSemanticTextRemainsDynamicAcrossSystemAppearances() {
@@ -354,9 +480,6 @@ struct AgentActivityPresentationTests {
         ]
         #expect(AgentActivityNarration.rowLabel(for: agent)
             == "**Task** · feature/one, /src/Heeler, Needs you")
-        #expect(String(AgentActivityFields.attributedText(
-            agent.rows?[0] ?? [], rowIndex: 0, surface: .lockScreen).characters)
-            == "**Task** · feature/one")
     }
 
     @Test func intentionallyEmptyFieldsKeepOnlyTheStatus() {
@@ -372,101 +495,6 @@ struct AgentActivityPresentationTests {
         agent.rows = (1...4).map { [.init(text: "Row \($0)")] }
         #expect(AgentActivityFields.rows(for: agent).count == 3)
         #expect(AgentActivityNarration.rowLabel(for: agent) == "Row 1, Row 2, Row 3, Working")
-    }
-
-    @Test func threeRowCardsReserveSpaceForTheHostHeaderOverflowAndStaleness() {
-        let presentation = configuredPresentation(agentCount: 5)
-        #expect(presentation.lockScreenAgents(isStale: false).map(\.paneID) == ["w1:p0", "w1:p1"])
-        #expect(presentation.lockScreenAgents(isStale: true).count == 2)
-        #expect(presentation.lockScreenTrailingCaption(isStale: true)
-            == "+3 more · May be out of date")
-        #expect(presentation.expandedAgents.count == 2)
-        #expect(presentation.overflowCount == 3)
-        let three = configuredPresentation(agentCount: 3)
-        #expect(three.lockScreenAgents(isStale: false).count == 2)
-        #expect(three.lockScreenAgents(isStale: true).count == 2)
-        #expect(three.lockScreenTrailingCaption(isStale: false) == "+1 more")
-        #expect(three.lockScreenAgents(isStale: true, hasHeader: false).count == 3)
-        #expect(three.lockScreenTrailingCaption(isStale: true, hasHeader: false)
-            == "May be out of date")
-    }
-
-    @Test func lockScreenFittingKeepsTheEnvelopeOrderIncludingPinnedWorkingAgents() {
-        let ordered = ["working", "blocked", "done", "working", "done"].enumerated().map {
-            agentDetail(paneID: "w1:p\($0.offset)", status: $0.element)
-        }
-        let presentation = AgentActivityPresentation.detailed(
-            details: .init(hostName: "mbp", agents: ordered),
-            counts: .init(working: 3, blocked: 2, done: 2))
-        #expect(presentation.lockScreenAgents(isStale: true).map(\.paneID)
-            == ["w1:p0", "w1:p1", "w1:p2", "w1:p3"])
-        #expect(presentation.lockScreenOverflowCount(isStale: true) == 3)
-    }
-
-    @Test func threeRowCardsUseTheComfortableTargetHeight() {
-        var agent = agentDetail(paneID: "w1:p1")
-        agent.rows = [[.init(text: "1")], [.init(text: "2")], [.init(text: "3")]]
-        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 44)
-        agent.rows = [[.init(text: "1")], [.init(text: "2")]]
-        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 31)
-        agent.rows = [[.init(text: "1")]]
-        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
-        agent.rows = []
-        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
-        agent.rows = nil
-        #expect(AgentActivityRowMetrics.minimumHeight(for: agent) == 28)
-    }
-
-    @Test func twoRowCardsReserveSpaceForTheHostHeaderOverflowAndStaleness() {
-        let four = configuredPresentation(agentCount: 4, rowCount: 2)
-        #expect(four.lockScreenAgents(isStale: false).count == 4)
-        #expect(four.lockScreenTrailingCaption(isStale: false) == nil)
-        #expect(four.lockScreenAgents(isStale: true).map(\.paneID) == ["w1:p0", "w1:p1", "w1:p2"])
-        #expect(four.lockScreenTrailingCaption(isStale: true) == "+1 more · May be out of date")
-        #expect(four.lockScreenAgents(isStale: true, hasHeader: false).count == 4)
-        let five = configuredPresentation(agentCount: 5, rowCount: 2)
-        #expect(five.lockScreenAgents(isStale: false).count == 3)
-        #expect(five.lockScreenTrailingCaption(isStale: false) == "+2 more")
-        #expect(five.lockScreenAgents(isStale: true).count == 3)
-    }
-
-    @Test func styledFieldsPreserveHexColorAndSecondarySemantics() {
-        for hex in ["#abc", "#aabbcc"] {
-            #expect(rgba(UIColor(AgentActivityFields.foreground(
-                for: .init(text: "branch", fg: hex), rowIndex: 0, surface: .lockScreen)), .light)
-                == [170, 187, 204])
-        }
-        for invalid in ["red", "#ggg", "#1234", "#12345678"] {
-            #expect(rgba(UIColor(AgentActivityFields.foreground(
-                for: .init(text: "branch", fg: invalid), rowIndex: 0, surface: .lockScreen)), .light)
-                == rgba(.label, .light))
-        }
-        #expect(rgba(UIColor(AgentActivityFields.foreground(
-            for: .init(text: "directory", dim: true), rowIndex: 0, surface: .lockScreen)), .light)
-            == rgba(.secondaryLabel, .light))
-        #expect(rgba(UIColor(AgentActivityFields.foreground(
-            for: .init(text: "directory", dim: true), rowIndex: 2, surface: .lockScreen)), .light)
-            == rgba(.tertiaryLabel, .light))
-        #expect(rgba(UIColor(AgentActivityFields.foreground(
-            for: .init(text: "directory", dim: true), rowIndex: 2, surface: .island)), .light)
-            == rgba(.tertiaryLabel, .dark))
-    }
-
-    private func configuredPresentation(
-        agentCount: Int, rowCount: Int = 3
-    ) -> AgentActivityPresentation {
-        let rows: [[AgentActivityDetails.Field]] = [
-            [.init(text: "Heeler · Claude", bold: true)],
-            [.init(text: "Fix the sidebar")],
-            [.init(text: "/Users/developer/Heeler", dim: true)],
-        ]
-        let agents = (0..<agentCount).map { index in
-            var agent = agentDetail(paneID: "w1:p\(index)")
-            agent.rows = Array(rows.prefix(rowCount))
-            return agent
-        }
-        return .detailed(details: .init(hostName: "mbp", agents: agents),
-            counts: .init(working: agentCount, blocked: 0, done: 0))
     }
 
     private func rgba(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {

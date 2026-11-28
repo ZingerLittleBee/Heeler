@@ -49,7 +49,7 @@ protocol LiveActivityControlling: AnyObject {
         content: AgentActivityAttributes.ContentState
     ) throws -> LiveActivityHandle
 
-    func update(id: String, content: AgentActivityAttributes.ContentState)
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool)
 
     func end(
         id: String,
@@ -119,7 +119,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
             let activity = try Activity.request(
                 attributes: attributes,
                 content: ActivityContent(
-                    state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore),
+                    state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore(at: Date())),
                 pushType: .token)
             return LiveActivityHandle(id: activity.id, hostID: hostID)
         } catch {
@@ -127,8 +127,8 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         }
     }
 
-    func update(id: String, content: AgentActivityAttributes.ContentState) {
-        Task { await Self.pushUpdate(id: id, content: content) }
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool) {
+        Task { await Self.pushUpdate(id: id, content: content, refreshesRelevance: refreshesRelevance) }
     }
 
     func end(
@@ -137,7 +137,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         immediate: Bool
     ) {
         let content = finalContent.map {
-            ActivityContent(state: $0, staleDate: nil, relevanceScore: $0.counts.relevanceScore)
+            ActivityContent(state: $0, staleDate: nil, relevanceScore: $0.counts.relevanceScore(at: Date()))
         }
         let policy: ActivityUIDismissalPolicy = immediate ? .immediate : .default
         Task { await Self.pushEnd(id: id, content: content, policy: policy) }
@@ -183,11 +183,17 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
     }
 
     nonisolated private static func pushUpdate(
-        id: String, content: AgentActivityAttributes.ContentState
+        id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool
     ) async {
         guard let activity = activity(id: id) else { return }
-        await activity.update(ActivityContent(
-            state: content, staleDate: nil, relevanceScore: content.counts.relevanceScore))
+        let shown = activity.content
+        let now = Date()
+        let score = if refreshesRelevance {
+            content.counts.relevanceScore(at: now)
+        } else {
+            content.counts.relevanceScore(at: now, replacing: (shown.state.counts, shown.relevanceScore))
+        }
+        await activity.update(ActivityContent(state: content, staleDate: nil, relevanceScore: score))
     }
 
     nonisolated private static func pushEnd(
@@ -237,7 +243,7 @@ final class ActivityKitLiveActivityController: LiveActivityControlling {
         throw LiveActivityRequestError.requestFailed("ActivityKit unavailable")
     }
 
-    func update(id: String, content: AgentActivityAttributes.ContentState) {}
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool) {}
 
     func end(
         id: String,

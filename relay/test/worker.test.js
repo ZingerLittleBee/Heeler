@@ -491,14 +491,15 @@ suite("live activity request validation", () => {
 });
 
 suite("live activity forwarding to APNs", () => {
+  const blockedTier = 10_000_000_000;
   const relevanceCases = [
     ["empty", { working: 0, blocked: 0, done: 0 }, 0],
-    ["done", { working: 0, blocked: 0, done: 1 }, 1],
-    ["many done", { working: 0, blocked: 0, done: 999 }, 1],
-    ["working over done", { working: 1, blocked: 0, done: 999 }, 2],
-    ["many working", { working: 999, blocked: 0, done: 0 }, 2],
-    ["blocked over working and done", { working: 999, blocked: 1, done: 999 }, 3],
-    ["many blocked", { working: 0, blocked: 999, done: 0 }, 3],
+    ["done", { working: 0, blocked: 0, done: 1 }, nowSec],
+    ["many done", { working: 0, blocked: 0, done: 999 }, nowSec],
+    ["working and done", { working: 1, blocked: 0, done: 999 }, nowSec],
+    ["many working", { working: 999, blocked: 0, done: 0 }, nowSec],
+    ["blocked over working and done", { working: 999, blocked: 1, done: 999 }, blockedTier + nowSec],
+    ["many blocked", { working: 0, blocked: 999, done: 0 }, blockedTier + nowSec],
   ];
 
   for (const [name, counts, expected] of relevanceCases) {
@@ -548,7 +549,7 @@ suite("live activity forwarding to APNs", () => {
 
     assert.equal(
       calls[0].init.body,
-      `{"aps":{"timestamp":${nowSec},"event":"update","content-state":{"counts":{"working":2,"blocked":1,"done":0},"envelope":${activityEnvelope}},"relevance-score":3,"stale-date":${nowSec + 900}}}`,
+      `{"aps":{"timestamp":${nowSec},"event":"update","content-state":{"counts":{"working":2,"blocked":1,"done":0},"envelope":${activityEnvelope}},"relevance-score":${10_000_000_000 + nowSec},"stale-date":${nowSec + 900}}}`,
     );
     const payload = JSON.parse(calls[0].init.body);
     assert.deepEqual(Object.keys(payload), ["aps"]);
@@ -639,7 +640,7 @@ suite("live activity APNs status and caps", () => {
     );
     assert.equal(atLimit.status, 200);
     assert.equal(Buffer.byteLength(calls[1].init.body), 4096);
-    assert.equal(JSON.parse(calls[1].init.body).aps["relevance-score"], 3);
+    assert.equal(JSON.parse(calls[1].init.body).aps["relevance-score"], 10_000_000_000 + nowSec);
 
     const overLimit = await relay.fetch(
       pushRequest({ ...goodActivity, envelope: JSON.stringify({ ct: "x".repeat(padding + 1) }) }),

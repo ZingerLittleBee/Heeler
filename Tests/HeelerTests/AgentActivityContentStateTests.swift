@@ -49,19 +49,34 @@ struct AgentActivityContentStateTests {
         #expect(state.envelope == nil)
     }
 
-    @Test func relevanceScoreUsesStatusTiersWithoutCountTiebreaks() {
-        let cases: [(AgentActivityAttributes.ContentState.Counts, Double)] = [
-            (.init(working: 0, blocked: 0, done: 0), 0),
-            (.init(working: 0, blocked: 0, done: 1), 1),
-            (.init(working: 0, blocked: 0, done: 999), 1),
-            (.init(working: 1, blocked: 0, done: 999), 2),
-            (.init(working: 999, blocked: 0, done: 0), 2),
-            (.init(working: 999, blocked: 1, done: 999), 3),
-            (.init(working: 0, blocked: 999, done: 0), 3),
-        ]
+    @Test func relevanceScoreRanksBlockedHostsFirstThenTheMostRecentUpdate() {
+        typealias Counts = AgentActivityAttributes.ContentState.Counts
+        let earlier = Date(timeIntervalSince1970: 1_800_000_000.75)
+        let later = earlier.addingTimeInterval(60)
 
-        for (counts, expected) in cases {
-            #expect(counts.relevanceScore == expected)
-        }
+        #expect(Counts(working: 0, blocked: 0, done: 0).relevanceScore(at: later) == 0)
+        #expect(Counts(working: 0, blocked: 0, done: 1).relevanceScore(at: earlier) == 1_800_000_000)
+
+        let olderBlocked = Counts(working: 0, blocked: 1, done: 0).relevanceScore(at: earlier)
+        let newerBlocked = Counts(working: 999, blocked: 1, done: 999).relevanceScore(at: later)
+        let newestWorking = Counts(working: 3, blocked: 0, done: 0)
+            .relevanceScore(at: later.addingTimeInterval(86_400 * 365 * 100))
+        let newerDone = Counts(working: 0, blocked: 0, done: 1).relevanceScore(at: later)
+        let olderWorking = Counts(working: 999, blocked: 0, done: 999).relevanceScore(at: earlier)
+
+        #expect(newerBlocked > olderBlocked)
+        #expect(olderBlocked > newestWorking)
+        #expect(newerDone > olderWorking)
+    }
+
+    @Test func updatesThatKeepTheCountsKeepTheirScore() {
+        typealias Counts = AgentActivityAttributes.ContentState.Counts
+        let pushed = Counts(working: 2, blocked: 0, done: 1)
+        let reopened = Date(timeIntervalSince1970: 1_800_000_600)
+
+        #expect(pushed.relevanceScore(at: reopened, replacing: (pushed, 1_800_000_000)) == 1_800_000_000)
+        #expect(Counts(working: 1, blocked: 0, done: 2)
+            .relevanceScore(at: reopened, replacing: (pushed, 1_800_000_000)) == 1_800_000_600)
+        #expect(pushed.relevanceScore(at: reopened, replacing: nil) == 1_800_000_600)
     }
 }

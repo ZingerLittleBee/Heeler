@@ -454,7 +454,13 @@ final class HostLiveActivityCoordinator {
         }
 
         if let session = sessions[hostID] {
-            controller.update(id: session.id, content: content)
+            // With nothing applied yet (an activity adopted at launch), only a
+            // change of counts moves the Host, so opening the app keeps the
+            // relay's push time.
+            let refreshesRelevance = applied[hostID].map {
+                $0.counts != desired.counts || $0.statusCountsByPaneID != desired.statusCountsByPaneID
+            } ?? false
+            controller.update(id: session.id, content: content, refreshesRelevance: refreshesRelevance)
             applied[hostID] = desired
             reconcileNotes[hostID] = String(localized: "active — updated")
             return

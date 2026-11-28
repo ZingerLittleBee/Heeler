@@ -71,8 +71,10 @@ Decrypted plaintext (canonical form):
   order (`blocked` > `done` > `working`, ties by `pane` ascending byte
   order). Cap at **5** after that sort. `counts` still covers everything.
   Pins never change eligibility: idle/unknown stay hidden. A pinned
-  working agent may displace an unpinned blocked agent from the visible
-  rows. The widget renders rows in envelope order and does not re-sort.
+  working Agent may displace an unpinned Blocked Agent from the capped
+  envelope. The expanded Dynamic Island and the Lock Screen order the
+  entries they receive by status, keeping envelope order within each
+  status.
 - `title` is `terminal_title_stripped ?? terminal_title`, trimmed to ≤80
   graphemes; omitted (not empty) when unavailable. `kind` falls back to
   `"unknown"`.
@@ -119,84 +121,83 @@ Decrypted plaintext (canonical form):
 
 ## Widget rendering
 
-The widget preserves configured Agent List Fields, including field colors,
-bold and dim styles. When `rows` is absent it uses workspace and friendly
-Agent kind as the legacy identity. Agent order stays in the sender's pin-aware
-order. Error remains Blocked on the wire and reads "Needs you" on the Lock
-Screen and expanded Dynamic Island; a configured status field may still say
-"Error".
+The widget uses the configured Agent List Fields. When `rows` is absent,
+it uses workspace and friendly Agent kind as the legacy identity. Error
+remains Blocked on the wire and reads "Needs you" on the Lock Screen. A
+configured status field may still say "Error".
 
-The Lock Screen uses the system background material through
-`.activityBackgroundTint(nil)`, with no painted background layer. Text and
-status colors remain unresolved dynamic UIKit colors so an existing activity
-can follow system appearance changes when ActivityKit refreshes it. The End
-control receives unresolved `UIColor.label` through `Color(uiColor:)`.
-ActivityKit's SwiftUI `colorScheme` is never consulted. Status glyphs use
-dynamic Lock Screen inks from `AgentActivityStatusStyle`.
+### Lock Screen
 
-A separate, one-line semibold Host heading on the Lock Screen and expanded
-Dynamic Island uses middle truncation. Its name
-comes from the local Host snapshot by attributes `hostID`, then the envelope's
-`host`, then no heading when neither supplies a nonempty name. There are no
-header count chips. Each linked Agent entry starts with an open ring for
-Working, a filled exclamation circle for Blocked, or a check circle for Done.
-Its configured fields stay between that glyph and a secondary status word,
-"Working", "Needs you", or "Done". Accessibility reads those same fields and
-the displayed status word. Each entry opens its Agent; surrounding chrome
-keeps the Console fallback link.
+The Lock Screen shows up to two linked Agent tiles in attention order
+(Blocked, Done, Working, then other statuses), keeping sender order within
+each status. One tile spans the banner. Each tile uses the status glyph and
+word above a one-line task and byline. The second field row supplies the task
+when present. The first row supplies the byline, with the kind appended when
+absent. With one field row, that row is the task and the kind is the byline
+when it differs. Each tile opens its Agent and VoiceOver reads the configured
+fields and status. The rest of the banner opens the Console.
 
-The list fits complete entries within 160 pt, including the optional 20 pt
-heading, 6 pt vertical padding on each edge, and one overflow/stale caption.
-It shows at most four entries. One or two entries have a 44 pt minimum target;
-three or four use a 28 pt dense minimum. Configured entries are budgeted at,
-and held to, their rendered height: their text lines plus 1 pt of padding on
-each edge, so 31 pt for two lines and 44 pt for three. A named Host therefore
-fits four two-line entries without a caption or three with one, and two
-three-line entries plus the caption. Lock Screen text retains the system
-Dynamic Type size; only the Dynamic Island caps it through `islandTypeSize()`.
-Overflow uses the full plaintext inventory count minus the number of visible
-entries.
-Stale content adds "May be out of date", sharing the overflow line when
-needed. Debug decrypt diagnostics remain outside the production height budget.
+The footer shows the Host name from the local snapshot by attributes `hostID`,
+then the envelope's `host` as a fallback. The name truncates in the middle.
+The Host's letter tile appears before the name under the same rule as the
+Dynamic Island. The footer counts Agents beyond the tiles by subtracting
+visible tiles from the plaintext count of each status. Positive remainders
+appear in attention order as gray phrases such as "+1 needs you", "+2 done",
+and "+2 working". A stale update fades the tile row to half opacity and adds
+"May be out of date" after the count phrases. When no phrases apply, the
+footer shows the total number of Agents.
 
-An absent or undecryptable envelope, or empty decrypted Agent details, shows
-only the optional Host heading and localized count phrases in Blocked,
-Working, Done order, such as "1 needs you · 2 working". English plurals use
-"2 need you". Staleness remains visible. Counts-only does not imply a
-connection failure and has no overflow from an Agent list.
+If the envelope is absent, fails to decrypt, or contains no Agent entries,
+the banner shows one column per nonzero status in attention order. Each
+column shows the status glyph and word above the count. The footer shows the
+total unless the update is stale, when it shows "May be out of date" and the
+count row is faded.
+
+The banner caps Dynamic Type at `.large` to stay within 160 pt. ActivityKit
+supplies the background material through `.activityBackgroundTint(nil)`.
+Text, status inks, and the End control use dynamic UIKit colors so they
+follow system appearance on refresh.
 
 ### Dynamic Island
 
-Compact presentations show one status mark per Agent in attention order,
-Blocked, Done, Working, using the full plaintext counts even without decrypted
-details. Marks use the same open ring, filled exclamation circle, and check
-circle as the Agent rows. At most four slots appear. When the inventory exceeds
-four, the first three marks remain and the last slot becomes a plus mark.
-The first two slots lead the camera and the rest trail it. One Agent leaves
-the trailing region empty. There are no visible count numbers or status words.
+Compact presentations show every status that has Agents, in attention order
+Blocked, Done, Working, from the full plaintext counts even without decrypted
+details. Blocked and Done are filled circles with a cut-out mark; Working is an
+open ring. One status puts its symbol before the camera and its count after
+it. Two statuses put a symbol and count on each side. Three put Blocked and
+Done before the camera and Working after it. Both sides take the width of the
+wider side and sit against the camera. The size is the first of full (15 pt
+counts), smaller symbols (12.3 pt) and numbers only (15 pt) whose wider side
+fits 58 pt on screens at least 420 pt wide, or 47 pt on narrower ones.
 
-A rounded-square Host tile precedes the compact leading marks only when the
-local snapshot contains at least two Hosts and the current Host has a nonempty
-`label`. This uses the entire configured catalog, including quiet Hosts, rather
-than the set of running activities. One Host has no tile in any Island region.
-An absent snapshot, unknown Host, or missing label omits the tile.
+The Host's `label` shows only when the local snapshot contains at least two
+Hosts and the current Host has a nonempty `label`. This uses the entire
+configured catalog, including quiet Hosts, rather than the set of running
+activities. The label is plain gray text at the count size, last on the
+trailing side. With one or two statuses, every status then moves before the
+camera. One Host, an absent snapshot, an unknown Host, or a missing label
+shows no label in any Island region.
 
-Minimal presentation without a tile shows up to four status marks in a two by
-two cluster, with the same overflow rule. A single mark stays larger. With an
-eligible tile, minimal shows the Host label wearing its most urgent status,
-filled for Blocked, outlined for Working, or outlined with a small check for
-Done. Compact and minimal expose one accessibility summary of all counts,
-using localized phrases such as "1 needs you, 1 working, 1 done". Only a
-snapshot listing at least two Hosts adds the Host name to that summary.
+Minimal presentation shows the first status in attention order as a 20 pt
+circle with its count inside. Each other status with Agents adds a small dot
+in its color under a smaller circle. Minimal shows no Host label. When iOS
+limits the Island's width (`isDynamicIslandLimitedInWidth`, iOS 27 and later,
+as in landscape), the compact leading region shows the minimal content and the
+trailing region shows the Host label or nothing. Compact and minimal expose
+one accessibility summary of all counts, using localized phrases such as
+"1 needs you, 1 working, 1 done". Only a snapshot listing at least two Hosts
+adds the Host name to that summary.
 
-The expanded header shows the full Host name with the eligible tile before
-it. Its trailing region may summarize the status marks. The bottom preserves
-configured Agent List Fields, status marks, and the displayed status words
-used by the Lock Screen. Complete linked entries remain in envelope order,
-with at most three entries inside the existing 100 pt row budget, including
-the overflow caption. Surrounding chrome keeps the Console fallback link.
-Without Agent details, expanded content shows the localized count phrases
-instead of Agent rows.
+The expanded header shows the Host name, the eligible label in a tile before
+it, and the total, such as "3 agents", at the trailing end. Up to three linked
+cards follow in attention order, keeping envelope order within each status.
+A card shows the first configured Agent List Fields row as its title and the
+second as its task, on up to two lines. A Blocked card has a pink-tinted
+fill. A line after the cards counts the Agents without a card by status, as a
+count and status mark per status, then "more". Without Agent
+details, expanded content shows the counts by status without the plus signs
+or "more". When any Agent is Blocked, the Island asks iOS for a Blocked-colored
+keyline. Surrounding chrome keeps the Console fallback link.
 Island type sizes cap at `.large` through `islandTypeSize()`. Island inks
 remain Mocha regardless of ambient appearance.
 
@@ -262,7 +263,7 @@ update/end/priority signal — nothing else new (PRIVACY.md documents this).
 ```json
 {"aps": {"timestamp": <unix seconds>, "event": "update" | "end",
          "content-state": {"counts": {...}, "envelope": {...}},
-         "relevance-score": <update only: derived from counts>,
+         "relevance-score": <update only: from counts and timestamp>,
          "stale-date": <update only: timestamp + 900>,
          "dismissal-date": <end only: = timestamp, immediate removal>}}
 ```
@@ -272,15 +273,21 @@ Priority 10 only when an agent **newly** entered `blocked`; 5 otherwise.
 Existing 4096-byte pre-check applies; 410/413 verdicts pass through to the
 plugin unchanged (`{"reason": ...}`).
 
-Relevance is derived only from plaintext `counts`, with no count tiebreak.
-The first matching tier sets the score:
+Relevance ranks a Host that needs the user above every other, and otherwise
+the most recently updated Host first. It is derived from plaintext `counts`
+and the push `timestamp` (Unix seconds), with no count tiebreak:
 
 | Condition | Score |
 | --------- | ----- |
-| `blocked >= 1` | 3 |
-| `working >= 1` | 2 |
-| `done >= 1` | 1 |
 | All counts are zero | 0 |
+| `blocked >= 1` | 10000000000 + `timestamp` |
+| Otherwise | `timestamp` |
+
+The plugin sends only when the Host's status map changes, so `timestamp` is
+the time of that Host's latest status change. The app refreshes the score
+when the counts or the listed pane ID and status pairs change. A title edit or
+row reorder alone keeps the score, and so does the first update after a launch
+unless the counts changed, so opening the app does not move a Host ahead.
 
 Higher scores rank a Host's Live Activity above lower scores on the Lock
 Screen and in the Dynamic Island. The app sets `ActivityContent.relevanceScore`

@@ -12,7 +12,9 @@ final class FakeLiveActivityController: LiveActivityControlling {
 
     private(set) var requested: [AgentActivityAttributes.ContentState] = []
     private(set) var requestedHandles: [LiveActivityHandle] = []
-    private(set) var updates: [(id: String, content: AgentActivityAttributes.ContentState)] = []
+    private(set) var updates: [
+        (id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool)
+    ] = []
     private(set) var ended: [(id: String, finalContent: AgentActivityAttributes.ContentState?, immediate: Bool)] =
         []
 
@@ -93,8 +95,8 @@ final class FakeLiveActivityController: LiveActivityControlling {
         return handle
     }
 
-    func update(id: String, content: AgentActivityAttributes.ContentState) {
-        updates.append((id, content))
+    func update(id: String, content: AgentActivityAttributes.ContentState, refreshesRelevance: Bool) {
+        updates.append((id, content, refreshesRelevance))
         records[id]?.content = content
     }
 

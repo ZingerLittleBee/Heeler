@@ -3503,6 +3503,47 @@
         }
       }
     },
+    "%lld agents" : {
+      "comment" : "Total number of Agents on a Host in a Live Activity.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld agent"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld agents"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 件のエージェント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个 Agent"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 個 Agent"
+          }
+        }
+      }
+    },
     "%lld background tasks stopped" : {
       "comment" : "A Chat notice: how many background tasks Antigravity CLI stopped when it restarted",
       "localizations" : {
@@ -5452,6 +5493,29 @@
     "+%lld" : {
       "shouldTranslate" : false
     },
+    "+%lld done" : {
+      "comment" : "Lock Screen footer count of additional Agents with a result to read.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了 +%lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已完成 +%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 個已完成"
+          }
+        }
+      }
+    },
     "+%lld more" : {
       "localizations" : {
         "ja" : {
@@ -5474,25 +5538,25 @@
         }
       }
     },
-    "+%lld more · May be out of date" : {
-      "comment" : "Live Activity lock screen caption: Agents not shown, and a stale update",
+    "+%lld needs you" : {
+      "comment" : "Lock Screen footer count of additional Agents waiting for input.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "+%lld 件 · 最新でない可能性があります"
+            "value" : "+%lld 件が入力待ち"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "另有 %lld 项 · 可能已过期"
+            "value" : "+%lld 个待处理"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "+%lld 個 · 可能不是最新"
+            "value" : "+%lld 個待處理"
           }
         }
       }
@@ -5556,6 +5620,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "、"
+          }
+        }
+      }
+    },
+    "+%lld working" : {
+      "comment" : "Lock Screen footer count of additional Agents still working.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中 +%lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作中 +%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld 個工作中"
           }
         }
       }
@@ -38198,7 +38285,7 @@
       }
     },
     "May be out of date" : {
-      "comment" : "Live Activity lock screen caption for a stale update",
+      "comment" : "Lock Screen Live Activity footer when updates have stopped.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -85616,6 +85703,9 @@
           }
         }
       }
+    },
+    "more" : {
+      "comment" : "Ends the expanded Dynamic Island's count of Agents without a card, as in “+1 ✓ +2 ◌ more”."
     },
     "more than %@ file changed" : {
       "localizations" : {

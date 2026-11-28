@@ -30,102 +30,108 @@ enum AgentActivityPresentation: Equatable, Sendable {
         }
     }
 
-    /// Rows drawn in the expanded Dynamic Island, under its status header:
-    /// as many of the first `rowLimit` Agents as fit, with the overflow
-    /// caption when some are left out, in the height the island leaves them.
-    var expandedAgents: [AgentActivityDetails.AgentDetail] {
-        let metrics = AgentActivityIslandMetrics.self
-        let candidates = Array(agents.prefix(AgentActivityCopy.rowLimit))
-        for shown in stride(from: candidates.count, through: 1, by: -1) {
-            let prefix = Array(candidates.prefix(shown))
-            let rowHeight = prefix.reduce(0) { $0 + metrics.rowHeight(for: $1) }
-            let lines = CGFloat(counts.total > shown ? shown + 1 : shown)
-            let captionHeight = counts.total > shown ? metrics.overflowCaptionHeight : 0
-            let height = rowHeight + captionHeight + (lines - 1) * metrics.rowSpacing
-            if height <= metrics.rowsHeightBudget { return prefix }
-        }
-        return Array(candidates.prefix(1))
-    }
-
-    /// Remaining eligible agents beyond the expanded rows, using the full
-    /// inventory in `counts` (the envelope list is capped at 5). Zero in
-    /// counts-only: there is nothing to overflow from.
-    var overflowCount: Int {
-        let shown = expandedAgents.count
-        guard shown > 0 else { return 0 }
-        return max(0, counts.total - shown)
-    }
-
-    /// Reserve the Host heading before fitting complete linked Agent entries.
-    func lockScreenAgents(
-        isStale: Bool, hasHeader: Bool = true
-    ) -> [AgentActivityDetails.AgentDetail] {
-        let total = counts.total
-        guard total > 0 else { return [] }
-        let candidates = Array(agents.prefix(min(total, 4)))
-        guard !candidates.isEmpty else { return [] }
-        for shown in stride(from: candidates.count, through: 1, by: -1) {
-            let prefix = Array(candidates.prefix(shown))
-            let target = AgentActivityRowMetrics.lockScreenMinimumHeight(agentCount: shown)
-            let rowHeight = prefix.reduce(0) {
-                $0 + max(target, AgentActivityRowMetrics.minimumHeight(for: $1))
+    /// Blocked, Done, then Working. The Host puts pinned Agents first, so this
+    /// keeps a pin ahead only within its status.
+    var agentsInAttentionOrder: [AgentActivityDetails.AgentDetail] {
+        // Swift's sort is not documented as stable; the offset keeps the
+        // sender's order within a status.
+        agents.enumerated()
+            .sorted {
+                (Self.attentionRank(of: $0.element.status), $0.offset)
+                    < (Self.attentionRank(of: $1.element.status), $1.offset)
             }
-            let captionHeight = isStale || total > shown
-                ? AgentActivityRowMetrics.lockScreenCaptionHeight : 0
-            let padding = AgentActivityRowMetrics.lockScreenBannerVerticalPadding * 2
-            let headerHeight = hasHeader ? AgentActivityRowMetrics.lockScreenHeaderHeight : 0
-            if rowHeight + padding + captionHeight + headerHeight
-                <= AgentActivityRowMetrics.lockScreenHeightBudget
-            {
-                return prefix
-            }
-        }
-        return Array(candidates.prefix(1))
+            .map(\.element)
     }
 
-    /// Inventory beyond the drawn lock-screen rows. Zero in counts-only.
-    func lockScreenOverflowCount(isStale: Bool, hasHeader: Bool = true) -> Int {
-        let shown = lockScreenAgents(isStale: isStale, hasHeader: hasHeader)
-        guard !shown.isEmpty else { return 0 }
-        return max(0, counts.total - shown.count)
-    }
-
-    /// Trailing caption2 on the lock screen: overflow, stale notice, or both.
-    func lockScreenTrailingCaption(isStale: Bool, hasHeader: Bool = true) -> String? {
-        let overflow = lockScreenOverflowCount(isStale: isStale, hasHeader: hasHeader)
-        switch (isStale, overflow > 0) {
-        case (true, true): return String(localized: "+\(overflow) more · May be out of date")
-        case (true, false): return String(localized: "May be out of date")
-        case (false, true): return String(localized: "+\(overflow) more")
-        case (false, false): return nil
+    private static func attentionRank(of status: String) -> Int {
+        switch status {
+        case "blocked": 0
+        case "done": 1
+        case "working": 2
+        default: 3
         }
     }
 }
 
-struct AgentActivityIslandPresentation: Equatable, Sendable {
-    struct Mark: Equatable, Sendable, Identifiable {
-        enum Kind: Equatable, Sendable {
-            case status(String)
-            case overflow
-        }
+struct AgentActivityLockScreenPresentation: Equatable, Sendable {
+    struct CountColumn: Equatable, Sendable {
+        let status: String
+        let count: Int
+    }
 
-        let id: Int
-        let kind: Kind
+    enum Footer: Equatable, Sendable {
+        case total(String)
+        case phrases([String])
+    }
 
-        var status: String {
-            if case .status(let status) = kind { return status }
-            return "unknown"
-        }
+    struct TileText: Equatable, Sendable {
+        let task: String?
+        let byline: String?
 
-        var isOverflow: Bool {
-            if case .overflow = kind { return true }
-            return false
+        init(agent: AgentActivityDetails.AgentDetail) {
+            let rows = AgentActivityFields.rows(for: agent).map { $0.map(\.text).joined() }
+            let kind = AgentNotificationIdentity.kindLabel(agent.kind)
+            guard let first = rows.first else {
+                task = nil
+                byline = nil
+                return
+            }
+            if rows.count > 1 {
+                task = rows[1]
+                byline = first.contains(kind) ? first : "\(first) · \(kind)"
+            } else {
+                task = first
+                byline = first == kind ? nil : kind
+            }
         }
     }
 
+    let tiles: [AgentActivityDetails.AgentDetail]
+    let countColumns: [CountColumn]
+    let footer: Footer
+
+    init(presentation: AgentActivityPresentation, isStale: Bool) {
+        let tiles = Array(presentation.agentsInAttentionOrder.prefix(2))
+        self.tiles = tiles
+
+        let counts = presentation.counts
+        let tallies = counts.attentionItems
+        countColumns = tiles.isEmpty ? tallies.map { CountColumn(status: $0.status, count: $0.count) } : []
+
+        var phrases = [String]()
+        if !tiles.isEmpty {
+            phrases = tallies.compactMap { item in
+                let hidden = item.count - tiles.filter { $0.status == item.status }.count
+                guard hidden > 0 else { return nil }
+                return AgentActivityCopy.lockScreenOverflow(hidden, status: item.status)
+            }
+        }
+        if isStale {
+            phrases.append(String(localized: "May be out of date",
+                comment: "Lock Screen Live Activity footer when updates have stopped."))
+        }
+        let total = counts.total
+        footer = phrases.isEmpty
+            ? .total(String(localized: "\(total) agents", comment: "Total number of Agents on a Host in a Live Activity."))
+            : .phrases(phrases)
+    }
+}
+
+/// What the Dynamic Island shows for one Host: every status with Agents, as
+/// drawn in the Island Scenarios design (compact, minimal, landscape) and B2
+/// (expanded).
+struct AgentActivityIslandPresentation: Equatable, Sendable {
+    /// One status that has Agents, and how many.
+    struct Tally: Equatable, Sendable {
+        let status: String
+        let count: Int
+    }
+
     let counts: AgentActivityAttributes.ContentState.Counts
-    let marks: [Mark]
+    /// Statuses with Agents in attention order: Blocked, Done, Working.
+    let tallies: [Tally]
     let hostName: String?
+    /// The Host's short form, only when the catalog has two or more Hosts.
     let hostLabel: String?
     let hasMultipleHosts: Bool
 
@@ -135,7 +141,7 @@ struct AgentActivityIslandPresentation: Equatable, Sendable {
         hostSnapshot: LiveActivityHostSnapshot?
     ) {
         counts = presentation.counts
-        marks = Self.makeMarks(counts)
+        tallies = presentation.counts.attentionItems.map { Tally(status: $0.status, count: $0.count) }
         hasMultipleHosts = (hostSnapshot?.hosts.count ?? 0) >= 2
         if hasMultipleHosts, let label = hostSnapshot?.label(forHostID: hostID), !label.isEmpty {
             hostLabel = label
@@ -148,32 +154,190 @@ struct AgentActivityIslandPresentation: Equatable, Sendable {
     var accessibilityLabel: String {
         var phrases = AgentActivityCopy.countPhrases(counts)
         if hasMultipleHosts, let hostName { phrases.insert(hostName, at: 0) }
-        return phrases.joined(separator: String(
-            localized: ", ",
-            comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
+        return phrases.joinedAsPhraseList
     }
 
-    var minimalTileStatus: String? {
-        guard hasMultipleHosts, hostLabel != nil else { return nil }
-        return counts.attentionItems.first?.status
+    func compact(
+        screenWidth: CGFloat, textWidths: AgentActivityIslandCompact.TextWidths = .drawing
+    ) -> AgentActivityIslandCompact {
+        AgentActivityIslandCompact(
+            tallies: tallies, letter: hostLabel, screenWidth: screenWidth, textWidths: textWidths)
+    }
+}
+
+/// The compact island. One status: its symbol left of the camera, its count
+/// right. Two: one per side. Three: Blocked and Done left, Working right.
+/// With two or more Hosts the Host letter sits alone on the right and the
+/// statuses gather on the left. Both sides take the wider side's width and
+/// hug the camera; without that, iOS pushes a narrow side to the island's
+/// outer end.
+struct AgentActivityIslandCompact: Equatable, Sendable {
+    enum Item: Equatable, Sendable {
+        case symbol(String)
+        case count(String, Int)
+        case pair(String, Int)
     }
 
-    private static func makeMarks(_ counts: AgentActivityAttributes.ContentState.Counts) -> [Mark] {
-        let limit = 4
-        var result: [Mark] = []
-        var remaining = limit
-        for item in counts.attentionItems where remaining > 0 {
-            let visible = min(item.count, remaining)
-            for _ in 0..<visible {
-                result.append(.init(id: result.count, kind: .status(item.status)))
+    /// One size unit sets the symbols, the numbers and the Host letter, so a
+    /// step down shrinks them together. When even numbers only don't fit, a
+    /// last numbers-only level shrinks the unit to fit, down to 9 pt.
+    struct Level: Equatable, Sendable {
+        let unit: CGFloat
+        let showsSymbols: Bool
+
+        static let full = Level(unit: 15, showsSymbols: true)
+        static let small = Level(unit: 12.3, showsSymbols: true)
+        static let numbersOnly = Level(unit: 15, showsSymbols: false)
+
+        var symbol: CGFloat { unit * 0.93 }
+        var symbolGap: CGFloat { unit * 0.17 }
+        var itemSpacing: CGFloat { unit * (showsSymbols ? 0.4 : 0.6) }
+    }
+
+    let leading: [Item]
+    let trailing: [Item]
+    let letter: String?
+    let level: Level
+    let sideWidth: CGFloat
+
+    /// Room each side has before the status bar's clock or signal: 58 pt on
+    /// 430 pt wide phones, 47 pt on 393 pt ones, from the approved drawings.
+    static func sideLimit(screenWidth: CGFloat) -> CGFloat {
+        screenWidth >= 420 ? 58 : 47
+    }
+
+    /// Widths of the text runs: a count, or the Host letter, at a size.
+    /// `drawing` is the approved drawings' arithmetic, which picks the level;
+    /// the widget passes the font's real widths, which size the sides.
+    struct TextWidths: Sendable {
+        let count: @Sendable (String, CGFloat) -> CGFloat
+        let letter: @Sendable (String, CGFloat) -> CGFloat
+
+        static let drawing = TextWidths(
+            count: { text, unit in CGFloat(text.count) * unit * 0.6 },
+            letter: { text, unit in
+                text.reduce(0) { width, character in
+                    if character == "M" || character == "W" { return width + unit * 0.82 }
+                    if character.isLowercase { return width + unit * 0.55 }
+                    return width + unit * 0.6
+                }
+            })
+    }
+
+    init(
+        tallies: [AgentActivityIslandPresentation.Tally], letter: String?, screenWidth: CGFloat,
+        textWidths: TextWidths = .drawing
+    ) {
+        var leading: [Item]
+        var trailing: [Item]
+        if letter != nil, tallies.count <= 2 {
+            leading = tallies.map { .pair($0.status, $0.count) }
+            trailing = []
+        } else {
+            switch tallies.count {
+            case 1:
+                leading = [.symbol(tallies[0].status)]
+                trailing = [.count(tallies[0].status, tallies[0].count)]
+            case 2:
+                leading = [.pair(tallies[0].status, tallies[0].count)]
+                trailing = [.pair(tallies[1].status, tallies[1].count)]
+            default:
+                leading = tallies.prefix(2).map { .pair($0.status, $0.count) }
+                trailing = tallies.dropFirst(2).map { .pair($0.status, $0.count) }
             }
-            remaining -= visible
         }
-        if counts.total > limit {
-            result[limit - 1] = .init(id: limit - 1, kind: .overflow)
+        let limit = Self.sideLimit(screenWidth: screenWidth)
+        func drawingWidth(at level: Level) -> CGFloat {
+            Self.width(leading: leading, trailing: trailing, letter: letter, at: level, text: .drawing)
         }
-        return result
+        let level: Level
+        if let fittingLevel = [Level.full, .small, .numbersOnly].first(where: { drawingWidth(at: $0) <= limit }) {
+            level = fittingLevel
+        } else {
+            let minimumUnit: CGFloat = 9
+            var unit = max(minimumUnit, limit * Level.numbersOnly.unit / drawingWidth(at: .numbersOnly))
+            while unit > minimumUnit && drawingWidth(at: Level(unit: unit, showsSymbols: false)) > limit {
+                unit = unit.nextDown
+            }
+            level = Level(unit: unit, showsSymbols: false)
+        }
+        if !level.showsSymbols {
+            leading = leading.map(\.numberOnly)
+            trailing = trailing.map(\.numberOnly)
+        }
+        self.leading = leading
+        self.trailing = trailing
+        self.letter = letter
+        self.level = level
+        sideWidth = Self.width(
+            leading: leading, trailing: trailing, letter: letter, at: level, text: textWidths)
     }
+
+    private static func width(
+        leading: [Item], trailing: [Item], letter: String?, at level: Level, text: TextWidths
+    ) -> CGFloat {
+        var trailingWidth = width(of: trailing, at: level, text: text)
+        if let letter {
+            trailingWidth += (trailing.isEmpty ? 0 : level.itemSpacing) + text.letter(letter, level.unit)
+        }
+        return max(width(of: leading, at: level, text: text), trailingWidth)
+    }
+
+    private static func width(of items: [Item], at level: Level, text: TextWidths) -> CGFloat {
+        items.reduce(0) { $0 + $1.width(at: level, text: text) }
+            + CGFloat(max(0, items.count - 1)) * level.itemSpacing
+    }
+}
+
+extension AgentActivityIslandCompact.Item {
+    var status: String {
+        switch self {
+        case .symbol(let status), .count(let status, _), .pair(let status, _): status
+        }
+    }
+
+    var numberOnly: Self {
+        switch self {
+        case .pair(let status, let count): .count(status, count)
+        case .symbol, .count: self
+        }
+    }
+
+    func width(
+        at level: AgentActivityIslandCompact.Level, text: AgentActivityIslandCompact.TextWidths
+    ) -> CGFloat {
+        switch self {
+        case .symbol: level.symbol
+        case .count(_, let count): text.count(String(count), level.unit)
+        case .pair(_, let count):
+            (level.showsSymbols ? level.symbol + level.symbolGap : 0)
+                + text.count(String(count), level.unit)
+        }
+    }
+}
+
+/// The expanded island (B2): a card per Agent, at most three, in attention
+/// order, then the Agents left out, counted by status.
+struct AgentActivityIslandExpanded: Equatable, Sendable {
+    static let cardLimit = 3
+
+    let cards: [AgentActivityDetails.AgentDetail]
+    /// With cards, the Agents beyond them; counts-only, every status.
+    let summary: [AgentActivityIslandPresentation.Tally]
+    let total: Int
+
+    init(presentation: AgentActivityPresentation) {
+        let counts = presentation.counts
+        let cards = Array(presentation.agentsInAttentionOrder.prefix(Self.cardLimit))
+        self.cards = cards
+        total = counts.total
+        summary = counts.attentionItems.compactMap { item in
+            let left = item.count - cards.filter { $0.status == item.status }.count
+            return left > 0 ? .init(status: item.status, count: left) : nil
+        }
+    }
+
+    var isOverflow: Bool { !cards.isEmpty }
 }
 
 /// Synchronous render-time helper. Failures degrade to counts-only so a
@@ -185,9 +349,6 @@ enum AgentActivityDecryptor {
         store: NotificationKeyStore = NotificationKeyStore(),
         mirror: NotificationKeyMirror = NotificationKeyMirror()
     ) -> AgentActivityPresentation {
-        #if DEBUG
-            lastFailureReason = nil
-        #endif
         guard let envelope = state.envelope,
             let data = try? JSONEncoder().encode(envelope),
             let kid = SealedEnvelopeCodec.peekKeyID(in: data)
@@ -219,13 +380,6 @@ enum AgentActivityDecryptor {
         return .detailed(details: opened, counts: state.counts)
     }
 
-    /// Debug-only: why the last `presentation(for:)` in this process fell
-    /// back to counts-only, for on-lock-screen diagnosis of device-only
-    /// failures. Rendered by the lock-screen view in Debug builds.
-    #if DEBUG
-        nonisolated(unsafe) static var lastFailureReason: String?
-    #endif
-
     /// Debug-only render-time trace into the shared app-group container, so
     /// a countsOnly fallback on a physical device can name its cause
     /// (`devicectl device copy from --domain-type appGroupDataContainer`).
@@ -233,7 +387,6 @@ enum AgentActivityDecryptor {
         #if DEBUG
             let container = FileManager.default.containerURL(
                 forSecurityApplicationGroupIdentifier: NotificationKeyStore.sharedAccessGroup)
-            lastFailureReason = "\(reason) | group: \(container == nil ? "nil" : "ok")"
             guard let url = container else { return }
             let line = "\(Date()) \(reason)\n"
             let file = url.appendingPathComponent("activity-decrypt-debug.txt")
@@ -249,10 +402,6 @@ enum AgentActivityDecryptor {
 }
 
 enum AgentActivityCopy {
-    // Governs the Dynamic Island expanded rows; the lock screen sizes itself
-    // via `lockScreenAgents` instead.
-    static let rowLimit = 3
-
     /// "2 blocked": a count and its status, in the language the widget
     /// renders in. The status stays a wire token for colors and glyphs; one
     /// this build does not know reads as the Host sent it.
@@ -278,8 +427,16 @@ enum AgentActivityCopy {
         }
     }
 
-    static func lockScreenCounts(_ counts: AgentActivityAttributes.ContentState.Counts) -> String {
-        countPhrases(counts).joined(separator: " · ")
+    static func lockScreenOverflow(_ count: Int, status: String) -> String? {
+        switch status {
+        case "blocked":
+            String(localized: "+\(count) needs you", comment: "Lock Screen footer count of additional Agents waiting for input.")
+        case "done":
+            String(localized: "+\(count) done", comment: "Lock Screen footer count of additional Agents with a result to read.")
+        case "working":
+            String(localized: "+\(count) working", comment: "Lock Screen footer count of additional Agents still working.")
+        default: nil
+        }
     }
 
     static func countPhrases(_ counts: AgentActivityAttributes.ContentState.Counts) -> [String] {
@@ -314,5 +471,13 @@ extension AgentActivityAttributes.ContentState.Counts {
         if done > 0 { items.append(("done", done)) }
         if working > 0 { items.append(("working", working)) }
         return items
+    }
+}
+
+extension [String] {
+    var joinedAsPhraseList: String {
+        joined(separator: String(
+            localized: ", ",
+            comment: "Separates the phrases of a list, as in “Ran 2 commands, Edited 2 files”."))
     }
 }
