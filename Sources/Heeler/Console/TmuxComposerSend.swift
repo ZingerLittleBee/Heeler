@@ -53,7 +53,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         self.clock = clock
     }
 
-    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: DroidSendVerification? = nil) async -> Outcome {
+    func send(_ text: String, route: ComposerRoute = .terminal, attach: AgentAttachStore?, verifying: ComposerWriteVerification? = nil) async -> Outcome {
         let previous = lastSend
         let send = Task {
             _ = await previous?.value
@@ -67,7 +67,7 @@ final class TmuxComposerSend: CheckedComposerSend {
 
     // MARK: Checked steps
 
-    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: DroidSendVerification?) async -> Outcome {
+    private func deliver(_ text: String, route: ComposerRoute, attach: AgentAttachStore?, verifying: ComposerWriteVerification?) async -> Outcome {
         guard let projection = projection() else { return .failed(Self.notConnected) }
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         if lastSendHasNoAnswer { return await settleLastSend(in: projection, attach: attach) }
@@ -132,7 +132,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         _ text: String,
         held: HeldAgent,
         chatAttach: TmuxChatAttach,
-        in projection: TmuxConsoleProjection, verifying: DroidSendVerification?
+        in projection: TmuxConsoleProjection, verifying: ComposerWriteVerification?
     ) async -> Outcome {
         guard projection.admits(corePin) else { return .refused(.inputNotReady(Self.serverGone)) }
         if let changed = await changeWhileAttachOpened(from: held, in: projection) {
@@ -147,7 +147,7 @@ final class TmuxComposerSend: CheckedComposerSend {
         held: HeldAgent,
         on tmuxSend: TmuxAttachSend,
         in projection: TmuxConsoleProjection,
-        verifying: DroidSendVerification? = nil,
+        verifying: ComposerWriteVerification? = nil,
         onSubmitted: (@MainActor () -> Void)?
     ) async -> Outcome {
         if await tmuxSend.bracketedPaste() == .disabled {

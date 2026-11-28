@@ -223,6 +223,10 @@ struct DialogFocusState: Sendable, Hashable {
 /// transcript matcher compares with pending requests. Narrow screens and
 /// tall dialogs can cut any of them short; the transcript has the full text.
 struct DialogSubject: Sendable, Hashable {
+    /// Body rows whose final inline-code cell reaches the reported grid edge
+    /// and continues in the same style after the next row's plan margin.
+    /// Nil when the screen shows such a continuation without a confirmed edge.
+    var devinPlanCodeWraps: Set<Int>? = []
     /// Oh My Pi approval: the tool its title names, `bash`. OpenCode
     /// permission: the action its title starts with, `Read`, or `Shell` for
     /// a command.

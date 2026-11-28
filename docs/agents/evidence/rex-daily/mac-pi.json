@@ -1,0 +1,58 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "platform": "macOS 27.0.1 arm64",
+  "program": "pi",
+  "source": "Agent-authored session JSONL",
+  "sameDirectory": true,
+  "oldA": {
+    "written": true,
+    "counts": {
+      "user": {
+        "send": 1,
+        "rotated": 0,
+        "wrongChoice": 0,
+        "parked": 0
+      },
+      "assistant": {
+        "send": 1,
+        "rotated": 0,
+        "wrongChoice": 0,
+        "parked": 0
+      }
+    }
+  },
+  "peerB": {
+    "written": true,
+    "counts": {
+      "user": {
+        "send": 0,
+        "rotated": 0,
+        "wrongChoice": 0,
+        "parked": 0
+      },
+      "assistant": {
+        "send": 0,
+        "rotated": 0,
+        "wrongChoice": 0,
+        "parked": 0
+      }
+    }
+  },
+  "currentA": {
+    "written": true,
+    "counts": {
+      "user": {
+        "send": 0,
+        "rotated": 1,
+        "wrongChoice": 0,
+        "parked": 0
+      },
+      "assistant": {
+        "send": 0,
+        "rotated": 1,
+        "wrongChoice": 0,
+        "parked": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "backend": "Herdr 0.9.5 with repository plugin",
+  "program": "Pi 1.5.2, macOS 27.0.1, fresh private HOME and loopback model",
+  "enabled": {
+    "tag": "ENABLED",
+    "baseline": [
+      "idle",
+      1,
+      0
+    ],
+    "observations": [
+      [
+        "idle",
+        1,
+        0
+      ],
+      [
+        "working",
+        2,
+        0
+      ],
+      [
+        "done",
+        3,
+        0
+      ],
+      [
+        "done",
+        3,
+        1
+      ]
+    ],
+    "afterFurtherThreeSeconds": [
+      "done",
+      3,
+      1
+    ]
+  },
+  "disabled": {
+    "tag": "DISABLED",
+    "baseline": [
+      "done",
+      3,
+      1
+    ],
+    "observations": [
+      [
+        "working",
+        4,
+        1
+      ],
+      [
+        "done",
+        5,
+        1
+      ]
+    ],
+    "afterFurtherThreeSeconds": [
+      "done",
+      5,
+      1
+    ]
+  },
+  "authenticated": [
+    {
+      "time": 1795785370280,
+      "method": "POST",
+      "localPath": "/push",
+      "localHttpStatus": 200,
+      "authenticatedEnvelope": 1,
+      "deviceRegistrationMatched": true,
+      "sandbox": true,
+      "pane": "w1:p2",
+      "status": "done",
+      "plaintextSchema": [
+        "kind",
+        "pane",
+        "project",
+        "status",
+        "title",
+        "ts"
+      ]
+    }
+  ],
+  "receiver": "loopback HTTP relay with synthetic sandbox registration"
+}

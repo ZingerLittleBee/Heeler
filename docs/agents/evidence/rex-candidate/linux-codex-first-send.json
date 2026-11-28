@@ -1,0 +1,30 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "utc": "2026-11-27T15:58:10.917436+00:00",
+  "hosts": {
+    "a": {
+      "pane": "block:01a21d9f-fe08-7c28-a7a3-355b2cf4d70d",
+      "pid": 669423,
+      "activeProgram": "codex",
+      "screenShowsInitialMultilineMarker": true,
+      "screenSHA256": "b6dcaa784c73939d3449bc38e2c9ac10180f67e3b492930cc6467c390ae665e5",
+      "officialMessageCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "officialSHA256": "c18f2fdae51a9f42ce34f3b402c410858997e54dfe4fab4c156b93120baf10f9"
+    },
+    "b": {
+      "pane": "block:01a21d9f-ff37-728f-9abb-b3bb67c4f0d4",
+      "pid": 669498,
+      "activeProgram": "codex",
+      "screenShowsInitialMultilineMarker": false,
+      "screenSHA256": "bc664ae9e335a44f151c0d4f9c7ddb050c97ab91e027696f809c21a333e62deb",
+      "officialMessageCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "officialSHA256": "30ea29ae8fdc14604ae1343b1c6cbdbe69958d8a234482f383abb6d3a53a3f49"
+    }
+  }
+}

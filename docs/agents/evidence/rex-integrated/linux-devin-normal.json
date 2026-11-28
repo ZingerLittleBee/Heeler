@@ -1,0 +1,15 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "source": "Read-only official evidence on the isolated Debian Host",
+  "multilineUserRows": [
+    1990
+  ],
+  "exactReturnedMarkerRows": [
+    1992
+  ],
+  "mentionsAcrossOtherSameDirectorySessions": 0,
+  "numberOfOtherSessions": 0,
+  "includesCJK": true,
+  "preservedInnerNewlinesAndIndent": true,
+  "slugHash": "05e574a9aab6"
+}

@@ -1,0 +1,107 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "program": "pi",
+  "foreground": {
+    "target": {
+      "pid": 3661,
+      "start": "3784189",
+      "report": "2026-11-27T13-27-09-711Z_01a21d30-3a8a-72b3-8592-fde645f804c5.jsonl",
+      "changedFile": true
+    },
+    "peer": {
+      "pid": 3681,
+      "start": "3784193",
+      "report": "2026-11-27T11-30-34-485Z_01a21cc5-7d75-77fb-bcd4-8308560c493d.jsonl",
+      "changedFile": false
+    }
+  },
+  "files": {
+    "oldA": {
+      "sessionID": "01a21d04-8fe8-72b3-8592-fde5356d105b",
+      "beforeSHA256": "52d7c0c8a21fe3e978d6bec7a70b3bdb92efd5087f588de4ad79b24526e77c09",
+      "matchedInitialLines": 6,
+      "appendedRows": 2,
+      "endingSHA256": "18310d0f02daced4234d8f2b58e007aeb403b82bcd19d175f8ba36a22bf22811",
+      "counts": {
+        "SEND": {
+          "user": 1,
+          "assistant": 1
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "newA": {
+      "sessionID": "01a21d30-3a8a-72b3-8592-fde645f804c5",
+      "beforeSHA256": null,
+      "matchedInitialLines": 0,
+      "appendedRows": 6,
+      "endingSHA256": "a842f1272eec5fa29d05e6e39519fe1f00d26b82d945f60c11c7e65b2da34dac",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 1,
+          "assistant": 1
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "peer": {
+      "sessionID": "01a21cc5-7d75-77fb-bcd4-8308560c493d",
+      "beforeSHA256": "b805a3d603381d93e5407fcad0ea35e0bc548fe30c77e6f076407aa885eabed8",
+      "matchedInitialLines": 6,
+      "appendedRows": 0,
+      "endingSHA256": "b805a3d603381d93e5407fcad0ea35e0bc548fe30c77e6f076407aa885eabed8",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    }
+  }
+}

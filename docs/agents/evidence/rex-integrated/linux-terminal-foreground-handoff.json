@@ -1,0 +1,36 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "runtimeSHA256": "f9b75bc7ebb9dd66953db74a611f80c6f52df5daf1d583e4f4203d9de99d9287",
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "driver": "Standalone iOS Simulator process, production ConsoleStore Terminal Composer over the disposable Debian SSH connection",
+  "gui": false,
+  "refusedWithoutSubmitting": true,
+  "mobileDraftRestored": true,
+  "host": {
+    "wire": {
+      "desktopTextVerifiedBeforeRelease": true,
+      "mobileAfterPaste": [
+        "Aw=="
+      ],
+      "releasedPasteReceipts": 1,
+      "peerWrites": 0,
+      "acceptedPastes": 1
+    },
+    "shells": {
+      "target": {
+        "sameShellPID": true,
+        "commandExecuted": false,
+        "exactDesktopText": false,
+        "actualReadlineBytes": 0,
+        "expectedReadlineBytes": 72
+      },
+      "peer": {
+        "sameShellPID": true,
+        "commandExecuted": false,
+        "exactDesktopText": true,
+        "actualReadlineBytes": 67,
+        "expectedReadlineBytes": 67
+      }
+    }
+  }
+}

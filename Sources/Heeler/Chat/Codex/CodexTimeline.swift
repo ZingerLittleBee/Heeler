@@ -95,6 +95,7 @@ struct CodexTimelineTurn: Equatable, Sendable {
     /// False when the turn started above the loaded lines, so its first
     /// loaded row is not where it began.
     var opensInWindow = true
+    var execApprovals: [ChatPendingRequest] = []
 }
 
 /// Everything a projection needs, before display rules.
@@ -146,6 +147,9 @@ enum CodexTimelineProjector {
         }
         for (index, turn) in timeline.turns.enumerated() {
             let open = openStatus(turn, isLive: index == liveTurn, activity: context.activity)
+            if context.requiresIndependentInputSession, index == liveTurn, open == .awaitingApproval {
+                output.pendingRequests.append(contentsOf: turn.execApprovals)
+            }
             var entryIDs: [ChatEntryID] = []
             for (position, entry) in turn.entries.enumerated() {
                 let chatEntry = project(

@@ -130,43 +130,49 @@ final class AgentComposerStore: ComposerDraftOperations {
     }
     /// Staged and uploading images attached above the text input.
     private(set) var imageAttachments: [ComposerImageAttachment] = []
-    private struct DroidDraft {
+    private struct StoredDraft {
         var text: String
         var selection: NSRange
         var attachments: [ComposerImageAttachment]
     }
 
-    @ObservationIgnored private var droidDrafts: [String: DroidDraft] = [:]
-    private var droidDraftOwner: String?
-    private var droidForeground: String?
-    private var tracksDroidSession = false
+    @ObservationIgnored private var parkedDrafts: [String: StoredDraft] = [:]
+    private var draftOwner: String?
+    private var draftForeground: String?
+    private var tracksDraftSession = false
 
-    func droidDraftMatches(_ foreground: String?) -> Bool {
-        foreground != nil && foreground == droidDraftOwner && foreground == droidForeground
+    func droidDraftMatches(_ foreground: String?) -> Bool { draftMatches(foreground) }
+
+    func draftMatches(_ foreground: String?) -> Bool {
+        foreground != nil && foreground == draftOwner && foreground == draftForeground
     }
 
-    /// Keep terminal input and staged files with the Factory conversation that
+    /// Keep terminal input and staged files with the conversation that
     /// owned the Composer when they were picked. Let active upload callbacks
     /// settle on that draft before parking it.
     private var draftProgram: ChatProgram = .droid
 
     func bindDroidDraft(to session: String?, program: ChatProgram? = nil) {
+        bindChatDraft(to: session, program: program)
+    }
+
+    func bindChatDraft(to session: String?, program: ChatProgram? = nil) {
         if let program { draftProgram = program }
-        tracksDroidSession = true
-        droidForeground = session
-        guard let session, session != droidDraftOwner else { return }
-        if let old = droidDraftOwner {
+        tracksDraftSession = true
+        draftForeground = session
+        guard let session, session != draftOwner else { return }
+        if let old = draftOwner {
             guard !imageAttachments.contains(where: { $0.phase.isPending }), queuedFileSelections.isEmpty,
                   staging?.canBegin != false else { return }
             if !draft.isEmpty || !imageAttachments.isEmpty {
-                droidDrafts[old] = .init(text: draft, selection: draftSelection, attachments: imageAttachments)
+                parkedDrafts[old] = .init(text: draft, selection: draftSelection, attachments: imageAttachments)
             }
-            let kept = droidDrafts.removeValue(forKey: session)
+            let kept = parkedDrafts.removeValue(forKey: session)
             replaceDraft(with: kept?.text ?? "")
             if let kept { draftSelection = kept.selection }
             imageAttachments = kept?.attachments ?? []
         }
-        droidDraftOwner = session
+        draftOwner = session
     }
 
     /// A rejected proposal opens Droid's Spec composer. Its reply uses the
@@ -201,8 +207,8 @@ final class AgentComposerStore: ComposerDraftOperations {
         return false
     }
 
-    private func droidRefusal(owner: String?, route: ComposerRoute) -> SendResult? {
-        guard tracksDroidSession, route == .chat, owner == nil || owner != droidForeground else { return nil }
+    private func draftRefusal(owner: String?, route: ComposerRoute) -> SendResult? {
+        guard tracksDraftSession, route == .chat, owner == nil || owner != draftForeground else { return nil }
         return .refused(.inputNotReady(draftProgram.draftOwnerGuidance))
     }
 
@@ -700,7 +706,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     private func sendDraft(policy: ComposerDeliveryPolicy) async -> SendResult {
         guard canSend else { return .ignored }
-        if let refused = droidRefusal(owner: droidDraftOwner, route: policy.route) { return refused }
+        if let refused = draftRefusal(owner: draftOwner, route: policy.route) { return refused }
         let promptText = composedDraft
         if let refusal = policy.validate(promptText) { return .refused(refusal) }
         let message = Message(
@@ -708,7 +714,7 @@ final class AgentComposerStore: ComposerDraftOperations {
             text: promptText,
             route: policy.route,
             stagedImagePaths: readyImagePaths,
-            droidSessionID: droidDraftOwner,
+            droidSessionID: draftOwner,
             draftText: draft,
             stagedImages: imageAttachments,
             agentWasWorkingAtSend: agentStatus == .working,
@@ -740,7 +746,7 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func retryMessage(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard isConnectionAvailable else { return .ignored }
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
-        if let refused = droidRefusal(owner: messages[index].droidSessionID, route: policy.route) { return refused }
+        if let refused = draftRefusal(owner: messages[index].droidSessionID, route: policy.route) { return refused }
         guard case .failed(let reason) = messages[index].state, messages[index].route == policy.route else {
             return .ignored
         }
@@ -813,12 +819,12 @@ final class AgentComposerStore: ComposerDraftOperations {
     private func returnToDraft(_ id: Message.ID) {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
         let removed = messages.remove(at: index)
-        if let owner = removed.droidSessionID, owner != droidDraftOwner {
-            var kept = droidDrafts[owner] ?? .init(text: "", selection: NSRange(location: 0, length: 0), attachments: [])
+        if let owner = removed.droidSessionID, owner != draftOwner {
+            var kept = parkedDrafts[owner] ?? .init(text: "", selection: NSRange(location: 0, length: 0), attachments: [])
             kept.text = [removed.draftText, kept.text].filter { !$0.isEmpty }.joined(separator: "\n")
             kept.selection = NSRange(location: (kept.text as NSString).length, length: 0)
             kept.attachments.insert(contentsOf: removed.stagedImages, at: 0)
-            droidDrafts[owner] = kept
+            parkedDrafts[owner] = kept
             return
         }
         if !removed.stagedImages.isEmpty {
@@ -873,7 +879,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     private func deliver(_ id: Message.ID, policy: ComposerDeliveryPolicy) async -> SendResult {
         guard let index = messages.firstIndex(where: { $0.id == id }) else { return .ignored }
-        if let refusal = droidRefusal(owner: messages[index].droidSessionID, route: policy.route) {
+        if let refusal = draftRefusal(owner: messages[index].droidSessionID, route: policy.route) {
             returnToDraft(id)
             return refusal
         }
@@ -896,7 +902,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         do {
             let params = AgentPromptParams(target: target, text: outgoing)
             if policy.requiresSinglePrompt {
-                if let refusal = await policy.droidWrite?.refusal() {
+                if let refusal = await policy.writeVerification?.refusal() {
                     returnToDraft(id)
                     return .refused(refusal)
                 }
@@ -941,7 +947,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard TerminalTextSafety.containsOnlySafeScalars(outgoing) else {
             return fail(id, message: Self.unsafeTextMessage)
         }
-        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach, verifying: policy.droidWrite)
+        let outcome = await checkedSend.send(outgoing, route: policy.route, attach: policy.coreAttach, verifying: policy.writeVerification)
         return finishChecked(id, outgoing: outgoing, policy: policy, outcome: outcome, success: .submittedViaAttach)
     }
 
@@ -1199,7 +1205,7 @@ final class AgentComposerStore: ComposerDraftOperations {
 
     func stagingDidSettle() {
         startNextQueuedImageIfNeeded()
-        if tracksDroidSession { bindDroidDraft(to: droidForeground) }
+        if tracksDraftSession { bindChatDraft(to: draftForeground) }
     }
 
     private func enqueueQueuedSelection(_ selection: any ImageSelection) {
@@ -1281,7 +1287,7 @@ final class AgentComposerStore: ComposerDraftOperations {
         guard let preview else { return }
         let url = preview.fileURL
         let stillReferencedInDraft = imageAttachments.contains { $0.preview?.fileURL == url }
-            || droidDrafts.values.contains { $0.attachments.contains { $0.preview?.fileURL == url } }
+            || parkedDrafts.values.contains { $0.attachments.contains { $0.preview?.fileURL == url } }
         let stillReferencedInMessages = messages.contains { message in
             message.stagedImages.contains { $0.preview?.fileURL == url }
         }

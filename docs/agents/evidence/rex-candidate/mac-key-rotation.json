@@ -1,0 +1,10 @@
+{
+  "scope": "Isolated QA SSH listener on loopback TCP 42540",
+  "previousFingerprint": "SHA256:WN4rfdpDCgvzl0PIJY6JLp7MLCtXYDsKnU+N45x1Q8M",
+  "newFingerprint": "SHA256:ruN6tGEPsDj80jKPhTZeqQiOfkGIrBoU22aYouoLpKg",
+  "oldKeyAuthentication": "Permission denied (publickey)",
+  "newKeyAuthentication": "Accepted on a fresh host-key-pinned connection",
+  "otherKeyFingerprintsPreserved": true,
+  "privateContractsUpdated": 48,
+  "revokedUTC": "2026-11-27T16:08:07Z"
+}

@@ -72,12 +72,22 @@ def run_one(name: str, argv: list[str], env: dict[str, str]) -> tuple[str, int, 
 def main() -> int:
     started = time.monotonic()
     workers = min(8, max(2, os.cpu_count() or 4))
+    selected = os.environ.get("TOOL_TESTS", "").split()
+    commands = COMMANDS
+    if selected:
+        by_name = dict(COMMANDS)
+        unknown = set(selected) - by_name.keys()
+        if unknown:
+            print("Unknown tool checks: " + ", ".join(sorted(unknown)), file=sys.stderr)
+            return 2
+        commands = [(name, by_name[name]) for name in dict.fromkeys(selected)]
+        workers = 1
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     failures: list[tuple[str, int, str]] = []
 
-    print(f"==> Running {len(COMMANDS)} tool checks across {workers} workers", flush=True)
+    print(f"==> Running {len(commands)} tool checks across {workers} workers", flush=True)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(run_one, name, argv, env) for name, argv in COMMANDS]
+        futures = [pool.submit(run_one, name, argv, env) for name, argv in commands]
         for future in as_completed(futures):
             name, code, elapsed, output = future.result()
             status = "PASS" if code == 0 else "FAIL"
@@ -91,10 +101,10 @@ def main() -> int:
             print(f"\n=== FAILED: {name} (exit {code}) ===", file=sys.stderr)
             if output:
                 print(output.rstrip(), file=sys.stderr)
-        print(f"\n{len(failures)} of {len(COMMANDS)} tool checks failed in {total:.1f}s.", file=sys.stderr)
+        print(f"\n{len(failures)} of {len(commands)} tool checks failed in {total:.1f}s.", file=sys.stderr)
         return 1
 
-    print(f"==> All {len(COMMANDS)} tool checks passed in {total:.1f}s.", flush=True)
+    print(f"==> All {len(commands)} tool checks passed in {total:.1f}s.", flush=True)
     return 0
 
 

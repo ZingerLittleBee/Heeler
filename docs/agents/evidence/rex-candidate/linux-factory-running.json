@@ -1,0 +1,48 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "productionAppSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+  "supplementalTestSHA256": "35330eb895e32e7931fade99fb3a6c9320199b53b919b03b42c4356d414075e7",
+  "action": "Two independently constructed AgentChatStore instances on two fresh SSH/Rex connections; no key, paste or task Stop",
+  "independent": {
+    "host": "linux",
+    "phase": "running",
+    "confirmedVendorModelIDs": [
+      "claude-opus-5-5"
+    ],
+    "parentReplySeen": true,
+    "markerHash": "7249e541da9c6686f066f8cb4d4b6095de55a50721d864c6984b8d654237ca68",
+    "uniqueForegroundAndOfficialHook": true,
+    "officialSessionHash": "7050e5985e05f6720f146382bcd123f2c9e0858bd7da96ab6a63938a2d5efd6a",
+    "commandOrigins": [
+      {
+        "callID": "40de15a8-75c9-49e6-bf14-9aa8c7fec663-1",
+        "outerCall": "call_4836bcfbc311a51e_0",
+        "pid": "793721",
+        "launchRow": 6,
+        "confirmedPIDRow": 8,
+        "outputFileHash": "6042243ebc5dcfaf510b93a5238bac569d077d44b9ffa081462f4a934b30abea",
+        "completionRow": null,
+        "exitCode": null,
+        "outputHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "callID": "40de15a8-75c9-49e6-bf14-9aa8c7fec663-2",
+        "outerCall": "call_4836bcfbc311a51e_0",
+        "pid": "793722",
+        "launchRow": 7,
+        "confirmedPIDRow": 9,
+        "outputFileHash": "744e8ec950bf6eb9639e627f036bdb47d9a244596dee9f7ab5095633d5aa9e64",
+        "completionRow": null,
+        "exitCode": null,
+        "outputHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "counts": {
+    "totalTestCount": 1,
+    "passedTests": 1,
+    "failedTests": 0,
+    "skippedTests": 0
+  },
+  "driverReturn": 0
+}

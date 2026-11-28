@@ -30,6 +30,7 @@ struct AgentNotificationBannerView: View {
         .frame(maxWidth: 520)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("console.agentNotificationBanner")
     }
 }
 

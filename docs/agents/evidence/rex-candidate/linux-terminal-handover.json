@@ -1,0 +1,37 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "gui": false,
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "debugDylibSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+  "testExecutableSHA256": "48b2a96e95121488b9b126c711df26228b7d8509c45ccce59bf85479deab4950",
+  "totalTestCount": 1,
+  "passedTests": 1,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "testFailures": [],
+  "independentHost": {
+    "wire": {
+      "acceptedPastes": 1,
+      "releasedPasteReceipts": 1,
+      "mobileAfterPaste": [],
+      "peerWrites": 0,
+      "desktopTextVerifiedBeforeRelease": true
+    },
+    "shells": {
+      "target": {
+        "sameShellPID": true,
+        "exactDesktopText": true,
+        "commandExecuted": false,
+        "expectedBytes": 72,
+        "actualBytes": 72
+      },
+      "peer": {
+        "sameShellPID": true,
+        "exactDesktopText": true,
+        "commandExecuted": false,
+        "expectedBytes": 67,
+        "actualBytes": 67
+      }
+    }
+  }
+}

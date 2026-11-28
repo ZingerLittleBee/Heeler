@@ -1,0 +1,22 @@
+{
+  "a": {
+    "userRecords": 1,
+    "assistantRecords": 1,
+    "exactMultilineUser": 1,
+    "exactAssistant": 1,
+    "uuid": "ses_de2f2ca73ffe2rb5iVJdGj5Zld"
+  },
+  "b": {
+    "userRecords": 0,
+    "assistantRecords": 0,
+    "exactMultilineUser": 0,
+    "exactAssistant": 0,
+    "uuid": "ses_de2f2c7a9ffeVr2gOYcDRJotXG"
+  },
+  "sameDirectory": true,
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "version": "OpenCode 2.0.32",
+  "database": "official session_message and session_v2, read-only",
+  "typedUTF8": 96,
+  "markerSHA256": "caf0c157885487a02f9fa77cb8dddbd60d35ce9660fd4fa388b3396bccd62c60"
+}

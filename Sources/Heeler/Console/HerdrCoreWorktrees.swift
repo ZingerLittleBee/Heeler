@@ -147,12 +147,12 @@ struct WorktreeAgentStartFailure: Error {
 
 /// A Worktree's git on one Host, each command in its own turn at the Host's gate.
 struct HerdrCoreWorktreeGit: Sendable {
-    let services: any HostServices
+    let services: any HostWorktreeAccess
     let gate: GitExecGate
     /// `.herdr` for a core Host, `.heeler` for a tmux Host (ADR 0045).
     let checkoutRoot: String
 
-    init(services: any HostServices, gate: GitExecGate, checkoutRoot: String = ".herdr") {
+    init(services: any HostWorktreeAccess, gate: GitExecGate, checkoutRoot: String = ".herdr") {
         self.services = services
         self.gate = gate
         self.checkoutRoot = checkoutRoot

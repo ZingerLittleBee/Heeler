@@ -30,6 +30,9 @@ struct AgentChatSource: Sendable {
     /// in place of `agentInfo`, and only when Chat opens or an event says the
     /// answer may have changed, never on a timer (ADR 0034).
     var sessionEvidence: (@Sendable () async throws -> ChatSessionEvidence)?
+    /// Rex can read a manually selected rollout while its terminal is showing
+    /// a different conversation held by the same foreground process.
+    var requiresIndependentInputSession = false
     /// The core session and core id, which key the cache beside the Host: nil
     /// on Herdr TUI, whose session the socket location names.
     var coreScope: String?
@@ -343,8 +346,53 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     var droidSessionID: String? { program.pinsComposerToSession ? followed?.sessionID : nil }
+    var tracksConversationDraft: Bool { program.pinsComposerToSession || source.requiresIndependentInputSession }
+
+    /// A Rex socket can start serving a different instance. Even a matching
+    /// program session ID there must not inherit the old server's draft.
     var composerSessionID: String? {
-        program == .devin ? displayedDroidTarget?.draftID(for: program) : droidSessionID
+        if program.pinsComposerToSession {
+            if source.requiresIndependentInputSession {
+                guard let scope = source.coreScope, let target = displayedDroidTarget, target.rexServerScope == scope else { return nil }
+                return target.draftID(for: program)
+            }
+            return program == .devin ? displayedDroidTarget?.draftID(for: program) : droidSessionID
+        }
+        guard source.requiresIndependentInputSession, let scope = source.coreScope else { return nil }
+        if let followed { return [scope, program.rawValue, followed.draftSessionID].joined(separator: "\0") }
+        guard case .noConversationYet = evidenceReason else { return nil }
+        return [scope, program.rawValue, "", firstDraftID.uuidString].joined(separator: "\0")
+    }
+
+    /// The first prompt can start a conversation. Its provisional owner is
+    /// local to this Chat, until a host check supplies a real session ID.
+    private let firstDraftID = UUID()
+
+    func confirmSessionBeforeSend(for composer: AgentComposerStore) async -> String? {
+        if let reason = await confirmSessionBeforeSend() { return reason }
+        return tracksConversationDraft && !composer.draftMatches(composerSessionID) ? program.draftOwnerGuidance : nil
+    }
+
+    func composerWriteCheck(for composer: AgentComposerStore) -> ComposerSessionCheck? {
+        guard let check = composerSessionInputCheck else { return nil }
+        let owner = composerSessionID
+        let shown = followed
+        return { [weak self, weak composer] checkedTarget in
+            guard let self, let composer, let owner, !Task.isCancelled, self.composerSessionID == owner,
+                  composer.draftMatches(owner) else { return false }
+            if let target = checkedTarget {
+                // The same fresh target used to verify the input box also names
+                // the official conversation. A later key gets its own read.
+                guard self.program.pinsComposerToSession, self.source.requiresIndependentInputSession,
+                      let scope = self.source.coreScope, target.rexServerScope == scope,
+                      self.displayedDroidTarget == target, target.draftID(for: self.program) == owner,
+                      !self.isReadingPickedConversation, let shown, let id = target.sessionID,
+                      self.followed?.namesSameSession(as: shown) == true else { return false }
+                return shown.namesSameSession(as: ConversationReference(program: self.program, sessionID: id))
+            }
+            guard await check() else { return false }
+            return !Task.isCancelled && self.composerSessionID == owner && composer.draftMatches(owner)
+        }
     }
     private(set) var displayedDroidTarget: DroidDialogTarget?
 
@@ -352,20 +400,67 @@ final class AgentChatStore {
     /// same Droid process opens another conversation or starts another turn.
     func droidStopVerification() -> ChatStopVerification {
         let session = composerSessionID
-        let turn = activeDroidTurn
+        let turn = activeRecordedTurn
         return { [weak self] in
             guard let self, let session, let turn, self.composerSessionID == session,
-                  self.activeDroidTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
+                  self.activeRecordedTurn == turn, await self.confirmSessionBeforeSend() == nil else { return false }
             let previousRead = self.readsBegun
             await self.step()
             return !Task.isCancelled && self.lastAppliedRead > previousRead
-                && self.composerSessionID == session && self.activeDroidTurn == turn
+                && self.composerSessionID == session && self.activeRecordedTurn == turn
         }
     }
 
-    var hasActivePinnedTurn: Bool { activeDroidTurn != nil }
+    static let rexReadOnlyConversation = String(localized: "This conversation is open for reading. Use the terminal for input until Rex can verify the active conversation.")
 
-    private var activeDroidTurn: ChatEntryID? {
+    var composerSessionInputCheck: ChatSessionInputCheck? {
+        if ampConnection?.isReadOnly == true { return { false } }
+        return source.requiresIndependentInputSession ? independentInputSession(allowFirstPrompt: true) : nil
+    }
+
+    private func independentInputSession(allowFirstPrompt: Bool = false) -> ChatSessionInputCheck {
+        let shown = followed
+        return { [weak self] in
+            guard let self, let read = self.source.sessionEvidence,
+                  let fresh = try? await read(), !Task.isCancelled else { return false }
+            switch fresh {
+            case .bound(let id, _, _):
+                guard let shown, self.followed?.namesSameSession(as: shown) == true else { return false }
+                return ConversationReference(program: self.program, sessionID: id).namesSameSession(as: shown)
+            case .unavailable(.noConversationYet):
+                return allowFirstPrompt && shown == nil && self.followed == nil && !self.program.pinsComposerToSession
+            default:
+                return false
+            }
+        }
+    }
+
+    /// A Rex Stop is addressed to the independently bound conversation and
+    /// its open recorded turn. A manual pick can show either of two rollouts
+    /// the same process is holding, while Esc always goes to its current one.
+    func rexStopVerification() -> ChatStopVerification {
+        if ampConnection?.isReadOnly == true { return { false } }
+        let shown = followed
+        let turn = activeRecordedTurn
+        let pinnedSession = composerSessionID
+        return { [weak self] in
+            guard let self, let shown, let turn, let evidence = self.source.sessionEvidence,
+                  self.followed?.namesSameSession(as: shown) == true, self.activeRecordedTurn == turn,
+                  !self.program.pinsComposerToSession || (pinnedSession != nil && self.composerSessionID == pinnedSession)
+            else { return false }
+            let previousRead = self.readsBegun
+            await self.step()
+            guard self.lastAppliedRead > previousRead, self.activeRecordedTurn == turn,
+                  case .bound(let id, _, _) = try? await evidence() else { return false }
+            return !Task.isCancelled && ConversationReference(program: self.program, sessionID: id).namesSameSession(as: shown)
+                && self.followed?.namesSameSession(as: shown) == true && self.activeRecordedTurn == turn
+                && (!self.program.pinsComposerToSession || self.composerSessionID == pinnedSession)
+        }
+    }
+
+    var hasActivePinnedTurn: Bool { program.pinsComposerToSession && activeRecordedTurn != nil }
+
+    private var activeRecordedTurn: ChatEntryID? {
         guard case .following = conversation.phase, !conversation.isFromCache, !conversation.hasUnreadRecords,
               conversation.readFailure == nil, let last = conversation.transcript.turns.last,
               last.ending == nil else { return nil }
@@ -395,7 +490,7 @@ final class AgentChatStore {
     /// A session the transcript says the conversation continued in, until
     /// herdr reports a session of its own.
     @ObservationIgnored private var continuedSession: ConversationReference?
-    @ObservationIgnored private var followed: ConversationReference?
+    private var followed: ConversationReference?
     /// The root conversation's id for the Antigravity CLI transcript now
     /// followed, and every session id (root or subagent) already found to
     /// resolve to it. herdr's `PreInvocation` hook reports each subagent step
@@ -410,7 +505,9 @@ final class AgentChatStore {
     @ObservationIgnored private var staleSession: ConversationReference?
     @ObservationIgnored private var staleTitle: String?
     /// Whether the last check bound a confirmed pick, which a send guard watches.
-    @ObservationIgnored private var followsPick = false
+    private var followsPick = false
+    var picksAreReadOnly: Bool { source.requiresIndependentInputSession }
+    var isReadingPickedConversation: Bool { picksAreReadOnly && followsPick }
     /// Sends made on the pick, until a turn's end says whether each arrived.
     @ObservationIgnored private var pickGuardSends: Set<UUID> = []
     @ObservationIgnored private var pickGuardTurnEnd: Date?
@@ -421,7 +518,7 @@ final class AgentChatStore {
     /// Candidates the user has read, the only ones a confirmation may name.
     @ObservationIgnored private var previewedCandidates: Set<String> = []
     /// Why the last check of the Agent's process bound nothing.
-    @ObservationIgnored private var evidenceReason: ChatUnavailableReason?
+    private var evidenceReason: ChatUnavailableReason?
     /// Where the last check that bound says the Agent keeps its Transcripts,
     /// and the directory it filed this conversation under, if it said.
     @ObservationIgnored private var evidenceRoot: String?
@@ -641,6 +738,24 @@ final class AgentChatStore {
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
         blocked = BlockedCardStore(program: program, io: source.screen)
+        if source.requiresIndependentInputSession, !program.pinsComposerToSession {
+            blocked.captureSessionCheck = { [weak self] in
+                guard let self, let session = followed?.sessionID else { return nil }
+                return (session, self.independentInputSession())
+            }
+            blocked.readRexRequests = { [weak self] in
+                guard let self, let engine, let followed else { return nil }
+                let snapshot = await engine.poll(context: projectionContext)
+                guard case .following(let file) = snapshot.phase, snapshot.readFailure == nil,
+                      !snapshot.isFromCache, !snapshot.hasUnreadRecords, snapshot.readOffset > 0 else { return nil }
+                // A JSONL writer can append a result while the card is open, or leave its newest line incomplete.
+                let end = try? await source.files.read(.init(path: file, offset: snapshot.readOffset - 1, maxBytes: 2))
+                guard end?.length == snapshot.readOffset, end?.data == Data([0x0a]),
+                      !Task.isCancelled, engine === self.engine, self.followed?.namesSameSession(as: followed) == true
+                else { return nil }
+                return snapshot.transcript.pendingRequests
+            }
+        }
         if program.pinsComposerToSession {
             blocked.readDroidPatch = { path in
                 guard let size = try? await source.files.status(path)?.size, size > 0, size <= 32 << 10,
@@ -1691,7 +1806,7 @@ final class AgentChatStore {
             forgetPick()
             let shown = followed
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: directory)
-            if let shown, let followed, !followed.namesSameSession(as: shown) {
+            if !source.requiresIndependentInputSession, let shown, let followed, !followed.namesSameSession(as: shown) {
                 movedSinceDraft = true
                 draftAtMove = composerDraft
             }
@@ -1715,8 +1830,8 @@ final class AgentChatStore {
             if program == .agy {
                 source.onAgyConversationBound?(nil, nil)
             }
-            if leavesPick {
-                leavePickedConversation()
+            if leavesPick || (source.files.amp?.isReadOnly == true && followed != nil) {
+                leaveUnconfirmedConversation()
             } else {
                 awaitSession(reason)
             }
@@ -1736,7 +1851,7 @@ final class AgentChatStore {
                 source.onAgyConversationBound?(nil, nil)
             }
             if leavesPick {
-                leavePickedConversation()
+                leaveUnconfirmedConversation()
             } else if resolution != .noSession {
                 adopt(.noSession)
             } else if !isAwaitingSession {
@@ -2006,6 +2121,7 @@ final class AgentChatStore {
         }
         if let engine { Task { await engine.save(force: true) } }
         followed = target
+        blocked.displayedInputSessionChanged()
         droidTaskStops.removeAll()
         agyRootSessionID = nil
         agySessionFamily = []
@@ -2098,7 +2214,9 @@ final class AgentChatStore {
     /// Codex on its shared daemon reads as another reason and gets no list, and
     /// Herdr TUI has no picks to make (ADR 0034).
     var offersCandidates: Bool {
-        guard acceptsPicks, case .unavailable(let reason) = conversation.phase else { return false }
+        guard acceptsPicks else { return false }
+        if isReadingPickedConversation { return true }
+        guard case .unavailable(let reason) = conversation.phase else { return false }
         return reason.leavesItToAPick
     }
 
@@ -2191,11 +2309,9 @@ final class AgentChatStore {
         pickGuardTurnEnd = nil
     }
 
-    /// The pick was all that said this is the Agent's conversation, and it no longer
-    /// stands. An exact binding that goes quiet keeps its last document readable, since
-    /// nothing says it was wrong. This one was only ever the user's word, so nothing
-    /// of it stays on screen (ADR 0034).
-    private func leavePickedConversation() {
+    /// A withdrawn pick or an unavailable read-only Amp plugin no longer identifies
+    /// the displayed thread. Release its reader and show the current explanation.
+    private func leaveUnconfirmedConversation() {
         resolution = .noSession
         continuedSession = nil
         followReference()
@@ -2381,6 +2497,10 @@ final class AgentChatStore {
     /// process has outlived. Never while there is no conversation yet, since the
     /// first Send starts it (ADR 0034).
     func sessionRefusalBeforeCheck() -> String? {
+        if isReadingPickedConversation {
+            sessionEvidenceMayHaveChanged()
+            return Self.rexReadOnlyConversation
+        }
         guard source.sessionEvidence != nil, followed == nil, case .unavailable(let reason) = conversation.phase
         else { return nil }
         switch reason {
@@ -2425,6 +2545,8 @@ final class AgentChatStore {
             return String(
                 localized: "\(name) is still starting, so Heeler sent nothing. Send again once it's running.",
                 comment: "Why a Chat send went nowhere: the program's name")
+        case .picked where source.requiresIndependentInputSession:
+            return Self.rexReadOnlyConversation
         case .bound, .picked:
             break
         }
@@ -2834,7 +2956,9 @@ final class AgentChatStore {
     }
 
     private var projectionContext: ChatProjectionContext {
-        ChatProjectionContext(activity: ChatAgentActivity(agent.status), skillNames: skillNames)
+        ChatProjectionContext(
+            activity: ChatAgentActivity(agent.status), skillNames: skillNames,
+            requiresIndependentInputSession: source.requiresIndependentInputSession)
     }
 
     // MARK: Sent prompts

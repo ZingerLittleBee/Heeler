@@ -39,6 +39,44 @@ struct NotificationPreferencesStoreTests {
     private let secrets = InMemorySecretStore()
     private var keys: NotificationKeyStore { NotificationKeyStore(secrets: secrets) }
 
+    @Test func rexBannersAreDeviceLocalAndOptInPerHostWithoutAPushToken() throws {
+        let rex = Host(name: "Rex", address: "rex.example", username: "dev", serverKind: .rex)
+        let other = Host(name: "Other", address: "other.example", username: "dev", serverKind: .rex)
+        let unknown = Host(name: "Unknown", address: "unknown.example", username: "dev", serverKind: .rex)
+        let windows = Host(name: "Windows", address: "windows.example", username: "dev", serverKind: .rex)
+        let pipe = Host(name: "Pipe", address: "pipe.example", username: "dev", serverKind: .rex,
+                        rexSocket: try #require(RexSocket(path: "npipe:////./pipe/rex-heeler-lab")))
+        let catalog = [rex, other, unknown, windows, pipe, host]
+        let kernels = [rex.id: HerdrCoreLocator.macOSKernel, other.id: HerdrCoreLocator.linuxKernel,
+                       windows.id: HerdrCoreLocator.windowsKernel, pipe.id: HerdrCoreLocator.macOSKernel]
+        let suite = "heeler-lab-banner-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        func open() -> NotificationPreferencesStore {
+            let preferences = NotificationPreferencesStore(
+                transports: ScriptedTransportProvider(transports: [:]), deviceToken: { nil }, rexBannerDefaults: defaults)
+            preferences.setHosts(catalog, rexKernels: kernels)
+            return preferences
+        }
+        let preferences = open()
+        #expect(preferences.rexBannerHosts == [rex, other])
+        #expect(preferences.rexBannerTriggers(for: rex.id) == nil)
+        preferences.setRexBannersEnabled(true, for: rex.id)
+        #expect(preferences.rexBannerTriggers(for: rex.id) == NotificationTriggerPreferences(blocked: true, done: false))
+        #expect(preferences.confirmedTriggers(for: rex.id) == nil)
+        preferences.setRexDoneEnabled(true, for: rex.id)
+        let restored = open()
+        #expect(restored.rexBannerTriggers(for: rex.id)?.done == true)
+        #expect(restored.rexBannerTriggers(for: other.id) == nil)
+        restored.updateRexBannerHosts(catalog, kernels: [:])
+        #expect(restored.rexBannerHosts.isEmpty && restored.rexBannerTriggers(for: rex.id) == nil)
+        restored.updateRexBannerHosts(catalog, kernels: kernels)
+        #expect(restored.rexBannerTriggers(for: rex.id)?.done == true)
+        restored.updateRexBannerHosts(catalog, kernels: [:])
+        restored.setHosts([other, host])
+        #expect(open().rexBannerTriggers(for: rex.id) == nil)
+    }
+
     private func makeStore(
         provider: ScriptedTransportProvider,
         deviceToken: APNSDeviceToken?

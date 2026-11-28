@@ -94,10 +94,9 @@ paths typed with the message.
   is not Blocked, bracketed paste is on (for any draft, as on tmux), and the
   draft fits; the paste, after the holder and bracketed paste are read again
   in the lane; then Enter, after the holder and status are read again in the
-  lane, within the two-second submit window. A shell that took over after the
-  paste gets one `0x03`, which drops the pasted text unrun, only while that
-  shell still leads the foreground, read again in the lane; the Agent back by
-  then, or another process, gets nothing. A Send from an open terminal
+  lane, within the two-second submit window. If the foreground changes after
+  the paste, the Composer retains the draft and sends no further keys. The
+  user can open the terminal to inspect any text still present. A Send from an open terminal
   view adds what it submitted to that view's message index, as on the other
   Server Kinds.
 - **Stop.** Chat's Stop presses the keys of the program's Stop plan through
@@ -170,3 +169,50 @@ paths typed with the message.
   Card answers, Stop or Send, from Chat or the Composer.
 - A process that replaced the Agent under the same process id and program is
   not told apart.
+
+## Update 2026-11-27: a Stop belongs to its recorded turn
+
+Codex 0.172.0 with its private process and Grok Build 1.0.92 each kept
+two sessions open after a desktop /new on the macOS preview.25 Host. For
+Codex the same PID held both rollout writers. For Grok the two registry
+entries matched the same process start. A PID check can pass for the wrong
+conversation. An active Program Status also spans multiple turns in one
+process.
+
+A conversation selected from matching history can be read. It supplies no authority to type into the active terminal. The Composer repeats the independent binding check in its block lane immediately before paste and Enter. A card for that history cannot answer the active screen. When the active conversation is ambiguous, the picker opens the transcript for reading and the user can continue in the terminal.
+
+A native Stop captures the independently bound conversation and the first
+entry of its open foreground turn. Immediately before the key in the
+existing block input queue, Heeler compares that identity with fresh
+harness evidence and the current root Working record, checks its owner
+and the program-specific Stop screen where applicable, and sends once.
+A finished turn, an ambiguous binding, an Unknown status or a changed
+server sends the user to the terminal. An uncertain receipt leaves the
+result pending for the user to inspect. The same controls and
+protocol range continue to work for a verified current turn.
+[Harness evidence](../agents/rex-chat-parity.md) · [Owner and lifecycle](0054-rex-terminals-running-a-known-agent-are-agents.md).
+
+### Drafts and repeated permission prompts
+
+A second tap after a desktop session switch builds a new Composer policy. The previous policy's refusal cannot protect that tap. Rex Chat binds a draft and its staged files to the retained Rex server identity, program and conversation. Moving to another verified conversation parks the old draft. Returning to the original conversation restores it. A process with no conversation yet can start its own first prompt. A manual history selection is read-only. The existing server continuity check determines whether a reconnection can reuse those identities.
+
+A real Claude Code 2.1.332 Bash prompt and a Codex 0.172.0 command prompt on Debian each had a unique open call in the foreground conversation's official record. Repeating the same command produced an identical visible request with a different call ID. The action keeps the call that generated its button, checks the current conversation and screen, then reads the record to its current end inside the block input queue. Each step of a question form repeats the check. Heeler holds the call after an uncertain acknowledgement. When it cannot identify one open request, the card opens the terminal. The same rule applies after a desktop answer. Droid and Devin retain their own target checks.
+
+These are client-side observations on revision 19. Rex terminal input has no condition on the displayed dialog or harness call ID. A program can change between the last read and processing a key. A protocol-level guarantee across independent desktop writers would require Rex or the harness to accept an input together with its expected foreground and prompt identity, then check and consume both atomically.
+
+### Foreground changes after a terminal Composer paste (2026-11-27)
+
+The original revision 19 client sent Ctrl-C to a replacement shell to discard
+an unsubmitted paste. A desktop user can already have typed a different line
+into that shell. The process check identifies the shell but cannot distinguish
+the two input buffers. The Terminal Composer now stops at the same ownership
+boundary as Chat and preserves the draft for the user. This changes no Rex
+wire requirement and applies to all supported revisions.
+
+For Factory Droid and Devin on Rex, the checked input box already needs a
+fresh full foreground target, including the server, process birth, directory
+and official session. Each paste and each Enter takes this reading independently.
+The write also compares it with the displayed conversation and the owner of
+the current draft. Reading the same process tree a second time inside a single
+write consumed part of the two-second submit window on both POSIX Hosts.
+The deadline and the separate read before the next key still apply.

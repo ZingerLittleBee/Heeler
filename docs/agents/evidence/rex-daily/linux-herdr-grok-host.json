@@ -1,0 +1,36 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "server": "Herdr TUI 0.9.5",
+  "program": "grok",
+  "source": "Independent Linux process, Herdr integration records and official transcript bytes via SSH",
+  "pairs": [
+    {
+      "pane": "w1:p1",
+      "pid": 216907,
+      "startTicks": "4644686",
+      "sessionKind": "id",
+      "integration": "herdr:grok",
+      "officialSession": "01a21d48-dcca-73d1-a64a-061d5aec64a1",
+      "recordCounts": {
+        "user": 1,
+        "assistant": 1
+      },
+      "seededSHA256": "2a40869379240be07e5098b319e362eed32d151ee343af5cbc5d81a70406f6e8",
+      "endingSHA256": "749eb2efa4b747963dab0a1f39f21b12cc4ccb0676b525aac5d5c75e6c31b696"
+    },
+    {
+      "pane": "w1:p2",
+      "pid": 220902,
+      "startTicks": "4654014",
+      "sessionKind": "id",
+      "integration": "herdr:grok",
+      "officialSession": "01a21d4a-35fd-7fe2-99fc-d3b8f41805e8",
+      "recordCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "seededSHA256": "f27075c3a1a7333a2a1354382c9e969be2bc372a39b17db2987583b3e5a9496e",
+      "endingSHA256": "f27075c3a1a7333a2a1354382c9e969be2bc372a39b17db2987583b3e5a9496e"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Synchronization
 import Testing
@@ -178,5 +179,112 @@ struct RexTerminalInputLiveTests {
             try await Task.sleep(for: .milliseconds(100))
         }
         Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+}
+
+@MainActor
+@Suite("Rex Terminal Composer after a foreground handover", .serialized, .timeLimit(.minutes(2)))
+struct RexTerminalTakeoverLiveTests {
+    @Test func anotherClientsUnsubmittedShellLineSurvivesAnAgentsExit() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_REX_TERMINAL_TAKEOVER_LAB"])
+        let observed = try await RexTerminalTakeoverObservation.run(path: path)
+        #expect(observed.refusedWithoutSubmitting)
+        #expect(observed.mobileDraftRestored)
+        #expect(observed.host.wire.acceptedPastes == 1)
+        #expect(observed.host.wire.desktopTextVerifiedBeforeRelease)
+        #expect(observed.host.wire.releasedPasteReceipts == 1)
+        #expect(observed.host.wire.mobileAfterPaste.isEmpty)
+        #expect(observed.host.wire.peerWrites == 0)
+        #expect(observed.host.shells["target"]?.exactDesktopText == true)
+        #expect(observed.host.shells["peer"]?.exactDesktopText == true)
+        #expect(observed.host.shells.values.allSatisfy { $0.sameShellPID && !$0.commandExecuted })
+    }
+}
+
+// The independent desktop reads Bash's actual READLINE_LINE on both sides
+// after the phone closes its control connection. No second Enter is needed.
+@MainActor
+struct RexTerminalTakeoverObservation: Codable {
+    struct HostEvidence: Codable {
+        struct Wire: Codable {
+            let acceptedPastes, releasedPasteReceipts, peerWrites: Int
+            let desktopTextVerifiedBeforeRelease: Bool
+            let mobileAfterPaste: [String]
+        }
+        struct Shell: Codable {
+            let sameShellPID, exactDesktopText, commandExecuted: Bool
+            let expectedReadlineBase64, actualReadlineBase64: String
+        }
+        let wire: Wire
+        let shells: [String: Shell]
+    }
+    let refusedWithoutSubmitting, mobileDraftRestored: Bool
+    let host: HostEvidence
+
+    private struct Fixture: Decodable {
+        struct Side: Decodable { let session, block: String }
+        let port: Int
+        let user, seed, fingerprint, rexSocket, directory, phoneText: String
+        let target, peer: Side
+    }
+    private struct Failure: Error, CustomStringConvertible { let description: String }
+
+    static func run(path: String) async throws -> Self {
+        let lab = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        guard let socket = RexSocket(path: lab.rexSocket), let secret = Data(base64Encoded: lab.seed),
+              ["/tmp/heeler-lab-", "/private/tmp/heeler-lab-"].contains(where: lab.directory.hasPrefix),
+              lab.phoneText.hasPrefix("REX_LAB_MOBILE_"),
+              lab.target.session != lab.peer.session, lab.target.block != lab.peer.block else {
+            throw Failure(description: "Expected two different private foregrounds")
+        }
+        let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: secret)
+        let settings = SSHTransportSettings(host: "127.0.0.1", port: lab.port, username: lab.user,
+            credentials: .ed25519(privateKey), hostKeyPolicy: .init(knownHosts: InMemoryKnownHostsStore()) {
+                $0.fingerprint.displayString == lab.fingerprint
+            }, socket: .absolutePath("/nonexistent/herdr.sock"))
+        let host = Host(name: "heeler-lab-terminal-takeover", address: "127.0.0.1", port: lab.port,
+                        username: lab.user, serverKind: .rex, rexSocket: socket)
+        let session = RexHostSession(storedSocket: socket) { saved, previous in
+            try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: settings), socket: saved, resuming: previous)
+        }
+        let observer = try await RexSSHTransport.connect(over: HeelerSSHTransport.connect(settings: settings), socket: socket)
+        let console = ConsoleStore(makeRexSession: { _ in session })
+        console.setHosts([host])
+        do {
+            await console.resume()
+            let pane = RexPaneAddress(sessionID: lab.target.session, blockID: lab.target.block).paneID
+            func target() -> ConsoleAgent? {
+                console.agents.first { $0.id.hostID == host.id && $0.agent.paneID == pane
+                    && $0.agent.kind == "pi" && $0.agent.cwd == lab.directory }
+            }
+            let deadline = ContinuousClock.now + .seconds(20)
+            while target() == nil && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+            guard let agent = target() else { throw Failure(description: "The real Pi foreground did not appear in Agents") }
+            let composer = console.composerStore(for: agent)
+            composer.replaceDraft(with: lab.phoneText)
+            let sent = await composer.send(policy: .terminal)
+            let refused: Bool
+            if case .refused(.notSubmitted) = sent { refused = true } else { refused = false }
+            let restored = composer.draft == lab.phoneText
+            console.setHosts([])
+            await session.end()
+            let evidencePath = (lab.rexSocket as NSString).deletingLastPathComponent + "/after.json"
+            let limit = ContinuousClock.now + .seconds(15)
+            repeat {
+                if let size = try await observer.reads.fileStatus(atPath: evidencePath)?.size, size > 0 && size < 65536 {
+                    let read = try await observer.reads.readHostFileRange(.init(path: evidencePath, offset: 0, maxBytes: 65536))
+                    let observed = try JSONDecoder().decode(HostEvidence.self, from: read.data)
+                    await observer.close()
+                    return Self(refusedWithoutSubmitting: refused, mobileDraftRestored: restored, host: observed)
+                }
+                try await Task.sleep(for: .milliseconds(120))
+            } while ContinuousClock.now < limit
+            throw Failure(description: "The independent shell inspection did not complete")
+        } catch {
+            console.setHosts([])
+            await session.end()
+            await observer.close()
+            throw error
+        }
     }
 }

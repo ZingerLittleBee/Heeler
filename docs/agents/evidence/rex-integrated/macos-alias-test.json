@@ -1,0 +1,42 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+        "deviceName": "heeler-lab-rex-socket-alias",
+        "modelName": "iPhone 17e",
+        "osBuildNumber": "24A434",
+        "osVersion": "27.0",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 4,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "HeelerLiveTests · Built with macOS 27.0.1",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1795788531.759,
+  "passedTests": 4,
+  "result": "Passed",
+  "runtimeWarnings": [],
+  "skippedTests": 0,
+  "startTime": 1795788153.111,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - HeelerLiveTests",
+  "topInsights": [],
+  "totalTestCount": 4,
+  "candidate": "6515ba8641117e0d71c109eca31890298d2c9e83",
+  "selector": "HeelerLiveTests/RexSSHLiveTests",
+  "appDylibSHA256": "13ba61afba96ec5067ee681b2eff464f4a78085eb60fe105e1a92fbfb64a4890",
+  "testBinarySHA256": "f0f78cf35cc74e37da51ec4738792db3ee82f3b5b0ba29d66b17057bc881ee4b",
+  "runner": "make test-app"
+}

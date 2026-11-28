@@ -281,6 +281,12 @@ final class ConsoleStore {
     /// One Chat per Agent whose detail has shown it, kept like the Composer
     /// so leaving and returning keeps the conversation and its position.
     @ObservationIgnored private var chatStores: [ConsoleAgent.ID: AgentChatStore] = [:]
+    private struct RexAntigravityBinding: Equatable {
+        let instance: String
+        let pid: Int
+        let conversation: String
+    }
+    private var rexAntigravityBindings: [ConsoleAgent.ID: RexAntigravityBinding] = [:]
     /// The last session event each core Agent's Chat has heard of.
     @ObservationIgnored private var chatSessionEventRevisions: [ConsoleAgent.ID: UInt64] = [:]
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
@@ -840,6 +846,17 @@ final class ConsoleStore {
 
     /// The projection behind every Host-scoped RPC; an unconnected Host
     /// fails loudly instead of silently dropping the action.
+    func rexBannerRecipient(for id: ConsoleAgent.ID) -> RexBannerRecipient? {
+        (projections[id.hostID] as? RexConsoleProjection)?.bannerRecipient(for: id.paneID)
+    }
+
+    func verifyRexBannerRecipient(_ captured: RexBannerRecipient, for id: ConsoleAgent.ID) async -> Bool {
+        guard let rex = projections[id.hostID] as? RexConsoleProjection,
+            await rex.verifyBannerRecipient(captured, for: id.paneID)
+        else { return false }
+        return projections[id.hostID] === rex
+    }
+
     private func projection(for hostID: Host.ID) throws -> any ConsoleHostProjection {
         guard let projection = projections[hostID] else {
             throw TransportError.sshUnreachable(
@@ -946,7 +963,7 @@ final class ConsoleStore {
             return cached
         }
         let query = SkillListQuery(kind: kind, projectRoot: projectRoot)
-        let skills = try await projection(for: hostID).withHostServices { services in
+        let skills = try await projection(for: hostID).withProjectReads { services in
             try await services.listSkills(query)
         }
         skillsCache = skillsCache.filter {
@@ -960,7 +977,7 @@ final class ConsoleStore {
     /// the Host's live Console connection. Uncached — it is user-triggered,
     /// one file at a time.
     func readSkillFile(path: String, on hostID: Host.ID) async throws -> String {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readSkillFile(atPath: path)
         }
     }
@@ -996,7 +1013,7 @@ final class ConsoleStore {
     func listUntrackedDirectory(
         _ request: UntrackedDirectoryRequest, on hostID: Host.ID
     ) async throws -> UntrackedDirectoryListing {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.listUntrackedDirectory(request)
         }
     }
@@ -1007,7 +1024,7 @@ final class ConsoleStore {
     func readChanges(
         _ request: ChangesReadRequest, on hostID: Host.ID
     ) async throws -> CheckoutChangesRead {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readChanges(request)
         }
     }
@@ -1016,7 +1033,7 @@ final class ConsoleStore {
     func readFilePatch(
         _ request: FilePatchRequest, on hostID: Host.ID
     ) async throws -> FilePatch {
-        try await projection(for: hostID).withHostServices { services in
+        try await projection(for: hostID).withProjectReads { services in
             try await services.readFilePatch(request)
         }
     }
@@ -1195,7 +1212,9 @@ final class ConsoleStore {
     /// Agent and its Host entry last. Nil when the Host is not in the
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
-        guard capabilities(for: agent.hostID).offersChat(for: program) else { return nil }
+        let capabilities = capabilities(for: agent.hostID)
+        guard capabilities.offersChat(for: program),
+              !(program == .agy && capabilities.requiresBoundAntigravity) || hasBoundAntigravity(agent) else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let hostProjection = projections[agent.hostID], let adapter = chatAdapter(program) else {
             return nil
@@ -1208,10 +1227,12 @@ final class ConsoleStore {
         let paneID = agent.agent.paneID
         var files = chatHostFiles(for: hostID, agentID: agent.id)
         if program == .amp {
-            guard host.serverKind == .herdrTUI else { return nil }
-            files.amp = AmpChatConnection(pane: paneID) { [weak self] in
-                guard let live = self?.projections[hostID] as? HostConsoleProjection else { throw TransportError.cancelled }
-                return live
+            guard hostProjection is any AmpChatProjection else { return nil }
+            let readOnly = capabilities.readOnlyChatPrograms.contains(.amp)
+            files.amp = AmpChatConnection(pane: paneID, readOnly: readOnly) { [weak self, weak hostProjection] in
+                guard let live = self?.projections[hostID], !readOnly || live === hostProjection,
+                      let amp = live as? any AmpChatProjection else { throw TransportError.cancelled }
+                return amp
             }
         }
         var source = AgentChatSource(
@@ -1243,6 +1264,7 @@ final class ConsoleStore {
                     guard let self else { throw TransportError.cancelled }
                     try await self.pasteIntoAgent(text, paneID: paneID, on: hostID)
                 }))
+        source.requiresIndependentInputSession = hostProjection is RexConsoleProjection
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
@@ -1257,9 +1279,6 @@ final class ConsoleStore {
         if program.pinsComposerToSession, let tui = hostProjection as? HostConsoleProjection {
             source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID, program: program) }
         }
-        if let amp = files.amp {
-            source.sessionEvidence = { try await amp.evidence() }
-        }
         if let processBound {
             // No record names a session here.
             source.processInfo = nil
@@ -1271,6 +1290,19 @@ final class ConsoleStore {
             source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: processBound.chatCacheScope)
             // Only events after this store exists are news to it.
             chatSessionEventRevisions[agent.id] = processBound.sessionEventRevision(of: paneID)
+        }
+        if program == .agy, capabilities.requiresBoundAntigravity {
+            source.picks = nil
+            // Plain messages use RexComposerSend. A dialog or background
+            // action must never acquire an unchecked screen writer.
+            let readScreen = source.screen.readScreen
+            source.screen = .unavailable
+            source.screen.readScreen = readScreen
+        }
+        if let amp = files.amp {
+            if amp.isReadOnly { source.screen = .unavailable }
+            source.picks = nil
+            source.sessionEvidence = { try await amp.evidence() }
         }
         if program == .agy {
             source.onAgyConversationBound = { [weak self] root, rootID in
@@ -1342,9 +1374,13 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
-        let verification: ChatStopVerification? = program.pinsComposerToSession
-            ? chatStores[agent.id]?.droidStopVerification() ?? { false }
-            : nil
+        let unverified: ChatStopVerification = { false }
+        let verification: ChatStopVerification?
+        if projections[hostID] is RexConsoleProjection {
+            verification = chatStores[agent.id]?.rexStopVerification() ?? unverified
+        } else {
+            verification = program.pinsComposerToSession ? chatStores[agent.id]?.droidStopVerification() ?? unverified : nil
+        }
         if let stop = projections[hostID]?.checkedChatStop(
             for: agent.agent.paneID,
             program: program,
@@ -2411,6 +2447,21 @@ final class ConsoleStore {
         pendingTitleRenameCleanupTasks[id] = (token, task)
     }
 
+    /// The presented sheet keeps the block and foreground it was opened for.
+    func agentNameStore(for agent: ConsoleAgent, keepingTo pin: TerminalCorePin?) -> RenameStore {
+        let rex = projections[agent.hostID] as? RexConsoleProjection
+        let block = rex?.renameBlockAction(for: agent.agent.paneID)
+        return RenameStore(subject: .agent(detectedKind: agent.agent.kind), currentValue: agent.agent.name ?? "") { name in
+            if let rex {
+                guard !self.hasLeftCore(pin, on: agent.hostID) else { throw self.leftCoreError(on: agent.hostID) }
+                guard self.projections[agent.hostID] === rex, let block else { throw TransportError.rexServerGone }
+                try await block(name)
+            } else {
+                try await self.renameAgent(agent.agent.paneID, name: name, on: agent.hostID, keepingTo: pin)
+            }
+        }
+    }
+
     func renameAgent(
         _ paneID: String, name: String?, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
@@ -2420,8 +2471,9 @@ final class ConsoleStore {
     }
 
     func renameWorkspace(
-        _ workspaceID: String, label: String, on hostID: Host.ID
+        _ workspaceID: String, label: String, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
         flushScheduledRebuild()
     }
@@ -2490,6 +2542,7 @@ final class ConsoleStore {
                 case .rex:
                     RexConsoleProjection(
                         host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
+                        gitGate: gitExecGate(for: host.id),
                         onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .herdrTUI, .unconfirmed:
@@ -2540,6 +2593,14 @@ final class ConsoleStore {
     }
 
     private func rebuild() {
+        for (id, binding) in rexAntigravityBindings {
+            guard let rex = projections[id.hostID] as? RexConsoleProjection,
+                  rex.server?.instanceID == binding.instance,
+                  rex.antigravityForeground(in: id.paneID) == binding.pid else {
+                rexAntigravityBindings.removeValue(forKey: id)
+                continue
+            }
+        }
         rebuildCoalesceTask?.cancel()
         rebuildCoalesceTask = nil
         #if DEBUG
@@ -2980,6 +3041,8 @@ final class ConsoleStore {
     /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
     /// with an Account: the Host's Accounts name it, else the harness does.
     func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async throws -> String? {
+        // Rex has no per-server Accounts file. Presets can still select the harness's own folder.
+        if projections[hostID] is RexConsoleProjection { return kind.configDirectoryVariable }
         let store = hostAccountsStore(for: hostID)
         try await store.load()
         return store.variable(for: kind)
@@ -3182,7 +3245,9 @@ final class ConsoleStore {
                 coreLinuxChatPrograms: coreLinuxChatPrograms,
                 coreMacOSChatPrograms: coreMacOSChatPrograms,
                 coreWindowsChatPrograms: coreWindowsChatPrograms,
-                isLocatingCore: hostStatuses[host.id] == .connecting)
+                isLocatingCore: hostStatuses[host.id] == .connecting,
+                rexAcceptsCommand: (projections[host.id] as? RexConsoleProjection)?.acceptsAgentCommand == true,
+                rexAPIRevision: (projections[host.id] as? RexConsoleProjection)?.apiRevision)
         }
         if hostCapabilities != next {
             hostCapabilities = next
@@ -3729,12 +3794,42 @@ final class ConsoleStore {
             form: form, files: try OpenCodePluginEdit.pluginFiles(from: try hostHelperBundle()))
     }
 
+    /// The foreground detail asks about its own pane. A lock can change in
+    /// the same process without Rex announcing a new foreground.
+    func refreshAntigravityBinding(for agent: ConsoleAgent) async {
+        let id = agent.id
+        guard let rex = projections[id.hostID] as? RexConsoleProjection,
+              let instance = rex.server?.instanceID, let pid = rex.antigravityForeground(in: id.paneID) else {
+            rexAntigravityBindings.removeValue(forKey: id)
+            return
+        }
+        let evidence = try? await rex.checkChatSession(paneID: id.paneID, program: .agy)
+        guard !Task.isCancelled, projections[id.hostID] === rex, rex.server?.instanceID == instance,
+              rex.antigravityForeground(in: id.paneID) == pid else { return }
+        let binding: RexAntigravityBinding?
+        if case .bound(let conversation, _, _) = evidence {
+            binding = RexAntigravityBinding(instance: instance, pid: pid, conversation: conversation)
+        } else {
+            binding = nil
+        }
+        if rexAntigravityBindings[id] != binding { rexAntigravityBindings[id] = binding }
+    }
+
+    private func hasBoundAntigravity(_ agent: ConsoleAgent) -> Bool {
+        guard let rex = projections[agent.hostID] as? RexConsoleProjection,
+              let binding = rexAntigravityBindings[agent.id] else { return false }
+        return binding.instance == rex.server?.instanceID && binding.pid == rex.antigravityForeground(in: agent.agent.paneID)
+    }
+
     func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
         // Chat goes on to the address's new Agent. A detail stays with the old one,
         // which has no Chat left to show.
         guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
         let capabilities = capabilities(for: agent.hostID)
         guard capabilities.chat else { return nil }
+        if capabilities.requiresBoundAntigravity, agent.agent.kind == ChatProgram.agy.rawValue, !hasBoundAntigravity(agent) {
+            return nil
+        }
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
@@ -4120,7 +4215,7 @@ extension ConsoleStore: NotificationTransportProvider {
     /// and its menus list Ports. A native Windows machine waits for a test
     /// there, as its Files do.
     func offersPortPreview(for hostID: Host.ID) -> Bool {
-        connectPortPreview != nil && hostPlatforms[hostID] != .nativeWindows
+        connectPortPreview != nil && !isNativeWindows(hostID)
             && !capabilities(for: hostID).isNativeWindowsCore
             && catalog.contains { $0.id == hostID }
     }

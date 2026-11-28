@@ -19,6 +19,22 @@ struct DroidBackendChatLiveTests {
         var herdrSocket: String?
     }
 
+    private func chatSource(
+        _ projection: any ConsoleHostProjection, pane: String, typing: any CheckedChatTyping
+    ) throws -> AgentChatSource {
+        let host = projection.host
+        var source = AgentChatSource(hostID: host.id, socketLocation: .namedSession("lab"), files: projection.chatHostFiles(),
+            agentInfo: { try await projection.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
+            adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)))
+        source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
+        source.screen = typing.blockedScreen
+        source.screen.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
+        source.screen.hostName = host.name
+        source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
+        return source
+    }
+
     @Test(arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
     func bindsSendsAndReadsTheReply(_ kind: ServerKind) async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
@@ -39,20 +55,20 @@ struct DroidBackendChatLiveTests {
             id = try #require(lab.sessions[kind.rawValue])
         }
         let agent = try #require(projection.agentsByPane[pane]?.agent)
-        let evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+        var evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+        if projection is RexConsoleProjection {
+            let until = ContinuousClock.now + .seconds(20)
+            while case .unavailable(.cannotTellSession(.droid)) = evidence, ContinuousClock.now < until {
+                try await Task.sleep(for: .milliseconds(250))
+                evidence = try await projection.checkChatSession(paneID: pane, program: .droid)
+            }
+        }
         guard case .bound(id, _, _) = evidence else {
             Issue.record("The foreground Droid did not bind its fixture UUID: \(evidence)")
             return
         }
         let typing = try #require(projection.checkedChatTyping(at: pane))
-        var source = AgentChatSource(hostID: host.id, socketLocation: .namedSession("lab"), files: projection.chatHostFiles(),
-            agentInfo: { try await projection.agentInfo(paneID: pane) }, cache: VolatileChatTranscriptCache(),
-            adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)))
-        source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
-        source.screen = typing.blockedScreen
-        source.screen.droidTarget = { try await projection.droidDialogTarget(paneID: pane) }
-        source.screen.hostName = host.name
-        source.coreScope = projection.chatCacheScope
+        let source = try chatSource(projection, pane: pane, typing: typing)
         let chat = AgentChatStore(agentID: .init(hostID: host.id, paneID: pane), agent: agent, program: .droid, source: source)
         defer { chat.end() }
         await chat.step()
@@ -67,10 +83,11 @@ struct DroidBackendChatLiveTests {
             Issue.record("Droid bypassed this backend's checked sender")
             throw TransportError.cancelled
         }
-        composer.bindDroidDraft(to: chat.droidSessionID)
-        let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
+        composer.bindChatDraft(to: chat.composerSessionID, program: .droid)
+        var policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []),
             activity: { ChatAgentActivity(projection.agentsByPane[pane]?.agent.status ?? .unknown) },
             readScreen: typing.blockedScreen.readScreen, droidTarget: source.screen.droidTarget, displayedDroidTarget: { chat.displayedDroidTarget }, confirmSession: { await chat.confirmSessionBeforeSend() })
+        policy.sessionWrite = chat.composerWriteCheck(for: composer)
         let token = "HEELER_DROID_" + UUID().uuidString.prefix(8)
         let prompt = "Reply with only the marker on the last line, without indentation or formatting. Do not use tools.\n\n    \(token)"
         try await waitForEmptyBox(typing.blockedScreen, projection: projection, pane: pane)
@@ -90,7 +107,6 @@ struct DroidBackendChatLiveTests {
                 }
                 try await checkDraftAfterNewSession(chat: chat, composer: composer, policy: policy, projection: projection,
                                                     pane: pane, previous: id)
-                try await checkHookSetup(lab: lab, projection: projection, pane: pane, session: id, directory: directory)
                 return
             }
             try await Task.sleep(for: .milliseconds(500))
@@ -170,7 +186,7 @@ struct DroidBackendChatLiveTests {
             keepingTo: TerminalCorePin(joined: oldProjection.inventoryCore), live: { oldProjection })
         let composer = AgentComposerStore(target: oldPane, checkedSend: sender) { try await oldProjection.promptAgent($0) }
         let marker = "OLD_DROID_" + UUID().uuidString
-        composer.bindDroidDraft(to: oldTarget.sessionID)
+        composer.bindChatDraft(to: oldTarget.draftID(for: .droid), program: .droid)
         composer.replaceDraft(with: marker)
         let policy = ComposerDeliveryPolicy.chat(rules: .init(program: .droid, commands: []), activity: { .idle },
             readScreen: oldChat.droidScreen.readScreen, droidTarget: oldChat.droidScreen.droidTarget, displayedDroidTarget: { oldTarget })
@@ -220,6 +236,7 @@ struct DroidBackendChatLiveTests {
             cache: VolatileChatTranscriptCache(), adapter: try #require(ChatTranscriptAdapter.standard(for: .droid)), screen: io)
         source.sessionEvidence = { try await projection.checkChatSession(paneID: pane, program: .droid) }
         source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
         let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .droid, source: source)
         defer { chat.end() }
         await chat.step()
@@ -282,7 +299,9 @@ struct DroidBackendChatLiveTests {
             try await waitForEmptyBox(io, projection: projection, pane: pane)
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
-            let result = await composer.send(policy: policy)
+            var current = policy
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
+            let result = await composer.send(policy: current)
             try #require(result == .submittedViaAttach || result == .deliveredViaPrompt || result == .deliveredViaAttach, "Droid submission: \(result)")
         }
         func selectAutonomy(_ name: String) async throws {
@@ -333,10 +352,20 @@ struct DroidBackendChatLiveTests {
         print("Droid evidence \(projection.host.serverKind) stopped red, blue completed, late child reported once")
     }
 
-    /// Only a fixture SSH account may receive setup files from this test.
-    private func checkHookSetup(
-        lab: Lab, projection: any ConsoleHostProjection, pane: String, session: String, directory: String
-    ) async throws {
+    @Test(arguments: LiveChatLabSelection.cases([.herdrCore, .tmux, .rex]))
+    func keepsExistingSettingsWhenRegisteringTheHookOrLaunchingDroid(_ kind: ServerKind) async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DROID_BACKENDS_LAB"])
+        let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let (projection, pane) = try lab.connection(kind)
+        projection.start(isActive: true)
+        defer { projection.end() }
+        let discoveryDeadline = ContinuousClock.now + .seconds(30)
+        while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < discoveryDeadline {
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        try #require(projection.agentsByPane[pane]?.agent.kind == "droid")
+        let session = try #require(lab.sessions[kind.rawValue])
+        let directory = lab.directories?[kind.rawValue] ?? lab.directory
         let files = projection.chatHostFiles()
         let home = try await files.home()
         try #require(URL(fileURLWithPath: home).standardizedFileURL.path == lab.factoryHome)
@@ -450,7 +479,7 @@ struct DroidBackendChatLiveTests {
         #expect(path.hasSuffix("/" + next + ".jsonl"))
         #expect(chat.conversation.transcript.recordedPrompts.isEmpty)
         try #require(try await DroidInputBox.read(screen.readScreen()).isSendable)
-        composer.bindDroidDraft(to: next)
+        composer.bindChatDraft(to: chat.composerSessionID, program: .droid)
         #expect(composer.draft.isEmpty)
         try await checkInterrupt(chat: chat, composer: composer, policy: policy, projection: projection, pane: pane)
     }
@@ -475,8 +504,10 @@ struct DroidBackendChatLiveTests {
         for tag in ["first", "second"] {
             composer.replaceDraft(with: "List the numbers from one to two thousand on separate lines. Begin with " + tag + ". Do not use tools.")
             chat.draftDidChange(to: composer.draft)
-            let result = await composer.send(policy: policy)
-            try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt)
+            var current = policy
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
+            let result = await composer.send(policy: current)
+            try #require(result == .submittedViaAttach || result == .deliveredViaAttach || result == .deliveredViaPrompt, "Droid send before Stop: \(result)")
             let deadline = ContinuousClock.now + .seconds(25)
             var pressed = false
             while ContinuousClock.now < deadline {
@@ -511,5 +542,77 @@ struct DroidBackendChatLiveTests {
             try #require(interrupted)
         }
         print("Droid evidence \(projection.host.serverKind) held the old Stop and interrupted only its selected turn")
+    }
+}
+
+extension DroidBackendChatLiveTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_REX_DROID_SCRIPT_LAB"] != nil))
+    func reopensTheExactRexScriptCommandsWithoutOfferingTaskStop() async throws {
+        struct Expected: Decodable {
+            struct Command: Decodable {
+                let callID, outerID, title, pid: String
+                let exitCode: Int?
+                let reportedOutput: String?
+            }
+            enum Phase: String, Decodable { case running, finished }
+            let lab: Lab
+            let phase: Phase
+            let sessionID: String
+            let commands: [Command]
+        }
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_REX_DROID_SCRIPT_LAB"])
+        let fixture = try JSONDecoder().decode(Expected.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        try #require(fixture.commands.count == 2 && Set(fixture.commands.map(\.callID)).count == 2)
+        try #require(Set(fixture.commands.map(\.pid)).count == 2)
+        let finished = fixture.phase == .finished
+        try #require(fixture.commands.allSatisfy { command in
+            (command.exitCode != nil) == finished && (command.reportedOutput != nil) == finished
+        })
+        for _ in 0..<2 {
+            let (projection, pane) = try fixture.lab.connection(.rex)
+            projection.start(isActive: true)
+            defer { projection.end() }
+            let deadline = ContinuousClock.now + .seconds(55)
+            while projection.agentsByPane[pane]?.agent.kind != "droid", ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(180))
+            }
+            let agent = try #require(projection.agentsByPane[pane]?.agent)
+            try #require(agent.kind == "droid")
+            let target = try await projection.droidDialogTarget(paneID: pane)
+            try #require(target?.sessionID == fixture.sessionID && target?.directory == fixture.lab.directory)
+            guard case .bound(let id, _, _) = try await projection.checkChatSession(paneID: pane, program: .droid), id == fixture.sessionID else {
+                Issue.record("The new Rex connection did not bind the exact signed Factory UUID")
+                return
+            }
+            let typing = try #require(projection.checkedChatTyping(at: pane))
+            let source = try chatSource(projection, pane: pane, typing: typing)
+            let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .droid, source: source)
+            defer { chat.end() }
+            chat.show()
+            let limit = ContinuousClock.now + .seconds(60)
+            repeat {
+                if let current = projection.agentsByPane[pane]?.agent { chat.agentDidChange(current) }
+                await chat.step()
+                if chat.droidSessionID == fixture.sessionID && fixture.commands.allSatisfy({ command in
+                    chat.backgroundWork.rows.contains { $0.item.id == command.callID && ($0.item.endOffset != nil) == finished }
+                }) { break }
+                try await Task.sleep(for: .milliseconds(250))
+            } while ContinuousClock.now < limit
+            guard case .following(let file) = chat.conversation.phase, file.hasSuffix("/" + fixture.sessionID + ".jsonl") else {
+                Issue.record("The reopened Chat was not following the fixture's official transcript")
+                return
+            }
+            #expect(chat.droidSessionID == fixture.sessionID)
+            for command in fixture.commands {
+                let matching = chat.backgroundWork.rows.map(\.item).filter { $0.id == command.callID }
+                try #require(matching.count == 1)
+                let task = try #require(matching.first)
+                #expect(task.title == command.title && task.taskID == command.pid)
+                #expect(task.droidScriptCallID == command.outerID && !task.allowsDroidTaskPanel)
+                #expect(task.exitCode == command.exitCode && task.reportedOutput == command.reportedOutput)
+                #expect((task.endOffset != nil) == finished)
+                #expect(task.state == (finished ? (command.exitCode == 0 ? .completed : .failed) : .running))
+            }
+        }
     }
 }

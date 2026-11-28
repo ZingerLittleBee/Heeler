@@ -1,0 +1,133 @@
+{
+  "cut": {
+    "ok": true,
+    "cutConnections": 1
+  },
+  "observations": {
+    "initial": {
+      "root": "/tmp/heeler-lab-recovery-xg2x37kl",
+      "rexSocket": "/tmp/heeler-lab-recovery-xg2x37kl/runtime/server.sock",
+      "loginShell": "fish",
+      "instance": "71d465b6-31cf-455b-97e0-096ef45234d8",
+      "host": "568e25a6-8651-4135-adc5-740a76934335",
+      "rows": [
+        {
+          "label": "heeler-lab-recovery-peer",
+          "session": "session:01a21d11-7e74-7075-bee6-b5c8c3b0cba0",
+          "block": "block:01a21d11-7e74-716b-a69c-2b105bdb0701",
+          "pid": 7293,
+          "program": "bash",
+          "containsMarker": false
+        },
+        {
+          "label": "heeler-lab-recovery-target",
+          "session": "session:01a21d11-7d58-7236-b929-276f1f8b4a13",
+          "block": "block:01a21d11-7d58-76b6-8617-0f4106c7c016",
+          "pid": 7228,
+          "program": "claude",
+          "containsMarker": false
+        }
+      ]
+    },
+    "restored": {
+      "root": "/tmp/heeler-lab-recovery-xg2x37kl",
+      "rexSocket": "/tmp/heeler-lab-recovery-xg2x37kl/runtime/server.sock",
+      "loginShell": "fish",
+      "instance": "eed5e101-b59d-4e94-abe7-c94e1fd04780",
+      "host": "568e25a6-8651-4135-adc5-740a76934335",
+      "rows": [
+        {
+          "label": "heeler-lab-recovery-peer",
+          "session": "session:01a21d11-7e74-7075-bee6-b5c8c3b0cba0",
+          "block": "block:01a21d11-7e74-716b-a69c-2b105bdb0701",
+          "pid": 6111,
+          "program": "fish",
+          "containsMarker": false
+        },
+        {
+          "label": "heeler-lab-recovery-target",
+          "session": "session:01a21d11-7d58-7236-b929-276f1f8b4a13",
+          "block": "block:01a21d11-7d58-76b6-8617-0f4106c7c016",
+          "pid": 6110,
+          "program": "fish",
+          "containsMarker": false
+        }
+      ]
+    },
+    "inspect-restored": {
+      "root": "/tmp/heeler-lab-recovery-xg2x37kl",
+      "rexSocket": "/tmp/heeler-lab-recovery-xg2x37kl/runtime/server.sock",
+      "loginShell": "fish",
+      "instance": "eed5e101-b59d-4e94-abe7-c94e1fd04780",
+      "host": "568e25a6-8651-4135-adc5-740a76934335",
+      "rows": [
+        {
+          "label": "heeler-lab-recovery-peer",
+          "session": "session:01a21d11-7e74-7075-bee6-b5c8c3b0cba0",
+          "block": "block:01a21d11-7e74-716b-a69c-2b105bdb0701",
+          "pid": 6111,
+          "program": "fish",
+          "containsMarker": false
+        },
+        {
+          "label": "heeler-lab-recovery-target",
+          "session": "session:01a21d11-7d58-7236-b929-276f1f8b4a13",
+          "block": "block:01a21d11-7d58-76b6-8617-0f4106c7c016",
+          "pid": 6110,
+          "program": "fish",
+          "containsMarker": false
+        }
+      ]
+    },
+    "fresh": {
+      "root": "/tmp/heeler-lab-recovery-xg2x37kl",
+      "rexSocket": "/tmp/heeler-lab-recovery-xg2x37kl/runtime/server.sock",
+      "loginShell": "fish",
+      "instance": "39167569-3bd5-46c2-9ec9-14aea2898316",
+      "host": "568e25a6-8651-4135-adc5-740a76934335",
+      "rows": [
+        {
+          "label": "heeler-lab-recovery-peer",
+          "session": "session:01a21d26-7cf4-7e9a-9d10-12cf720a41c4",
+          "block": "block:01a21d26-7cf5-7052-9db2-5c72e5a8f27e",
+          "pid": 7250,
+          "program": "bash",
+          "containsMarker": false
+        },
+        {
+          "label": "heeler-lab-recovery-target",
+          "session": "session:01a21d26-7c8f-7055-ad8a-5331e633c562",
+          "block": "block:01a21d26-7c8f-76ed-be1e-2ce45fc0fe2c",
+          "pid": 7230,
+          "program": "bash",
+          "containsMarker": false
+        }
+      ]
+    },
+    "inspect-fresh": {
+      "root": "/tmp/heeler-lab-recovery-xg2x37kl",
+      "rexSocket": "/tmp/heeler-lab-recovery-xg2x37kl/runtime/server.sock",
+      "loginShell": "fish",
+      "instance": "39167569-3bd5-46c2-9ec9-14aea2898316",
+      "host": "568e25a6-8651-4135-adc5-740a76934335",
+      "rows": [
+        {
+          "label": "heeler-lab-recovery-peer",
+          "session": "session:01a21d26-7cf4-7e9a-9d10-12cf720a41c4",
+          "block": "block:01a21d26-7cf5-7052-9db2-5c72e5a8f27e",
+          "pid": 7250,
+          "program": "bash",
+          "containsMarker": false
+        },
+        {
+          "label": "heeler-lab-recovery-target",
+          "session": "session:01a21d26-7c8f-7055-ad8a-5331e633c562",
+          "block": "block:01a21d26-7c8f-76ed-be1e-2ce45fc0fe2c",
+          "pid": 7230,
+          "program": "bash",
+          "containsMarker": false
+        }
+      ]
+    }
+  }
+}

@@ -52,16 +52,13 @@ Native iOS companion app for [herdr](https://herdr.dev) and tmux, an agent conso
   Unix socket, and connecting never runs `rex`. On native Windows each is an
   SSH exec of `rex.exe -S <pipe> __internal dial-stdio --autostart=false` to its
   named pipe, a platform branch like herdr-core's. Detection never runs
-  `rex`, and connecting never starts a server. New Terminal is the one thing it
-  starts: a shell in a new background window of a session
-  (`session.new_window`), or in a new session (`session.create`), given back at
-  once; a block's size is taken only for a terminal
-  on screen, before its first paint, and given back when it leaves (ADRs 0049
-  to 0053). Rex Chat reads over SSH and types through the control link.
-  Claude Code, Codex, Pi, Oh My Pi and Droid open Chat on Linux and macOS.
-  Native Windows supports Claude Code. Attachments,
-  Heeler's Pi extension and the Droid hook the user installs from Chat are
-  scoped writes (ADRs 0054 to 0056).
+  `rex`, and connecting never starts a server. New Terminal and POSIX New
+  Agent create a background window or a new session. Only a visible terminal
+  claims the block's size, then returns it when the terminal leaves. Chat
+  reads over SSH and types through the control link (ADRs 0049 to 0056).
+  For versioned protocol behavior, consult [Rex compatibility](docs/agents/rex-compatibility.md).
+  For project operations, Chat controls and Host services on each system,
+  use the [daily acceptance matrix](docs/agents/rex-daily-acceptance.md).
 - UI depends on `Transport`, not SSH library types. Pane ids are opaque strings.
   Protocol negotiation enforces a floor, ignores unknown fields, and treats the
   generated protocol version as advisory. API requests are one-shot; subscribe

@@ -22,32 +22,26 @@ struct RexConsoleTests {
             rexSocket: RexSocket(path: "/run/user/1000/rex/server.sock"))
     }
 
-    /// A Rex Host starts a shell for New Terminal, in a Workspace or a new
-    /// one it names (ADR 0049's update of 2026-11-25), in a POSIX or a
-    /// Windows directory, and starts no Agent, closes and renames nothing
-    /// and runs nothing on the machine for Changes or Skills (ADRs 0049 and
-    /// 0056). Its Agents offer Composer Send and Stop, Chat for Claude Code,
-    /// Codex, Pi, Oh My Pi and Droid and uploads once the server has named a Linux
-    /// or macOS kernel, and Chat for Claude Code alone and uploads once it
-    /// has named Windows, whatever a
-    /// platform probe would say, since none runs. A terminal shows in one
-    /// window at a time, so a row offers no window of its own and the windows
-    /// take turns, as with a Herdr TUI Host's channel.
+    /// The negotiated Rex kernel and its shell schema determine what this Host
+    /// offers. Native Windows has its own program set. New Terminal works before
+    /// Rex reports a kernel and opens on one client window at a time.
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.macOSKernel, HerdrCoreLocator.linuxKernel: [.claude, .codex, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.linuxKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.macOSKernel: [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }
         let opensChat = !programs.isEmpty
         for isLocatingCore in [false, true] {
             let offers = HostCapabilities(
-                serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore)
+                serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore, rexAcceptsCommand: true)
 
-            #expect(!offers.startsAgents)
+            #expect(offers.requiresBoundAntigravity == (kernel == HerdrCoreLocator.linuxKernel))
+            #expect(offers.startsAgents == isPOSIX)
             #expect(offers.startsTerminals)
             #expect(offers.startsIn("/home/dev/app"))
             #expect(offers.startsIn(#"C:\Users\dev\app"#))
@@ -55,25 +49,32 @@ struct RexConsoleTests {
             #expect(
                 offers.newTerminalRequest(workspaceID: "session:studio", cwd: "/home/dev")
                     == ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev"))
-            #expect(!offers.renameAgent)
-            #expect(!offers.renamesWorkspaces)
+            #expect(offers.renameAgent == isPOSIX)
+            #expect(!offers.renamesConversationTitles)
+            #expect(offers.renamesWorkspaces == isPOSIX)
             #expect(offers.namesNewWorkspaces)
             #expect(!offers.worktrees)
+            #expect(offers.createsWorktrees == isPOSIX)
             #expect(offers.uploads == opensChat)
-            #expect(!offers.tabNames)
+            #expect(offers.tabNames == isPOSIX)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
             #expect(!offers.takeOver)
             #expect(!offers.hostScripts)
-            #expect(!offers.offersChanges(directory: "/home/dev/app"))
+            #expect(offers.offersChanges(directory: "/home/dev/app") == isPOSIX)
             #expect(!offers.isNativeWindowsCore)
             #expect(!offers.rowsReadChanges)
             #expect(offers.composerSend)
             #expect(offers.composerStop)
             #expect(offers.chat == opensChat)
             #expect(offers.chatPrograms == programs)
+            let histories: Set<ChatProgram> = switch kernel {
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.opencode, .amp]
+            default: []
+            }
+            #expect(offers.readOnlyChatPrograms == histories)
             for program in ChatProgram.allCases {
-                #expect(offers.offersChat(for: program) == programs.contains(program))
+                #expect(offers.offersChat(for: program) == (programs.contains(program) || histories.contains(program)))
             }
             #expect(offers.terminalsShowInOneWindow)
             #expect(
@@ -88,6 +89,10 @@ struct RexConsoleTests {
         // Chat ahead for it.
         #expect(rex.capabilities == HostCapabilities(serverKind: .rex))
         #expect(!rex.capabilities.chat)
+        #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).startsAgents)
+        #expect(!RexNewTerminal.acceptsAgentCommand(["creators": [["flavors": [
+            ["flavor": .string(RexNewTerminal.shellFlavor), "options_schema": ["properties": ["command": ["type": "string"]]]]
+        ]]]]))
         // The other kinds keep their rows, viewers and windows.
         for kind in [ServerKind.herdrTUI, .herdrCore, .tmux] {
             let other = HostCapabilities(serverKind: kind)
@@ -98,18 +103,14 @@ struct RexConsoleTests {
             HostCapabilities(serverKind: .tmux).terminalAccess(.liveInAnotherWindow(canTakeOver: true)) == .holds)
     }
 
-    /// The Agent detail's menus offer only what the Host serves, alike on
-    /// Chat and the terminal: on a Rex Host no New Agent, rename or Close,
-    /// and attachments once the server has named Linux or macOS; a saved
-    /// Chat is still removed on any Host. The other kinds offer what they did.
     @Test func aRexAgentsDetailMenusOfferNothingTheHostCannotServe() {
         let rex = AgentDetailMenuOffers(
-            capabilities: HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel),
+            capabilities: HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel, rexAcceptsCommand: true),
             workspaceID: "session:studio", removesSavedChat: false)
-        #expect(!rex.newAgent)
+        #expect(rex.newAgent)
         #expect(rex.attachments)
-        #expect(!rex.renameAgent)
-        #expect(!rex.renameWorkspace)
+        #expect(rex.renameAgent)
+        #expect(rex.renameWorkspace)
         #expect(!rex.close)
         let unnamed = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .rex), workspaceID: "session:studio", removesSavedChat: true)
@@ -122,7 +123,7 @@ struct RexConsoleTests {
         let tmux = AgentDetailMenuOffers(
             capabilities: HostCapabilities(serverKind: .tmux, coreKernel: HerdrCoreLocator.linuxKernel),
             workspaceID: "$1", removesSavedChat: false)
-        #expect(tmux.newAgent && tmux.attachments && !tmux.renameAgent && tmux.renameWorkspace && tmux.close)
+        #expect(tmux.newAgent && tmux.attachments && tmux.renameAgent && tmux.renameWorkspace && tmux.close)
         let core = AgentDetailMenuOffers(
             capabilities: HostCapabilities(
                 serverKind: .herdrCore, platform: .posix, coreKernel: HerdrCoreLocator.linuxKernel),
@@ -339,6 +340,74 @@ struct RexConsoleTests {
         return studio
     }
 
+    @Test(arguments: [String?.none, "windows_x86_64"])
+    func anUnverifiedOrWindowsRexForegroundCannotReceiveBanners(_ platform: String?) async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")], platform: platform)
+        let console = store(servers: await served(world))
+        let host = rex
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("the working foreground and its reported platform") {
+            console.agents.first?.agent.status == .working &&
+                (platform == nil || console.hostCoreKernels[host.id] == HerdrCoreLocator.windowsKernel)
+        }
+        let row = try #require(console.agents.first)
+        #expect(console.rexBannerRecipient(for: row.id) == nil)
+        await console.suspend()
+    }
+
+    @Test func aRexBannerOpensOnlyTheForegroundThatReported() async throws {
+        let world = FakeRexWorld(sessions: [studioRunningCodex(reporting: "working")])
+        let server = await served(world)[0]
+        let console = store(servers: [server])
+        let host = rex
+        let preferences = NotificationPreferencesStore(transports: console, deviceToken: { nil })
+        let banners = AgentNotificationBannerStore(
+            holdDuration: .milliseconds(5), presentedAgent: { nil },
+            triggers: { preferences.rexBannerTriggers(for: $0) }, playSound: {},
+            rexRecipient: { console.rexBannerRecipient(for: $0) },
+            verifyRexRecipient: { await console.verifyRexBannerRecipient($1, for: $0) })
+        console.setHosts([host])
+        await console.resume()
+        try await waitUntil("working on a known macOS Host") {
+            console.agents.first?.agent.status == .working && console.hostCoreKernels[host.id] == HerdrCoreLocator.macOSKernel
+        }
+        preferences.setHosts([host], rexKernels: console.hostCoreKernels)
+        preferences.setRexBannersEnabled(true, for: host.id)
+        let target = try #require(console.agents.first?.id)
+        let block = world.sessions[0].windows[0].layers[0].blocks[2]
+        func receive(_ state: String, _ status: AgentStatus, second: Int) async throws {
+            let record = block.record(state, app: "codex", at: "2026-11-16T12:00:0\(second)+00:00")
+            world.update { $0[0].windows[0].layers[0].blocks[2].status = record }
+            await server.push("block_event",
+                blockEvent("program_status_changed", ["id": "", "record": record, "reason": "report"]), session: "session:studio")
+            try await waitUntil(state) { console.agents.first?.agent.status == status }
+            banners.agentsDidChange(console.agents)
+        }
+        try await receive("blocked", .blocked, second: 1)
+        banners.setRexForeground(true, agents: console.agents)
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(banners.banner == nil, "An existing Blocked row is the foreground baseline")
+        try await receive("working", .working, second: 2)
+        try await receive("blocked", .blocked, second: 3)
+        try await waitUntil("the banner") { banners.banner != nil }
+        let first = try #require(banners.banner)
+        var landed: AgentNotificationTarget?
+        await banners.open(first) { landed = $0 }
+        #expect(landed?.agentID == target)
+        try await receive("working", .working, second: 4)
+        try await receive("blocked", .blocked, second: 5)
+        try await waitUntil("the next banner") { banners.banner != nil }
+        let stale = try #require(banners.banner)
+        // The foreground changed on the server before its event reached this device.
+        world.update { $0[0].windows[0].layers[0].blocks[2].processID += 1 }
+        var replacement: AgentNotificationTarget?
+        await banners.open(stale) { replacement = $0 }
+        #expect(replacement == nil)
+        #expect(banners.banner == nil)
+        await console.suspend()
+    }
+
     private func blockEvent(_ name: String, _ payload: JSONValue, block: String = "block:left") -> JSONValue {
         ["block_id": .string(block), "creator_name": .string(RexInventoryWire.terminalCreator), "name": .string(name),
          "payload": payload]
@@ -352,6 +421,71 @@ struct RexConsoleTests {
         RexInventoryWire.terminalMethod("title"), RexInventoryWire.terminalMethod("process"),
         RexInventoryWire.terminalMethod("program_status"),
     ]
+
+    @Test func manualRefreshReadsTheCurrentRexInventory() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let server = FakeRexServer()
+        await world.install(on: server)
+        let dials = Dials()
+        let store = store(servers: [server], dials: dials)
+        defer { store.setHosts([]) }
+        let host = rex
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the original rows") { store.terminals.first?.title == "make test" }
+
+        var changed = studioRunningCodex(reporting: "working")
+        changed.revision += 1
+        changed.windows[0].label = "review"
+        world.update { $0 = [changed, FakeRexWorld.studio(id: "session:second", label: "second")] }
+        let before = await server.requests.count
+        await server.stopAnswering("session.attach_all")
+        async let first: Void = store.refreshTerminalInventory(on: host.id)
+        async let second: Void = store.refreshTerminalInventory(on: host.id)
+        let held = await server.nextRequest()
+        #expect(held.method == "session.attach_all")
+        await server.answer("session.attach_all") { _ in .result(world.attachAll) }
+        await server.respond(to: held, with: world.attachAll)
+        _ = await (first, second)
+
+        #expect(store.terminals.count == 10)
+        #expect(store.terminals.contains { $0.workspaceLabel == "second" })
+        let updated = try #require(store.agents.first)
+        #expect(updated.tabLabel == "review")
+        #expect(updated.agent.kind == "codex" && updated.agent.status == .working)
+        let requests = await server.requests.dropFirst(before).map(\.method)
+        #expect(requests.count(where: { $0 == "session.attach_all" }) == 1)
+        #expect(requests.count(where: { $0 == "session.view" }) == 2)
+        #expect(requests.count(where: { $0 == "session.list_blocks" }) == 2)
+        #expect(requests.count(where: { $0 == RexInventoryWire.terminalMethod("process") }) == 10)
+        #expect(Set(requests).isSubset(of: Self.inventoryMethods))
+        #expect(dials.all.filter { $0 == "rex connect" }.count == 1)
+    }
+
+    @Test func losingTheControlLinkReleasesAManualRefresh() async throws {
+        let world = FakeRexWorld(sessions: [FakeRexWorld.studio()])
+        let servers = await served(world, count: 2)
+        await servers[1].stopAnswering("session.attach_all")
+        let dials = Dials()
+        let store = store(servers: servers, dials: dials)
+        defer { store.setHosts([]) }
+        let host = rex
+        store.setHosts([host])
+        await store.resume()
+        try await waitUntil("the original rows") { store.terminals.first?.title == "make test" }
+
+        await servers[0].stopAnswering("session.view")
+        async let refresh: Void = store.refreshTerminalInventory(on: host.id)
+        let held = await servers[0].nextRequest()
+        #expect(held.method == "session.view")
+        await servers[0].drop()
+        await refresh
+
+        await store.suspend()
+        let before = dials.all
+        await store.refreshTerminalInventory(on: host.id)
+        #expect(dials.all == before)
+    }
 
     /// A terminal running a known agent lists as an Agent of its Host, in its
     /// session's Workspace and its window's Tab, with the status its program
@@ -1022,7 +1156,7 @@ struct RexConsoleTests {
         let tmux = Host(
             name: "m3", address: "m3.example", username: "dev", serverKind: .tmux, sessionName: "default")
         let records = HostStore(volatileHosts: [tmux, rexServer]).consoleHosts
-        #expect(records.map(\.displayName) == ["m3 · tmux", "m3 · Rex"])
+        #expect(records.map(\.displayName) == ["m3 · Tmux", "m3 · Rex"])
         let console = store(rexConnect: { _, _ in throw TransportError.rexForwardingRefused(socketPath: "/run/rex.sock") })
         defer { console.setHosts([]) }
         console.setHosts(records)
@@ -1036,7 +1170,7 @@ struct RexConsoleTests {
 
         let issues = console.hostIssues(for: records)
         #expect(issues.map(\.hostID) == [tmux.id, rexServer.id])
-        #expect(issues.map(\.hostName) == ["m3 · tmux", "m3 · Rex"])
+        #expect(issues.map(\.hostName) == ["m3 · Tmux", "m3 · Rex"])
         #expect(issues[1].message.hasPrefix("m3 · Rex: "))
 
         let suite = "rex-console-host-issues-\(UUID().uuidString)"
@@ -1114,14 +1248,17 @@ struct RexConsoleTests {
 
     /// New Workspace makes a new session holding one shell in the directory
     /// asked, labeled with the name given, else the directory's name; a tab
-    /// name has nowhere to go. It lists once the server announces it.
+    /// name is optional. It lists once the server announces it.
     @Test func newWorkspaceMakesASessionNamedForItsDirectory() async throws {
         let (console, server, _) = await newTerminalRig()
         defer { console.setHosts([]) }
         let rex = rex
+        await server.answer("server.version", using: { _ in .result(["platform": "darwin_arm64"]) })
         console.setHosts([rex])
         await console.resume()
-        try await waitUntil("the terminals") { console.terminals.count == 5 }
+        try await waitUntil("the terminals and their naming capabilities") {
+            console.terminals.count == 5 && console.capabilities(for: rex.id).tabNames
+        }
         #expect(console.capabilities(for: rex.id).namesNewWorkspaces)
 
         let identity = try await console.createShellWorkspace(
@@ -1136,6 +1273,7 @@ struct RexConsoleTests {
                     "label": "site",
                     "initial_windows": [
                         [
+                            "window_label": "build",
                             "layout": [
                                 "block": ["flavor": "com.superlogical.terminal.shell", "options": ["cwd": "/home/dev/site"]]
                             ]

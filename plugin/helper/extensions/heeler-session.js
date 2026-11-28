@@ -30,6 +30,7 @@ const TMUX_STATUS_OPTION = "@heeler-status";
 const TMUX_SESSION_OPTION = "@heeler-session";
 const TMUX_TIMEOUT_MS = 2000;
 /** Beside this extension's own folder: where a Rex terminal's session goes, one file per process (ADR 0056). */
+// Rex session report format v2: a block can report without REX_SESSION.
 const REX_SESSION_FOLDER = "heeler-session";
 /** A folder nothing tidied for long is still looked through only this far. */
 const REX_SWEEP_LIMIT = 256;
@@ -445,13 +446,13 @@ async function reportToTmux(program, target) {
 /**
  * Where this process's session goes inside a Rex terminal, or null outside one:
  * `<agent directory>/heeler-session/<pid>.json`, beside the `extensions` folder
- * this file was loaded from, which is where Chat reads it. Rex gives every
- * program in a terminal `REX_SESSION` and `REX_BLOCK` (rex-compatibility.md). A
+ * this file was loaded from, which is where Chat reads it. Rex identifies the
+ * block with `REX_BLOCK`. Some releases omit `REX_SESSION`. A
  * tmux inside the terminal hands them on to its Panes, whose programs are not
  * the terminal's own, so `TMUX` leaves this inert.
  */
 export function rexSessionFile(env, extension = import.meta.url) {
-  if (!env.REX_SESSION || !env.REX_BLOCK || env.TMUX) return null;
+  if (!env.REX_BLOCK || env.TMUX) return null;
   try {
     const folder = dirname(fileURLToPath(extension));
     return basename(folder) === "extensions" ? join(dirname(folder), REX_SESSION_FOLDER, `${process.pid}.json`) : null;

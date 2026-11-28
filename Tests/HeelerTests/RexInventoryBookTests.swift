@@ -247,8 +247,13 @@ struct RexInventoryBookTests {
         book.apply(
             event(5, .blockEvent(
                 blockID: "block:left", creatorName: Self.terminal, name: "process_changed",
-                payload: ["generation": 4, "foreground": .null])))
+                payload: ["generation": 4, "foreground": .null, "last_exit": ["exit_code": 2]])))
         #expect(book.inventory.sessions.first?.terminals.first?.details.program == nil)
+        #expect(book.inventory.sessions.first?.terminals.first?.details.lastExit == ProgramExit(code: 2))
+        book.apply(event(6, .blockEvent(
+            blockID: "block:left", creatorName: Self.terminal, name: "process_changed",
+            payload: ["foreground": ["name": "bash", "pid": 51], "last_exit": ["exit_code": 2]])))
+        #expect(book.inventory.sessions.first?.terminals.first?.details.lastExit == nil)
         #expect(structureReads(&book) == [])
     }
 
@@ -678,7 +683,7 @@ struct RexInventoryBookTests {
         answer(&book, studio, seq: 5)
         #expect(book.takeReads(limit: 8).count == 5)
 
-        book.sequenceBroke()
+        book.requestListing()
         #expect(book.needsListing)
         #expect(!book.isStructureSettled)
     }

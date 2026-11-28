@@ -4735,7 +4735,23 @@ extension HeelerSSHTransport: HerdrCoreHostConnection {
 // MARK: - What a Rex Host uses of this connection
 /// Chat's reads are the Chat Host files above, and a staging is the one
 /// under Attachment staging, as on every other Server Kind.
-extension HeelerSSHTransport: RexHostConnection {
+extension HeelerSSHTransport: RexHostConnection, RexHostProjects {
+    nonisolated var projects: (any RexHostProjects)? { self }
+
+    func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents {
+        let nonce = HostProcessReader.makeNonce()
+        let script = HerdrCoreShellLaunch.discoveryScript(
+            shell: nil, executables: SupportedAgentKind.allCases.map(\.executable),
+            versionOf: SupportedAgentKind.opencode.executable, nonce: nonce)
+        let result = try await runAgentDiscovery(script)
+        guard result.exitStatus == 0,
+            let found = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
+        else {
+            throw TransportError.malformedResponse(String(localized: "The Host's shell did not finish looking for Agents."))
+        }
+        return found
+    }
+
     /// The control link holds the events slot, as a core link does.
     func openRexControlChannel(socketPath: String) async throws -> any HeelerSSHAPIChannel {
         try await openCoreLinkChannel(socketPath: socketPath)

@@ -1,0 +1,2458 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "base": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+  "heeler": "0.1.18 (43)",
+  "xcode": "27.2 (27B52)",
+  "runDate": "2026-11-27",
+  "macOS": "27.0.1 (26A434) arm64",
+  "linux": "Debian 12.15 arm64, 7.2.12-orbstack",
+  "herdrTUI": "0.9.5, protocol 22",
+  "rex": "0.1.0-preview.25 b070aae645f5 (native API 24, Heeler negotiated 19)",
+  "nativeWindows": "No native Windows Host was available",
+  "counts": "Xcode top-level XCTest/Swift Testing test methods, after applying selectors. Dynamic argument observations are separate. An aggregate counts executions across bundles, including explicitly identified repeat runs.",
+  "artifactsDirectory": "build/heeler-lab-evidence",
+  "runs": [
+    {
+      "bundle": "chat/b8af66cfd-linux-agent-surfaces-ui.xcresult",
+      "scope": "Independent XCTest UI driver using the installed candidate app",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DroidTerminalObservation",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DroidTerminalObservation/testOperateOnlyTheDisposableHeelerApp()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-linux-grok.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-linux-omp.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-linux-pi.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-agent-surfaces-ui.xcresult",
+      "scope": "Independent XCTest UI driver using the installed candidate app",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DroidTerminalObservation",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DroidTerminalObservation/testOperateOnlyTheDisposableHeelerApp()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-herdrTUI-cards-fresh.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "1 test run",
+          "title": "1 test ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-herdrTUI-phone-retry.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-herdrTUI-phone.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-herdrTUI-stop-fresh.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-herdrTUI.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Failed",
+      "count": 4,
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 2,
+            "Failed": 2
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "2 tests ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Passed",
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Failed",
+        "DevinChatLiveTests/reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-rex-phone.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-devin-rex.xcresult",
+      "scope": "Devin 3000.15.14 on macOS over Heeler SSH",
+      "result": "Passed",
+      "count": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "2 tests ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Passed",
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Passed",
+        "DevinChatLiveTests/reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-grok.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-omp-retry.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-omp.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-pi-retry.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/b8af66cfd-mac-pi.xcresult",
+      "scope": "Production Chat Store and independently observed official CLI records",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-handoff-cross.xcresult",
+      "scope": "Normal Host stores over SSH, alternate Rex and Herdr as named",
+      "result": "Passed",
+      "count": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexHostServicesLiveTests",
+          "cases": {
+            "Passed": 2
+          }
+        }
+      ],
+      "tests": {
+        "RexHostServicesLiveTests/handOffStagesOnlyTheSourceRecordAndLeavesBothPiTranscriptsUntouched()": "Passed",
+        "RexHostServicesLiveTests/herdrHandOffStagesOnlyTheSourceRecordAndLeavesBothPiTranscriptsUntouched()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-linux-pure-pi.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-linux-pure-projects.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 4,
+      "passed": 3,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 3,
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexProjectLiveTests/readsSkillsChangesAndPatchesFromTheSelectedProject()": "Passed",
+        "RexProjectLiveTests/opensHostFilesStagesAFileAndReachesTheLoopbackPreview()": "Passed",
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Failed",
+        "RexProjectLiveTests/launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-linux-pure-published-driver.xcresult",
+      "scope": "Unchanged app and the published-receipt XCTest driver at 364360961, pure SSH Host",
+      "result": "Passed",
+      "count": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "tests": {
+        "RexProjectLiveTests/readsSkillsChangesAndPatchesFromTheSelectedProject()": "Passed",
+        "RexProjectLiveTests/opensHostFilesStagesAFileAndReachesTheLoopbackPreview()": "Passed",
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Passed",
+        "RexProjectLiveTests/launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-linux.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexControlWebSocketLiveTests",
+          "cases": {
+            "Passed": 2
+          }
+        },
+        {
+          "suite": "RexLostReceiptLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexOpenCodeHistoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexInventoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        },
+        {
+          "suite": "RexRecoveryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexSSHLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "nonpassingTests": {}
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-devin-plan.xcresult",
+      "scope": "Signed-in Devin with the backend-selectable plan driver and the original application binary",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-pure-pi.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-pure-projects.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 4,
+      "passed": 3,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 3,
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexProjectLiveTests/readsSkillsChangesAndPatchesFromTheSelectedProject()": "Passed",
+        "RexProjectLiveTests/opensHostFilesStagesAFileAndReachesTheLoopbackPreview()": "Passed",
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Failed",
+        "RexProjectLiveTests/launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-pure-published-driver.xcresult",
+      "scope": "Unchanged app and the published-receipt XCTest driver at 364360961, pure SSH Host",
+      "result": "Passed",
+      "count": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "tests": {
+        "RexProjectLiveTests/readsSkillsChangesAndPatchesFromTheSelectedProject()": "Passed",
+        "RexProjectLiveTests/opensHostFilesStagesAFileAndReachesTheLoopbackPreview()": "Passed",
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Passed",
+        "RexProjectLiveTests/launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-pure-split-retry.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac-ssh-canonical.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexSSHLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "tests": {
+        "RexSSHLiveTests/readsTheServerOverAForwardedSocket()": "Passed",
+        "RexSSHLiveTests/aHostWithoutASocketLooksItUp()": "Passed",
+        "RexSSHLiveTests/aMissingSocketReadsAsNotRunning()": "Passed",
+        "RexSSHLiveTests/anSSHServerThatForbidsForwardingIsNamed()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-mac.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 14,
+      "passed": 13,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexControlWebSocketLiveTests",
+          "cases": {
+            "Passed": 2
+          }
+        },
+        {
+          "suite": "RexLostReceiptLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexOpenCodeHistoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexInventoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexProjectLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        },
+        {
+          "suite": "RexRecoveryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        },
+        {
+          "suite": "RexSSHLiveTests",
+          "cases": {
+            "Passed": 3,
+            "Failed": 1
+          }
+        }
+      ],
+      "nonpassingTests": {
+        "RexSSHLiveTests/anSSHServerThatForbidsForwardingIsNamed()": "Failed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-attach.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalAttachLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalAttachLiveTests/aLabTerminalOpensForViewing()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-input.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalInputLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalInputLiveTests/typingAndPastingReachALabShell()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-inventory.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexInventoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexInventoryLiveTests/newTerminalStartsShellsTheInventoryLists()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-paint.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalLiveTests/labTerminalsPaintAsTheServerShowsThem()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-size.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalSizeLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalSizeLiveTests/aShownLabTerminalTakesItsSizeAndGivesItBack()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-status.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProgramStatusLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexProgramStatusLiveTests/aLabTerminalsReportReachesTheInventory()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-linux-typing.xcresult",
+      "scope": "Local Unix socket forwarded by OpenSSH to the private Debian Rex server",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexChatTypingLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexChatTypingLiveTests/chatTypesIntoALabAgentAndTakesNothing()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-attach.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalAttachLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalAttachLiveTests/aLabTerminalOpensForViewing()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-input.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalInputLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalInputLiveTests/typingAndPastingReachALabShell()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-inventory.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexInventoryLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexInventoryLiveTests/newTerminalStartsShellsTheInventoryLists()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-paint.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalLiveTests/labTerminalsPaintAsTheServerShowsThem()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-size.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexTerminalSizeLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexTerminalSizeLiveTests/aShownLabTerminalTakesItsSizeAndGivesItBack()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-status.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexProgramStatusLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexProgramStatusLiveTests/aLabTerminalsReportReachesTheInventory()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-raw-mac-typing.xcresult",
+      "scope": "Rex local Unix socket on macOS",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexChatTypingLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexChatTypingLiveTests/chatTypesIntoALabAgentAndTakesNothing()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-services.xcresult",
+      "scope": "Normal Host stores over SSH, alternate Rex and Herdr as named",
+      "result": "Passed",
+      "count": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexHostServicesLiveTests",
+          "cases": {
+            "Passed": 5
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "4 test runs",
+          "title": "2 tests ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "RexHostServicesLiveTests/theGitHubTabReadsFixtureListsAndAnIssueThroughGH(_:)": "Passed",
+        "RexHostServicesLiveTests/handOffStagesOnlyTheSourceRecordAndLeavesBothPiTranscriptsUntouched()": "Passed",
+        "RexHostServicesLiveTests/herdrHandOffStagesOnlyTheSourceRecordAndLeavesBothPiTranscriptsUntouched()": "Passed",
+        "RexHostServicesLiveTests/herdrManagementUsesTheRequestedWorkspaceTabAndCheckout(_:)": "Passed",
+        "RexHostServicesLiveTests/aCommentOnThePrivateEnterpriseIssueIsPostedOnceAndReadBack()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-b8af66cfd-units.xcresult",
+      "scope": "Production stores with fake transports, including FakeRexServer and failure injection",
+      "result": "Passed",
+      "count": 518,
+      "passed": 518,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "AgentChatStoreTests",
+          "cases": {
+            "Passed": 3
+          }
+        },
+        {
+          "suite": "AgentComposerStoreTests",
+          "cases": {
+            "Passed": 69
+          }
+        },
+        {
+          "suite": "AgentNotificationRouterTests",
+          "cases": {
+            "Passed": 9
+          }
+        },
+        {
+          "suite": "BlockedCardStoreTests",
+          "cases": {
+            "Passed": 99
+          }
+        },
+        {
+          "suite": "CodexIncrementalTests",
+          "cases": {
+            "Passed": 9
+          }
+        },
+        {
+          "suite": "ConsoleProjectionInputTests",
+          "cases": {
+            "Passed": 12
+          }
+        },
+        {
+          "suite": "DevinChatTests",
+          "cases": {
+            "Passed": 13
+          }
+        },
+        {
+          "suite": "DroidChatTests",
+          "cases": {
+            "Passed": 21
+          }
+        },
+        {
+          "suite": "NewTerminalStoreTests",
+          "cases": {
+            "Passed": 12
+          }
+        },
+        {
+          "suite": "NotificationPreferencesStoreTests",
+          "cases": {
+            "Passed": 38
+          }
+        },
+        {
+          "suite": "RexAgentRuleTests",
+          "cases": {
+            "Passed": 10
+          }
+        },
+        {
+          "suite": "RexBlockRequestsTests",
+          "cases": {
+            "Passed": 9
+          }
+        },
+        {
+          "suite": "RexChatTests",
+          "cases": {
+            "Passed": 18
+          }
+        },
+        {
+          "suite": "RexChatTypingTests",
+          "cases": {
+            "Passed": 18
+          }
+        },
+        {
+          "suite": "RexComposerSendTests",
+          "cases": {
+            "Passed": 13
+          }
+        },
+        {
+          "suite": "RexConsoleTests",
+          "cases": {
+            "Passed": 32
+          }
+        },
+        {
+          "suite": "RexHostSessionTests",
+          "cases": {
+            "Passed": 17
+          }
+        },
+        {
+          "suite": "RexHostUpdatesTests",
+          "cases": {
+            "Passed": 3
+          }
+        },
+        {
+          "suite": "RexInventoryBookTests",
+          "cases": {
+            "Passed": 31
+          }
+        },
+        {
+          "suite": "RexServerKindDetectionTests",
+          "cases": {
+            "Passed": 19
+          }
+        },
+        {
+          "suite": "RexSessionBinderTests",
+          "cases": {
+            "Passed": 17
+          }
+        },
+        {
+          "suite": "RexStagingTests",
+          "cases": {
+            "Passed": 13
+          }
+        },
+        {
+          "suite": "RexTerminalSizeOwnershipTests",
+          "cases": {
+            "Passed": 25
+          }
+        },
+        {
+          "suite": "RexTurnStateTests",
+          "cases": {
+            "Passed": 8
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "167 test runs",
+          "title": "43 tests ran with dynamic parameters"
+        }
+      ],
+      "nonpassingTests": {}
+    },
+    {
+      "bundle": "linux-devin-rex-plan-solo-supplement-b8af66cfd.xcresult",
+      "scope": "Devin 3000.15.14 on Debian over Heeler SSH",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-devin-rex-plan-supplement-b8af66cfd.xcresult",
+      "scope": "Devin 3000.15.14 on Debian over Heeler SSH",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/claude-glyph-driver/claude.xcresult",
+      "scope": "Same application runtime with a Debian Claude presentation and transcript test driver",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/claude.xcresult",
+      "scope": "Production Chat Store, a real Debian CLI and an isolated loopback model service",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/codex-diagnostic-driver/codex.xcresult",
+      "scope": "Same application runtime with a more detailed test outcome diagnostic",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/codex-transport-retry/codex.xcresult",
+      "scope": "Production Chat Store, a real Debian CLI and an isolated loopback model service",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/codex-worktree-driver/codex.xcresult",
+      "scope": "Same application runtime with Debian Codex worktree-picker test driver",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-b8af66cfd488/codex.xcresult",
+      "scope": "Production Chat Store, a real Debian CLI and an isolated loopback model service",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/final-b8af66cfd-claude.xcresult",
+      "scope": "Production Chat Store, a real macOS CLI and an isolated loopback model service",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "7E04F107-29B7-4703-BD9A-0E275933FDDC",
+          "deviceName": "heeler-lab-rex-native-chat",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "native-chat/final-b8af66cfd-codex.xcresult",
+      "scope": "Production Chat Store, a real macOS CLI and an isolated loopback model service",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "7E04F107-29B7-4703-BD9A-0E275933FDDC",
+          "deviceName": "heeler-lab-rex-native-chat",
+          "modelName": "iPhone 17e",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexForegroundChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-long-1795786593.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "1 test ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/approvesTheDisplayedLongCommandOnce(_:)": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-long-retry-1795787101.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "1 test ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/approvesTheDisplayedLongCommandOnce(_:)": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-normal-cards-bg-stop-1795785951.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 4
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "2 tests ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Passed",
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Passed",
+        "DevinChatLiveTests/reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-phone-1795785466.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-phone-1795786738.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-plan-1795786501.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-trust-1795786393.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/firstTrustAndDeclineBeforeTheSessionExists()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-herdrTUI-trust-1795786976.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/firstTrustAndDeclineBeforeTheSessionExists()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-mac-github-1795785342.xcresult",
+      "scope": "Normal Host stores over SSH, alternate Rex and Herdr as named",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "RexHostServicesLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "1 test ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "RexHostServicesLiveTests/theGitHubTabReadsFixtureListsAndAnIssueThroughGH(_:)": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-rex-normal-cards-bg-stop-1795785682.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 4,
+      "passed": 3,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 3,
+            "Failed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "2 test runs",
+          "title": "2 tests ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Passed",
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Passed",
+        "DevinChatLiveTests/reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed",
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-rex-phone-1795785375.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-rex-stop-1795786848.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-rex-stop-fresh-1795787182.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Failed",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Failed": 1
+          }
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-final-b8af66cfd-rex-trust-1795786335.xcresult",
+      "scope": "Heeler SSH and independent Host observations, as identified by suite and method",
+      "result": "Passed",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "modelName": "iPhone 17 Pro",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": [
+        {
+          "suite": "DevinChatLiveTests",
+          "cases": {
+            "Passed": 1
+          }
+        }
+      ],
+      "parameterStatistics": [
+        {
+          "subtitle": "1 test run",
+          "title": "1 test ran with dynamic parameters"
+        }
+      ],
+      "tests": {
+        "DevinChatLiveTests/firstTrustOverTheBackendTypingPath(_:)": "Passed"
+      }
+    }
+  ],
+  "otherChecks": {
+    "focusedNode": {
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "log": "final-b8af66cfd-node-focus.log"
+    },
+    "makeTestTools": {
+      "groups": 37,
+      "passed": 37,
+      "failed": 0,
+      "log": "final-b8af66cfd-tools.log"
+    },
+    "liveProducts": {
+      "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+      "debugDylibSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+      "testExecutableSHA256": "df727c92f097181096fb67232e212bb3f6eb40287abdb7db0eb466b6e16a7798",
+      "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+      "xctestrun": "build/heeler-lab-evidence/final-b8af66cfd-products/HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
+      "app": "build/heeler-lab-evidence/final-b8af66cfd.app"
+    },
+    "fullPluginSuite": {
+      "count": 1445,
+      "passed": 1441,
+      "failed": 4,
+      "skipped": 0,
+      "log": "final-b8af66cfd-plugin.log",
+      "retry": {
+        "count": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "log": "final-b8af66cfd-plugin-failures-retry.log"
+      }
+    },
+    "baseline": {
+      "candidate": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+      "count": 43,
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0,
+      "bundle": "baseline-unit.xcresult",
+      "suites": [
+        "RexConsoleTests",
+        "RexChatTypingTests"
+      ]
+    },
+    "testDriverNotes": [
+      "Each supplemental driver changes only a test source object. The original and supplemental App runtime SHA-256 is 05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79.",
+      "The final review checkout contains the amended test sources. The run manifests identify which test binary was actually used."
+    ],
+    "documentation": {
+      "command": "make check-agent-docs check-test-membership",
+      "navigationDocuments": 92,
+      "unitSwiftSources": 541,
+      "result": "passed"
+    }
+  },
+  "unverified": [
+    "No native Windows Host was exercised on this product.",
+    "There was no physical APNs, Lock Screen or widget delivery on this candidate."
+  ]
+}

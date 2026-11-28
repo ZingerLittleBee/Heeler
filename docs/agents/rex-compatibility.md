@@ -4,8 +4,8 @@ Consult this reference for the Rex control connection, inventory reads and
 events, Program Status, and resume and close behavior on Rex Hosts. These
 observations are historical evidence, not fresh tests on the installed server.
 Each names the Rex version it was seen on; check it before applying an
-observation to a newer server. All are written in Heeler's own words; no Linux
-server has been observed yet.
+observation to a newer server. The [Linux lab](rex-linux-lab.md) and
+[object operations](rex-object-operations.md) cover preview.25 on Debian and macOS.
 
 ## Current routing
 
@@ -17,6 +17,14 @@ server has been observed yet.
   reaches the server's named pipe through an exec of
   `rex.exe -S <address> __internal dial-stdio --autostart=false` (`RexWindowsDial`),
   which starts none either.
+- On macOS 27.0.1, a refused SSH forward is checked against the local Unix
+  stream table. A socket bound under `/tmp` keeps that spelling even when
+  SSH names the same file under `/private/tmp`. An unlinked listener keeps
+  its printed address after another socket takes its place. The system
+  Perl Socket module distinguishes an abandoned pathname from a live stream
+  with a datagram lookup. A stream rejects it with `EPROTOTYPE`, leaving
+  its accept queue empty. An unavailable lookup or two different stream
+  endpoints with conflicting listener state leave the diagnosis unknown.
 - One WebSocket control connection per Host carries everything but terminal
   data: hello at API revisions 12 to 19, `server.status`, `session.attach_all`
   and the inventory reads
@@ -83,7 +91,7 @@ server has been observed yet.
   (`RexConsoleProjection.checkedTerminalStop`) press keys through it, and
   `RexComposerSend` pastes and submits. See
   [Chat's reads and input](#chats-reads-and-input).
-- New Terminal and New Workspace are the one thing Heeler starts on a Rex
+- New Terminal and New Workspace share the creation path of a Rex
   server ([ADR 0049's update of 2026-11-25](../adr/0049-rex-hosts-reach-a-running-rex-server-by-its-socket.md#update-2026-11-25-new-terminal)):
   `RexHostSession.createTerminal` attaches to the session and sends
   `session.new_window` (`focus: false`), or sends `session.create` and then
@@ -117,11 +125,10 @@ in users' words.
   followed a real restart; the Console and its details have only followed
   a fake one. See
   [Server restart and Program Resume](#server-restart-and-program-resume).
-- **No Linux server.** The Linux socket places, the `/proc/net/unix` socket
-  check and a server started by a login service have never met a running
-  Linux Rex server; `scripts/test-server-kind-detection.py` runs the
-  detection script against fake Linux homes only. Every observation below is
-  from macOS, except those that name Windows.
+- **Linux discovery and connection.** On November 27, a running preview.25
+  on Debian 12.15 answered over OpenSSH stream-local forwarding, including
+  socket lookup on the disposable account. Login-service startup and distro
+  packaging have separate coverage. [Linux fixture and observations](rex-linux-lab.md).
 - **What the first paint leaves out.** The `vt` redraw carries no title,
   cursor shape, OSC 10 or 11 default colors or saved cursor, and while a
   program uses the alternate screen none of the primary screen or scrollback
@@ -147,10 +154,13 @@ in users' words.
   ([ADR 0053](../adr/0053-rex-terminals-fit-the-view-that-shows-them.md),
   as [ADR 0045](../adr/0045-tmux-hosts-poll-inventory-and-attach-through-control-mode.md)
   says for tmux).
-- **Shells only.** New Terminal and New Workspace start a shell
-  ([Starting a terminal](#starting-a-terminal)); nothing else is created,
-  nothing is closed or renamed, and no layout changes; no notifications, Live
-  Activities, Usage, Changes or New Agent.
+- **POSIX project operations.** New Agent passes a literal argument vector, a
+  management name, a working directory and a preset environment to a new Rex
+  window or session. Changes and Skills run on the existing SSH connection.
+  A new linked checkout lives in the account's `.heeler/worktrees`. Workspace
+  rename addresses the session. See [object operations and protocol
+  limits](rex-object-operations.md), [Host services](rex-host-services-parity.md)
+  and [Chat by harness](rex-chat-parity.md).
 - **Attachments where Chat is.** Once the server has named a Linux or macOS
   kernel, an Agent's Composer can attach images and files. Heeler stages them
   over the Host's own SSH connection (one `mktemp -d` exec, then an SFTP

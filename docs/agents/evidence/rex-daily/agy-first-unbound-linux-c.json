@@ -1,0 +1,44 @@
+[
+  {
+    "fixture": "pair-a",
+    "session": "session:01a21d5a-0dbe-7b62-9cd1-a39845677105",
+    "block": "block:01a21d5a-0dbe-7cdf-b9fd-534209eca6f5",
+    "pid": 281968,
+    "program": "agy",
+    "version": "1.5.18",
+    "start": "4757935",
+    "cwd": "/home/heelerlab/heeler-lab-agy-terminal/work",
+    "officialAGY": true,
+    "locks": [],
+    "knownConversationFolders": 0,
+    "grid": {
+      "columns": 80,
+      "rows": 24,
+      "cell_width_px": 8,
+      "cell_height_px": 16,
+      "owner": null,
+      "desired": []
+    }
+  },
+  {
+    "fixture": "pair-b",
+    "session": "session:01a21d5a-12b1-707c-9ca5-a27470f92748",
+    "block": "block:01a21d5a-12b1-719d-95f4-e6e95b5fb560",
+    "pid": 282069,
+    "program": "agy",
+    "version": "1.5.18",
+    "start": "4758040",
+    "cwd": "/home/heelerlab/heeler-lab-agy-terminal/work",
+    "officialAGY": true,
+    "locks": [],
+    "knownConversationFolders": 0,
+    "grid": {
+      "columns": 80,
+      "rows": 24,
+      "cell_width_px": 8,
+      "cell_height_px": 16,
+      "owner": null,
+      "desired": []
+    }
+  }
+]

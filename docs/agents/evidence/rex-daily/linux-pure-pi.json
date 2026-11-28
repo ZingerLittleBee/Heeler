@@ -1,0 +1,146 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "program": "pi",
+  "foreground": {
+    "target": {
+      "pid": 926,
+      "start": "4589080",
+      "report": "2026-11-27T13-58-26-653Z_01a21d4c-de5c-75d6-803e-f4471a18a769.jsonl",
+      "changedFile": true,
+      "grid": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "keptGrid": true
+    },
+    "peer": {
+      "pid": 944,
+      "start": "4589087",
+      "report": "2026-11-27T13-44-43-536Z_01a21d40-4f0e-7064-80f4-649a6b2fa612.jsonl",
+      "changedFile": false,
+      "grid": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "keptGrid": true
+    }
+  },
+  "files": {
+    "oldA": {
+      "sessionID": "01a21d40-4e8c-75d6-803e-f444103a5133",
+      "beforeSHA256": "ad083e392b3208870ec0cafb9e34042dbebe677b7f16eac4dc702ef068bf4847",
+      "matchedInitialLines": 6,
+      "appendedRows": 2,
+      "endingSHA256": "d157dad400cd6c05199bebea5ac35ab36fca0b090c045bc7d56ab61f118e0d70",
+      "counts": {
+        "SEND": {
+          "user": 1,
+          "assistant": 1
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "newA": {
+      "sessionID": "01a21d4c-de5c-75d6-803e-f4471a18a769",
+      "beforeSHA256": null,
+      "matchedInitialLines": 0,
+      "appendedRows": 6,
+      "endingSHA256": "2b06575f08d2d8d7fd443ab6fe11c46d848cdcfd7167deef1831bb0eb513220f",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 1,
+          "assistant": 1
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    },
+    "peer": {
+      "sessionID": "01a21d40-4f0e-7064-80f4-649a6b2fa612",
+      "beforeSHA256": "3f53fb1e687c6565acad692ccb1c6d3be94782258e7d817f760e9ce6227f15e3",
+      "matchedInitialLines": 6,
+      "appendedRows": 0,
+      "endingSHA256": "3f53fb1e687c6565acad692ccb1c6d3be94782258e7d817f760e9ce6227f15e3",
+      "counts": {
+        "SEND": {
+          "user": 0,
+          "assistant": 0
+        },
+        "ROTATED": {
+          "user": 0,
+          "assistant": 0
+        },
+        "HELD": {
+          "user": 0,
+          "assistant": 0
+        },
+        "WRONG_PICK": {
+          "user": 0,
+          "assistant": 0
+        },
+        "SUCCESSOR_SWITCHED": {
+          "user": 0,
+          "assistant": 0
+        }
+      }
+    }
+  },
+  "anchor": {
+    "session": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+    "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+    "program": "bash",
+    "pid": 86,
+    "size": {
+      "columns": 60,
+      "rows": 50,
+      "cell_width_px": 8,
+      "cell_height_px": 16,
+      "owner": null,
+      "desired": []
+    },
+    "hasTypedPWD": true,
+    "hasPWDResult": true
+  },
+  "testDurationSeconds": 5.509,
+  "testSummary": {
+    "passed": 1,
+    "skipped": 0
+  }
+}

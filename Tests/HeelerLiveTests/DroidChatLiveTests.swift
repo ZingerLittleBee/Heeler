@@ -18,6 +18,16 @@ struct DroidChatLiveTests {
         let user, seed, fingerprint, socket, pane, session: String
         var scenarios: [String: Scenario]?
         var evidenceDirectory: String?
+        var scriptBackground: ScriptBackground?
+    }
+
+    struct ScriptBackground: Decodable {
+        struct Command: Decodable {
+            let callID, outerID, title, pid, output: String
+            let exitCode: Int
+        }
+        let sessionID: String
+        let commands: [Command]
     }
 
     /// The fixture owns a disposable Droid pane on the specified local server.

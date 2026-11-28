@@ -38,7 +38,7 @@ struct DevinTranscriptReducer: ChatTranscriptReducer {
         var slots: [String: Int] = [:]
         var pending: [String: ChatPendingRequest] = [:]
         var seen: Set<String> = []
-        var background = DevinBackgroundWork()
+        var background = DevinBackgroundWork(requiresShellLookup: context.requiresIndependentInputSession)
         var workRows = rows
         for row in rows.values {
             for earlier in row.earlierWork ?? [] where workRows[earlier.offset] == nil {
@@ -50,6 +50,7 @@ struct DevinTranscriptReducer: ChatTranscriptReducer {
                 background.observe(row, at: offset, date: ClaudeTranscriptProjection.date(row.timestamp))
             }
         }
+        let latest = rows.keys.max()
         for offset in rows.keys.sorted() {
             guard let row = rows[offset], seen.insert(row.id).inserted else { continue }
             let entry = ChatEntryID("devin:" + row.id)
@@ -74,6 +75,7 @@ struct DevinTranscriptReducer: ChatTranscriptReducer {
                     if call.complete, let summary = call.subject {
                         pending[call.id] = .init(entryID: id, callID: call.id, kind: tool.kind, toolName: call.name,
                                                  summary: summary, questions: call.questions, fileChanges: tool.fileChanges)
+                        if offset == latest { pending[call.id]?.confirmedPlanFile = call.confirmedPlanFile }
                     }
                 }
                 if row.finish == "stop", let i = result.turns.indices.last {

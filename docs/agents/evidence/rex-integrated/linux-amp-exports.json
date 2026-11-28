@@ -1,0 +1,25 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "source": "Official signed Amp export for the exact previous A, current A and peer B",
+  "officialCounts": {
+    "old": {
+      "user": 0,
+      "assistant": 0,
+      "exactUser": 0,
+      "exactAssistant": 0
+    },
+    "current": {
+      "user": 1,
+      "assistant": 1,
+      "exactUser": 1,
+      "exactAssistant": 1
+    },
+    "peer": {
+      "user": 0,
+      "assistant": 0,
+      "exactUser": 0,
+      "exactAssistant": 0
+    }
+  },
+  "bodySHA256": "fa91d1d665c45c67238c3e705006a4a95a25c01e538d673836d087b1e8649097"
+}

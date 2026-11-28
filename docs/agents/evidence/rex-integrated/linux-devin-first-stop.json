@@ -1,0 +1,16 @@
+{
+  "distinctNoncesOnScreen": 2,
+  "firstSubmittedUserRows": [
+    1864
+  ],
+  "firstActualInterruptRows": [
+    1865
+  ],
+  "secondPromptInInputBox": true,
+  "secondSubmittedUserRows": [],
+  "rootStatus": "idle",
+  "sameOwner": true,
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "exactTestDurationSeconds": 17.181,
+  "refusal": "The Host answered too slowly to submit safely."
+}

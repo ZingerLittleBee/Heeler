@@ -1,0 +1,372 @@
+{
+  "before": {
+    "at": "2026-11-27T21:54:44.494+08:00",
+    "sessions": [
+      {
+        "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+        "blocks": [
+          {
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "name": "bash",
+            "pid": 86,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [],
+              "owner": null,
+              "rows": 50
+            },
+            "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+            "windowLabel": "heeler-lab-only-terminal"
+          }
+        ],
+        "label": "heeler-lab-only-workspace",
+        "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "name": "node",
+            "pid": 926,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+            "windowLabel": "Window abaab7ce"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-a",
+        "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "name": "node",
+            "pid": 944,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+            "windowLabel": "Window 57741d67"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-b",
+        "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+      }
+    ]
+  },
+  "opened": {
+    "at": "2026-11-27T21:54:51.433+08:00",
+    "sessions": [
+      {
+        "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+        "blocks": [
+          {
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "name": "bash",
+            "pid": 86,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [],
+              "owner": null,
+              "rows": 50
+            },
+            "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+            "windowLabel": "heeler-lab-only-terminal"
+          }
+        ],
+        "label": "heeler-lab-only-workspace",
+        "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "name": "node",
+            "pid": 926,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+            "windowLabel": "Window abaab7ce"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-a",
+        "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "name": "node",
+            "pid": 944,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+            "windowLabel": "Window 57741d67"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-b",
+        "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+      },
+      {
+        "activeWindow": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+        "blocks": [
+          {
+            "block": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+            "focusedBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+            "name": "bash",
+            "pid": 2064,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [
+                {
+                  "client_id": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                  "columns": 60,
+                  "rows": 50,
+                  "updated_at": "2026-11-27T13:54:48.266149325Z"
+                }
+              ],
+              "owner": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+              "rows": 50
+            },
+            "window": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+            "windowLabel": "Window 0933e122"
+          }
+        ],
+        "label": "heeler-lab-gui-exit-b8af66",
+        "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+      }
+    ]
+  },
+  "pwd": {
+    "at": "2026-11-27T21:55:00.403+08:00",
+    "sessions": [
+      {
+        "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+        "blocks": [
+          {
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "name": "bash",
+            "pid": 86,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [],
+              "owner": null,
+              "rows": 50
+            },
+            "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+            "windowLabel": "heeler-lab-only-terminal"
+          }
+        ],
+        "label": "heeler-lab-only-workspace",
+        "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "name": "node",
+            "pid": 926,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+            "windowLabel": "Window abaab7ce"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-a",
+        "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "name": "node",
+            "pid": 944,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+            "windowLabel": "Window 57741d67"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-b",
+        "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+      },
+      {
+        "activeWindow": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+        "blocks": [
+          {
+            "block": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+            "exactMarkerAndFollowingPWD": true,
+            "focusedBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067",
+            "name": "bash",
+            "pid": 2064,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [
+                {
+                  "client_id": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+                  "columns": 60,
+                  "rows": 31,
+                  "updated_at": "2026-11-27T13:54:59.499815529Z"
+                }
+              ],
+              "owner": "client:01a21d47-24e1-740e-8c3c-d3ce2a740776",
+              "rows": 31
+            },
+            "window": "window:01a21d49-83a4-7ef8-8404-319d0933e122",
+            "windowLabel": "Window 0933e122"
+          }
+        ],
+        "label": "heeler-lab-gui-exit-b8af66",
+        "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+      }
+    ]
+  },
+  "closed": {
+    "at": "2026-11-27T21:56:16.564+08:00",
+    "sessions": [
+      {
+        "activeWindow": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+        "blocks": [
+          {
+            "block": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "focusedBlock": "block:01a21cea-2115-72b5-98ac-f4ce223657c0",
+            "name": "bash",
+            "pid": 86,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 60,
+              "desired": [],
+              "owner": null,
+              "rows": 50
+            },
+            "window": "window:01a21cea-211a-71df-95fe-c3e1b8f8758e",
+            "windowLabel": "heeler-lab-only-terminal"
+          }
+        ],
+        "label": "heeler-lab-only-workspace",
+        "session": "session:01a21cea-2114-7e4e-acca-3586557029c1"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "focusedBlock": "block:01a21d40-4d48-7614-92be-c7565402a878",
+            "name": "node",
+            "pid": 926,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d4d-70b9-9787-da38abaab7ce",
+            "windowLabel": "Window abaab7ce"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-a",
+        "session": "session:01a21d40-4d47-7f1b-bfbb-759b369dd2a6"
+      },
+      {
+        "activeWindow": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+        "blocks": [
+          {
+            "block": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "focusedBlock": "block:01a21d40-4d95-7074-bc99-4ee2cb9f43cd",
+            "name": "node",
+            "pid": 944,
+            "size": {
+              "cell_height_px": 16,
+              "cell_width_px": 8,
+              "columns": 80,
+              "desired": [],
+              "owner": null,
+              "rows": 24
+            },
+            "window": "window:01a21d40-4d98-7858-ae55-1abd57741d67",
+            "windowLabel": "Window 57741d67"
+          }
+        ],
+        "label": "heeler-lab-pure-pi-b",
+        "session": "session:01a21d40-4d94-7c7a-a01a-d84ac010d5f3"
+      },
+      {
+        "activeWindow": null,
+        "blocks": [],
+        "label": "heeler-lab-gui-exit-b8af66",
+        "session": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d"
+      }
+    ],
+    "onlyTargetSessionDisappeared": false,
+    "targetForegroundExited": true,
+    "targetSessionRemainsEmpty": true,
+    "allThreeNeighborRecordsExactlyRetained": true,
+    "targetPID": 2064,
+    "targetSession": "session:01a21d49-83a2-7325-8068-b7bbe3dd3d1d",
+    "targetBlock": "block:01a21d49-83a2-74b0-acef-a8cebb56e067"
+  }
+}

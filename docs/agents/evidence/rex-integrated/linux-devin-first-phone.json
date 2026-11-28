@@ -1,0 +1,20 @@
+{
+  "officialEnteredJobRequests": 1,
+  "confirmedJobs": {
+    "success": {
+      "exitCode": 0,
+      "independentMarkedOutput": true,
+      "retainedToolContentCharacters": 46
+    }
+  },
+  "uniqueActualLaunches": 1,
+  "officialBackgroundChildAck": false,
+  "officialParentResponse": false,
+  "officialChildCompletion": false,
+  "editorContainsSuccessCommand": false,
+  "editorContainsFailureCommand": true,
+  "editorContainsChildRequest": false,
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "durationSeconds": 48.722,
+  "exit": "The source refused the next submission after the two-second window; no retry was sent to the retained editor."
+}

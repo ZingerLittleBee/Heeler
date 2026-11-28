@@ -1,0 +1,203 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "baseline": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "runtimeSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+  "testsSHA256": "48b2a96e95121488b9b126c711df26228b7d8509c45ccce59bf85479deab4950",
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "utc": "2026-11-27T16:15:03.555067+00:00",
+  "sshHost": "Mixed private Debian 12.15 arm64, Rex preview.25 API 19",
+  "executedPrePause": {
+    "terminal-takeover": {
+      "result": "terminal-takeover.json",
+      "xcresult": "terminal-takeover.xcresult",
+      "executed": [
+        {
+          "name": "anotherClientsUnsubmittedShellLineSurvivesAnAgentsExit()",
+          "outcome": "passed",
+          "seconds": 20.362
+        }
+      ],
+      "independentHostEvidence": [],
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "codex": {
+      "result": "codex-receipt.json",
+      "xcresult": "codex.xcresult",
+      "executed": [
+        {
+          "name": "sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+          "outcome": "failed",
+          "seconds": 36.067
+        }
+      ],
+      "independentHostEvidence": [
+        "codex-after.json",
+        "codex-before.json",
+        "codex-refusal-host.json"
+      ],
+      "totalTestCount": 1,
+      "passedTests": 0,
+      "failedTests": 1,
+      "skippedTests": 0
+    },
+    "claude": {
+      "result": "claude-receipt.json",
+      "xcresult": "claude.xcresult",
+      "executed": [
+        {
+          "name": "sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+          "outcome": "failed",
+          "seconds": 34.578
+        }
+      ],
+      "independentHostEvidence": [
+        "claude-after.json",
+        "claude-before.json",
+        "claude-refusal-host.json"
+      ],
+      "totalTestCount": 1,
+      "passedTests": 0,
+      "failedTests": 1,
+      "skippedTests": 0
+    },
+    "pi": {
+      "result": "pi-receipt.json",
+      "xcresult": "pi.xcresult",
+      "executed": [
+        {
+          "name": "sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+          "outcome": "passed",
+          "seconds": 7.212
+        }
+      ],
+      "independentHostEvidence": [
+        "pi-after.json",
+        "pi-before.json"
+      ],
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "omp": {
+      "result": "omp-receipt.json",
+      "xcresult": "omp.xcresult",
+      "executed": [
+        {
+          "name": "sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+          "outcome": "passed",
+          "seconds": 11.07
+        }
+      ],
+      "independentHostEvidence": [
+        "omp-after.json",
+        "omp-before.json"
+      ],
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "grok": {
+      "result": "grok-receipt.json",
+      "xcresult": "grok.xcresult",
+      "executed": [
+        {
+          "name": "sameDirectoryPeersKeepTheirConversationsAndDesktopSize()",
+          "outcome": "passed",
+          "seconds": 11.917
+        }
+      ],
+      "independentHostEvidence": [
+        "grok-after.json",
+        "grok-before.json"
+      ],
+      "totalTestCount": 1,
+      "passedTests": 1,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "antigravity": {
+      "result": "antigravity-receipt.json",
+      "xcresult": "antigravity.xcresult",
+      "executed": [
+        {
+          "name": "routesTheNativeApprovalToItsOwnTerminal()",
+          "outcome": "passed",
+          "seconds": 6.286
+        },
+        {
+          "name": "textFollowsOnlyThePublishedForegroundAndRestoresItsDraft()",
+          "outcome": "passed",
+          "seconds": 32.519
+        }
+      ],
+      "independentHostEvidence": [
+        "antigravity-after-host.json",
+        "antigravity-before-host.json"
+      ],
+      "totalTestCount": 2,
+      "passedTests": 2,
+      "failedTests": 0,
+      "skippedTests": 0
+    }
+  },
+  "executedTotal": 8,
+  "passed": 6,
+  "failed": 2,
+  "skipped": 0,
+  "terminalComposer": {
+    "actualGUI": false,
+    "acceptedPastes": 1,
+    "postPasteMobileWrites": [],
+    "peerWrites": 0,
+    "preservedShellText": true,
+    "sameShellPIDs": true,
+    "executedCommands": false
+  },
+  "regularCodexFailure": {
+    "stage": "initial multiline message",
+    "refusal": "The Host answered too slowly to submit safely",
+    "officialMsgCounts": {
+      "a": {
+        "user": 0,
+        "assistant": 0
+      },
+      "b": {
+        "user": 0,
+        "assistant": 0
+      }
+    },
+    "targetHadUnsubmittedText": true
+  },
+  "regularClaudeFailure": {
+    "stage": "text-file attachment after a successful first exchange",
+    "refusal": "The Host answered too slowly to submit safely",
+    "officialMsgCounts": {
+      "a": {
+        "user": 0,
+        "assistant": 0
+      },
+      "b": {
+        "user": 0,
+        "assistant": 0
+      }
+    },
+    "targetHadUnsubmittedText": true
+  },
+  "antigravity": {
+    "unchangedPeer": true,
+    "unchangedGrids": true,
+    "wasReplacedByShell": true,
+    "returnedToOriginalLock": true
+  },
+  "pendingForegroundOnly": [
+    "fresh regular Codex and Claude",
+    "normal iPhone Grok Stop",
+    "lost native approval response for Claude and Codex"
+  ],
+  "stoppedDriverRecord": "suspension.json"
+}

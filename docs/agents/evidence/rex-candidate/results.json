@@ -1,0 +1,969 @@
+{
+  "interpretation": "A passing external UI driver is counted as an executed observer. Only the separate tap, target, role and file receipts establish a user scenario. Unqualified, failed and retried observations remain in the matrix.",
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "baseline": "10148154331e5496afaef9b5b450d514fd1d7d8e",
+  "application": {
+    "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+    "debugDylibSHA256": "9d4a1f48595dc155d294138f57a7e4e06fe95312a89a36f0aefb6c81c62623ff",
+    "testExecutableSHA256": "48b2a96e95121488b9b126c711df26228b7d8509c45ccce59bf85479deab4950",
+    "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+    "xctestrun": "build/heeler-lab-evidence/final-4c07c2b34-products/HeelerLiveTests_iphonesimulator27.2-arm64.xctestrun",
+    "app": "build/heeler-lab-evidence/final-4c07c2b34.app"
+  },
+  "lab": {
+    "client": "Heeler 0.1.18 (43)",
+    "toolchain": "Xcode 27.2 (27B52), iOS Simulator 27.0",
+    "macOS": "27.0.1 (26A434) arm64",
+    "linux": "Debian 12.15, 7.2.12-orbstack arm64",
+    "herdr": "0.9.5 protocol 22",
+    "rex": "0.1.0-preview.25 b070aae645f5, API 24 advertised, 19 negotiated",
+    "nativeWindows": "NOT-RUN: no native Windows Host"
+  },
+  "unexecutedAttempts": [
+    {
+      "bundle": "chat/final-4c07c2b34-linux-droid-rex.xcresult",
+      "executed": 0,
+      "result": "unknown",
+      "meaning": "No test method executed"
+    },
+    {
+      "bundle": "final-4c07c2b34-mac.xcresult",
+      "executed": 0,
+      "result": "unknown",
+      "meaning": "No test method executed"
+    }
+  ],
+  "countDefinition": "Executed test methods across completed bundles, including repeats and red runs. A raw socket, an SSH store, an independent GUI driver and physical delivery are reported separately.",
+  "aggregate": {
+    "count": 49,
+    "passed": 38,
+    "failed": 11,
+    "skipped": 0
+  },
+  "runs": [
+    {
+      "bundle": "chat/4c07c2b34-linux-droid-script-reopen.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat on a live Herdr TUI Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidChatLiveTests/reopensReadOnlyScriptCommandsWithTheirOfficialResults()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-linux-rex-droid-script-finished.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat over SSH on three live backends": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-linux-rex-droid-script-running.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat over SSH on three live backends": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-devin-cd166-normal.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-devin-cd166-phone.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-droid-script-reopen.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat on a live Herdr TUI Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidChatLiveTests/reopensReadOnlyScriptCommandsWithTheirOfficialResults()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-grok-ui-visible-e.xcresult",
+      "scope": "Independent Simulator UI driver with installed app",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "DroidTerminalObservation": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidTerminalObservation/testOperateOnlyTheDisposableHeelerApp()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-rex-droid-script-finished.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat over SSH on three live backends": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-mac-rex-droid-script-running.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "D7062210-71D9-4863-A07C-18F10EB93F04",
+          "deviceName": "heeler-lab-rex-chat-private",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Droid Chat over SSH on three live backends": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()": "Failed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-terminal-linux-amp-ui.xcresult",
+      "scope": "Independent Simulator UI driver with installed app",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "DroidTerminalObservation": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidTerminalObservation/testOperateOnlyTheDisposableHeelerApp()": "Passed"
+      }
+    },
+    {
+      "bundle": "chat/4c07c2b34-terminal-mac-amp-ui.xcresult",
+      "scope": "Independent Simulator UI driver with installed app",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "CD16621E-75FB-4865-B282-E0296D989D38",
+          "deviceName": "heeler-lab-droid-terminal-4c843d",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "DroidTerminalObservation": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DroidTerminalObservation/testOperateOnlyTheDisposableHeelerApp()": "Passed"
+      }
+    },
+    {
+      "bundle": "final-4c07c2b34-mac-warm.xcresult",
+      "scope": "Simulator and real SSH/Host service",
+      "count": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+          "deviceName": "heeler-lab-rex-verification",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Rex control connection over a local socket": {
+          "Passed": 2
+        },
+        "Rex Chat with a lost Enter response": {
+          "Passed": 1
+        },
+        "OpenCode history on a private Rex Host": {
+          "Passed": 1
+        },
+        "Rex inventory over a local socket": {
+          "Passed": 1
+        },
+        "Rex projects over SSH": {
+          "Passed": 5
+        },
+        "Rex SSH recovery": {
+          "Passed": 1
+        },
+        "Rex over SSH to a running server": {
+          "Passed": 4
+        }
+      },
+      "cases": {
+        "RexControlWebSocketLiveTests/helloStatusAndCloseOnALocalRexServer()": "Passed",
+        "RexControlWebSocketLiveTests/readsTheServerThroughTheControlLinkAndResumes()": "Passed",
+        "RexLostReceiptLiveTests/editDraftRecoversTheUploadedFilesAfterRexAcceptedEnter()": "Passed",
+        "RexOpenCodeHistoryLiveTests/choosingHistoryKeepsInputInTheTerminal()": "Passed",
+        "RexInventoryLiveTests/aSessionReadsTheLocalServersTerminals()": "Passed",
+        "RexProjectLiveTests/readsSkillsChangesAndPatchesFromTheSelectedProject()": "Passed",
+        "RexProjectLiveTests/opensHostFilesStagesAFileAndReachesTheLoopbackPreview()": "Passed",
+        "RexProjectLiveTests/replacingABlockInTheSameSessionCannotReceiveTheDepartedAgentsDraft()": "Passed",
+        "RexProjectLiveTests/anAgentWithNoDirectoryInheritsTheDesktopFocusedSplit()": "Passed",
+        "RexProjectLiveTests/launchesInTheChosenWorkspaceAndWorktreeWithoutTakingTheDesktop()": "Passed",
+        "RexRecoveryLiveTests/followsRestoredTerminalsAndRefusesInputFromTheirPreviousForeground()": "Passed",
+        "RexSSHLiveTests/readsTheServerOverAForwardedSocket()": "Passed",
+        "RexSSHLiveTests/aHostWithoutASocketLooksItUp()": "Passed",
+        "RexSSHLiveTests/aMissingSocketReadsAsNotRunning()": "Passed",
+        "RexSSHLiveTests/anSSHServerThatForbidsForwardingIsNamed()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/antigravity.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Bound Antigravity on a private Linux Rex Host": {
+          "Passed": 2
+        }
+      },
+      "cases": {
+        "RexAntigravityChatLiveTests/routesTheNativeApprovalToItsOwnTerminal()": "Passed",
+        "RexAntigravityChatLiveTests/textFollowsOnlyThePublishedForegroundAndRestoresItsDraft()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/claude.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/codex.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/grok.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/omp.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/pi.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "linux-native-4c07c2b34e7c/terminal-takeover.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "61405B4D-A169-4DC8-82E5-340694B46992",
+          "deviceName": "heeler-lab-linux-native-controls",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Rex Terminal Composer after a foreground handover": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexTerminalTakeoverLiveTests/anotherClientsUnsubmittedShellLineSurvivesAnAgentsExit()": "Passed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-aclaude-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Rex approval with a lost response": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexApprovalReceiptLiveTests/repeatingOneCardSendsOneAnswerWhenRexLosesItsResponse()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-acodex-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Rex approval with a lost response": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexApprovalReceiptLiveTests/repeatingOneCardSendsOneAnswerWhenRexLosesItsResponse()": "Passed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-claude-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-codex-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-grok-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Passed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-omp-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/4c07c2b34-mac-pi-e.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Foreground Chat on a private Rex Host": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "RexForegroundChatLiveTests/sameDirectoryPeersKeepTheirConversationsAndDesktopSize()": "Failed"
+      }
+    },
+    {
+      "bundle": "native-chat/macos-amp-readonly/4c07c2b34-mac-amp-readonly-candidate.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+          "deviceName": "heeler-lab-rex-socket-alias",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Read-only Amp Chat on a POSIX Rex Host": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "RexAmpChatLiveTests/followsTheForegroundThreadAndKeepsInputInTheTerminal()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-bg-1795795852.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/reopensTheSameBackgroundShellsAndChildOverSSH()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-cards-1795795731.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/approvalsQuestionsAndStaleDrafts(_:)": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-normal-1795794771.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/opensTheForegroundSessionAndDeliversExactlyOnce(_:_:)": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-phone-1795795628.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/launchesBackgroundWorkFromComposerAndReopensIt()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-plan-1795795009.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Failed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Failed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-plan-1795795911.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft()": "Passed"
+      }
+    },
+    {
+      "bundle": "official-linux-devin-4c07c2b34-stop-1795795406.xcresult",
+      "scope": "Production Chat Store and live foreground; CLI readbacks in the platform reports",
+      "count": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "devices": [
+        {
+          "deviceId": "10F73135-B268-4ECF-B6CA-7A7F65418462",
+          "deviceName": "heeler-lab-linux-devin-S",
+          "osVersion": "27.0",
+          "osBuildNumber": "24A434",
+          "architecture": "arm64"
+        }
+      ],
+      "suites": {
+        "Devin Chat over loopback SSH": {
+          "Passed": 1
+        }
+      },
+      "cases": {
+        "DevinChatLiveTests/stopsOnlyTheCurrentlyDisplayedTurn()": "Passed"
+      }
+    }
+  ],
+  "rawRoot": "build/heeler-lab-evidence",
+  "otherChecks": {
+    "tools": {
+      "command": "make test-tools",
+      "rc": 0,
+      "log": "final-4c07c2b34-tools.log",
+      "summary": {
+        "groupSummary": "==> All 37 tool checks passed in 216.2s."
+      }
+    },
+    "plugin": {
+      "command": "npm --prefix plugin test -- --test-concurrency=1",
+      "rc": 1,
+      "log": "final-4c07c2b34-plugin.log",
+      "summary": {
+        "tests": 1350,
+        "pass": 1136,
+        "fail": 214,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "node-focus": {
+      "command": "node --test plugin/test/helper-extension-rex.test.js plugin/test/helper-closure.test.js",
+      "rc": 0,
+      "log": "final-4c07c2b34-node-focus.log",
+      "summary": {
+        "tests": 31,
+        "pass": 31,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "npm-ci": {
+      "command": "npm ci --prefix plugin --offline --no-fund --no-audit",
+      "rc": 0,
+      "log": "final-4c07c2b34-npm-ci.log",
+      "summary": {}
+    }
+  }
+}

@@ -23,6 +23,37 @@ struct DevinChatLiveTests {
         return try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_MAC_REX_WRITERS"] != nil))
+    func keepsSameDirectoryRexWritersSeparateOnMacOS() async throws {
+        struct Writer: Decodable {
+            let lab: Lab
+            let pid, start: String
+        }
+        let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_MAC_REX_WRITERS"])
+        let pair = try JSONDecoder().decode([Writer].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        try #require(pair.count == 2)
+        let a = pair[0], b = pair[1]
+        try #require(a.lab.directory == b.lab.directory && a.lab.rexSocket == b.lab.rexSocket)
+        try #require(a.pid != b.pid && a.lab.rexBlock != b.lab.rexBlock && a.lab.sessions["rex"] != b.lab.sessions["rex"])
+        for (own, other) in [(a, b), (b, a)] {
+            try await withChat(own.lab, .rex) { live in
+                let read = try #require(live.io.droidTarget)
+                let target = try #require(try await read())
+                #expect(target.pid == own.pid && target.start == own.start)
+                #expect(target.directory == own.lab.directory && target.sessionID == own.lab.sessions["rex"])
+                var wrongWriter = target
+                wrongWriter.pid = other.pid
+                wrongWriter.start = other.start
+                let check = DroidSendVerification(target: wrongWriter, readTarget: read, readScreen: live.io.readScreen,
+                                                  requiresSpec: false, program: .devin)
+                guard case .inputNotReady = await check.refusal() else {
+                    Issue.record("The other foreground's ACP writer passed the displayed conversation's input check")
+                    return
+                }
+            }
+        }
+    }
+
     @Test(arguments: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"].map { [$0] } ?? ["mac", "linux"], LiveChatLabSelection.cases([.herdrTUI, .herdrCore, .tmux, .rex]))
     func opensTheForegroundSessionAndDeliversExactlyOnce(_ platform: String, _ backend: ServerKind) async throws {
         let lab = try config(platform)
@@ -71,6 +102,7 @@ struct DevinChatLiveTests {
             return try await projection.checkChatSession(paneID: pane, program: .devin)
         }
         source.coreScope = projection.chatCacheScope
+        source.requiresIndependentInputSession = projection is RexConsoleProjection
         let chat = AgentChatStore(agentID: .init(hostID: projection.host.id, paneID: pane), agent: agent, program: .devin, source: source)
         defer { chat.end() }
         await chat.step()
@@ -204,7 +236,7 @@ struct DevinChatLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"] != nil))
     func firstTrustAndDeclineBeforeTheSessionExists() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BEHAVIOR_PLATFORM"]))
-        let backend = LiveChatLabSelection.backend ?? .herdrTUI
+        let backend = try LiveChatLabSelection.backend()
         for key in ["trust", "decline"] {
             let entry = try #require(lab.startup?[key])
             let pane = entry.pane, directory = entry.directory
@@ -283,17 +315,28 @@ struct DevinChatLiveTests {
         struct Fixture: Decodable {
             let lab: Lab
             let shells: [String: String]
-            let child, childOutput: String
+            let child, childOutput: String?
+            let shellsOnly: Bool?
+            let backend: ServerKind?
             let stoppedShell: String?
         }
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_BACKGROUND_LAB"])
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let child: (id: String, output: String)?
+        if fixture.shellsOnly == true {
+            try #require(!fixture.shells.isEmpty)
+            child = nil
+        } else {
+            child = (try #require(fixture.child), try #require(fixture.childOutput))
+        }
+        let backend = try LiveChatLabSelection.backend(for: fixture.backend)
+        let expected = Set(fixture.shells.keys).union(child.map { [$0.id] } ?? [])
         for _ in 0..<2 {
-            try await withChat(fixture.lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
+            try await withChat(fixture.lab, backend) { live in
                 try await live.wait {
                     let transcript = live.chat.conversation.transcript
                     let work = transcript.backgroundWork
-                    if Set(work.compactMap(\.taskID)).isSuperset(of: Set(fixture.shells.keys).union([fixture.child])) {
+                    if Set(work.compactMap(\.taskID)).isSuperset(of: expected) {
                         return true
                     }
                     return false
@@ -308,10 +351,111 @@ struct DevinChatLiveTests {
                     let job = try #require(transcript.backgroundWork.first { $0.taskID == stopped })
                     #expect(job.state == .stopped)
                 }
-                let children = transcript.backgroundWork.filter { $0.taskID == fixture.child }
-                try #require(children.count == 1)
-                #expect(children[0].reportedOutput?.contains(fixture.childOutput) == true)
+                if let child {
+                    let children = transcript.backgroundWork.filter { $0.taskID == child.id }
+                    try #require(children.count == 1)
+                    #expect(children[0].reportedOutput?.contains(child.output) == true)
+                }
                 #expect(!transcript.recordedPrompts.contains { $0.text.hasPrefix("<subagent_completion_notification>") })
+            }
+        }
+    }
+
+    /// A fresh signed-in client, two fixture commands and a delayed public report.
+    /// The phone initiates all three jobs. The fixture releases the child's file
+    /// only after the parent has returned and Chat still shows that child running.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_COMPOSER_WORK_LAB"] != nil))
+    func launchesBackgroundWorkFromComposerAndReopensIt() async throws {
+        struct Work: Decodable {
+            let lab: Lab
+            let backend: ServerKind
+            let tag, storeRoot, successCommand, failureCommand: String
+            let childFile, releaseSignal, childReport: String
+        }
+        let config = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMPOSER_WORK_LAB"])
+        let fixtureURL = URL(fileURLWithPath: config)
+        let work = try JSONDecoder().decode(Work.self, from: Data(contentsOf: fixtureURL))
+        let signal = fixtureURL.deletingLastPathComponent().appendingPathComponent(work.releaseSignal)
+        try #require(!work.releaseSignal.contains("/") && !FileManager.default.fileExists(atPath: signal.path))
+        let rules = ChatSendRules(program: .devin, commands: [])
+        let success = "REX_LAB_PHONE_ZERO_" + work.tag
+        let failure = "REX_LAB_PHONE_FAILED_" + work.tag
+        let parent = "REX_LAB_PHONE_PARENT_" + work.tag
+        let session = try #require(work.lab.sessions[work.backend.rawValue])
+        var expected: [String: String] = [:]
+        var childID: String?
+        try await withChat(work.lab, work.backend) { live in
+            for (command, marker, wanted) in [(work.successCommand, success, ChatBackgroundWorkItem.State.completed),
+                                              (work.failureCommand, failure, .failed)] {
+                let prompt = "Use exec with timeout 0, omitting shell_id, to run exactly this command: " + command
+                    + ". Use the returned ID in get_output with a positive timeout to read the terminal exit. Do not edit or rerun the command. Reply only with PHONE_FINISHED_" + marker
+                try await live.send(prompt)
+                let card = try await live.card(.devinPermission)
+                try #require(card.request?.summary == command && card.dialog.options.first?.label == "Allow · Once")
+                await live.chat.blocked.perform(.choose(ordinal: 1), shownCard: card)
+                try await live.wait {
+                    let transcript = live.chat.conversation.transcript
+                    guard let job = transcript.backgroundWork.first(where: { $0.title == command }),
+                        job.state == wanted, job.reportedOutput?.contains(marker) == true, let id = job.taskID,
+                        transcript.turns.last?.ending == .completed else { return false }
+                    expected[marker] = id
+                    return true
+                }
+                #expect(live.chat.conversation.transcript.recordedPrompts.filter { $0.text == rules.outgoingText(prompt) }.count == 1)
+            }
+            let title = "Heeler file witness " + work.tag
+            let childPrompt = "Call run_subagent exactly once with is_background true and title '" + title
+                + "'. Give the child this task: read only " + work.childFile
+                + "; if its first line is PENDING, read it again until it changes, without running commands or modifying files. Report exactly the changed first line."
+                + " Once the background launch is acknowledged, immediately finish your own turn with exactly " + parent
+                + ". Do not wait for the child or call another tool."
+            try await live.send(childPrompt)
+            try await live.wait {
+                let transcript = live.chat.conversation.transcript
+                guard transcript.entries.contains(where: { $0.content == .assistant(.init(text: parent)) }),
+                    transcript.turns.last?.ending == .completed,
+                    let child = transcript.backgroundWork.first(where: { $0.kind == .subagent && $0.title == title }),
+                    child.state == .running, let id = child.taskID else { return false }
+                childID = id
+                return true
+            }
+            #expect(live.chat.conversation.transcript.recordedPrompts.filter { $0.text == rules.outgoingText(childPrompt) }.count == 1)
+            try Data(work.tag.utf8).write(to: signal, options: .withoutOverwriting)
+            try await live.wait {
+                live.chat.conversation.transcript.backgroundWork.contains {
+                    $0.taskID == childID && $0.state == .completed && $0.reportedOutput?.contains(work.childReport) == true
+                }
+            }
+        }
+        let child = try #require(childID)
+        let successID = try #require(expected[success])
+        let failureID = try #require(expected[failure])
+        try #require(Set([successID, failureID, child]).count == 3)
+        for _ in 0..<2 {
+            try await withChat(work.lab, work.backend) { live in
+                try await live.wait {
+                    let jobs = live.chat.conversation.transcript.backgroundWork
+                    return jobs.contains { $0.taskID == successID && $0.state == .completed && $0.reportedOutput?.contains(success) == true }
+                        && jobs.contains { $0.taskID == failureID && $0.state == .failed && $0.reportedOutput?.contains(failure) == true }
+                        && jobs.contains { $0.taskID == child && $0.state == .completed && $0.reportedOutput?.contains(work.childReport) == true }
+                }
+                let query = try #require(live.projection.chatHostFiles().queryDevin)
+                var rows: [DevinSessionPage.Row] = []
+                var offset = 0
+                repeat {
+                    let page = try await query(.init(session: session, root: work.storeRoot, offset: offset, limit: 24))
+                    try #require(page.offset == offset && page.total <= 256)
+                    rows.append(contentsOf: page.rows)
+                    offset += page.rows.count
+                    if offset == page.total { break }
+                    try #require(!page.rows.isEmpty)
+                } while true
+                for (id, code) in [(successID, 0), (failureID, 17)] {
+                    let lookup = rows.flatMap(\.calls).filter { $0.name == "get_output" && $0.arguments.shell_id == id }.map(\.id)
+                    #expect(rows.contains { row in
+                        row.isExecutionResult == true && row.shellExit?.code == code && row.resultFor.map(lookup.contains) == true
+                    })
+                }
             }
         }
     }
@@ -319,7 +463,7 @@ struct DevinChatLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"] != nil))
     func stopsOnlyTheCurrentlyDisplayedTurn() async throws {
         let lab = try config(try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_STOP_PLATFORM"]))
-        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
+        try await withChat(lab, LiveChatLabSelection.backend()) { live in
             let plan = ChatStopPlan.standard(for: .devin)
             let check = try #require(plan.screenGuard)
             let keys = ChatAgentKeysStore(send: { try await live.projection.sendAgentKeys($0, to: live.pane) })
@@ -337,7 +481,7 @@ struct DevinChatLiveTests {
                     return turn != nil && turn?.ending == nil && verdict == .press
                 }
                 if let previous { try #require(await previous.perform() == .failed(ChatStopPlan.changedDroidTurn)) }
-                let verify = live.chat.droidStopVerification()
+                let verify = live.projection is RexConsoleProjection ? live.chat.rexStopVerification() : live.chat.droidStopVerification()
                 let stop = live.projection.checkedChatStop(
                     for: live.pane, program: .devin, keepingTo: TerminalCorePin(joined: live.projection.inventoryCore),
                     agentKeys: keys, followThrough: nil, confirmTarget: verify, live: { live.projection }
@@ -353,7 +497,10 @@ struct DevinChatLiveTests {
     func declinesAPlanAndSendsFeedbackWithoutTakingTheMessageDraft() async throws {
         let path = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_LAB"])
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
+        let fixture = try ProcessInfo.processInfo.environment["HEELER_DEVIN_PLAN_BACKEND"].map { name in
+            try #require(ServerKind(rawValue: name), "Unknown Devin plan backend: \(name)")
+        }
+        try await withChat(lab, LiveChatLabSelection.backend(for: fixture)) { live in
             try await live.desktop("/plan")
             try await live.wait { try await DevinInputBox.isPlan(live.io.readScreen()) }
             try await live.send("Propose writing a note.txt in this empty test folder. Write a very short plan with two plain numbered steps and no headings, then call exit_plan_mode to request approval. Make no changes to the workspace.")
@@ -382,7 +529,7 @@ struct DevinChatLiveTests {
         let folder = try #require(ProcessInfo.processInfo.environment["HEELER_DEVIN_COMMAND_LABS"])
         let url = URL(fileURLWithPath: folder).appendingPathComponent("lab-" + platform + ".json")
         let lab = try JSONDecoder().decode(Lab.self, from: Data(contentsOf: url))
-        try await withChat(lab, LiveChatLabSelection.backend ?? .herdrTUI) { live in
+        try await withChat(lab, LiveChatLabSelection.backend()) { live in
             let marker = "DEVIN_COMMAND_" + UUID().uuidString.prefix(8)
             let command = "sleep 1 && echo DEVIN_LONG_COMMAND_SEQUENCE_ALPHA_0123456789 DEVIN_LONG_COMMAND_SEQUENCE_BETA_0123456789 " + marker
             try await live.send("Use exec once with this exact command. Do not touch any files.\n\n" + command)
@@ -445,7 +592,9 @@ struct DevinChatLiveTests {
             try await wait { try await DevinInputBox.read(io.readScreen()).isSendable }
             composer.replaceDraft(with: text)
             chat.draftDidChange(to: text)
-            let sent = await composer.send(policy: policy)
+            var current = policy
+            current.sessionWrite = chat.composerWriteCheck(for: composer)
+            let sent = await composer.send(policy: current)
             try #require([.deliveredViaAttach, .submittedViaAttach, .deliveredViaPrompt].contains(sent), "Delivery via \(projection.host.serverKind): \(sent)")
         }
 

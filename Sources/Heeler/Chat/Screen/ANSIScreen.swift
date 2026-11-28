@@ -72,9 +72,12 @@ struct ANSIScreen: Sendable {
     /// herdr reports no pane size with a read, and a program that fills its
     /// last column is rare, so this can be a cell or two short of the pane.
     let columns: Int
+    /// The width supplied by a terminal protocol that reports its grid.
+    let reportedColumns: Int?
 
-    init(rows: [ScreenRow]) {
+    init(rows: [ScreenRow], reportedColumns: Int? = nil) {
         self.rows = rows
+        self.reportedColumns = reportedColumns
         columns = rows.map(\.width).max() ?? 0
     }
 }

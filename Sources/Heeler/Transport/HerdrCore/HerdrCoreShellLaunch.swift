@@ -58,7 +58,7 @@ enum HerdrCoreShellLaunch {
     /// looking, with the PATH the startup files set: it sees no alias or function
     /// of the shell's, which the launch's `exec` could not run either.
     static func discoveryScript(
-        shell: String, executables: [String], versionOf versioned: String, nonce: String
+        shell: String?, executables: [String], versionOf versioned: String, nonce: String
     ) -> Data {
         let quoted = HerdrCoreLocator.quoted
         var lines = ["printf '\\n%s\\n' \(quoted(beginMarker(nonce)))"]
@@ -74,7 +74,8 @@ enum HerdrCoreShellLaunch {
             "printf '\\n%s\\n' \(quoted(endMarker(nonce)))",
             "exit 0",
         ]
-        return Data("\(quoted(shell)) -ic \(quoted(lines.joined(separator: "\n")))".utf8)
+        let executable = shell.map(quoted) ?? #""${SHELL:-/bin/sh}""#
+        return Data("\(executable) -ic \(quoted(lines.joined(separator: "\n")))".utf8)
     }
 
     /// A script for `/bin/sh` that asks the program an Agent runs for its version,

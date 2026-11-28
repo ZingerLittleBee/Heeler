@@ -23,6 +23,33 @@ struct AmpChatTests {
         #expect(AmpPluginLocation(pid: pid, facts: facts) == nil)
     }
 
+    @Test func posixRexReadsAmpPagesAndRejectsPluginInput() async throws {
+        struct RecordingHost: AmpChatHost {
+            func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+                .init(binding: nil, page: nil, sent: nil, error: request.op)
+            }
+        }
+        let rex = RexReadOnlyAmp(connection: RecordingHost())
+        let record = AmpPluginRecord(version: 1, pid: 123, start: "45", uid: 1000, instance: UUID())
+        for operation in ["binding", "page"] {
+            #expect(try await rex.exchangeAmpChat(.init(operation), record: record).error == operation)
+        }
+        for operation in ["send", "other"] {
+            await #expect(throws: AmpChatProblem.readOnly) {
+                _ = try await rex.exchangeAmpChat(.init(operation), record: record)
+            }
+        }
+        #expect(!HostCapabilities.rexChatPrograms.contains(.amp))
+        for kernel in [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel] {
+            let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+            #expect(host.offersAmpPlugin && host.offersChat(for: .amp) && host.readOnlyChatPrograms.contains(.amp))
+        }
+        for kernel in [nil, HerdrCoreLocator.windowsKernel] {
+            let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+            #expect(!host.offersAmpPlugin && !host.offersChat(for: .amp))
+        }
+    }
+
     @Test func repeatedMessagesAndUpdatedToolResultsKeepTheirOwnIDs() throws {
         func line(_ index: UInt64, _ json: String) -> ChatLine { .init(offset: index, data: Data(json.utf8)) }
         let first = line(0, #"{"id":"n:1","role":"user","blocks":[{"type":"text","text":"same"}]}"#)

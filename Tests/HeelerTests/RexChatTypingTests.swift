@@ -139,6 +139,83 @@ struct RexChatTypingTests {
         #expect(await rig.written() == ["\u{1B}"])
     }
 
+    @Test func chatStopChecksTheWorkingTurnInsideTheInputLane() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog))
+        defer { rig.end() }
+        let projection = rig.projection
+        let pin = TerminalCorePin(joined: projection.inventoryCore)
+        var currentTurn = true
+        var checks = 0
+        let checkedStop = projection.checkedChatStop(for: RexChatRig.paneID, program: .claude, keepingTo: pin,
+            confirmTarget: {
+                checks += 1
+                return currentTurn
+            }, live: { projection })
+        let stop = try #require(checkedStop)
+        let requests = try await projection.blockRequests(at: RexChatRig.address, keepingTo: pin)
+        let gate = CancellablePhaseGate()
+        let previous = Task { try await requests.send([]) { await gate.enterAndHold() } }
+        try await gate.waitUntilEntered()
+        let modes = RexInventoryWire.terminalMethod("modes")
+        let before = await rig.server.requests.filter { $0.method == modes }.count
+        let queued = Task { await stop.perform() }
+        try await rig.waitUntil("Stop reaches the occupied block") {
+            await rig.server.requests.filter { $0.method == modes }.count > before
+        }
+        #expect(checks == 0)
+        currentTurn = false
+        await gate.release()
+        _ = try await previous.value
+        #expect(await queued.value == .failed(ChatStopPlan.changedDroidTurn))
+        #expect(await rig.written().isEmpty)
+
+        currentTurn = true
+        #expect(await stop.perform() == .sent)
+        rig.world.update { $0[0].windows[0].layers[0].blocks[2].status = nil }
+        #expect(await stop.perform() == .failed(ChatStopPlan.changedDroidTurn))
+        #expect(await rig.written() == ["\u{1B}"])
+        await rig.tookNothing()
+    }
+
+    @Test func aChatSendRechecksTheDisplayedSessionBeforePasteAndEnter() async throws {
+        let world = FakeRexWorld(sessions: [RexChatRig.studio(reporting: "idle")])
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog), world: world)
+        defer { rig.end() }
+        let sender = try rig.composerSend()
+        var checks = 0
+        let verification = ComposerWriteVerification(session: { target in
+            #expect(target == nil)
+            checks += 1
+            return checks == 1
+        }, droid: nil)
+        let first = await sender.send("first", route: .chat, attach: nil, verifying: verification)
+        guard case .refused(.notSubmitted) = first else {
+            Issue.record("A changed conversation received Enter after the paste")
+            return
+        }
+        let second = await sender.send("second", route: .chat, attach: nil, verifying: verification)
+        guard case .refused(.inputNotReady) = second else {
+            Issue.record("A changed conversation received a new paste")
+            return
+        }
+        #expect(checks == 3)
+        #expect(await rig.pasted() == ["first"])
+        #expect(await rig.written().isEmpty)
+    }
+
+    @Test func aChatStopWithNoAcknowledgementIsNotRepeated() async throws {
+        let rig = try await RexChatRig.start(FakeRexChatBlock(lines: Self.dialog),
+            inputDeadline: .init(silence: .milliseconds(100), limit: .milliseconds(200)))
+        defer { rig.end() }
+        let projection = rig.projection
+        let checkedStop = projection.checkedChatStop(for: RexChatRig.paneID, program: .claude,
+            keepingTo: .init(joined: projection.inventoryCore), confirmTarget: { true }, live: { projection })
+        let stop = try #require(checkedStop)
+        await rig.server.stopAnswering(RexChatRig.write)
+        #expect(await stop.perform() == .failed(TransportError.coreMutationOutcomeUnknown.presentation.message))
+        #expect(await rig.written() == ["\u{1B}"])
+    }
+
     // MARK: The terminal Composer's Stop
 
     /// The terminal Composer's Stop is one Esc checked as Chat's keys are: it

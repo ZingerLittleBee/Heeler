@@ -8,11 +8,6 @@ import sys
 import time
 import uuid
 
-pid, start, home, cwd = sys.argv[1:]
-root = pathlib.Path(home) / ".factory"
-sessions = root / "sessions"
-os.environ.update(LC_ALL="C", TZ="UTC")
-time.tzset()
 
 def birth(process):
     if sys.platform == "darwin":
@@ -74,26 +69,89 @@ def recent_lines(process):
                 return
 
 
-def controller():
+def job(process):
+    if sys.platform == "linux":
+        # comm is parenthesized and may itself contain spaces or ')'.
+        stat = pathlib.Path("/proc", process, "stat").read_bytes()
+        prefix, tail = stat.rsplit(b") ", 1)
+        image = os.fsdecode(prefix.split(b" (", 1)[1])
+        _, parent, group, _, tty, foreground = tail.split()[:6]
+        return (parent.decode(), group.decode(), foreground.decode(),
+                "?" if tty == b"0" else tty.decode(), image)
+    fields = "ppid=,pgid=,tpgid=,tty=,comm="
+    return subprocess.check_output(["/bin/ps", "-p", process, "-o", fields], text=True, timeout=1).split(None, 4)
+
+
+def darwin_children(process):
+    # libproc returns a count of pids when given a buffer. A full result may
+    # have been truncated, so let the existing process-table query handle it.
+    import ctypes
+
+    library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    children = (ctypes.c_int * 64)()
+    read = library.proc_listchildpids
+    read.argtypes = (ctypes.c_int, ctypes.c_void_p, ctypes.c_int)
+    read.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    count = read(int(process), children, ctypes.sizeof(children))
+    if ctypes.get_errno() or not 0 <= count < len(children):
+        return None
+    return [str(child) for child in children[:count]]
+
+
+def direct_children(process):
+    if sys.platform == "darwin":
+        try:
+            children = darwin_children(process)
+            if children is not None:
+                return children
+        except (OSError, AttributeError):
+            # Systems without this libproc entry point still support pgrep.
+            pass
+    if sys.platform == "linux":
+        # Some runtimes spawn the JSON-RPC child on a worker thread. The
+        # kernel exposes direct children per thread, not just per leader.
+        tasks = pathlib.Path("/proc", process, "task")
+        threads = list(tasks.iterdir())
+        if not threads:
+            raise ValueError("missing thread group")
+        try:
+            children = set()
+            for thread in threads:
+                children.update((thread / "children").read_text().split())
+            return children
+        except FileNotFoundError:
+            # Older kernels may not expose children. Read the full process
+            # table in that case; an incomplete set cannot establish ownership.
+            pass
+    children = subprocess.run(["pgrep", "-P", process, "-x", "droid"], capture_output=True, text=True, timeout=1)
+    if children.returncode not in (0, 1):
+        raise ValueError("incomplete process list")
+    return children.stdout.split()
+
+
+def is_rpc_child(child):
+    if sys.platform == "linux":
+        argv = pathlib.Path("/proc", child, "cmdline").read_bytes().split(b"\0")
+        return (os.path.basename(argv[0]) == b"droid"
+                and argv[1:] == [b"exec", b"--input-format", b"stream-jsonrpc", b"--output-format", b"stream-jsonrpc", b""])
+    args = subprocess.check_output(["/bin/ps", "-p", child, "-o", "args="], text=True, timeout=1).strip()
+    entry, separator, arguments = args.partition(" exec ")
+    return separator and pathlib.Path(entry).name == "droid" and arguments == "--input-format stream-jsonrpc --output-format stream-jsonrpc"
+
+
+def controller(pid):
     # /cd can move the controller into a direct RPC child. It shares the
     # interactive Droid's foreground job and terminal, unlike a Task worker.
-    fields = "ppid=,pgid=,tpgid=,tty=,comm="
-    def job(process):
-        return subprocess.check_output(["/bin/ps", "-p", process, "-o", fields], text=True, timeout=1).split(None, 4)
     _, group, foreground, tty, image = job(pid)
     if group != pid or group != foreground or tty in ("?", "??") or pathlib.Path(image.strip()).name != "droid":
         return None
-    children = subprocess.run(["pgrep", "-P", pid, "-x", "droid"], capture_output=True, text=True, timeout=1)
-    if children.returncode not in (0, 1):
-        return None
     owners = []
-    for child in children.stdout.split():
-        parent, child_group, child_foreground, child_tty, _ = job(child)
+    for child in direct_children(pid):
+        parent, child_group, child_foreground, child_tty, name = job(child)
         if (parent, child_group, child_foreground, child_tty) != (pid, group, foreground, tty):
             continue
-        args = subprocess.check_output(["/bin/ps", "-p", child, "-o", "args="], text=True, timeout=1).strip()
-        entry, separator, arguments = args.partition(" exec ")
-        if separator and pathlib.Path(entry).name == "droid" and arguments == "--input-format stream-jsonrpc --output-format stream-jsonrpc":
+        if pathlib.Path(name.strip()).name == "droid" and is_rpc_child(child):
             owners.append(child)
     if len(owners) > 1:
         return None
@@ -103,7 +161,7 @@ def controller():
 def active():
     if birth(pid)[0] != start:
         return
-    owner = controller()
+    owner = controller(pid)
     if not owner:
         return
     owner_start, earliest = birth(owner)
@@ -131,18 +189,24 @@ def active():
             return
         if header(file, sid).get("callingSessionId"):
             continue
-        if sid not in closed and birth(pid)[0] == start and controller() == owner and birth(owner)[0] == owner_start:
+        if sid not in closed and birth(pid)[0] == start and controller(pid) == owner and birth(owner)[0] == owner_start:
             return {"session": sid, "file": str(file), "controller": owner, "controllerStart": owner_start}
         return
 
-try:
-    for attempt in range(3):
-        try:
-            result = active()
-            if result:
-                print(json.dumps(result))
-            break
-        except IncompleteLog:
-            time.sleep(0.03)
-except (OSError, ValueError, KeyError, IndexError, StopIteration, subprocess.SubprocessError):
-    pass
+if __name__ == "__main__":
+    pid, start, home, cwd = sys.argv[1:]
+    root = pathlib.Path(home) / ".factory"
+    sessions = root / "sessions"
+    os.environ.update(LC_ALL="C", TZ="UTC")
+    time.tzset()
+    try:
+        for attempt in range(3):
+            try:
+                result = active()
+                if result:
+                    print(json.dumps(result))
+                break
+            except IncompleteLog:
+                time.sleep(0.03)
+    except (OSError, ValueError, KeyError, IndexError, StopIteration, subprocess.SubprocessError):
+        pass

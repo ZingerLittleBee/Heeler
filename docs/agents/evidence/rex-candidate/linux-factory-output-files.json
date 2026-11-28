@@ -1,0 +1,47 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "source": "Official Factory 1.21.1 on a private Rex terminal, default model",
+  "platform": "Debian Linux",
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "sessionSHA256": "7050e5985e05f6720f146382bcd123f2c9e0858bd7da96ab6a63938a2d5efd6a",
+  "parentOfficialReply": true,
+  "tool": "Script / Execute",
+  "commands": [
+    {
+      "markerSHA256": "ed1c0c1e91f8c18e97b23b30468f0b904365d6caa9c9a16b93b4406862405612",
+      "outerSHA256": "f193c920fd6d8c66b4a777606c80c26bdc4f97928530f979c998fe1e8c33611f",
+      "innerSHA256": "2223dd48085607ac0ee1ee49fdc9412d68fd56959d6b4a5818c8ede4b4df64a1",
+      "officialRows": {
+        "call": 6,
+        "launch": 8,
+        "completion": 16
+      },
+      "pid": 793721,
+      "exitCode": 0,
+      "stoppedBy": "process",
+      "trustedStructuredExit": true,
+      "outputFileContentsMatchOfficialEvent": true,
+      "outputFileSHA256": "782e2a5dda74a35a7d71b3ea0071695f4d11d76f2d949c456a9bddd79aa6c124",
+      "outputBytes": 35
+    },
+    {
+      "markerSHA256": "01deb411d7325bb47fabf7d7e88bad039d515a88ba31d6bf2702c6aa1d34f65c",
+      "outerSHA256": "f193c920fd6d8c66b4a777606c80c26bdc4f97928530f979c998fe1e8c33611f",
+      "innerSHA256": "aeb03c84e385d20773642edade6b2e82741f268b33b0c09ce57499631d167be2",
+      "officialRows": {
+        "call": 7,
+        "launch": 9,
+        "completion": 15
+      },
+      "pid": 793722,
+      "exitCode": 17,
+      "stoppedBy": "process",
+      "trustedStructuredExit": true,
+      "outputFileContentsMatchOfficialEvent": true,
+      "outputFileSHA256": "a6618a5d4e6bb38e6fdb027c0be0719e51bb5114daec4484be7f26cb39073d91",
+      "outputBytes": 37
+    }
+  ]
+}

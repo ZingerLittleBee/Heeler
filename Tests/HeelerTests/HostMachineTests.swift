@@ -57,7 +57,7 @@ struct HostMachineTests {
 
         #expect(labels[tui.id] == "Herdr TUI")
         #expect(labels[work.id] == "Herdr TUI · work")
-        #expect(labels[tmux.id] == "tmux")
+        #expect(labels[tmux.id] == "Tmux")
         #expect(labels[namedApart.id] == nil)
         #expect(labels[alone.id] == nil)
     }
@@ -77,7 +77,7 @@ struct HostMachineTests {
         #expect(machines.map { $0.members.map(\.id) } == [[rex.id, tmux.id], [alone.id]])
         #expect(machines.first?.record(of: HostServerKey(kind: .rex, name: "")) == rex)
         #expect(labels[rex.id] == "Rex")
-        #expect(labels[tmux.id] == "tmux")
+        #expect(labels[tmux.id] == "Tmux")
         #expect(labels[alone.id] == nil)
         let row = HostMachineRowPresentation(machine: try #require(machines.first))
         #expect(row.servers.map(\.label) == ["Rex", "Tmux"])
@@ -95,7 +95,7 @@ struct HostMachineTests {
 
         #expect(added.id == recordID)
         #expect(added.sessionName == "default")
-        #expect(store.hosts.map(\.displayName) == ["Studio · Herdr TUI", "Studio · tmux"])
+        #expect(store.hosts.map(\.displayName) == ["Studio · Herdr TUI", "Studio · Tmux"])
         #expect(store.machines.count == 1)
         #expect(store.machine(containing: tui.id)?.needsRecord(for: tmux) == false)
 
@@ -163,7 +163,7 @@ struct HostMachineTests {
 
         let machine = try #require(store.machine(containing: tmux.id))
         #expect(machine.members.map(\.id) == [tui.id, tmux.id])
-        #expect(machine.members.map(\.displayName) == ["Studio Mac · Herdr TUI", "Studio Mac · tmux"])
+        #expect(machine.members.map(\.displayName) == ["Studio Mac · Herdr TUI", "Studio Mac · Tmux"])
         #expect(machine.members.allSatisfy { $0.username == "ops" && $0.address == "10.0.0.5" && $0.port == 2222 })
         #expect(machine.members.map(\.serverKind) == [.herdrTUI, .tmux])
         #expect(store.machines.count == 2)
@@ -326,7 +326,7 @@ struct HostMachineTests {
         let request = try #require(removal.pendingRequest)
         #expect(store.hosts.map(\.id) == [tui.id, tmux.id])
         #expect(request.hosts.map(\.id) == [tmux.id])
-        #expect(request.turnsOffServer == "tmux · work")
+        #expect(request.turnsOffServer == "Tmux · work")
         #expect(request.deletesNotificationKey)
         // Not connected, so its registration of this device cannot be revoked.
         #expect(request.leavesNotificationsBehind)
@@ -401,9 +401,9 @@ struct HostMachineTests {
     @Test func turningAServerOffIsWordedAsASwitchAndNotARemoval() {
         let tmux = record(kind: .tmux, session: "work")
         let request = HostRemovalRequest(
-            hosts: [tmux], deletesNotificationKey: true, turnsOffServer: "tmux · work")
+            hosts: [tmux], deletesNotificationKey: true, turnsOffServer: "Tmux · work")
 
-        #expect(request.title == "Turn off tmux · work on Studio?")
+        #expect(request.title == "Turn off Tmux · work on Studio?")
         #expect(request.actionTitle == "Turn Off")
         #expect(
             request.message

@@ -1,0 +1,114 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "program": "Pi 1.5.2",
+  "host": "macOS Rex-only SSH login",
+  "scope": "A and B share the same directory. Desktop store drives the independent /new between two app checks. The live test also asserts that the desktop client owns unchanged grids throughout.",
+  "snapshots": {
+    "before": {
+      "alpha": {
+        "pid": 63982,
+        "focus": true,
+        "activeWindow": "window:01a21d41-e762-724d-97f5-3cc69daae278",
+        "grid": {
+          "columns": 80,
+          "rows": 24,
+          "owner": null
+        },
+        "recordFiles": [
+          {
+            "file": "2026-11-27T13-46-29-556Z_01a21d41-ed30-71ad-83a7-3a09fb4d7a71.jsonl",
+            "sha256": "6e9ef9ac56205c19b945874f4b1d0b2b21beeff2bc0d633f47d15266517c8e33",
+            "occurrencesByRole": {
+              "initialReply": {
+                "user": 1,
+                "assistant": 1
+              }
+            }
+          }
+        ]
+      },
+      "bravo": {
+        "pid": 64318,
+        "focus": true,
+        "activeWindow": "window:01a21d41-f22f-780e-9bfc-9ba893f3bbf1",
+        "grid": {
+          "columns": 80,
+          "rows": 24,
+          "owner": null
+        },
+        "recordFiles": [
+          {
+            "file": "2026-11-27T13-46-31-870Z_01a21d41-f63e-7615-9c01-f6b1d8fd004a.jsonl",
+            "sha256": "a24d532e7cdcb65dd76d844067fae28bcf1060ba2846a2e9361947eed7a3982a",
+            "occurrencesByRole": {
+              "initialReply": {
+                "user": 1,
+                "assistant": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "after": {
+      "alpha": {
+        "pid": 63982,
+        "focus": true,
+        "activeWindow": "window:01a21d41-e762-724d-97f5-3cc69daae278",
+        "grid": {
+          "columns": 80,
+          "rows": 24,
+          "owner": null
+        },
+        "recordFiles": [
+          {
+            "file": "2026-11-27T13-46-29-556Z_01a21d41-ed30-71ad-83a7-3a09fb4d7a71.jsonl",
+            "sha256": "3f7542d7acf481ca5664647ec88c891c3ff3179c7190a333afc2ec414256fb5a",
+            "occurrencesByRole": {
+              "initialReply": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              }
+            }
+          },
+          {
+            "file": "2026-11-27T13-58-03-750Z_01a21d4c-84e5-71ad-83a7-3a0ae4e4f7d4.jsonl",
+            "sha256": "985ed98f92a97eec6167c51746f06affb5316d70b2ae0fa73b0471b196641605",
+            "occurrencesByRole": {
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              }
+            }
+          }
+        ]
+      },
+      "bravo": {
+        "pid": 64318,
+        "focus": true,
+        "activeWindow": "window:01a21d41-f22f-780e-9bfc-9ba893f3bbf1",
+        "grid": {
+          "columns": 80,
+          "rows": 24,
+          "owner": null
+        },
+        "recordFiles": [
+          {
+            "file": "2026-11-27T13-46-31-870Z_01a21d41-f63e-7615-9c01-f6b1d8fd004a.jsonl",
+            "sha256": "a24d532e7cdcb65dd76d844067fae28bcf1060ba2846a2e9361947eed7a3982a",
+            "occurrencesByRole": {
+              "initialReply": {
+                "user": 1,
+                "assistant": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

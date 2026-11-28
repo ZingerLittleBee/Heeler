@@ -262,3 +262,32 @@ The initial Linux backend attempt on this candidate found retired temporary term
 See the [Chat guide](../guides/chat.md), [test fixture contract](testing.md), [Droid reducer and input checks](../../Tests/HeelerTests/DroidChatTests.swift), [real Herdr dialog scenarios](../../Tests/HeelerLiveTests/DroidDialogLiveTests.swift), [three-backend checks](../../Tests/HeelerLiveTests/DroidBackendChatLiveTests.swift), [recorded terminal frames](../../Tests/HeelerTests/ChatFixtures/screens/droid), and [redacted transcript samples](../../Tests/HeelerTests/ChatFixtures/droid). Factory documents the CLI, permission model, hooks and Mission controls in its [CLI reference](https://docs.factory.com/droid-cli/cli-reference), [permission rules](https://docs.factory.com/autonomy-and-safety/permission-rules), [hook reference](https://docs.factory.com/harness/hooks), [AskUser reference](https://github.com/Factory-AI/factory/blob/main/docs/reference/ask-user-tool.mdx), [Spec Mode guide](https://docs.factory.com/autonomy-and-safety/specification-mode), [background subagents guide](https://docs.factory.com/harness/subagents) and [Mission Control guide](https://docs.factory.com/missions/running-cli).
 
 The temporary local Linux container was removed after the tests. It had no persistent mounts. The isolated Mac backends, SSH fixtures and test simulators were stopped.
+
+
+Factory can publish a background command inside a `Script` call. Its CLI writes
+a user-only `Execute` with an inner call ID and an enclosing Script ID, followed
+by a separate user-only tool result. That result supplies the command, PID and
+output path. A later notification for the same inner ID and path supplies the
+output and exit status. Chat reads these rows in Background Work. The terminal
+provides live controls for commands launched inside a Script. A synchronously
+displayed file approval with only an outer Script ID also stays in the terminal.
+
+The opt-in `reopensReadOnlyScriptCommandsWithTheirOfficialResults()` case uses a
+disposable Herdr TUI Host. Set `HEELER_DROID_SCRIPT_BACKGROUND=1` and provide the
+usual `HEELER_DROID_CHAT_LAB` with a `work` scenario. Its `scriptBackground`
+object records the official `sessionID` and the two independent `commands`.
+Each supplies `callID`, `outerID`, `title`, `pid`, `output` and `exitCode` from
+the Factory JSONL. The test reconnects twice and reads both completed commands.
+
+For Rex, select
+`DroidBackendChatLiveTests/reopensTheExactRexScriptCommandsWithoutOfferingTaskStop()`
+in the live scheme. Set `HEELER_REX_DROID_SCRIPT_LAB` to a private file with
+`lab` (the ordinary backend connection and foreground fixture), `sessionID`,
+`phase` (`running` or `finished`) and two `commands`. For each command use
+the official inner `callID`, the containing Script's `outerID`, its `title`
+and the background `pid` as a string. A finished command also has the
+integer `exitCode` and its exact `reportedOutput`. Compare these fields to
+the same Agent's original Factory records and output files. Execute once with
+both tasks held, release the two lab tasks, then execute with their recorded
+terminal results. Each test opens two fresh Store connections and checks that
+neither row offers the Droid task control.

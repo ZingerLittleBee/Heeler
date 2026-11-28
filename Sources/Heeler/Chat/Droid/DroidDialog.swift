@@ -9,16 +9,22 @@ struct DroidDialogTarget: Equatable, Sendable {
     var sessionID: String?
     var transcriptFolder: String? = nil
     var userHooksDisabled = false
+    /// A restart may restore the same Rex core. Another instance at the
+    /// same address owns separate drafts, even for the same Agent session.
+    var rexServerScope: String? = nil
 
     /// Devin slugs are local to an account's SQLite store. A resumed writer
     /// can have a new PID and still own the same draft.
     func draftID(for program: ChatProgram) -> String? {
         guard let sessionID else { return nil }
+        let owner: String
         if program == .devin {
             guard let transcriptFolder else { return nil }
-            return transcriptFolder + "#" + sessionID
+            owner = transcriptFolder + "#" + sessionID
+        } else {
+            owner = sessionID
         }
-        return sessionID
+        return rexServerScope.map { [$0, program.rawValue, owner].joined(separator: "\0") } ?? owner
     }
 
     func shows(_ dialog: BlockedDialog) -> Bool {

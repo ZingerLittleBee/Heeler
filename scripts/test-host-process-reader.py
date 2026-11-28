@@ -36,6 +36,7 @@ struct Input: Decodable {
     var arguments: [String]?
     var ordered: Bool?
     var descendants: String?
+    var darwinChildPIDs: Bool?
     var root: String?
     var macOS: Bool?
 }
@@ -53,7 +54,8 @@ let request = HostProcessReader.Request(
     readsOpenFiles: input.files ?? false,
     argumentsAmong: input.arguments ?? [],
     preservesArgumentOrder: input.ordered ?? false,
-    descendantsOf: input.descendants)
+    descendantsOf: input.descendants,
+    prefersDarwinChildPIDs: input.darwinChildPIDs ?? false)
 let nonce = "0123456789abcdef01234567"
 
 func reading<Value>(_ reading: HostProcessReader.Reading<Value>) -> Any {
@@ -411,7 +413,7 @@ class OpenFileTests(ReaderTestCase):
         return directory
 
     def test_reads_the_file_targets_a_process_holds(self) -> None:
-        self.descriptors(77, {
+        directory = self.descriptors(77, {
             0: b"/dev/null",
             1: b"pipe:[1234]",
             2: b"socket:[99]",
@@ -420,7 +422,11 @@ class OpenFileTests(ReaderTestCase):
             5: b"/home/me/my files/\xe8\xb7\xaf\xe5\xbe\x84.jsonl",
             6: b"/home/me/new\nline.jsonl",
             7: b"/home/me/gone.jsonl (deleted)",
+            8: b"/home/me/trailing\n\n",
+            90: b"/home/me/after an unreadable link",
+            91: b"/dev/null",
         })
+        (directory / "9").touch()
 
         def check(shell: list[str]) -> None:
             files = self.read(shell, pids=["77"], files=True)["77"]["files"]
@@ -430,6 +436,9 @@ class OpenFileTests(ReaderTestCase):
                 "/home/me/my files/\u8def\u5f84.jsonl",
                 "/home/me/new\nline.jsonl",
                 "/home/me/gone.jsonl (deleted)",
+                "/home/me/trailing\n\n",
+                "/home/me/after an unreadable link",
+                "/dev/null",
             ])
         self.for_each_shell(check)
 
@@ -539,12 +548,16 @@ class DescendantTests(ReaderTestCase):
         self.process(31, command=") S 30 2 3", start=310, parent=1)
         self.process(32, command="a) b (c", start=320, parent=30)
         self.process(33, command="T 99 30 x", start=330, parent=30)
+        self.process(34, command="cut) S 1\nname", start=340, parent=30)
+        self.process(35, command="cut) S 30\nname", start=350, parent=1)
 
         def check(shell: list[str]) -> None:
             facts = self.read(shell, pids=["30"], start=True, descendants="30")
-            self.assertEqual(set(facts["30"]["descendants"]), {"32", "33"})
+            self.assertEqual(set(facts["30"]["descendants"]), {"32", "33", "34"})
             self.assertEqual(facts["32"]["name"], "-")
             self.assertEqual(facts["33"]["name"], "-")
+            self.assertEqual(facts["34"]["name"], "-")
+            self.assertEqual(facts["34"]["parent"], "30")
             self.assertEqual(facts["32"]["start"], "320")
         self.for_each_shell(check)
 
@@ -1147,12 +1160,36 @@ class MacOSReadTests(ReaderTestCase):
         root, _ = self.tree(*[f"{self.sleep} 300"] * 65)
 
         def check(shell: list[str]) -> None:
-            request = {"pids": [root], "descendants": root, "macOS": True}
-            raw = self.run_script(shell, **request)
-            self.assertIn(f"W {root} -\n", raw)
-            self.assertNotIn("T ", raw)
-            self.assertEqual(self.parse(raw, **request)[root]["descendants"], "unavailable")
+            for scoped in (False, True):
+                with self.subTest(scoped=scoped):
+                    request = {"pids": [root], "descendants": root, "macOS": True, "darwinChildPIDs": scoped}
+                    raw = self.run_script(shell, **request)
+                    self.assertIn(f"W {root} -\n", raw)
+                    self.assertNotIn("T ", raw)
+                    self.assertEqual(self.parse(raw, **request)[root]["descendants"], "unavailable")
         self.for_each_shell(check)
+
+    def test_scoped_darwin_walk_reads_only_the_selected_foreground_tree(self) -> None:
+        first, own = self.tree(f"{self.sleep} 300")
+        second, peer = self.tree(f"{self.sleep} 300")
+        for root, child, other in [(first, own[0], peer[0]), (second, peer[0], own[0])]:
+            request = {"pids": [root], "descendants": root, "macOS": True, "start": True,
+                       "arguments": ["acp"], "values": ["TMUX"], "files": True}
+            full = self.read(["/bin/sh"], **request)
+            request["darwinChildPIDs"] = True
+            script = subprocess.check_output([str(self.binary), "script", json.dumps(request)])
+            # A successful scoped read must never need the system-wide ps listing.
+            narrow = script.replace(b"/bin/ps -ax", b"/usr/bin/false -ax")
+            raw = subprocess.check_output(["/bin/sh"], input=narrow, timeout=60)
+            scoped = self.parse(raw.decode(), **request)
+            self.assertEqual(scoped, full)
+            self.assertEqual(scoped[root]["descendants"], [child])
+            self.assertEqual(scoped[child]["parent"], root)
+            self.assertNotIn(other, scoped)
+            # Hosts missing libproc's query can still supply the original complete tree.
+            unavailable = script.replace(b"python3 -I -", b"/usr/bin/false")
+            raw = subprocess.check_output(["/bin/sh"], input=unavailable, timeout=60)
+            self.assertEqual(self.parse(raw.decode(), **request), full)
 
     def test_a_walk_says_it_did_not_answer_when_the_listing_fails(self) -> None:
         pid = self.start()

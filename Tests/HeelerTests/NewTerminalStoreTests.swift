@@ -75,7 +75,7 @@ struct NewTerminalStoreTests {
         #expect(store.hostChoices.map(\.name) == ["studio"])
         #expect(store.selectedHostID == host.id)
         #expect(store.offersServerChoice)
-        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["Herdr TUI", "herdr-core"])
+        #expect(store.serversForSelectedHost.map(LaunchHostChoice.serverLabel) == ["Herdr TUI", "Herdr Core"])
     }
 
     @Test func existingWorkspaceOpensInItsDirectoryWithATrimmedTabName() async {

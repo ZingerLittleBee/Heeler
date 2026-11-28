@@ -89,6 +89,28 @@ enum ComposerRefusal: Equatable, Sendable {
     }
 }
 
+/// Checks that a Chat action still addresses the conversation it was offered for.
+typealias ChatSessionInputCheck = @MainActor @Sendable () async -> Bool
+
+/// The argument is a full foreground target read and compared in this write's
+/// queue, or nil when the Composer still has to read the conversation.
+typealias ComposerSessionCheck = @MainActor @Sendable (DroidDialogTarget?) async -> Bool
+
+/// The final checks a backend makes in its input queue before paste and Enter.
+struct ComposerWriteVerification: Sendable {
+    var session: ComposerSessionCheck?
+    var droid: DroidSendVerification?
+
+    @MainActor func refusal(staged text: String? = nil) async -> ComposerRefusal? {
+        if let refusal = await droid?.refusal(staged: text) { return refusal }
+        if let session, !(await session(droid?.target)) {
+            return text == nil ? .inputNotReady(AgentChatStore.rexReadOnlyConversation)
+                : .notSubmitted(String(localized: "The conversation changed after the paste. Check the terminal before sending again."))
+        }
+        return nil
+    }
+}
+
 /// How a Composer delivers a draft. The terminal's policy is the Composer's
 /// original behavior; Chat's validates the text, rewrites commands for the
 /// program, checks the Agent's input box first, and never touches the PTY.
@@ -100,7 +122,12 @@ struct ComposerDeliveryPolicy: Sendable {
     var displayedDroidTarget: (@MainActor () -> DroidDialogTarget?)?
     var droidScreen: (@MainActor @Sendable () async throws -> ANSIScreen)?
     var requiresSpec = false
-    private(set) var droidWrite: DroidSendVerification?
+    private var droidWrite: DroidSendVerification?
+    var sessionWrite: ComposerSessionCheck?
+    var writeVerification: ComposerWriteVerification? {
+        guard sessionWrite != nil || droidWrite != nil else { return nil }
+        return ComposerWriteVerification(session: sessionWrite, droid: droidWrite)
+    }
     /// Terminal types a Blocked draft into the Attach PTY without Enter.
     var insertsIntoAttachWhenBlocked: Bool
     /// What `agent.prompt` sends for the typed text.
@@ -143,6 +170,16 @@ struct ComposerDeliveryPolicy: Sendable {
             droidWrite = DroidSendVerification(target: target, readTarget: droidTarget, readScreen: droidScreen, requiresSpec: requiresSpec, program: checkedProgram)
         }
         return await preflight?(text)
+    }
+
+    /// Antigravity on Rex has verified plain text delivery. Commands and staged files use its terminal.
+    mutating func restrictAntigravityToMessages(hasAttachments: Bool) {
+        prependingPreflight { text in
+            if hasAttachments || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+                return .inputNotReady(String(localized: "Use the Antigravity terminal for commands and attachments."))
+            }
+            return nil
+        }
     }
 
     /// Prepends a guard that runs before both the regular preflight and the

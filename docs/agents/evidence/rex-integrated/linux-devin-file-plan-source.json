@@ -1,0 +1,21 @@
+{
+  "signedNativeForegroundPID": 514498,
+  "columns": 80,
+  "rows": 24,
+  "terminalSizeOwned": false,
+  "rootStatus": [
+    {
+      "state": "blocked",
+      "samePID": true
+    }
+  ],
+  "threeVisibleOptions": true,
+  "screenHasPlanFile": true,
+  "officialExitRow": 2120,
+  "officialSHA256": "5d54b9571c2f622cda34ca4b81b60de62c0a77c912f366ce598737f37f069f82",
+  "officialPriorWritePlanRows": [
+    2118
+  ],
+  "sourceLabel": "Independent saved 80-column signed session on an dedicated private Rex server, primed by asking the real model to save its next plan.",
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1"
+}

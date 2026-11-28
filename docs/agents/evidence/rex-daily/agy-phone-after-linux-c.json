@@ -1,0 +1,115 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "platform": "Debian 12.15 arm64",
+  "runtimeSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "iOSSurface": "Ordinary Add Host, TOFU, enabled Rex, Agents list, selected terminal, full draft matched via accessibility, one tap on Send",
+  "marker": "HEELER_LAB_AGY_PHONE_38163B1E",
+  "peerBytesUnchanged": true,
+  "foregrounds": [
+    {
+      "fixture": "pair-a",
+      "session": "session:01a21d5a-0dbe-7b62-9cd1-a39845677105",
+      "block": "block:01a21d5a-0dbe-7cdf-b9fd-534209eca6f5",
+      "pid": 281968,
+      "program": "agy",
+      "version": "1.5.18",
+      "start": "4757935",
+      "cwd": "/home/heelerlab/heeler-lab-agy-terminal/work",
+      "officialAGY": true,
+      "locks": [
+        {
+          "session": "c5878791-0caa-4303-a5df-d9fc551d5ac9",
+          "ownerPID": 281968,
+          "inode": 10067930,
+          "kind": [
+            "FLOCK"
+          ],
+          "writeLock": true,
+          "officialFullTranscript": true,
+          "rows": 2,
+          "sha256": "bfec922f366488b9dab0b4c5832ce2bcbb6841fcc4d969e5049dc42b4da103ea",
+          "counts": {
+            "HEELER_LAB_AGY_CELL_A": {},
+            "HEELER_LAB_AGY_CELL_B": {},
+            "HEELER_LAB_AGY_PHONE": {
+              "USER_INPUT": 1,
+              "PLANNER_RESPONSE": 1
+            },
+            "HEELER_LAB_AGY_ROTATED": {},
+            "HEELER_LAB_AGY_STALE": {}
+          }
+        }
+      ],
+      "knownConversationFolders": 2,
+      "grid": {
+        "columns": 62,
+        "rows": 20,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": "client:01a21d55-b8b6-7863-b76b-76f903fdf120",
+        "desired": [
+          {
+            "client_id": "client:01a21d55-b8b6-7863-b76b-76f903fdf120",
+            "columns": 62,
+            "rows": 20,
+            "updated_at": "2026-11-27T14:16:24.337004265Z"
+          }
+        ]
+      },
+      "independentMarkedRecords": {
+        "USER_INPUT": 1,
+        "PLANNER_RESPONSE": 1
+      },
+      "officialSHA": "bfec922f366488b9dab0b4c5832ce2bcbb6841fcc4d969e5049dc42b4da103ea",
+      "officialRecords": 2
+    },
+    {
+      "fixture": "pair-b",
+      "session": "session:01a21d5a-12b1-707c-9ca5-a27470f92748",
+      "block": "block:01a21d5a-12b1-719d-95f4-e6e95b5fb560",
+      "pid": 282069,
+      "program": "agy",
+      "version": "1.5.18",
+      "start": "4758040",
+      "cwd": "/home/heelerlab/heeler-lab-agy-terminal/work",
+      "officialAGY": true,
+      "locks": [
+        {
+          "session": "10d9ae47-262f-4fe6-85bd-b3ddc6b77323",
+          "ownerPID": 282069,
+          "inode": 10067606,
+          "kind": [
+            "FLOCK"
+          ],
+          "writeLock": true,
+          "officialFullTranscript": true,
+          "rows": 2,
+          "sha256": "3cb70a992bcd39b0e236539c4fd4e00cafe44bee23a30e62540a9dbdd01cd0e3",
+          "counts": {
+            "HEELER_LAB_AGY_CELL_A": {},
+            "HEELER_LAB_AGY_CELL_B": {
+              "USER_INPUT": 1,
+              "PLANNER_RESPONSE": 1
+            },
+            "HEELER_LAB_AGY_PHONE": {},
+            "HEELER_LAB_AGY_ROTATED": {},
+            "HEELER_LAB_AGY_STALE": {}
+          }
+        }
+      ],
+      "knownConversationFolders": 2,
+      "grid": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "independentMarkedRecords": {},
+      "officialSHA": "3cb70a992bcd39b0e236539c4fd4e00cafe44bee23a30e62540a9dbdd01cd0e3",
+      "officialRecords": 2
+    }
+  ]
+}

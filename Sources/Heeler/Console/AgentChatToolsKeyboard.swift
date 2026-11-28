@@ -9,26 +9,31 @@ struct AgentChatToolsKeyboard: View {
     let skills: TerminalSkillsContext?
     let snippets: SnippetStore
     let manageSnippets: () -> Void
-    let agentKeys: ChatAgentKeysStore
+    let agentKeys: ChatAgentKeysStore?
     let height: CGFloat
     @State private var selectedTab: TerminalKeysTab = .controls
 
     private var tabs: [TerminalKeysTab] {
         TerminalKeysTab.allCases.filter { tab in
             switch tab {
-            case .controls, .snippets: true
+            case .controls: agentKeys != nil
+            case .snippets: true
             case .skills: skills != nil
             case .appearance: false
             }
         }
     }
 
+    private var selection: Binding<TerminalKeysTab> {
+        Binding(get: { tabs.contains(selectedTab) ? selectedTab : .snippets }, set: { selectedTab = $0 })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Group {
-                switch selectedTab {
+                switch selection.wrappedValue {
                 case .controls:
-                    ChatAgentKeysPage(store: agentKeys)
+                    if let agentKeys { ChatAgentKeysPage(store: agentKeys) }
                 case .skills:
                     if let skills {
                         SkillsKeyboardPane(
@@ -54,7 +59,7 @@ struct AgentChatToolsKeyboard: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
-            ToolsKeyboardTabBar(tabs: tabs, selection: $selectedTab)
+            ToolsKeyboardTabBar(tabs: tabs, selection: selection)
         }
         .frame(height: height)
         .clipped()

@@ -1,0 +1,50 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "program": "Factory Droid 1.21.1 on Debian arm64",
+  "selector": "Dedicated iPhone XCUITest drives the production terminal tools keyboard",
+  "targetFile": "approval-a-202D48C5.txt",
+  "iPhoneRenderedFilename": true,
+  "iPhoneRenderedCancel": true,
+  "inputAction": "Terminal tools keyboard: Escape",
+  "taps": 1,
+  "screenshotSHA256": "3e5b9d9510e96dd73a486f0d2e4e2608ecb8a96e7b15f1db1b472892d5a9c8eb",
+  "before": {
+    "nativeProgram": "droid",
+    "pid": 438404,
+    "processStartTick": "4947063",
+    "rexSessionTitle": "heeler-lab-droid-fast-reader-base",
+    "sessionMatchesOfficialHeader": true,
+    "outerType": "Script",
+    "outerRequests": 1,
+    "callRow": 10,
+    "results": [],
+    "exactResultCount": 0,
+    "exists": false,
+    "fileVisible": true,
+    "typedApprovalVisible": true,
+    "terminalSHA256": "fb8b69c24537a7ccbd0e2b15a68d50b28dee318487a8efd98acb58a3070012d0"
+  },
+  "after": {
+    "nativeProgram": "droid",
+    "pid": 438404,
+    "processStartTick": "4947063",
+    "rexSessionTitle": "heeler-lab-droid-fast-reader-base",
+    "sessionMatchesOfficialHeader": true,
+    "outerType": "Script",
+    "outerRequests": 1,
+    "callRow": 10,
+    "results": [
+      {
+        "row": 12,
+        "structuredError": true,
+        "declinedByOperator": true,
+        "contentSHA256": "ac42a1836f1ef60b5197c632f7fa26ae809389ed93ff97d7eb572f3b192d8f39"
+      }
+    ],
+    "exactResultCount": 1,
+    "exists": false,
+    "fileVisible": false,
+    "typedApprovalVisible": false,
+    "terminalSHA256": "d346fb7f72e4e11c95b0701c73bc1031290d4996dfe422bea67763cb1fb99577"
+  }
+}

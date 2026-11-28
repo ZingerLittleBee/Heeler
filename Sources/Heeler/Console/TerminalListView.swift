@@ -25,6 +25,7 @@ struct TerminalListView: View {
     @Environment(\.isSidebarListShown) private var isSidebarListShown
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
+    @State private var workspaceRename: RenameStore?
     @State private var pendingClose: ConsoleTerminal?
     @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
@@ -62,6 +63,11 @@ struct TerminalListView: View {
                 let left = ConsoleTerminal.ID(hostID: request.hostID, paneID: request.paneID)
                 if paneID != request.paneID, selection == .terminal(left) { selection = nil }
             })
+        .sheet(isPresented: isPresented($workspaceRename)) {
+            if let workspaceRename {
+                RenameSheetView(title: String(localized: "Rename Workspace"), store: workspaceRename)
+            }
+        }
         .alert(pendingCloseScope.confirmationTitle, isPresented: isPresented($pendingClose)) {
             Button(pendingCloseScope.actionTitle, role: .destructive) {
                 confirmClose()
@@ -176,13 +182,38 @@ struct TerminalListView: View {
         return groups
     }
 
+    private func workspaceHeader(
+        _ workspace: TerminalWorkspaceGroup, showsHost: Bool, nested: Bool = false
+    ) -> some View {
+        HStack(spacing: 4) {
+            TerminalWorkspaceHeader(
+                workspace: workspace, showsHost: showsHost, isNested: nested, onToggle: { toggle(workspace.id) }
+            )
+            if hosts.first(where: { $0.id == workspace.hostID })?.serverKind == .rex,
+                console.capabilities(for: workspace.hostID).renameWorkspace(id: workspace.workspaceID) {
+                Button {
+                    let pin = console.corePin(on: workspace.hostID)
+                    workspaceRename = .workspace(currentLabel: workspace.title) { label in
+                        try await console.renameWorkspace(workspace.workspaceID, label: label,
+                                                          on: workspace.hostID, keepingTo: pin)
+                    }
+                } label: {
+                    Image(systemName: "pencil")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Rename Workspace")
+                .accessibilityValue(workspace.title)
+                .accessibilityIdentifier("terminals.renameWorkspace.\(workspace.workspaceID)")
+            }
+        }
+    }
+
     /// One By Host Workspace: its header, then its card's rows.
     @ViewBuilder
     private func workspaceRows(_ workspace: TerminalWorkspaceGroup) -> some View {
-        TerminalWorkspaceHeader(
-            workspace: workspace, showsHost: false, isNested: true,
-            onToggle: { toggle(workspace.id) }
-        )
+        workspaceHeader(workspace, showsHost: false, nested: true)
         // Indented to the card's content, under the Host header's name.
         .listRowInsets(
             EdgeInsets(
@@ -264,10 +295,7 @@ struct TerminalListView: View {
                 }
             }
         } header: {
-            TerminalWorkspaceHeader(
-                workspace: workspace,
-                showsHost: showsHost,
-                onToggle: { toggle(workspace.id) })
+            workspaceHeader(workspace, showsHost: showsHost)
                 // Out to the cards' edges, under the title, rather than
                 // indented to the rows' content.
                 .listRowInsets(

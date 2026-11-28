@@ -78,6 +78,8 @@ removed to simplify CI; add one back only when the maintainer asks for it.
 
 ## Opt-in live suites
 
+See [Rex daily workflows](rex-daily-workflows.md) for the project, checkout and independent desktop fixtures. [Rex Chat parity](rex-chat-parity.md) lists the two-peer foreground fixture. [Host services](rex-host-services-parity.md) covers Hand Off, the private read-only GitHub API and in-app banners.
+
 `Tests/HeelerLiveTests` is a separate target and scheme, `HeelerLiveTests`,
 for suites that run against a real server the operator owns. They are not
 members of `HeelerTests`, so `make test`, the `test-ci-*` lanes and every CI
@@ -89,17 +91,23 @@ and fails rather than skips when selected without it.
 | --- | --- | --- |
 | `AgentTitleRenameLiveTests` | `HEELER_TITLE_RENAME_CONFIG`, base64 JSON | A loopback SSH fixture and disposable Agents ([contract](../prototypes/title-rename/README.md)) |
 | `DevinChatLiveTests` | `HEELER_DEVIN_LAB_MAC` and `HEELER_DEVIN_LAB_LINUX`, paths to private loopback fixtures with SSH credentials, backend endpoints, pane IDs and independently recorded Devin session slugs | Checks the four real input paths and matching replies. Set `HEELER_DEVIN_BEHAVIOR_PLATFORM` to `mac` or `linux` to exercise permissions, questions, stale drafts, and fresh trust and decline panes. See the [acceptance matrix](devin-chat-validation.md). |
+| `HerdrForegroundChatLiveTests` | `HEELER_TUI_FOREGROUND_CHAT_LAB`, a private loopback Herdr TUI fixture | Provide the SSH identity, `herdrSocket`, `program`, the two same-directory Panes (`sourcePane`, `targetPane`), their independently verified official transcripts (`firstFile`, `peerFile`) and their initial user messages (`sourceMarker`, `peerMarker`). The regular Chat Composer sends a marked multiline prompt to A and compares B's original file byte for byte. |
 | `DroidChatLiveTests` | `HEELER_DROID_CHAT_LAB`, path to a private JSON file with the loopback SSH `port`, `user`, Ed25519 `seed` (base64), pinned `fingerprint`, herdr `socket`, disposable `pane` and expected Droid session UUID (`session`) | Checks the pane identity, opens its transcript, sends one text prompt through the Composer and reads the reply in Chat. |
-| `DroidBackendChatLiveTests` | `HEELER_DROID_BACKENDS_LAB`, a private loopback fixture for core, tmux and Rex | Verifies the pinned server and foreground UUID, delivery, reply, desktop switch, interrupt and hook placement. Set `HEELER_DROID_BACKEND_SCENARIOS=1` for consecutive approvals, AskUser, two independently tracked background commands and one asynchronous child report. A fixture with `beginsAtTrust: true` provides fresh per-backend `directories` and exercises trust before binding. |
+| `DroidBackendChatLiveTests` | `HEELER_DROID_BACKENDS_LAB`, a private loopback fixture for core, tmux and Rex | The conversation test checks the pinned server and foreground UUID, delivery, reply, desktop switch and interrupt. The separate hook test checks registration and restoration on the fixture’s SSH account, or launch-scoped settings on core and tmux. Set `HEELER_DROID_BACKEND_SCENARIOS=1` for consecutive approvals, AskUser, two independently tracked background commands and one asynchronous child report. A fixture with `beginsAtTrust: true` provides fresh per-backend `directories` and exercises trust before binding. |
 | `DroidBackendChatLiveTests/staleCardAndDraftCannotWriteToAReplacementServer` | `HEELER_DROID_REPLACEMENT_LAB`, an optional private directory on the Simulator machine | Provide one subdirectory per backend (`herdrTUI`, `herdrCore`, `tmux`, `rex`). Its `before.json` and `after.json` use the backend lab contract. For TUI include `herdrSocket` and `panes.herdrTUI`. Start an isolated Droid in the exact `directory` with tool approval enabled. Once the test creates `replace` beside `before.json`, replace that disposable server on the same endpoint, launch a second Droid in the same directory, then publish `after.json` atomically with its live address. Both Droids must reach their own Create approval for `replacement.txt`. The test reconciles the old draft, checks the new popup and filesystem, then declines the new call. |
 | `AmpChatLiveTests` | `HEELER_AMP_CHAT_LAB`, path to private fixture JSON | Two disposable Amp terminals on a loopback Herdr TUI Host, using separate private threads. Installs the plugin in their isolated configuration and sends one text prompt. Reload the first terminal's plugins after installation. |
 | `AgyModelSwitchLiveTests` | `HEELER_AGY_MODEL_LIVE_CONFIG`, JSON with `hostID`, `paneID` and optional `screenshotDir` | A connected disposable agy Agent on an isolated backend |
+| `RexAmpChatLiveTests` | `HEELER_REX_AMP_CHAT_LAB`, a private Linux Rex SSH fixture containing two signed-in Amp clients in one directory | Verifies explicit plugin installation and update, one independent binding per foreground, a native thread switch, a rejected stale page, read-only input, and plugin removal. The fixture supplies two Rex session/block pairs, their thread IDs and assistant markers, a fresh next marker, and a sibling signal directory. After each file appears there, the desktop operator places the recognized old bundle, reloads the updated plugin, switches only the first thread, then unloads its plugin. |
 | `RexControlWebSocketLiveTests`, `RexInventoryLiveTests` | `HEELER_REX_LIVE_SOCKET`, the socket path | A Rex server already running on this Mac; they create nothing, except `RexInventoryLiveTests.newTerminalStartsShellsTheInventoryLists`, which creates and destroys one `heeler-lab-new-terminal` session and touches no other |
 | `RexTerminalLiveTests`, `RexTerminalAttachLiveTests`, `RexTerminalInputLiveTests`, `RexTerminalSizeLiveTests`, `RexProgramStatusLiveTests`, `RexChatTypingLiveTests` | `HEELER_REX_LIVE_SOCKET` | The same server and `mkdir -p /tmp/heeler-lab-home`; each creates and destroys one `heeler-lab-` session and touches no other |
 | `VolcengineSpeechLiveTests` | `HEELER_VOLCENGINE_LIVE_KEY`, a Volcengine API Key, and `HEELER_VOLCENGINE_LIVE_AUDIO`, a 16 kHz mono WAV path on this Mac | Doubao streaming speech recognition 2.0 on that key; each test is billed by the recording's length |
-| `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath` | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
+| `RexRecoveryLiveTests` | `HEELER_REX_RECOVERY_LAB`, a single-use private controller | Cut SSH, restart the original Rex, and replace it at the same address. Compare both screens with the old sender and its peer. The [fixture](../../scripts/fixtures/rex-recovery.py) creates its own Unix socket on macOS or Linux. |
+| `RexOpenCodeHistoryLiveTests` | `HEELER_REX_OPENCODE_LAB`, a private POSIX SSH fixture | Choose one of two real sessions in the same directory. Read its saved messages, refuse an attempted input from a history selection and compare both official stores. |
+| `RexProjectLiveTests` | `HEELER_REX_PROJECT_LAB`, a path to a private SSH fixture | From Console, read Skills, Changes and patches, create a Workspace, run a preset and create a named Git worktree. Pins the SSH key. Use the [Linux lab fixture contract](rex-linux-lab.md) and disposable `claude` launch recorder. |
+| `RexForegroundChatLiveTests` | `HEELER_REX_FOREGROUND_CHAT_LAB`, a path to a private SSH fixture | Two real harness clients in one directory and their independent transcripts, using the [Chat lab contract](rex-chat-parity.md). |
+| `RexSSHLiveTests` | `HEELER_REX_LIVE_SSH`, base64 JSON with `host`, `port`, `refusingPort`, `username`, `deviceKeySeed`, `socketPath` and `missingSocketPath`. Optional `equivalentSocketPaths` lists verified aliases of that listener, and `inactiveSocketPaths` adds negative fixtures such as an abandoned socket or an ordinary file | A disposable sshd on this Mac that allows stream-local forwarding on one port and refuses it on the other, and the running Rex server |
 
-For a tmux-only Droid or Devin lab, set `HEELER_LIVE_CHAT_BACKEND=tmux` in the simulator test process. The parameterized cases then name only that backend. Optional behavior fixtures keep their individual gates. Each first-trust case needs a fresh, untrusted directory. Use separate foreground sessions for plan, command, Stop and background cases so one case's permission decision cannot authorize a later case.
+For a tmux-only Droid or Devin lab, set `HEELER_LIVE_CHAT_BACKEND=tmux` in the simulator test process. Rex and other single-backend labs can use the same setting. The existing fixture variable `HEELER_CHAT_LAB_BACKEND` is also accepted when `HEELER_LIVE_CHAT_BACKEND` is unset. The parameterized cases then name only that backend. Optional behavior fixtures keep their individual gates. Each first-trust case needs a fresh, untrusted directory. Use separate foreground sessions for plan, command, Stop and background cases so one case's permission decision cannot authorize a later case.
 
 For Droid TUI behavior tests also set `HEELER_DROID_SCENARIOS=1`. Each entry in the fixture's `scenarios` object has a disposable `pane` and its absolute `directory`. Provide `trust` and `decline` at the initial prompt, `approval`, `command` and `patch` in Auto (Off), `spec` in Spec mode, and `work`, `history`, `peer`, `ask` and `attach` in already trusted folders. History and peer run separate Droids in the same directory. The decline pane returns to a raw input observer that writes `ready` to `shell-observation` until it receives bytes. The patch fixture provides `change.patch` creating `first.txt` and `second.txt`. Provide a trusted `edit` pane in Auto (Off) with `proof.txt` containing `old fixture line` followed by one newline, an `askCancel` pane, a `handoff` pane in Spec mode, and a `stop` pane for two interrupted conversations. The `directory` pane has an untrusted sibling named `next folder`. An optional `evidenceDirectory` saves the actual card rendered by each simulator. Prefix each fixture environment variable with `TEST_RUNNER_` when passing it through xcodebuild. Use a fixture SSH account with isolated settings for install and remove tests.
 
@@ -111,6 +119,20 @@ make test-app SCHEME=HeelerLiveTests \
   SIM_DESTINATION='platform=iOS Simulator,id=<UDID>' \
   TEST_SELECTOR='HeelerLiveTests/RexInventoryLiveTests'
 xcrun simctl spawn <UDID> launchctl unsetenv HEELER_REX_LIVE_SOCKET
+```
+
+For repeated runs on one candidate, build the live scheme once using
+`make build-ci-app SCHEME=HeelerLiveTests`.
+Keep the resulting `.ci/app-derived/Build/Products` directory together. Run each selected
+case in the foreground and record its result bundle before starting the next
+one. The archive supplies the scheme and its exact application and test
+binaries. Record their SHA-256 digests alongside the candidate commit.
+
+```sh
+make test-app TEST_XCTESTRUN="$live_xctestrun" \
+  SIM_DESTINATION="platform=iOS Simulator,id=$simulator_udid" \
+  TEST_SELECTOR='HeelerLiveTests/RexSSHLiveTests' \
+  TEST_FLAGS='-parallel-testing-enabled NO -resultBundlePath build/rex-ssh.xcresult'
 ```
 
 Each suite's header comment states what it may create or change. Never commit
@@ -171,6 +193,11 @@ the Xcode project, so a regenerated local build cannot prove the committed
 project is complete. `make check-test-membership`, which `make test-tools` and
 full verification run, fails when the committed HeelerTests target omits a Swift
 file under `Tests/HeelerTests` or the shared scheme skips tests.
+
+
+For a focused tooling run, pass the existing check names in the desired order.
+For example, `make test-tools TOOL_TESTS='test-host-process-reader test-devin-session'`
+runs those two checks sequentially. An unknown name fails the command.
 
 ## Test result constraints
 

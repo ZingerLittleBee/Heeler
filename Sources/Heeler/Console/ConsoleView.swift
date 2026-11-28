@@ -370,8 +370,7 @@ struct ConsoleView: View {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 // StartAgentView brings its own NavigationStack.
                 StartAgentView(
-                    hosts: hosts.consoleHosts.offeringNewItem(
-                        listsTerminals: false, capabilities: { console.capabilities(for: $0) }),
+                    hosts: hosts.consoleHosts.newAgentDestinations { console.capabilities(for: $0) },
                     console: console, origin: request.origin
                 ) { id in
                     // A fresh launch lands in its own terminal, exactly
@@ -483,8 +482,11 @@ struct ConsoleView: View {
         .overlay(alignment: .top) {
             if let banner = bannerStore.banner {
                 AgentNotificationBannerView(banner: banner) {
-                    bannerStore.dismiss()
-                    openNotificationTarget(banner.target)
+                    Task { @MainActor in
+                        await bannerStore.open(banner) { target in
+                            openNotificationTarget(target, requiresKnownAgent: banner.rexRecipient != nil)
+                        }
+                    }
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -2954,11 +2956,11 @@ struct ConsoleView: View {
 
     /// Deep links raised inside this window obey the same single-window rule
     /// as a notification tap.
-    private func openNotificationTarget(_ target: AgentNotificationTarget?) {
+    private func openNotificationTarget(_ target: AgentNotificationTarget, requiresKnownAgent: Bool) {
         if let sceneRouting {
-            sceneRouting.open(target)
+            sceneRouting.open(target, requiresKnownAgent: requiresKnownAgent)
         } else {
-            notificationRouter.open(target)
+            notificationRouter.open(target, requiresKnownAgent: requiresKnownAgent)
         }
     }
 

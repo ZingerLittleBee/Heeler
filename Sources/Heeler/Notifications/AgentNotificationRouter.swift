@@ -54,11 +54,15 @@ final class AgentNotificationRouter {
     /// the user on the Console and follows up if the pane arrives within the
     /// grace window; no target at all (unknown key id, undecryptable
     /// envelope) is the Console itself, with no alarming copy.
-    func open(_ target: AgentNotificationTarget?) {
+    @discardableResult
+    func open(_ target: AgentNotificationTarget?, requiresKnownAgent: Bool = false) -> Bool {
+        if requiresKnownAgent {
+            guard let target, isKnownAgent(target.agentID) else { return false }
+        }
         cancelPending()
         guard let target else {
             path = []
-            return
+            return true
         }
         if knownAgentIDs.contains(target.agentID) || awaitsHostReport(target.agentID) {
             if path == [target.agentID] {
@@ -71,6 +75,7 @@ final class AgentNotificationRouter {
             pendingTarget = target
             armPendingExpiry()
         }
+        return true
     }
 
     /// The Console feed: resolves a pending tap the moment its pane appears.

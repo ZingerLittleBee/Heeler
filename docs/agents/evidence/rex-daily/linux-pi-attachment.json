@@ -1,0 +1,56 @@
+{
+  "proxy": {
+    "target": "block:01a21d25-3acd-7509-9967-bca22459ccb2",
+    "peer": "block:01a21d25-3aef-7b37-b036-b07d1797291f",
+    "matchingPastes": 1,
+    "enterRequests": 1,
+    "droppedResponses": 1,
+    "marker": "REX_LAB_RECEIPT_6E34B2AE"
+  },
+  "observations": {
+    "target": {
+      "pid": 98124,
+      "processStart": "4411659",
+      "session": "session:01a21d25-3acd-7046-92ac-0c6368bba07d",
+      "block": "block:01a21d25-3acd-7509-9967-bca22459ccb2",
+      "grid": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "fileSHA256": "b964a60278c94397ebf89e8c48a5eae9c8f17c452c39b3bb6d4eca1a43d8720e",
+      "bytes": 4157,
+      "initialUnchanged": false,
+      "markerMessageCounts": {
+        "user": 1,
+        "assistant": 1
+      },
+      "markedUserImageParts": 0
+    },
+    "peer": {
+      "pid": 98136,
+      "processStart": "4411663",
+      "session": "session:01a21d25-3aef-7967-a2c7-30ee0537abdf",
+      "block": "block:01a21d25-3aef-7b37-b036-b07d1797291f",
+      "grid": {
+        "columns": 80,
+        "rows": 24,
+        "cell_width_px": 8,
+        "cell_height_px": 16,
+        "owner": null,
+        "desired": []
+      },
+      "fileSHA256": "aafffb9a2b13b1a90eb95e13463500e89fee259db3528815684ee020cb706093",
+      "bytes": 3151,
+      "initialUnchanged": true,
+      "markerMessageCounts": {
+        "user": 0,
+        "assistant": 0
+      },
+      "markedUserImageParts": 0
+    }
+  }
+}

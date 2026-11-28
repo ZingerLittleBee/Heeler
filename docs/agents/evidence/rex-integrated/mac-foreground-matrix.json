@@ -1,0 +1,258 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "dylibSHA256": "f9b75bc7ebb9dd66953db74a611f80c6f52df5daf1d583e4f4203d9de99d9287",
+  "testSHA256": "a67b62e33ec16b1a8bf955e6743bdb7b59e54cd93336fb23d34529b4668fc3a8",
+  "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+  "device": "2FCF3C72-7E2E-4AEB-BE7E-960640662732",
+  "programCases": [
+    {
+      "caseName": "SSH diagnostics and resume",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 4,
+          "skipped": 0,
+          "passed": 4,
+          "failed": 0,
+          "individualTestSeconds": [
+            0.554,
+            1.198,
+            25.504,
+            7.213,
+            34.482
+          ],
+          "wallSeconds": 70.012,
+          "runnerReceipt": "rex-socket-alias/86f260495-mac-ssh-runner.json",
+          "resultBundle": "rex-socket-alias/86f260495-mac-ssh.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Claude native Chat",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "FAIL",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 0,
+          "failed": 1,
+          "individualTestSeconds": [
+            15.453,
+            15.465
+          ],
+          "wallSeconds": 55.762,
+          "runnerReceipt": "native-chat/86f260495-mac-claude-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-claude.xcresult",
+          "issues": [
+            "Expectation failed: started == .submittedViaAttach || started == .deliveredViaAttach\nstarted == .submittedViaAttach \u2192 false\nstarted == .deliveredViaAttach \u2192 false"
+          ]
+        },
+        {
+          "tryLabel": "fresh",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            45.003,
+            45.017
+          ],
+          "wallSeconds": 83.87,
+          "runnerReceipt": "native-chat/86f260495-mac-claude-fresh-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-claude-fresh.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Codex native Chat",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "FAIL",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 0,
+          "failed": 1,
+          "individualTestSeconds": [
+            7.275,
+            7.287
+          ],
+          "wallSeconds": 57.275,
+          "runnerReceipt": "native-chat/86f260495-mac-codex-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-codex.xcresult",
+          "issues": [
+            "Expectation failed: sent == .submittedViaAttach || sent == .deliveredViaAttach\nsent == .submittedViaAttach \u2192 false\nsent == .deliveredViaAttach \u2192 false: refused(Heeler.ComposerRefusal.notSubmitted(\"The Host answered too slowly to submit safely, so the text stayed in the Agent\\'s input unsubmitted. Finish it in the terminal, or clear it there before sending again.\"))"
+          ]
+        },
+        {
+          "tryLabel": "fresh",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            47.537,
+            47.549
+          ],
+          "wallSeconds": 110.181,
+          "runnerReceipt": "native-chat/86f260495-mac-codex-fresh-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-codex-fresh.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Pi native Chat",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            9.058,
+            9.07
+          ],
+          "wallSeconds": 53.208,
+          "runnerReceipt": "native-chat/86f260495-mac-pi-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-pi.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Oh My Pi native Chat",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            19.497,
+            19.509
+          ],
+          "wallSeconds": 77.827,
+          "runnerReceipt": "native-chat/86f260495-mac-omp-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-omp.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Grok Build native Chat",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            19.299,
+            19.343
+          ],
+          "wallSeconds": 62.763,
+          "runnerReceipt": "native-chat/86f260495-mac-grok-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-grok.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Claude repeated approval and withheld acknowledgement",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            67.103,
+            67.118
+          ],
+          "wallSeconds": 172.274,
+          "runnerReceipt": "native-chat/86f260495-mac-aclaude-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-aclaude.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Codex repeated approval and withheld acknowledgement",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "FAIL",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 0,
+          "failed": 1,
+          "individualTestSeconds": [
+            8.118,
+            8.132
+          ],
+          "wallSeconds": 107.073,
+          "runnerReceipt": "native-chat/86f260495-mac-acodex-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-acodex.xcresult",
+          "issues": [
+            "Caught error: .sshUnreachable(detail: \"The Host is not connected.\")"
+          ]
+        },
+        {
+          "tryLabel": "fresh",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "individualTestSeconds": [
+            25.499,
+            25.516
+          ],
+          "wallSeconds": 107.847,
+          "runnerReceipt": "native-chat/86f260495-mac-acodex-fresh-runner.json",
+          "resultBundle": "native-chat/86f260495-mac-acodex-fresh.xcresult",
+          "issues": []
+        }
+      ]
+    },
+    {
+      "caseName": "Native Grok Stop through visible Apple simulator UI",
+      "attempts": [
+        {
+          "tryLabel": "first",
+          "result": "PASS",
+          "executed": 1,
+          "skipped": 0,
+          "passed": 1,
+          "failed": 0,
+          "runnerReceipt": "chat/86f260495-mac-grok-stop-visible-host.json",
+          "resultBundle": "chat/86f260495-mac-grok-ui-visible.xcresult",
+          "screenshot": "chat/86f260495-mac-grok-stop-visible-active.png"
+        }
+      ]
+    }
+  ],
+  "officialEvidence": [
+    "native-chat/86f260495-mac-acodex-first-failure",
+    "native-chat/86f260495-mac-approval-official-formal",
+    "native-chat/86f260495-mac-claude-first-failure",
+    "native-chat/86f260495-mac-codex-first-failure",
+    "native-chat/86f260495-mac-official",
+    "native-chat/86f260495-mac-official-fresh"
+  ]
+}

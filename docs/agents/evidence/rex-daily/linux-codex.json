@@ -1,0 +1,92 @@
+{
+  "original": {
+    "path": "/home/heelerlab/heeler-lab-native-controls/codex-config/sessions/2026/11/27/rollout-2026-11-27T13-39-07-01a21d3b-2cb7-7b72-8bb2-78ee2011ab6c.jsonl",
+    "sha256": "9317939a1682303e55751a47f023f79538470df735526c7fe7d2c25ed80229af",
+    "counts": {
+      "SEND": {
+        "user": 1,
+        "assistant": 1
+      },
+      "ATTACHMENT": {
+        "user": 1,
+        "assistant": 1
+      },
+      "APPROVE": {
+        "user": 1,
+        "assistant": 0
+      },
+      "DECLINE": {
+        "user": 2,
+        "assistant": 0
+      }
+    },
+    "toolCalls": [
+      {
+        "id": "call_347c722ef9f646469365a51a78b43773",
+        "kind": "APPROVE",
+        "commandSHA256": "2268d73efa39879c4c9552d9b0e06301490f705b608f23d71eb65c83b8df1771",
+        "permission": "require_escalated",
+        "result": {
+          "rejected": false,
+          "hasOutput": true
+        }
+      },
+      {
+        "id": "call_151fd38964d545ce998b4e087214e895",
+        "kind": "DECLINE",
+        "commandSHA256": "a0570a5a3f36ff233fde1bac5623c025e654528e300a5f8dc37217dccf2283f3",
+        "permission": "require_escalated",
+        "result": {
+          "rejected": true,
+          "hasOutput": true
+        }
+      },
+      {
+        "id": "call_2d0be92a484b44a2a98e0aaf9ded93d1",
+        "kind": "DECLINE",
+        "commandSHA256": "a0570a5a3f36ff233fde1bac5623c025e654528e300a5f8dc37217dccf2283f3",
+        "permission": "require_escalated",
+        "result": {
+          "rejected": true,
+          "hasOutput": true
+        }
+      }
+    ]
+  },
+  "peer": {
+    "path": "/home/heelerlab/heeler-lab-native-controls/codex-config/sessions/2026/11/27/rollout-2026-11-27T13-39-07-01a21d3b-2d40-74a3-b823-9989507f35f3.jsonl",
+    "sha256": "5d1bf379e9b3326f2cd0d7d0670aaa8ad0ae5103f0a8cd06a43d949755ab27bc",
+    "counts": {},
+    "toolCalls": []
+  },
+  "rotated": {
+    "path": "/home/heelerlab/heeler-lab-native-controls/codex-config/sessions/2026/11/27/rollout-2026-11-27T13-41-41-01a21d3d-8939-7613-bd07-576712b3486d.jsonl",
+    "sha256": "0ef3705fc00f081dc32d7931f3a4a6e88aabd6ba116a2d2029c9c04fd2430d4b",
+    "counts": {
+      "ROTATED": {
+        "user": 1,
+        "assistant": 1
+      },
+      "SUCCESSOR_SWITCHED": {
+        "user": 1,
+        "assistant": 1
+      },
+      "APPROVE": {
+        "user": 1,
+        "assistant": 0
+      }
+    },
+    "toolCalls": [
+      {
+        "id": "call_92978247fd084a6c8f4a125201602eb1",
+        "kind": "APPROVE",
+        "commandSHA256": "eab84d54062618d69b1b850fecd92304c2b8d7e133281290356d48eed8fecb56",
+        "permission": "require_escalated",
+        "result": {
+          "rejected": true,
+          "hasOutput": true
+        }
+      }
+    ]
+  }
+}

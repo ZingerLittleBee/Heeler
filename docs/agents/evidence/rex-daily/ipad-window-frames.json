@@ -1,0 +1,15 @@
+{
+  "observedAt": "2026-11-27T21:16:05.964+08:00",
+  "displayPoints": [
+    1133,
+    744
+  ],
+  "windowFrames": {
+    "dev.bybee.heeler": [
+      0.0,
+      0.0,
+      561.5,
+      744.0
+    ]
+  }
+}

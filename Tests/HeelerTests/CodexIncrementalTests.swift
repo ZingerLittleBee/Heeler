@@ -22,6 +22,47 @@ struct CodexIncrementalTests {
         #expect(reducer.transcript(working) == expected)
     }
 
+    @Test("A live root's elevated exec request survives until its own execution or output")
+    func paginatedExecApprovalUsesTheUnansweredCallID() {
+        let rex = ChatProjectionContext(activity: .blocked, requiresIndependentInputSession: true)
+        let command = "printf sample > sample.txt"
+        var file = CodexRolloutBuilder()
+        file.turnStarted("root")
+        file.userMessage("root", id: "u", text: "write the sample")
+        func request(_ id: String, turn: String, permission: String = "require_escalated") -> [(String, CodexJSON)] {
+            let args: CodexJSON = ["cmd": .string(command), "sandbox_permissions": .string(permission)]
+            return [
+                ("name", "exec_command"), ("arguments", .string(args.text)), ("call_id", .string(id)),
+                ("status", "completed"), ("internal_chat_message_metadata_passthrough", ["turn_id": .string(turn)]),
+            ]
+        }
+        file.response("function_call", request("first", turn: "root"))
+        file.response("function_call", request("other-turn", turn: "elsewhere"))
+        file.response("function_call", request("ordinary", turn: "root", permission: "use_default"))
+        file.tokenUsage()
+        let transcript = file.reducer().transcript(rex)
+        #expect(transcript.pendingRequests.map(\.callID) == ["first"])
+        #expect(transcript.pendingRequests.map(\.summary) == [command])
+        #expect(transcript.entries.count == 1)
+        #expect(file.reducer().transcript(.init(activity: .blocked)).pendingRequests.isEmpty)
+
+        file.response("function_call", request("second", turn: "root"))
+        #expect(file.reducer().transcript(rex).pendingRequests.map(\.callID) == ["first", "second"])
+        file.response("function_call_output", [("call_id", "first"), ("output", "declined")])
+        file.response("function_call", request("first", turn: "root"))
+        #expect(file.reducer().transcript(rex).pendingRequests.map(\.callID) == ["second"])
+        file.command("root", id: "second", argv: ["/bin/sh", "-c", command])
+        #expect(file.reducer().transcript(rex).pendingRequests.isEmpty)
+        #expect(file.reducer().transcript(rex).entries.count == 2)
+
+        file.response("function_call", request("last", turn: "root"))
+        file.turnComplete("root")
+        #expect(file.reducer().transcript(rex).pendingRequests.isEmpty)
+        file.turnStarted("next")
+        file.response("function_call", request("old-turn", turn: "root"))
+        #expect(file.reducer().transcript(rex).pendingRequests.isEmpty)
+    }
+
     @Test("A read boundary inside a multibyte character changes nothing")
     func splitInsideMultibyteCharacter() throws {
         let probe = try CodexProbe.probe2()

@@ -1,0 +1,19 @@
+{
+  "runtimeCandidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "runtimeSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "baseTestSHA256": "df727c92f097181096fb67232e212bb3f6eb40287abdb7db0eb466b6e16a7798",
+  "testPatchSHA256": "944bf8a0c006f666998943e16f34a826c477517c9b38fc90a0fe7254ac112bf8",
+  "patchedSourceSHA256": "942797a68cbdf25022d37611eb8af0c92501c1ff2d67c3f5c222a16074ded0c7",
+  "originalSourceSHA256": "767ae23115dd35585797cefe76cd97e8db63890c006ff5f7acb6ecfd5862b7b8",
+  "changes": [
+    "Tests/HeelerLiveTests/RexForegroundChatLiveTests.swift"
+  ],
+  "patchedTestSHA256": "f3229bab0dfcb860e3743550125af2328eee4a35432b5dc3f669fb2ac4fad180",
+  "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+  "objectsRelinked": 26,
+  "testSourceObjectsRebuilt": 1,
+  "signaturesVerified": true,
+  "outerAppResealedForEmbeddedTests": true,
+  "launcherWithoutSignaturesSHA256": "e4ea1bc85aa88ef05da891063e678f449fed207dbab215d7d7c1b5a4f7f96757",
+  "rawLauncherChangedOnlyInSignature": true
+}

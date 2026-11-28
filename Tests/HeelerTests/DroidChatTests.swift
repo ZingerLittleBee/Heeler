@@ -309,6 +309,35 @@ struct DroidChatTests {
         #expect(notice.title.hasPrefix("Unable to reach the server."))
     }
 
+    @Test func scriptCommandsRequireTheirOwnOuterCallResultAndOutputFile() throws {
+        let lines = JSONLLineFramer.lines(in: Data(try ChatFixture.text("droid/script-background.jsonl").utf8))
+        let firstEnd = try #require(lines.firstIndex { String(decoding: $0.data, as: UTF8.self).contains(#""id":"blue-ended""#) })
+        var reducer = DroidTranscriptReducer()
+        reducer.append(Array(lines[firstEnd...]))
+        #expect(reducer.transcript(.init(windowStart: lines[firstEnd].offset)).needsOlderHistory)
+        reducer.prepend(Array(lines[..<firstEnd]))
+        var running = DroidTranscriptReducer()
+        running.append(Array(lines[..<firstEnd]))
+        let commands = running.transcript(.init()).backgroundWork
+        #expect(commands.count == 2 && commands.allSatisfy { $0.state == .running && !$0.allowsDroidTaskPanel })
+        let transcript = reducer.transcript(.init(activity: .idle))
+        #expect(transcript.recordedPrompts.map(\.text) == ["Start the two commands."])
+        #expect(transcript.turns.map(\.ending) == [.completed])
+        #expect(transcript.pendingRequests.isEmpty)
+        #expect(transcript.backgroundWork.count == 2)
+        let red = try #require(transcript.backgroundWork.first { $0.title == "printf red" })
+        let blue = try #require(transcript.backgroundWork.first { $0.title == "printf blue" })
+        #expect(red.droidScriptCallID == "script-a" && blue.droidScriptCallID == "script-a")
+        #expect(red.taskID == "5181" && blue.taskID == "5182")
+        #expect(red.state == .completed && red.exitCode == 0 && red.reportedOutput == "RED OUTPUT")
+        #expect(blue.state == .failed && blue.exitCode == 17 && blue.reportedOutput == "BLUE OUTPUT\nexit_status: code 0")
+        #expect(!red.allowsDroidTaskPanel && !blue.allowsDroidTaskPanel)
+        #expect(!transcript.entries.contains { entry in
+            if case .tool(let tool) = entry.content { return tool.callID == red.id || tool.callID == blue.id }
+            return false
+        })
+    }
+
     @Test func lateTaskResultsMergeByIdentityWithoutOpeningUserTurns() throws {
         let data = Data(try ChatFixture.text("droid/background.jsonl").utf8)
         let lines = JSONLLineFramer.lines(in: data)

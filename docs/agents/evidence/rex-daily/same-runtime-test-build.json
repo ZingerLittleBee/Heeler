@@ -1,0 +1,7 @@
+{
+  "frozenAppCandidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "testCommit": "364360961ed775d40fc9447980a34bf3dafe5295",
+  "runtimeSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "testExecutableSHA256": "759ca40120240ddd8c6d36b0d9d788eb8e8b7ad252a4b00bbbd5e89d1f2264e0",
+  "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e"
+}

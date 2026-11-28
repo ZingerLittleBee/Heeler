@@ -1,0 +1,15 @@
+{
+  "system": "macOS 27.0.1 (26A434) arm64",
+  "scope": "Disposable SSH login with isolated HOME and PATH on a shared macOS machine",
+  "programsOnLoginPath": {
+    "herdr": false,
+    "herdr-core": false,
+    "tmux": false,
+    "rex": true
+  },
+  "defaultRexSocket": "$HOME/Library/Application Support/rex/server.sock",
+  "sessionLabel": "heeler-lab-macos-only",
+  "socketsWithinLoginHome": [
+    "Library/Application Support/rex/server.sock"
+  ]
+}

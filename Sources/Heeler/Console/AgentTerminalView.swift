@@ -426,7 +426,7 @@ struct AgentTerminalView: View {
     /// tab included. Read here because this Host's platform may be unknown when
     /// the store is made.
     private var skills: SkillsPaneStore? {
-        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
+        console.capabilities(for: agent.hostID).readsProjects ? skillsStore : nil
     }
 
     /// The Skills pane's store, or nil when this agent's kind has no skills
@@ -727,13 +727,7 @@ struct AgentTerminalView: View {
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
                 title: String(localized: "Rename Agent"),
-                store: RenameStore(
-                    subject: .agent(detectedKind: agent.agent.kind),
-                    currentValue: agent.agent.name ?? ""
-                ) { [console, agent] name in
-                    try await console.renameAgent(
-                        agent.agent.paneID, name: name, on: agent.hostID, keepingTo: session.corePin)
-                })
+                store: console.agentNameStore(for: agent, keepingTo: session.corePin))
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
@@ -743,9 +737,9 @@ struct AgentTerminalView: View {
                 title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
-                ) { [console, agent] label in
+                ) { [console, agent, corePin = session.corePin] label in
                     try await console.renameWorkspace(
-                        agent.agent.workspaceID, label: label, on: agent.hostID)
+                        agent.agent.workspaceID, label: label, on: agent.hostID, keepingTo: corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(

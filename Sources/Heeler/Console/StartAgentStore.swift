@@ -168,9 +168,9 @@ final class StartAgentStore {
     }
 
     /// The Servers the user can dispatch to, grouped into `hostChoices`.
-    let hosts: [Host]
+    private(set) var hosts: [Host]
     /// Each Host once, by its name alone, holding the Servers it offers here.
-    let hostChoices: [LaunchHostChoice]
+    var hostChoices: [LaunchHostChoice] { LaunchHostChoice.grouped(hosts) }
 
     /// Non-nil when the flow was opened from an agent rather than the
     /// Console: Host, workspace, and working directory are already decided,
@@ -238,6 +238,21 @@ final class StartAgentStore {
                 return
             }
             selectHost(newValue)
+        }
+    }
+
+    var launchUnavailableMessage: String? { selectedHost.flatMap { capabilities($0).rexAgentLaunchUnavailable } }
+
+    var discoveryHostID: Host.ID? {
+        guard let selectedHost, capabilities(selectedHost).rexAgentLaunchUnavailable == nil else { return nil }
+        return selectedHost.id
+    }
+
+    func updateHosts(_ next: [Host]) {
+        guard next != hosts else { return }
+        hosts = next
+        if let selectedHostID, !next.contains(where: { $0.id == selectedHostID }) {
+            self.selectedHostID = nil
         }
     }
 
@@ -442,6 +457,7 @@ final class StartAgentStore {
     /// Whether a connected Host serves Worktrees, which a herdr-core Host's
     /// platform decides.
     private let offersConnectedWorktrees: (Host.ID) -> Bool
+    private let capabilities: (Host) -> HostCapabilities
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -485,6 +501,7 @@ final class StartAgentStore {
         recents: RecentLaunchStore = RecentLaunchStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
         offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false },
+        capabilities: @escaping (Host) -> HostCapabilities = \.capabilities,
         presets: @escaping () -> [LaunchPreset] = { [] },
         accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
@@ -498,7 +515,7 @@ final class StartAgentStore {
         self.generateWorktreeBranch = generateWorktreeBranch
         let hostChoices = LaunchHostChoice.grouped(hosts)
         self.hosts = hosts
-        self.hostChoices = hostChoices
+        self.capabilities = capabilities
         self.origin = origin
         self.gitHubLaunch = gitHubLaunch
         self.workspacesProvider = workspaces
@@ -640,13 +657,13 @@ final class StartAgentStore {
     /// the Worktree on the branch the user names, from the Workspace's HEAD
     /// (ADR 0032, ADR 0045).
     var worktreeNeedsBranch: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     /// Whether the form asks for Workspace and tab names. Its Agent name is
     /// independent of them.
     var offersWorkspaceAndTabNames: Bool {
-        selectedHost?.capabilities.tabNames != false
+        selectedHost.map { capabilities($0).tabNames } != false
     }
 
     /// Whether New Workspace asks for a name. A herdr-core Host has none of its
@@ -658,7 +675,7 @@ final class StartAgentStore {
     /// A herdr-core Host, and a tmux Host, find Agents through the user's
     /// interactive shell (ADR 0032), not the Host's PATH.
     var discoversThroughUserShell: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     private var selectedHost: Host? {
@@ -760,7 +777,7 @@ final class StartAgentStore {
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
-        selectedHostID != nil && hasLaunchTarget
+        discoveryHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
             && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
@@ -819,7 +836,7 @@ final class StartAgentStore {
         selectedPresetID = nil
         availableTemplates = []
         selectedTemplate = nil
-        guard let hostID = selectedHostID else {
+        guard let hostID = discoveryHostID else {
             agentDiscoveryState = .idle
             return
         }
@@ -827,11 +844,11 @@ final class StartAgentStore {
         // Heeler's own list does not depend on this one, so an ask that fails
         // leaves the form with Heeler's agents.
         let templates = (try? await discoverTemplates(hostID)) ?? []
-        guard selectedHostID == hostID else { return }
+        guard !Task.isCancelled, discoveryHostID == hostID else { return }
         availableTemplates = templates
         do {
             let kinds = try await discoverAgentKinds(hostID)
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             availableAgentKinds = kinds
             if let remembered = recents.agentKind, kinds.contains(remembered) {
                 selectedAgentKind = remembered
@@ -841,10 +858,10 @@ final class StartAgentStore {
             if kinds.isEmpty { selectedTemplate = templates.first }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             agentDiscoveryState = .idle
         } catch {
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             selectedTemplate = templates.first
             agentDiscoveryState = .failed(Self.discoveryMessage(for: error))
         }
@@ -856,7 +873,7 @@ final class StartAgentStore {
     func submit() async {
         guard
             !isStarting,
-            let hostID = selectedHostID,
+            let hostID = discoveryHostID,
             let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
             !isMissingNeededBranch,

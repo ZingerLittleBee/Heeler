@@ -11,6 +11,8 @@ enum RexHostSessionUpdate: Sendable, Equatable {
     /// Every terminal the server lists: once after each `server`, and again
     /// each time something changed (ADR 0050).
     case inventory(RexInventory)
+    /// All inventories from this refresh precede it on the same stream.
+    case inventoryRefreshFinished(UUID)
 }
 
 /// What a Rex Host's live connection is, for whatever runs on it.
@@ -85,6 +87,7 @@ actor RexHostSession {
     private var socket: RexSocket?
     private var transport: (any RexTransport)?
     private var link: RexControlLink?
+    private var inventoryFollower: RexInventoryFollower?
     /// A link dropped without a close frame, whose client the server may
     /// still keep for the next hello to take back.
     private var resumable: RexControlLink?
@@ -496,8 +499,22 @@ actor RexHostSession {
             follows.lineage.withLock { $0 = RexServerLineage(server, sessionIDs: inventory.sessions.map(\.id)) }
             updatesContinuation.yield(.inventory(inventory))
         }
+        inventoryFollower = follower
         let ending = await follower.run()
+        if inventoryFollower === follower { inventoryFollower = nil }
         return (ending, await follower.hasPublished)
+    }
+
+    /// Refresh only the current follow. An offline Host has nothing to reread.
+    func refreshInventory(_ id: UUID) async {
+        let finished: @Sendable () -> Void = { [updatesContinuation] in
+            updatesContinuation.yield(.inventoryRefreshFinished(id))
+        }
+        guard liveServer != nil, let inventoryFollower else {
+            finished()
+            return
+        }
+        await inventoryFollower.refresh(then: finished)
     }
 
     /// Leaves `link` ready for the next attempt to resume or replace, and says
@@ -761,10 +778,14 @@ actor RexHostSession {
     /// back at once, as a size this client took is (ADR 0053), or, in a new
     /// session the client could not attach, once that session is attached:
     /// the view that opens it takes its size as it takes any other terminal's.
-    func createTerminal(_ placement: RexNewTerminal.Placement, cwd: String?) async throws -> RexNewTerminal.Created {
+    func createTerminal(
+        _ placement: RexNewTerminal.Placement, cwd: String?, program: RexNewTerminal.Program? = nil,
+        windowLabel: String? = nil, keepingTo server: RexServerStatus? = nil
+    ) async throws -> RexNewTerminal.Created {
         guard let ready = readyConnection else {
             throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
         }
+        if let server, server != ready.server { throw TransportError.rexServerGone }
         let control = ready.control
         let epoch = clientEpoch
         let created: RexNewTerminal.Created
@@ -773,11 +794,11 @@ actor RexHostSession {
             case .window(let sessionID):
                 try await attachForCreating(sessionID, on: control)
                 let response = try await control.call(
-                    RexNewTerminal.newWindowMethod, payload: RexNewTerminal.newWindowPayload(in: sessionID, cwd: cwd))
+                    RexNewTerminal.newWindowMethod, payload: RexNewTerminal.newWindowPayload(in: sessionID, cwd: cwd, program: program, label: windowLabel))
                 created = try RexNewTerminal.newWindow(in: sessionID, from: response.result(JSONValue.self))
             case .session(let label):
                 let response = try await control.call(
-                    RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd))
+                    RexNewTerminal.newSessionMethod, payload: RexNewTerminal.newSessionPayload(label: label, cwd: cwd, program: program, windowLabel: windowLabel))
                 created = try RexNewTerminal.newSession(from: response.result(JSONValue.self))
                 // The session is made, so a failed attach never fails the
                 // request. Rex refuses a give back from a client not attached
@@ -1162,19 +1183,76 @@ enum RexNewTerminal {
     static let newSessionMethod = "session.create"
     static let shellFlavor = "com.superlogical.terminal.shell"
 
-    static func newWindowPayload(in sessionID: String, cwd: String?) -> JSONValue {
-        .object(["session_id": .string(sessionID), "focus": .bool(false), "layout": layout(cwd: cwd)])
+    /// Verify the exact options the shell flavor accepts before creating a program block.
+    static func acceptsAgentCommand(_ reply: JSONValue) -> Bool {
+        guard case .array(let creators)? = reply["creators"] else { return false }
+        for creator in creators {
+            guard case .array(let flavors)? = creator["flavors"] else { continue }
+            for flavor in flavors where flavor["flavor"]?.stringValue == shellFlavor {
+                let fields = flavor["options_schema"]?["properties"]
+                return schema(fields?["command"], allows: "array") && fields?["command"]?["items"]?["type"] == .string("string")
+                    && schema(fields?["cwd"], allows: "string") && schema(fields?["login"], allows: "boolean")
+                    && schema(fields?["interactive"], allows: "boolean")
+            }
+        }
+        return false
     }
 
-    static func newSessionPayload(label: String?, cwd: String?) -> JSONValue {
-        var payload: [String: JSONValue] = ["initial_windows": .array([.object(["layout": layout(cwd: cwd)])])]
+    private static func schema(_ property: JSONValue?, allows type: String) -> Bool {
+        if case .array(let types)? = property?["type"] { return types.contains(.string(type)) }
+        return property?["type"] == .string(type)
+    }
+
+    /// Each argument is a separate wire value. Rex may start a block in the account's
+    /// home when it cannot enter its requested directory. Check it in the new process
+    /// before executing the Agent, including when Rex restores the window later.
+    struct Program: Sendable {
+        let arguments: [String]
+        let blockLabel: String
+
+        init(request: AgentLaunchRequest, cwd: String, openCodeVersion: String?) throws {
+            guard let kind = SupportedAgentKind(rawValue: request.kind),
+                request.environment.keys.allSatisfy(UsageAccountFile.isVariable)
+            else { throw TransportError.malformedResponse(String(localized: "Check the Agent and its environment variables.")) }
+            let start = HerdrCoreLaunch.agentStart(
+                kind: kind, arguments: request.arguments, environment: request.environment, openCodeVersion: openCodeVersion)
+            let environment = start.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+            arguments = ["/bin/sh", "-c", #"cd "$1" && shift && exec "$@""#, "heeler", cwd, "/usr/bin/env"]
+                + environment + start.program
+            blockLabel = request.name
+        }
+    }
+
+    static func newWindowPayload(in sessionID: String, cwd: String?, program: Program? = nil, label: String? = nil) -> JSONValue {
+        var window = initialWindow(cwd: cwd, program: program, label: label)
+        window["session_id"] = .string(sessionID)
+        window["focus"] = .bool(false)
+        return .object(window)
+    }
+
+    static func newSessionPayload(label: String?, cwd: String?, program: Program? = nil, windowLabel: String? = nil) -> JSONValue {
+        var payload: [String: JSONValue] = ["initial_windows": .array([.object(initialWindow(cwd: cwd, program: program, label: windowLabel))])]
         if let label { payload["label"] = .string(String(label.prefix(128))) }
         return .object(payload)
     }
 
-    private static func layout(cwd: String?) -> JSONValue {
+    private static func initialWindow(cwd: String?, program: Program?, label: String?) -> [String: JSONValue] {
+        var window = ["layout": layout(cwd: cwd, program: program)]
+        if let label, !label.isEmpty { window["window_label"] = .string(label) }
+        return window
+    }
+
+    private static func layout(cwd: String?, program: Program?) -> JSONValue {
         var block: [String: JSONValue] = ["flavor": .string(shellFlavor)]
-        if let cwd { block["options"] = .object(["cwd": .string(cwd)]) }
+        var options: [String: JSONValue] = [:]
+        if let cwd { options["cwd"] = .string(cwd) }
+        if let program {
+            options["command"] = .array(program.arguments.map(JSONValue.string))
+            options["interactive"] = .bool(true)
+            options["login"] = .bool(false)
+            if !program.blockLabel.isEmpty { block["label"] = .string(program.blockLabel) }
+        }
+        if !options.isEmpty { block["options"] = .object(options) }
         return .object(["block": .object(block)])
     }
 

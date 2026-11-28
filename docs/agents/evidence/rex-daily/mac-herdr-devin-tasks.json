@@ -1,0 +1,35 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "backend": "herdrTUI",
+  "platform": "macOS",
+  "distinctMobileRequests": 3,
+  "jobs": {
+    "success": {
+      "shellID": "5e41f8",
+      "launchCallID": "exec:0#7f4f44181a9e4a38907b96e8c427600e",
+      "lookupCallID": "get_output:1#e74680a0d985476087be90efeb2c8c5c",
+      "exitCode": 0,
+      "retainedToolContentCharacters": 47,
+      "independentMarkedOutput": true
+    },
+    "failure": {
+      "shellID": "01c38e",
+      "launchCallID": "exec:2#6cf5247c3ec64bbb87142bd4d206d8bc",
+      "lookupCallID": "get_output:3#af9b2dc666344fab889e29fc9392d832",
+      "exitCode": 17,
+      "retainedToolContentCharacters": 2268,
+      "independentMarkedOutput": true,
+      "originalSubprocessBytes": 12324,
+      "originalSubprocessSHA256": "d0c7494398c927d67d8e69a5bf97c4fcdbb1d534eddc6e7587d7ee1867cea0d4"
+    }
+  },
+  "child": {
+    "agentID": "be9783eb",
+    "launchCallID": "run_subagent:4#83246ee1a6bf4cf5855694876bb55fd1",
+    "acknowledgementDatabaseRow": 1162,
+    "parentFinalDatabaseRow": 1176,
+    "matchingChildRelayDatabaseRow": 1182,
+    "independentReleaseWitness": true
+  },
+  "transcriptSource": "Dedicated Devin ACP writer database, deduplicated official message ID"
+}

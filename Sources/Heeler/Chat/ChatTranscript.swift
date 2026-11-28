@@ -18,8 +18,11 @@ enum ChatProgram: String, Codable, Sendable, CaseIterable {
     case devin
 
     var draftOwnerGuidance: String {
-        self == .devin ? String(localized: "Return to the Devin session that owns this draft before sending it.")
-            : String(localized: "Return to the Droid session that owns this draft before sending it.")
+        switch self {
+        case .devin: String(localized: "Return to the Devin session that owns this draft before sending it.")
+        case .droid: String(localized: "Return to the Droid session that owns this draft before sending it.")
+        default: String(localized: "Return to the conversation that owns this draft before sending it.")
+        }
     }
 
     var pinsComposerToSession: Bool { self == .droid || self == .devin }
@@ -1017,6 +1020,10 @@ struct ChatDivider: Equatable, Codable, Sendable {
 /// dialog on screen against these to show the full content; the screen
 /// always decides the options.
 struct ChatPendingRequest: Equatable, Sendable {
+    struct ConfirmedPlanFile: Codable, Equatable, Sendable {
+        var path: String
+        var sha256: String
+    }
     var entryID: ChatEntryID
     var callID: String?
     var kind: ChatToolActivity.Kind
@@ -1027,6 +1034,7 @@ struct ChatPendingRequest: Equatable, Sendable {
     var detail: String?
     var questions: [ChatQuestion]
     var planFilePath: String?
+    var confirmedPlanFile: ConfirmedPlanFile?
     /// The change a file call would make, for a card whose dialog the
     /// screen cuts short: Antigravity CLI's edit and write calls.
     var fileChanges: ChatFileChanges?
@@ -1253,6 +1261,10 @@ struct ChatBackgroundWorkItem: Identifiable, Equatable, Codable, Sendable {
     var outputPath: String?
     /// The task-specific output delivered by its finishing record.
     var reportedOutput: String?
+    /// A numeric process exit status recorded with the background command's result.
+    var exitCode: Int?
+    /// The enclosing Factory Script that reported this inner command on the transcript.
+    var droidScriptCallID: String?
     /// Claude Code's id for a background command's task, which a stop or a
     /// Monitor's closing event names in place of the launching call; for a
     /// teammate, its agent id, which names its files under `subagents/`.
@@ -1677,7 +1689,13 @@ struct ChatProjectionContext: Equatable, Sendable {
     /// `/name` even when the file did not record a skill part.
     var skillNames: Set<String>
 
-    init(windowStart: UInt64 = 0, activity: ChatAgentActivity = .unknown, skillNames: Set<String> = []) {
+    var requiresIndependentInputSession: Bool
+
+    init(
+        windowStart: UInt64 = 0, activity: ChatAgentActivity = .unknown, skillNames: Set<String> = [],
+        requiresIndependentInputSession: Bool = false
+    ) {
+        self.requiresIndependentInputSession = requiresIndependentInputSession
         self.windowStart = windowStart
         self.activity = activity
         self.skillNames = skillNames

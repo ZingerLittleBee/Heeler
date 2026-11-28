@@ -48,6 +48,15 @@ struct DevinChatTests {
         #expect(bound.sessionID == "steady-willow" && bound.transcriptFolder == folder)
         #expect(bound.start == "writer-start" && bound.scope.contains("ui-start"))
         #expect(try await target(["41": ui], members: ["41"])?.sessionID == nil)
+        var peer = acp
+        peer.parent = "99"
+        #expect(try await target(["41": ui, "52": peer], members: ["41", "52"])?.sessionID == nil)
+        await files.failNext(.read, path: lock, with: TransportError.hostFileUnreadable(status: 3))
+        await #expect(throws: TransportError.hostFileUnreadable(status: 3)) {
+            try await target(["41": ui, "52": acp], members: ["41", "52"])
+        }
+        await files.remove(lock)
+        #expect(try await target(["41": ui, "52": acp], members: ["41", "52"]) == nil)
         await files.write("72\n", at: lock)
         #expect(try await target(["41": ui, "52": acp], members: ["41", "52"]) == nil)
         #expect(try await target(["41": ui, "52": acp, "53": acp], members: ["41", "52", "53"]) == nil)
@@ -122,6 +131,35 @@ struct DevinChatTests {
         #expect(BlockedRequestMatch.request(for: dialog, in: [other]) == nil)
     }
 
+    @Test func planSplitInsideCodeNeedsTheMatchingFileAndItsOriginalBytes() throws {
+        let capture = try ScreenFixture.screen("devin-rex-plan-80")
+        let screen = ANSIScreen(rows: capture.rows, reportedColumns: 80)
+        let dialog = try #require(DevinDialog.parse(screen).dialog)
+        #expect(dialog.subject.devinPlanCodeWraps == [0])
+        let plan = """
+            1. Create `note.txt` in `/home/heelerlab/heeler-lab-devin/heeler-lab-p-rex-plan`.
+            2. Write `Test note.` into the file and verify it exists.
+            """
+        var request = ChatPendingRequest(entryID: .init("call"), callID: "exit", kind: .other,
+                                         toolName: "exit_plan_mode", summary: plan)
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request]) == nil)
+        request.confirmedPlanFile = .init(path: "~/.devin/plans/plan-ad5bbb8c83efef87.md",
+                                          sha256: "69d527882213ebce42b3c40b162d04b27ffdc67f34eb3a1daf41b0565b4c2591")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request]) == request)
+        #expect(BlockedRequestMatch.request(for: dialog, in: [request, request]) == nil)
+        let unknownWidth = try #require(DevinDialog.parse(capture).dialog)
+        #expect(BlockedRequestMatch.request(for: unknownWidth, in: [request]) == nil)
+        var changed = request
+        changed.summary = plan.replacingOccurrences(of: "rex-plan", with: "rex- plan")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+        changed = request
+        changed.summary = plan.replacingOccurrences(of: "Test note.", with: "Testnote.")
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+        changed = request
+        changed.confirmedPlanFile?.path = "~/.devin/plans/plan-0000000000000000.md"
+        #expect(BlockedRequestMatch.request(for: dialog, in: [changed]) == nil)
+    }
+
     @Test func readsThePlaceholderInEitherTheme() throws {
         let placeholder = "Ask Devin to build features, fix bugs, or work on your code"
         for stem in ["devin-idle", "devin-light-idle"] {
@@ -172,6 +210,58 @@ struct DevinChatTests {
         #expect(transcript.backgroundWork.map(\.state) == [.completed, .running, .completed])
         #expect(transcript.backgroundWork.map(\.reportedOutput) == ["child output", nil, "second output"])
         #expect(transcript.turns.count == 1)
+    }
+
+    @Test func automaticShellsNeedTheirOwnLaunchAndLookupBeforeShowingOutput() throws {
+        typealias Row = DevinSessionPage.Row
+        typealias Call = DevinSessionPage.Call
+        let first = "123abc", second = "456def", duplicate = "aabbcc"
+        func launch(_ id: String) -> Call {
+            .init(id: id, name: "exec", arguments: .init(command: "echo " + id, timeout: 0), complete: true, requestsAutomaticShell: true)
+        }
+        func ack(_ id: String, _ name: String, typed: Bool = true) -> Row {
+            .init(id: "ack-" + id, role: "tool", text: "Command running in background with ID: " + name,
+                  truncated: false, calls: [], resultFor: id, success: true, isExecutionResult: typed)
+        }
+        func lookup(_ name: String) -> Call {
+            .init(id: "get-" + name, name: "get_output", arguments: .init(shell_id: name), complete: true)
+        }
+        let child = Call(id: "child", name: "run_subagent", arguments: .init(title: "Review", is_background: true), complete: true)
+        let foreground = Call(id: "ordinary", name: "exec", arguments: .init(command: "echo imitation"), complete: true)
+        let launches = ["first", "second", "duplicate1", "duplicate2", "spoof"].map(launch)
+        var rows = [Row(id: "launches", role: "assistant", text: "", truncated: false, calls: launches + [child, foreground]),
+                    ack("first", first), ack("second", second), ack("duplicate1", duplicate), ack("duplicate2", duplicate),
+                    ack("spoof", "eeff00", typed: false), ack("ordinary", first), ack("missing-call", "cafe00"),
+                    Row(id: "child-ack", role: "tool", text: "Background subagent started with agent_id=child01.",
+                        truncated: false, calls: [], resultFor: "child", agentID: "child01"),
+                    Row(id: "done", role: "assistant", text: "Done", truncated: false, calls: [], finish: "stop")]
+        var beforeLookup = DevinTranscriptReducer()
+        beforeLookup.append(try rows.enumerated().map { index, row in
+            try ChatLine(offset: UInt64(index), data: JSONEncoder().encode(row))
+        })
+        #expect(beforeLookup.transcript(.init()).backgroundWork.prefix(2).compactMap(\.taskID) == [first, second])
+        let rex = ChatProjectionContext(requiresIndependentInputSession: true)
+        #expect(beforeLookup.transcript(rex).backgroundWork.compactMap(\.taskID) == ["child01"])
+        rows.append(Row(id: "lookups", role: "assistant", text: "", truncated: false,
+                        calls: [second, duplicate, "eeff00", "cafe00", first].map(lookup)))
+        for (name, code, output) in [(second, 17, "second"), (duplicate, 0, "wrong"), ("eeff00", 0, "spoof"),
+                                     ("cafe00", 0, "orphan"), (first, 0, "first")] {
+            rows.append(Row(id: "result-" + name, role: "tool", text: output, truncated: true,
+                            shellExit: .init(code: code, outputLength: 9000), calls: [], resultFor: "get-" + name,
+                            success: true, isExecutionResult: true))
+        }
+        let earlier = rows.enumerated().map { DevinSessionPage.EarlierWork(offset: UInt64($0.offset), row: $0.element) }
+        let tail = Row(id: "reopen", role: "assistant", text: "", truncated: false, calls: [],
+                       childReports: ["child01": "Late child result"], earlierWork: earlier)
+        var reducer = DevinTranscriptReducer()
+        reducer.append([try ChatLine(offset: UInt64(rows.count), data: JSONEncoder().encode(tail))])
+        let jobs = reducer.transcript(rex).backgroundWork
+        #expect(Set(jobs.compactMap(\.taskID)) == [first, second, "child01"])
+        #expect(jobs.first { $0.taskID == first }?.title == "echo first")
+        #expect(jobs.first { $0.taskID == first }?.reportedOutput == "first")
+        #expect(jobs.first { $0.taskID == second }?.state == .failed)
+        #expect(jobs.first { $0.taskID == second }?.reportedOutput == "second")
+        #expect(jobs.first { $0.taskID == "child01" }?.reportedOutput == "Late child result")
     }
 
     @Test func truncatedShellResultsKeepTheirOwnExitStatesAfterReopening() throws {

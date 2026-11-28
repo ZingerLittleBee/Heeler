@@ -1,0 +1,18 @@
+{
+  "binaries": {
+    "rex": "/usr/local/bin/rex",
+    "herdr": null,
+    "herdr-core": null,
+    "tmux": null
+  },
+  "serverSocket": "/home/heeleronly/.local/state/rex/run/server.sock",
+  "herdrOrTmuxSockets": [],
+  "platform": "linux_arm64",
+  "apiRevision": 24,
+  "sessions": [
+    {
+      "session_id": "session:01a21cea-2114-7e4e-acca-3586557029c1",
+      "label": "heeler-lab-only-workspace"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "platform": "Debian GNU/Linux 12.15 arm64",
+  "release": "Devin CLI 3000.15.14, Rex preview.25",
+  "programPID": 162318,
+  "program": "devin",
+  "sameNamedWorkspace": true,
+  "terminalShowsYesTrustAndNoExit": true,
+  "initialStatus": [
+    {
+      "secondsFromFirst": 1.02,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    },
+    {
+      "secondsFromFirst": 2.116,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    },
+    {
+      "secondsFromFirst": 3.171,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    },
+    {
+      "secondsFromFirst": 4.153,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    },
+    {
+      "secondsFromFirst": 5.213,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    },
+    {
+      "secondsFromFirst": 6.258,
+      "rootOrChildRecords": 0,
+      "ACPHasOfficialSlug": false,
+      "originalFrontendStillForeground": true
+    }
+  ],
+  "action": "Read-only initial directory trust probe. No answer or model turn was sent."
+}

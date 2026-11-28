@@ -434,3 +434,24 @@ with 1008 (`no common API revision: server speaks 0 to 19, client needs 20 to
 25; update the server`). Over the Windows stdio bridge to Rex
 0.1.0-preview.23 on Windows 11, a hello of 19 with floor 12 was welcomed at
 19 and `session.list` answered.
+
+## Update 2026-11-27: project operations on POSIX Hosts
+
+A connected macOS or Linux Host can launch a foreground program when its
+shell flavor advertises a command array, interactive startup, login control
+and a working directory. Older binaries which lack these options keep their
+ordinary shells. Rex preview.25 accepts a nonexistent working directory and
+substitutes the account home. Heeler checks the directory and requires the
+new process to enter it before executing the Agent. The shared checkout
+service creates a requested worktree under the SSH account. Changes and
+Skills use that SSH connection when opened. Renaming a Workspace changes
+its Rex session label. A Tab name in New Terminal labels the new window. Rename Agent changes the named block’s management label. Conversation title commands require separate harness evidence.
+
+At negotiated revisions 12 and 19, Rex ignored a foreground precondition on
+a close request and closed the successor process. Moving an inactive
+window's focused block could change the desktop focus. Transferring a window
+to another session requires revision 22. Heeler retains its 12–19 negotiation
+and keeps these operations in Rex. A conditional operation needs the server
+to compare the block's current foreground and apply the mutation in one step.
+[macOS method and argument observations](../agents/rex-object-operations.md)
+and [Linux evidence](../agents/rex-linux-lab.md).

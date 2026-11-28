@@ -1,0 +1,42 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "site": "Debian 12.15 arm64, Rex preview.25",
+  "program": "Amp 0.0.1795737653-g84af98",
+  "source": "Per-foreground PID and Linux process start, private local log candidate, independently confirmed by official signed-in amp threads export for each QA ID only",
+  "textBytes": 122,
+  "markerSHA256": "4c568180b984fc1e9007090d504186930b30d8b543b9ee470bafa3c19b5b055b",
+  "a": {
+    "pid": 201596,
+    "processStart": "4602092",
+    "thread": "T-01a21d44-6d32-75bb-9ba0-d6516749a017",
+    "seedUser": 1,
+    "seedAssistant": 1,
+    "peerSeedUser": 0,
+    "peerSeedAssistant": 0,
+    "user": 1,
+    "assistant": 1,
+    "exactUser": 1,
+    "exactAssistant": 1,
+    "ownPrivateWorkingDirectory": true,
+    "exportedMessageCount": 4,
+    "vendorExecutorType": "local-client",
+    "actorCreatedOnServer": false
+  },
+  "b": {
+    "pid": 201624,
+    "processStart": "4602118",
+    "thread": "T-01a21d44-6af7-7255-b5c4-14b432c11a0d",
+    "seedUser": 1,
+    "seedAssistant": 1,
+    "peerSeedUser": 0,
+    "peerSeedAssistant": 0,
+    "user": 0,
+    "assistant": 0,
+    "exactUser": 0,
+    "exactAssistant": 0,
+    "ownPrivateWorkingDirectory": true,
+    "exportedMessageCount": 2,
+    "vendorExecutorType": "local-client",
+    "actorCreatedOnServer": false
+  }
+}

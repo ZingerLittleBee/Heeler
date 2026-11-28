@@ -69,6 +69,7 @@ struct BlockedCardClock: Sendable {
 
 /// A dialog the parsers know, with the transcript's request for it.
 struct BlockedCard: Equatable, Sendable {
+    var conversationGeneration: Int? = nil
     var target: DroidDialogTarget? = nil
     var patch: String? = nil
     let dialog: BlockedDialog
@@ -173,11 +174,32 @@ final class BlockedCardStore {
     /// moves, which on OpenCode swaps a permission's lines for its rule's.
     /// The card's identity, so a note or choice made on one dialog's card
     /// never carries to the next.
+    /// A Rex card can show the terminal's current prompt beside an older
+    /// manually selected conversation. Keep the displayed session with it.
+    typealias RexSessionCheck = (sessionID: String, verify: ChatSessionInputCheck)
+    @ObservationIgnored var captureSessionCheck: (@MainActor () -> RexSessionCheck?)?
+    /// Rex's live, fully read record. An absent or ambiguous call leaves the prompt in Terminal.
+    @ObservationIgnored var readRexRequests: (@MainActor () async -> [ChatPendingRequest]?)?
+    @ObservationIgnored private var displayedRexCallID: String?
+    @ObservationIgnored private var actingRexCard: BlockedCard?
+    @ObservationIgnored private var answeredRexCalls: [String: Set<String>] = [:]
+    @ObservationIgnored private var shownSessionCheck: RexSessionCheck?
+    @ObservationIgnored private var actingSessionCheck: RexSessionCheck?
+    @ObservationIgnored private var inputConversationGeneration = 0
+
+    func displayedInputSessionChanged() {
+        guard captureSessionCheck != nil else { return }
+        inputConversationGeneration += 1
+        firstSeen = nil
+        shownSessionCheck = nil
+        if progress != .acting { clear() }
+    }
+
     private(set) var dialogGeneration = 0
 
     /// Whether Stop acts: also after an answer that showed no effect, as a
     /// way out of a dialog that keeps the card waiting.
-    var canStop: Bool { progress != .acting }
+    var canStop: Bool { readRexRequests == nil ? progress != .acting : progress == .ready }
 
     /// Whether the card takes the Composer's place: while it shows, and
     /// while herdr reports Blocked before a read has decided it, when the
@@ -509,6 +531,12 @@ final class BlockedCardStore {
     /// resend.
     func perform(_ action: DialogAction, shownCard: BlockedCard? = nil) async {
         guard progress == .ready || (action == .dismiss && canStop), case .card(let shown) = content else { return }
+        if let saved = shownCard?.conversationGeneration, saved != inputConversationGeneration {
+            notice = Self.changedMessage
+            return
+        }
+        guard beginRexAnswer(shown, from: shownCard) else { return }
+        defer { actingRexCard = nil }
         if program.pinsComposerToSession, shownCard != shown {
             notice = Self.changedMessage
             return
@@ -528,12 +556,14 @@ final class BlockedCardStore {
         var answerKind: BlockedAnswerKind = .unknown
         let isConfirmed = await act(
             on: shown.dialog.fingerprint,
-            onSent: { [io] in
+            onSent: { [self] in
+                if answerKind != .unknown { holdAnsweredRexCall() }
                 await io.recordAnswer?(answerKind)
             }
         ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = matchingRequest(for: dialog)
+            if readRexRequests != nil, request != shown.request { throw .unsupported(Self.changedMessage) }
             if program.pinsComposerToSession, observedDroidTarget != shown.target || request?.callID != shown.request?.callID { throw .unsupported(Self.changedMessage) }
             // Each program's planner decides whether the call's result
             // confirms the answer.
@@ -620,10 +650,16 @@ final class BlockedCardStore {
     /// question before its keys and turned by them, then Claude's review
     /// page once it lists the same answers. A page that shows anything else
     /// stops the answers there, on the generic card.
-    func submit(_ answers: [QuestionFormAnswer]) async {
+    func submit(_ answers: [QuestionFormAnswer], shownCard: BlockedCard? = nil) async {
         guard progress == .ready, case .card(let shown) = content, let form = QuestionForm(card: shown),
             answers.count == form.questions.count
         else { return }
+        guard beginRexAnswer(shown, from: shownCard) else { return }
+        actingSessionCheck = shownSessionCheck
+        defer {
+            actingRexCard = nil
+            actingSessionCheck = nil
+        }
         progress = .acting
         notice = nil
         // A text the dialog won't take would stop the answers part way.
@@ -645,6 +681,10 @@ final class BlockedCardStore {
             return
         }
         let toolUseID = shown.request?.callID
+        if readRexRequests != nil {
+            expectedStepFocus = page.focus.focusedOrdinal
+            expectedStepText = page.focus.inputText
+        }
         await waitOutGrace(for: page)
         waitingWhenSent = waitingCalls(answering: page)
         for index in form.questions.indices {
@@ -677,6 +717,7 @@ final class BlockedCardStore {
             // Codex and Antigravity CLI submit every answer with the last
             // one.
             if index == form.questions.count - 1, program == .codex || program == .agy {
+                holdAnsweredRexCall()
                 await io.recordAnswer?(.answer)
                 await confirm(plan, on: page.fingerprint)
                 return
@@ -700,13 +741,14 @@ final class BlockedCardStore {
             return
         }
         guard case .sent = await send(plan.steps, to: page.fingerprint) else { return }
+        holdAnsweredRexCall()
         await io.recordAnswer?(.answer)
         await confirm(plan, on: page.fingerprint)
     }
 
     /// The generic card's option button.
     func press(number: Int) async {
-        guard progress == .ready, case .generic(let shown) = content else { return }
+        guard readRexRequests == nil, progress == .ready, case .generic(let shown) = content else { return }
         let program = program
         let requests = pendingRequests
         var answerKind: BlockedAnswerKind = .unknown
@@ -736,7 +778,7 @@ final class BlockedCardStore {
     /// Without options to press they answer the dialog, so they go only over what
     /// the card shows: its dialog, or still none where it could read none.
     func sendKeys(_ keys: [String]) async {
-        guard progress != .acting else { return }
+        guard readRexRequests == nil, progress != .acting else { return }
         progress = .acting
         notice = nil
         var refusal: String?
@@ -910,6 +952,8 @@ final class BlockedCardStore {
         onSent: (@MainActor () async -> Void)? = nil,
         plan makePlan: (DialogObservation) throws(DialogPlanError) -> DialogActionPlan
     ) async -> Bool {
+        actingSessionCheck = shownSessionCheck
+        defer { actingSessionCheck = nil }
         progress = .acting
         notice = nil
         guard let fresh = await observeBeforeActing() else {
@@ -929,9 +973,9 @@ final class BlockedCardStore {
             return false
         }
         await waitOutGrace(for: shown, kind: fresh.result.dialog?.kind)
-        if program.pinsComposerToSession {
-            droidStepFocus = fresh.result.dialog?.focus.focusedOrdinal
-            droidStepText = fresh.result.dialog?.focus.inputText
+        if program.pinsComposerToSession || readRexRequests != nil {
+            expectedStepFocus = fresh.result.dialog?.focus.focusedOrdinal
+            expectedStepText = fresh.result.dialog?.focus.inputText
         }
         waitingWhenSent = waitingCalls(answering: fresh.result.dialog)
         guard case .sent = await send(plan.steps, to: shown) else { return false }
@@ -1147,13 +1191,17 @@ final class BlockedCardStore {
                         return .stopped
                     }
                     checked = check.last
-                    if program.pinsComposerToSession {
-                        droidStepFocus = checked?.result.dialog?.focus.focusedOrdinal
-                        droidStepText = checked?.result.dialog?.focus.inputText
+                    if program.pinsComposerToSession || readRexRequests != nil {
+                        expectedStepFocus = checked?.result.dialog?.focus.focusedOrdinal
+                        expectedStepText = checked?.result.dialog?.focus.inputText
                     }
                 }
             } catch {
                 if program.pinsComposerToSession { unconfirmedFingerprint = fingerprint }
+                if actingRexCard != nil, !(error is HerdrCoreChatTyping.Refusal) {
+                    holdAnsweredRexCall()
+                    unconfirmedFingerprint = fingerprint
+                }
                 finish(notice: Self.sendFailure(error))
                 return .stopped
             }
@@ -1164,11 +1212,12 @@ final class BlockedCardStore {
     /// Types over the dialog with `fingerprint`, or over a screen that shows none.
     private func type(_ typing: BlockedScreenIO.Typing, over fingerprint: DialogFingerprint?) async throws {
         let program = program
-        let expectedFocus = droidStepFocus
-        let expectedText = droidStepText
+        let checksFocus = program.pinsComposerToSession || readRexRequests != nil
+        let expectedFocus = expectedStepFocus
+        let expectedText = expectedStepText
         let check: @Sendable (ANSIScreen) -> Bool = { screen in
             let parsed = DialogObservation(screen: screen, program: program).result
-            if program.pinsComposerToSession {
+            if checksFocus {
                 guard let dialog = parsed.dialog, dialog.focus.focusedOrdinal == expectedFocus,
                       dialog.focus.inputText == expectedText else { return false }
             }
@@ -1179,9 +1228,57 @@ final class BlockedCardStore {
         if program.pinsComposerToSession {
             guard let card = actingDroidCard else { throw TransportError.cancelled }
             try await typeDroid(typing, on: card, whileShowing: check)
+        } else if let readRexRequests {
+            guard let card = actingRexCard, let session = actingSessionCheck, let request = card.request else {
+                throw TransportError.cancelled
+            }
+            let io = io
+            let verify: @Sendable (ANSIScreen) async -> Bool = { [weak self] screen in
+                guard check(screen), await session.verify(), let latest = try? await io.readScreen(), check(latest),
+                      let current = DialogObservation(screen: latest, program: program).result.dialog,
+                      let calls = await readRexRequests(), Self.uniqueRequest(for: current, in: calls) == request,
+                      let self, await self.stillAnswersRex(card) else { return false }
+                return true
+            }
+            if io.typeWhileShowing == nil {
+                guard try await verify(io.readScreen()) else { throw HerdrCoreChatTyping.Refusal(message: Self.changedMessage) }
+            }
+            try await io.type(typing, whileShowing: verify)
         } else {
-            try await io.type(typing, whileShowing: check)
+            let session = actingSessionCheck ?? shownSessionCheck
+            if captureSessionCheck != nil, session == nil { throw TransportError.cancelled }
+            try await io.type(typing, whileShowing: { screen in
+                guard check(screen) else { return false }
+                if let session { return await session.verify() }
+                return true
+            })
         }
+    }
+
+    private func beginRexAnswer(_ current: BlockedCard, from displayed: BlockedCard?) -> Bool {
+        guard readRexRequests != nil else { return true }
+        guard displayed == current, canAnswerRex(current.request?.callID, in: shownSessionCheck) else {
+            notice = Self.changedMessage
+            return false
+        }
+        actingRexCard = current
+        return true
+    }
+
+    private func canAnswerRex(_ id: String?, in session: RexSessionCheck?) -> Bool {
+        guard let id, let session else { return false }
+        return answeredRexCalls[session.sessionID]?.contains(id) != true
+    }
+
+    private func stillAnswersRex(_ card: BlockedCard) -> Bool {
+        !Task.isCancelled && activity != .unknown && actingRexCard == card
+            && card.conversationGeneration == inputConversationGeneration
+            && canAnswerRex(card.request?.callID, in: actingSessionCheck)
+    }
+
+    private func holdAnsweredRexCall() {
+        guard let id = actingRexCard?.request?.callID, let session = actingSessionCheck else { return }
+        answeredRexCalls[session.sessionID, default: []].insert(id)
     }
 
     private func typeDroid(_ typing: BlockedScreenIO.Typing, on card: BlockedCard,
@@ -1226,6 +1323,7 @@ final class BlockedCardStore {
             plan.confirmation.isMet(by: $0, fingerprint: fingerprint)
         }
         guard confirmation.isMet, let confirmed = confirmation.last else {
+            holdAnsweredRexCall()
             progress = .unconfirmed
             // The last read can show lines the first didn't, as OpenCode's
             // rule in place of the request once Always allow has focus.
@@ -1260,7 +1358,17 @@ final class BlockedCardStore {
 
     /// The open call `dialog` on screen asks about.
     private func matchingRequest(for dialog: BlockedDialog) -> ChatPendingRequest? {
-        BlockedRequestMatch.request(for: dialog, in: matchableRequests(for: dialog))
+        if readRexRequests != nil { return Self.uniqueRequest(for: dialog, in: pendingRequests) }
+        return BlockedRequestMatch.request(for: dialog, in: matchableRequests(for: dialog))
+    }
+
+    nonisolated private static func uniqueRequest(for dialog: BlockedDialog, in calls: [ChatPendingRequest]) -> ChatPendingRequest? {
+        let matches = BlockedRequestMatch.requests(answering: dialog, in: calls)
+        guard matches.count == 1, let request = matches.first, let id = request.callID, !id.isEmpty else { return nil }
+        if dialog.kind == .codexExec, request.toolName == "exec_command", dialog.subject.command != request.summary {
+            return nil
+        }
+        return request
     }
 
     /// The open calls `dialog` can be asking about, any whose card showed
@@ -1354,8 +1462,8 @@ final class BlockedCardStore {
     /// herdr has no status for, awaits its session, anything but the trust
     /// screen reads as no dialog: its start screen and lists are no prompt
     /// to answer.
-    @ObservationIgnored private var droidStepFocus: Int?
-    @ObservationIgnored private var droidStepText: String?
+    @ObservationIgnored private var expectedStepFocus: Int?
+    @ObservationIgnored private var expectedStepText: String?
     @ObservationIgnored private var observedDroidTarget: DroidDialogTarget?
     @ObservationIgnored private var actingDroidCard: BlockedCard?
     var hostName: String? { io.hostName }
@@ -1423,12 +1531,23 @@ final class BlockedCardStore {
 
     private func present(_ observation: DialogObservation) {
         let fingerprint = observation.result.fingerprint
-        if let seen = firstSeen, let fingerprint, seen.fingerprint.matches(fingerprint) {
+        let request = observation.result.dialog.flatMap(matchingRequest)
+        let changedCall = readRexRequests != nil && displayedRexCallID != request?.callID
+        if changedCall {
+            displayedRexCallID = request?.callID
+            degraded = nil
+            if progress == .unconfirmed, canAnswerRex(displayedRexCallID, in: shownSessionCheck) {
+                progress = .ready
+                unconfirmedFingerprint = nil
+            }
+        }
+        if !changedCall, let seen = firstSeen, let fingerprint, seen.fingerprint.matches(fingerprint) {
             // The same dialog, its focus perhaps moved: keep when it showed,
             // and the lines each read showed of it.
             firstSeen = (seen.fingerprint.merging(fingerprint), seen.at)
         } else if fingerprint != nil || firstSeen != nil {
             firstSeen = fingerprint.map { ($0, clock.now()) }
+            shownSessionCheck = fingerprint == nil ? nil : captureSessionCheck?()
             dialogGeneration += 1
             if let degraded, fingerprint.map(degraded.fingerprint.matches) != true { self.degraded = nil }
             if fingerprint != nil { isCollapsed = false }
@@ -1437,15 +1556,18 @@ final class BlockedCardStore {
         let next: Content
         switch observation.result {
         case .dialog(let dialog):
-            if let degraded, degraded.fingerprint.matches(dialog.fingerprint) {
+            if readRexRequests != nil,
+               !canAnswerRex(request?.callID, in: shownSessionCheck) || degraded?.fingerprint.matches(dialog.fingerprint) == true {
+                next = .unreadable
+            } else if let degraded, degraded.fingerprint.matches(dialog.fingerprint) {
                 next = .generic(Self.excerpt(of: dialog, on: observation.screen, reason: degraded.reason))
             } else {
-                let request = matchingRequest(for: dialog)
                 if let id = request?.callID { noteShown(dialog, forCall: id) }
-                next = .card(BlockedCard(target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
+                next = .card(BlockedCard(conversationGeneration: captureSessionCheck == nil ? nil : inputConversationGeneration,
+                    target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
             }
         case .unrecognized(let excerpt):
-            next = .generic(excerpt)
+            next = readRexRequests == nil ? .generic(excerpt) : .unreadable
         case .none:
             next = observation.activity == .blocked && !isQuiet ? .unreadable : .none
         }
@@ -1461,6 +1583,9 @@ final class BlockedCardStore {
     /// request, the newest turn's failure, or a likely failed model
     /// request.
     private func whyBlocked(on screen: ANSIScreen?) -> String? {
+        if readRexRequests != nil {
+            return String(localized: "Open this Agent’s terminal to review the current prompt. Chat needs one verified, unanswered request.")
+        }
         if program == .devin {
             if let screen, let hint = DevinInputBox.guidance(screen) { return hint }
             return latestFailure ?? String(localized: "Open this terminal to review Devin’s current prompt.")
@@ -1503,6 +1628,8 @@ final class BlockedCardStore {
         if notice != nil { notice = nil }
         isCollapsed = false
         firstSeen = nil
+        shownSessionCheck = nil
+        displayedRexCallID = nil
         degraded = nil
     }
 

@@ -1,0 +1,151 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "debugDylibSHA256": "f9b75bc7ebb9dd66953db74a611f80c6f52df5daf1d583e4f4203d9de99d9287",
+  "testExecutableSHA256": "a67b62e33ec16b1a8bf955e6743bdb7b59e54cd93336fb23d34529b4668fc3a8",
+  "simulator": "61405B4D-A169-4DC8-82E5-340694B46992",
+  "sshHost": "Disposable Debian 12.15 arm64",
+  "passingXCTestAttempts": [
+    {
+      "program": "Claude Code",
+      "version": "2.1.332",
+      "action": "Foreground Chat",
+      "bundle": "claude.xcresult",
+      "testSeconds": [
+        52.449
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Codex",
+      "version": "0.172.0",
+      "action": "Foreground Chat, fresh pair",
+      "bundle": "codex-new-pair/codex.xcresult",
+      "testSeconds": [
+        83.521
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Pi",
+      "version": "1.5.2",
+      "action": "Foreground Chat",
+      "bundle": "pi.xcresult",
+      "testSeconds": [
+        13.953
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Oh My Pi",
+      "version": "18.12.3",
+      "action": "Foreground Chat",
+      "bundle": "omp.xcresult",
+      "testSeconds": [
+        13.988
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Grok Build",
+      "version": "1.0.92",
+      "action": "Foreground Chat",
+      "bundle": "grok.xcresult",
+      "testSeconds": [
+        16.87
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Antigravity",
+      "version": "1.5.18",
+      "action": "Bound text and pending approval in Terminal",
+      "bundle": "antigravity.xcresult",
+      "testSeconds": [
+        5.112,
+        30.828
+      ],
+      "selected": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Claude Code",
+      "version": "2.1.332",
+      "action": "Repeated approval after a dropped response",
+      "bundle": "claude-dropped-approval.xcresult",
+      "testSeconds": [
+        67.067
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "program": "Codex",
+      "version": "0.172.0",
+      "action": "Repeated approval after a dropped response, Kitty encoded option one",
+      "bundle": "codex-kitty-dropped-approval.xcresult",
+      "testSeconds": [
+        23.673
+      ],
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "retainedFailedXCTestAttempts": [
+    {
+      "reason": "The native Codex attachment was pasted, then safely retained when the two-second submission window elapsed.",
+      "hostObservation": "codex-attachment-timeout-host.json",
+      "bundle": "codex.xcresult",
+      "testSeconds": [],
+      "selected": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0
+    },
+    {
+      "reason": "The original lab proxy rejected the native Kitty encoding of option one before forwarding an answer.",
+      "bundle": "codex-dropped-approval.xcresult",
+      "testSeconds": [],
+      "selected": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0
+    }
+  ],
+  "separateInteractiveObservation": {
+    "program": "Grok Build 1.0.92",
+    "action": "Native Stop from the iPhone",
+    "testDriverBundle": "grok-stop-gui-driver.xcresult",
+    "hostReceipt": "grok-stop-gui.json",
+    "userAssistantTarget": [
+      1,
+      0
+    ],
+    "userAssistantPeer": [
+      0,
+      0
+    ],
+    "desktopGridsAndOwnersUnchanged": true
+  },
+  "scope": "These are the Linux native Chat and approval selectors on this Simulator. The pure Rex Host, physical lost Enter response, and iPhone Antigravity approval receipts were recorded separately."
+}

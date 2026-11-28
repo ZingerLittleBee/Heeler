@@ -37,6 +37,8 @@ struct RexSSHLiveTests {
         let deviceKeySeed: String
         let socketPath: String
         let missingSocketPath: String
+        let inactiveSocketPaths: [String]?
+        let equivalentSocketPaths: [String]?
     }
 
     private struct Sessions: Decodable {
@@ -132,14 +134,19 @@ struct RexSSHLiveTests {
         let configuration = try configuration()
         let error = await failure(try settings(configuration, socketPath: configuration.missingSocketPath))
         #expect(error as? TransportError == .rexServerNotRunning(socketPath: configuration.missingSocketPath))
+        for path in configuration.inactiveSocketPaths ?? [] {
+            let refusal = await failure(try settings(configuration, port: configuration.refusingPort, socketPath: path))
+            #expect(refusal as? TransportError == .rexServerNotRunning(socketPath: path))
+        }
     }
 
     /// The second port's sshd forbids stream-local forwarding while Rex
     /// listens, which the socket check tells from a stopped server.
     @Test func anSSHServerThatForbidsForwardingIsNamed() async throws {
         let configuration = try configuration()
-        let error = await failure(
-            try settings(configuration, port: configuration.refusingPort, socketPath: configuration.socketPath))
-        #expect(error as? TransportError == .rexForwardingRefused(socketPath: configuration.socketPath))
+        for spelling in [configuration.socketPath] + (configuration.equivalentSocketPaths ?? []) {
+            let error = await failure(try settings(configuration, port: configuration.refusingPort, socketPath: spelling))
+            #expect(error as? TransportError == .rexForwardingRefused(socketPath: spelling))
+        }
     }
 }

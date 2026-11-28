@@ -2,6 +2,7 @@
 """Exercise Devin's bounded read-only store query with independent session graphs."""
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -67,6 +68,32 @@ class DevinSessionRead(unittest.TestCase):
         self.assertEqual([(e["offset"], e["row"]["id"], e["row"]["text"]) for e in events], [(0, "a-1", "")])
         self.assertEqual([c["id"] for c in events[0]["row"]["calls"]], ["first"])
 
+    def test_active_plan_file_needs_the_matching_parent_write_result_and_exact_document(self):
+        plan = "1. Write `a b`."
+        path = "/home/test/.devin/plans/plan-0123456789abcdef.md"
+        write = {"id": "save", "name": "write_plan", "arguments": {"title": "Test", "summary": "One step", "plan": plan}}
+        exit_plan = {"id": "exit", "name": "exit_plan_mode", "arguments": {"plan": plan}}
+        operation = {"operation": "create", "file_path": path, "contents": "# Test\n\nOne step\n\n" + plan + "\n"}
+        meta = {"extensions": {"chisel/tool_result_meta": {"kind": "edit", "success": True},
+                               "chisel/file_operations": [operation]}}
+        self.put(1, None, "assistant", "", calls=[write])
+        self.put(2, 1, "tool", "File created successfully at: " + path, result_for="save", meta=meta)
+        self.put(3, 2, "assistant", "", calls=[exit_plan])
+        def receipt():
+            return self.page(offset=2, limit=1)["rows"][0]["calls"][0].get("confirmedPlanFile")
+        self.assertEqual(receipt(), {"path": "~/.devin/plans/plan-0123456789abcdef.md",
+                                     "sha256": hashlib.sha256(plan.encode()).hexdigest()})
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_call_id','different') WHERE node_id=2")
+        self.assertIsNone(receipt())
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_call_id','save') WHERE node_id=2")
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_calls[0].arguments.plan',?) WHERE node_id=3",
+                        (plan.replace("a b", "ab"),))
+        self.assertIsNone(receipt())
+        self.db.execute("UPDATE message_nodes SET chat_message=json_set(chat_message,'$.tool_calls[0].arguments.plan',?) WHERE node_id=3", (plan,))
+        self.db.execute("""UPDATE message_nodes SET chat_message=json_set(chat_message,
+                        '$.metadata.extensions."chisel/file_operations"[0].contents','replaced') WHERE node_id=2""")
+        self.assertIsNone(receipt())
+
     def test_open_tool_is_unique_and_has_all_its_approval_arguments(self):
         self.put(3, None, "user", "run it", meta={"is_user_input": True})
         self.put(4, 3, "assistant", "", calls=[dict(id="call-a", name="exec", arguments={"command": "pwd", "env": {"MODE": "something else"}})])
@@ -129,6 +156,35 @@ class DevinSessionRead(unittest.TestCase):
         self.assertEqual([r["role"] for r in rows], ["user", "subagent_report"])
         self.assertEqual((rows[1]["agentID"], rows[1]["text"]), ("123abcd", "Report"))
         self.assertEqual(rows[1]["childReports"], {"123abcd": "Late report"})
+
+
+    def test_automatic_launches_keep_their_calls_and_actual_results_across_pages(self):
+        meta = {"extensions": {"chisel/tool_result_meta": {"kind": "execute", "success": True}}}
+        shells = ("123abc", "456def")
+        calls = [dict(id="launch" + shell, name="exec", arguments={"command": "echo " + shell, "timeout": 0})
+                 for shell in shells]
+        calls.append(dict(id="foreground", name="exec", arguments={"command": "echo unrelated", "timeout": 100}))
+        self.put(1, None, "assistant", "", calls=calls)
+        for node, shell in enumerate(shells, 2):
+            self.put(node, node - 1, "tool", "Command running in background with ID: " + shell,
+                     result_for="launch" + shell, meta=meta)
+        self.put(4, 3, "assistant", "", calls=[dict(id="lookup" + shell, name="get_output", arguments={"shell_id": shell})
+                                               for shell in reversed(shells)])
+        self.put(5, 4, "tool", "乙" * 9000 + "\nExit code: 17", result_for="lookup456def", meta=meta)
+        self.put(6, 5, "tool", "A\nExit code: 0", result_for="lookup123abc", meta=meta)
+        self.put(7, 6, "assistant", "tail")
+        self.db.execute("UPDATE sessions SET main_chain_id=7 WHERE id='a'")
+        recent = self.page()["rows"]
+        replay = [e["row"] for e in self.page(limit=1)["rows"][0]["earlierWork"]]
+        for rows in (recent, replay):
+            launches = [c for c in rows[0]["calls"] if c.get("requestsAutomaticShell")]
+            self.assertEqual([(c["id"], c["arguments"].get("timeout")) for c in launches],
+                             [("launch123abc", 0), ("launch456def", 0)])
+            by_call = {r["resultFor"]: r for r in rows if r["role"] == "tool"}
+            self.assertTrue(all(r.get("isExecutionResult") for r in by_call.values()))
+            self.assertEqual(by_call["lookup456def"]["shellExit"], dict(code=17, outputLength=9000))
+            self.assertEqual(by_call["lookup123abc"]["shellExit"], dict(code=0, outputLength=1))
+        self.assertNotIn("foreground", {c["id"] for c in replay[0]["calls"]})
 
 
 if __name__ == "__main__":

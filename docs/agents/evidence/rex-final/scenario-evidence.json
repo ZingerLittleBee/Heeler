@@ -1,0 +1,2222 @@
+{
+  "candidate": "5c655f380d6cf63629f69d7436666ddba80f29c9",
+  "methodLedger": "results.json",
+  "productSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+  "ordinaryAppCases": {
+    "pad-banner-done": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-done-9u_i1ovl/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-done-9u_i1ovl/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:54:52.819+08:00",
+      "end": "2026-11-28T00:55:26.820+08:00"
+    },
+    "pad-banner-off": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-2r30sh1p/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-2r30sh1p/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:52:53.778+08:00",
+      "end": "2026-11-28T00:53:39.429+08:00"
+    },
+    "pad-banner-off-again": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-again-wcq09758/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-again-wcq09758/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:55:27.158+08:00",
+      "end": "2026-11-28T00:56:11.850+08:00"
+    },
+    "pad-banner-repeat": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-repeat-igazqegw/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-repeat-igazqegw/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:53:39.759+08:00",
+      "end": "2026-11-28T00:54:24.263+08:00"
+    },
+    "pad-banner-tap": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-tap-18tvkh2u/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-tap-18tvkh2u/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:54:24.623+08:00",
+      "end": "2026-11-28T00:54:52.492+08:00"
+    },
+    "pad-end": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-end-evatl3kj/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-end-evatl3kj/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:56:12.209+08:00",
+      "end": "2026-11-28T00:56:42.302+08:00"
+    },
+    "pad-files-skill": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-files-skill-usddvvyk/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-files-skill-usddvvyk/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:51:37.463+08:00",
+      "end": "2026-11-28T00:52:14.878+08:00"
+    },
+    "pad-host": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-host-6t13bwmg/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-host-6t13bwmg/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:49:50.938+08:00",
+      "end": "2026-11-28T00:50:48.886+08:00"
+    },
+    "pad-real-pi-files-skill": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-real-pi-files-skill-k1434taq/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-real-pi-files-skill-k1434taq/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:52:15.283+08:00",
+      "end": "2026-11-28T00:52:53.443+08:00"
+    },
+    "pad-worktree": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-worktree-izimyk0y/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-worktree-izimyk0y/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:50:49.274+08:00",
+      "end": "2026-11-28T00:51:37.070+08:00"
+    },
+    "phone-host": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-host-wlkltd0s/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-host-wlkltd0s/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:58:13.121+08:00",
+      "end": "2026-11-28T00:58:54.690+08:00"
+    },
+    "phone-new-workspace": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-new-workspace-vttouf6m/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-new-workspace-vttouf6m/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T01:08:56.369+08:00",
+      "end": "2026-11-28T01:09:43.529+08:00"
+    },
+    "phone-pi-names": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/titlerun/phone-pi-names-6u9h8rz7/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/titlerun/phone-pi-names-6u9h8rz7/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "3bd57f6b283e00c1be0cafaae96eabad468970bc",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T01:09:46.686+08:00",
+      "end": "2026-11-28T01:10:24.569+08:00"
+    }
+  },
+  "screenshots": {
+    "iphone-linux-capabilities.png": {
+      "raw": "build/heeler-lab-gui/phone/e-9f99d05c-linux-features-visible.png",
+      "sha256": "bac2df3844278e8252c63dde4b053aa37d2fb0e452424b489ee878e326d32ad2",
+      "case": "phone-host"
+    },
+    "iphone-verified-shell.png": {
+      "raw": "build/heeler-lab-gui/phone/e-9f99d05c-new-shell-marked.png",
+      "sha256": "a18852d988f3c3c4cda2d0b0a835cc3bd8cae7b583f4fdc628bfa9d5e9b5af83",
+      "case": "phone-new-workspace"
+    },
+    "iphone-pi-title.png": {
+      "raw": "build/heeler-lab-gui/phone/e-3bd57f6b-pi-official-title.png",
+      "sha256": "0dad9090566e2cd0953abe50599369e1f4ad2594c06f2265a5dcacf27e3bbfb6",
+      "case": "phone-pi-names"
+    },
+    "ipad-worktree.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-worktree-preset-form.png",
+      "sha256": "6b0597cfb8f98d2ddced102d2f45b7bf8eed1b793854f7b42bb7f363f478afe7",
+      "case": "pad-worktree"
+    },
+    "ipad-skill-draft.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-real-pi-selected-skill-draft.png",
+      "sha256": "44a7b9dfb2d0bb3ee651f6b403150d168519bfca9d77a3bc65bdb8d1b11ed8aa",
+      "case": "pad-real-pi-files-skill"
+    },
+    "ipad-blocked-recipient.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-tap-recipient.png",
+      "sha256": "d8f8686583d5b3e655a065eb7c5ff4a71bd1240951ef968c227a6300a185e9b9",
+      "case": "pad-banner-tap"
+    },
+    "ipad-done-recipient.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-done-recipient.png",
+      "sha256": "33c4bf81ef6f7e7910a71ada143668b9849097a5617dc7ed823ef95238c8f963",
+      "case": "pad-banner-done"
+    },
+    "iphone-grok-stop.png": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-mac-grok-stop-q5c655aa0671f0-active.png",
+      "sha256": "9d2f8fbe4b58bb597dda787592d4a9bc54e70d7a930a3bd1b827575761c013c0",
+      "case": "Grok native Stop on macOS"
+    }
+  },
+  "factory": {
+    "mac": {
+      "running": {
+        "raw": "build/heeler-lab-evidence/chat/final-5c655f380-mac-factory-running-host.json",
+        "parentOfficialReply": true,
+        "modelIDs": [
+          "claude-opus-5-5"
+        ],
+        "sessionSHA256": "f870202ea0261cec0fee3cfd58ff810dccbfd6422ee625b66c0e68ee37ee10e7",
+        "processes": [
+          {
+            "officialCall": "5ca339ee-94c5-4e0a-a2cd-312f767258e4-1",
+            "officialPID": 65761,
+            "processStart": "Sat Nov 28 01:32:47 2026",
+            "processCommandContainsExactFixtureProgram": true,
+            "processCWDMatchesOfficialSession": true,
+            "officialOutputPathSHA256": "90c213806ed8ac1aa67c20a84ddd34c43b44643aa7ce41f673e54379c8f18d52"
+          },
+          {
+            "officialCall": "5ca339ee-94c5-4e0a-a2cd-312f767258e4-2",
+            "officialPID": 65762,
+            "processStart": "Sat Nov 28 01:32:47 2026",
+            "processCommandContainsExactFixtureProgram": true,
+            "processCWDMatchesOfficialSession": true,
+            "officialOutputPathSHA256": "2c359bc0387c190f5449f60f4c75c499c92e2795b164c5b23396d98f5d1e2e6c"
+          }
+        ],
+        "outputWitnesses": []
+      },
+      "finished": {
+        "raw": "build/heeler-lab-evidence/chat/final-5c655f380-mac-factory-finished-host.json",
+        "parentOfficialReply": true,
+        "modelIDs": [
+          "claude-opus-5-5"
+        ],
+        "sessionSHA256": "f870202ea0261cec0fee3cfd58ff810dccbfd6422ee625b66c0e68ee37ee10e7",
+        "processes": [],
+        "outputWitnesses": [
+          {
+            "innerIDHash": "315315a647f5168341747485687b6de493faaeb6499c6d7613d8900ab5b26316",
+            "officialCallRow": 6,
+            "officialAcknowledgementRow": 8,
+            "officialCompletionRow": 15,
+            "reportedExit": 0,
+            "stoppedBy": "process",
+            "outputBytes": 35,
+            "outputSHA256": "557134e6c22f765d9eff52ad2ccb454d9ce1562b12c997ef981fb49f7f6c443f"
+          },
+          {
+            "innerIDHash": "bf5db632e58c86ba59eed5b93e7438e96061068087da97f5edd131f9948eb51b",
+            "officialCallRow": 7,
+            "officialAcknowledgementRow": 9,
+            "officialCompletionRow": 17,
+            "reportedExit": 17,
+            "stoppedBy": "process",
+            "outputBytes": 37,
+            "outputSHA256": "592c7065e4dd5624e1d5dc34e082567f6e511e4fc5246559e52fdb0966f1c3fd"
+          }
+        ]
+      }
+    },
+    "linux": {
+      "running": {
+        "raw": "build/heeler-lab-evidence/chat/final-5c655f380-linux-factory-running-host.json",
+        "parentOfficialReply": true,
+        "modelIDs": [
+          "claude-opus-5-5"
+        ],
+        "sessionSHA256": "ec28e925a070c226fe5d55d57c6376e50563cedd9c1e354e2f9e1a9797a928a0",
+        "processes": [
+          {
+            "officialCall": "0a5b3010-d0f3-412c-9c54-bbb45f436745-1",
+            "officialPID": 1410857,
+            "processStart": "5971917",
+            "processCommandContainsExactFixtureProgram": true,
+            "processCWDMatchesOfficialSession": true,
+            "officialOutputPathSHA256": "ff2a2cb1127ec99940f03e0c61017635cfd283b2f067ea60c29a315eaa8d81b6"
+          },
+          {
+            "officialCall": "0a5b3010-d0f3-412c-9c54-bbb45f436745-2",
+            "officialPID": 1410858,
+            "processStart": "5971917",
+            "processCommandContainsExactFixtureProgram": true,
+            "processCWDMatchesOfficialSession": true,
+            "officialOutputPathSHA256": "f77c654c794f88b2c0a40d903bc23e71d484ad1fcb70d4dc9f6331738a69ed38"
+          }
+        ],
+        "outputWitnesses": []
+      },
+      "finished": {
+        "raw": "build/heeler-lab-evidence/chat/final-5c655f380-linux-factory-finished-host.json",
+        "parentOfficialReply": true,
+        "modelIDs": [
+          "claude-opus-5-5"
+        ],
+        "sessionSHA256": "ec28e925a070c226fe5d55d57c6376e50563cedd9c1e354e2f9e1a9797a928a0",
+        "processes": [],
+        "outputWitnesses": [
+          {
+            "innerIDHash": "ab17e04f24ef5870a7842d825583341934c3c3c0709e671f1c425003c248de36",
+            "officialCallRow": 6,
+            "officialAcknowledgementRow": 8,
+            "officialCompletionRow": 15,
+            "reportedExit": 0,
+            "stoppedBy": "process",
+            "outputBytes": 35,
+            "outputSHA256": "db66ac5b68ee8356b5d3da392c8ba01248885de25c34b2fa92170dbfdf2246a4"
+          },
+          {
+            "innerIDHash": "e051830b33ed8885a054d5432ecadce771dd9b7653461c622bb3db3eb751a48f",
+            "officialCallRow": 7,
+            "officialAcknowledgementRow": 9,
+            "officialCompletionRow": 17,
+            "reportedExit": 17,
+            "stoppedBy": "process",
+            "outputBytes": 37,
+            "outputSHA256": "9e16cb5774da9f816461928b15087f1ac0616f9950b8a267721d588733051d50"
+          }
+        ]
+      }
+    }
+  },
+  "devin": {
+    "mac": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-mac-devin-rex-unified-phone-fresh-phone-host.json",
+      "distinctMobileRequests": 3,
+      "jobs": {
+        "success": {
+          "exitCode": 0,
+          "retainedToolContentCharacters": 45,
+          "independentMarkedOutput": true
+        },
+        "failure": {
+          "exitCode": 17,
+          "retainedToolContentCharacters": 2268,
+          "independentMarkedOutput": true,
+          "originalSubprocessBytes": 12322,
+          "originalSubprocessSHA256": "5cc9830f253eccd7fdb8f13a8ae9e190a3a9e350eb4f83bd3bce4b0a3716caed"
+        }
+      },
+      "child": {
+        "acknowledgementDatabaseRow": 2104,
+        "parentFinalDatabaseRow": 2115,
+        "matchingChildRelayDatabaseRow": 2121,
+        "independentReleaseWitness": true
+      }
+    },
+    "linux": {
+      "raw": "build/heeler-lab-evidence/u5c655-devin-independent-foregrounds-after-5c655f380.json",
+      "distinctRegisteredSlugs": 6,
+      "distinctInteractivePIDs": 6,
+      "hosts": {
+        "plan": {
+          "registeredSlugHash": "55208666359d",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 3
+        },
+        "stop": {
+          "registeredSlugHash": "47c4c5c46c98",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 3
+        },
+        "normal": {
+          "registeredSlugHash": "7b347d185131",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 2
+        },
+        "phone": {
+          "registeredSlugHash": "6b28152584a7",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 5
+        },
+        "cards": {
+          "registeredSlugHash": "d04460b6b1d9",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 4
+        },
+        "peer": {
+          "registeredSlugHash": "9c483ede140e",
+          "sameDirectForeground": true,
+          "directoryMatches": true,
+          "ownRegistrationResponses": 1,
+          "otherScenarioNonceMentions": 0,
+          "otherRegistrationMarkerMentions": 0,
+          "officialUsers": 1
+        }
+      },
+      "phoneBundle": "build/heeler-lab-evidence/unified-5c655f380-u5c655-phone.xcresult"
+    }
+  },
+  "grokStop": {
+    "mac": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-mac-grok-stop-q5c655aa0671f0-host.json",
+      "nativeStopTapped": true,
+      "providerCancelledBeforeRelease": true,
+      "target": {
+        "user": 1,
+        "assistant": 0
+      },
+      "peer": {
+        "user": 0,
+        "assistant": 0
+      }
+    },
+    "linux": {
+      "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/iso5c65-grok-stop/grok-stop-gui.json",
+      "nativeStopTapped": true,
+      "providerCancelledBeforeRelease": true,
+      "target": {
+        "user": 1,
+        "assistant": 0
+      },
+      "peer": {
+        "user": 0,
+        "assistant": 0
+      }
+    }
+  },
+  "ampTerminal": {
+    "mac": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-mac-amp-terminal-host.json",
+      "current": {
+        "user": 1,
+        "assistant": 1,
+        "exactUser": 1,
+        "exactAssistant": 1,
+        "seedRoles": [
+          1,
+          1
+        ],
+        "historyUnchanged": false
+      },
+      "peer": {
+        "user": 0,
+        "assistant": 0,
+        "exactUser": 0,
+        "exactAssistant": 0,
+        "seedRoles": [
+          1,
+          1
+        ],
+        "historyUnchanged": true
+      },
+      "officialPairMatches": true,
+      "promptSHA256": "f3e5d7deaaaad60778b5af7177adc0f7ea64ce2589be85d4e3b2ed7199189985"
+    },
+    "linux": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-linux-amp-terminal-exports.json",
+      "priorAndPeerUnchanged": true,
+      "officialExports": {
+        "prior": {
+          "messageHash": "0d3b7ca41f6736ef309cc00e6ce09fe719a1754e842bbdbcb07da04d185988db",
+          "uniqueThread": true,
+          "markerCounts": {
+            "user": 0,
+            "assistant": 0
+          },
+          "exactUser": 0,
+          "exactAssistant": 0
+        },
+        "current": {
+          "messageHash": "74dea14b839450b13f3364cc169862ac358b798c888839b9ef61b632dd878a85",
+          "uniqueThread": true,
+          "markerCounts": {
+            "user": 1,
+            "assistant": 1
+          },
+          "exactUser": 1,
+          "exactAssistant": 1
+        },
+        "peer": {
+          "messageHash": "b222ace00c7f256bdc1761b4c6a029a3735f6142bd1575f699965bfea73e492a",
+          "uniqueThread": true,
+          "markerCounts": {
+            "user": 0,
+            "assistant": 0
+          },
+          "exactUser": 0,
+          "exactAssistant": 0
+        }
+      }
+    }
+  },
+  "github": {
+    "mac-approve": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-h5c655-mac-github-approve-host.json",
+      "before": 0,
+      "after": 1,
+      "client": "GitHub CLI 2.106.0",
+      "bodySHA256": "edfaa4ddcab6c1e52c9ff83ac27e376fac1a93faeacb12bb091e047ac19008cb",
+      "serverHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "requestHead": null,
+      "mergeMethod": null,
+      "action": "approve"
+    },
+    "mac-merge": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-h5c655-mac-github-merge-host.json",
+      "before": 1,
+      "after": 2,
+      "client": "GitHub CLI 2.106.0",
+      "bodySHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "serverHead": "dddddddddddddddddddddddddddddddddddddddd",
+      "requestHead": "dddddddddddddddddddddddddddddddddddddddd",
+      "mergeMethod": "SQUASH",
+      "action": "merge"
+    },
+    "mac-comment": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-t5c655-mac-github-comment-host.json",
+      "before": 0,
+      "after": 1,
+      "client": "GitHub CLI 2.106.0",
+      "bodySHA256": "b0ae958d5e5ec28eaa12c00f9e4a928ac68faa41c70732005252d6c81201a460",
+      "action": "comment"
+    },
+    "linux-approve": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-h5c655-linux-github-approve-host.json",
+      "before": 0,
+      "after": 1,
+      "client": "GitHub CLI 2.23.0",
+      "bodySHA256": "4cefaf4520fe4baa506a68fdb43b71208496bf61f63f40447c1d4f76c854fd5a",
+      "serverHead": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "requestHead": null,
+      "mergeMethod": null,
+      "action": "approve"
+    },
+    "linux-merge": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-h5c655-linux-github-merge-host.json",
+      "before": 1,
+      "after": 2,
+      "client": "GitHub CLI 2.23.0",
+      "bodySHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "serverHead": "dddddddddddddddddddddddddddddddddddddddd",
+      "requestHead": "dddddddddddddddddddddddddddddddddddddddd",
+      "mergeMethod": "SQUASH",
+      "action": "merge"
+    },
+    "linux-comment": {
+      "raw": "build/heeler-lab-evidence/unified-5c655f380-u5c655-linux-github-comment-host.json",
+      "before": 3,
+      "after": 4,
+      "client": "GitHub CLI 2.23.0",
+      "bodySHA256": "61e340b8e5aa50bb00eec391d85aa12df611667b34134588dc4f035303aa54ad",
+      "action": "comment"
+    }
+  },
+  "banner": {
+    "off": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-banner-off.json",
+      "mode": "off",
+      "triggerStates": [
+        {
+          "observed": "2026-11-27T16:53:15.475+00:00",
+          "action": "blocked",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:14:23.069556277Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:53:16.090+00:00",
+          "action": "blocked",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:53:15.990416999Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        }
+      ],
+      "risingEdges": 0,
+      "sameBlock": true
+    },
+    "repeat": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-banner-repeat.json",
+      "mode": "repeat",
+      "triggerStates": [
+        {
+          "observed": "2026-11-27T16:54:00.008+00:00",
+          "action": "blocked",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:53:38.141167807Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:54:00.604+00:00",
+          "action": "blocked",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:00.512082377Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        }
+      ],
+      "risingEdges": 1,
+      "nativeRepeatEvents": [
+        {
+          "observed": "2026-11-27T16:54:00.604+00:00",
+          "action": "blocked",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:00.512082377Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        },
+        {
+          "observed": "2026-11-27T16:54:04.414+00:00",
+          "action": "repeat",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:00.512082377Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        },
+        {
+          "observed": "2026-11-27T16:54:04.684+00:00",
+          "action": "repeat",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:04.520566465Z",
+          "pid": 15211,
+          "message": "Heeler lab repeat 4461615152"
+        }
+      ],
+      "sameBlock": true
+    },
+    "tap": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-banner-tap.json",
+      "mode": "tap",
+      "triggerStates": [
+        {
+          "observed": "2026-11-27T16:54:43.645+00:00",
+          "action": "blocked",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:23.090523288Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:54:44.233+00:00",
+          "action": "blocked",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:44.150629372Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        }
+      ],
+      "risingEdges": 1,
+      "tappedAtSeconds": 5.46,
+      "sameBlock": true
+    },
+    "done": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-banner-done.json",
+      "mode": "done",
+      "triggerStates": [
+        {
+          "observed": "2026-11-27T16:55:12.968+00:00",
+          "action": "done",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:54:51.316517044Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:55:13.577+00:00",
+          "action": "done",
+          "state": "working",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:55:13.478591662Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:55:18.641+00:00",
+          "action": "done",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:55:18.502489843Z",
+          "pid": 15211,
+          "message": null
+        }
+      ],
+      "risingEdges": 1,
+      "tappedAtSeconds": 10.58,
+      "sameBlock": true
+    },
+    "off-again": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-banner-off-again.json",
+      "mode": "off-again",
+      "triggerStates": [
+        {
+          "observed": "2026-11-27T16:55:47.982+00:00",
+          "action": "blocked",
+          "state": "done",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:55:18.502489843Z",
+          "pid": 15211,
+          "message": null
+        },
+        {
+          "observed": "2026-11-27T16:55:48.573+00:00",
+          "action": "blocked",
+          "state": "blocked",
+          "effectiveApp": "pi",
+          "updatedAt": "2026-11-27T16:55:48.486318987Z",
+          "pid": 15211,
+          "message": "Heeler lab confirmation A"
+        }
+      ],
+      "risingEdges": 0,
+      "sameBlock": true
+    }
+  },
+  "droidTestDrivers": [
+    {
+      "candidate": "5c655f380d6cf63629f69d7436666ddba80f29c9",
+      "testSource": "3193521b2d7edef70c896dfa17cb31f75cc22edb",
+      "debugDylibSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "appExecutableSHA256": "ba1b1df4aba20201b578d6b38eda19199e3e3a9b3880c8ed54916284764d3ed1",
+      "appResourceFilesChecked": 931,
+      "unchangedAppFiles": true,
+      "testExecutableSHA256": "3fabca6c355cd4e994982fcc182b405be31f8fe6be598359898225f316230f52",
+      "xctestrunSHA256": "298006c8745d675b649cd6d37f973768a330e9834758f9c701751ff51f8b3f48"
+    },
+    {
+      "candidate": "5c655f380d6cf63629f69d7436666ddba80f29c9",
+      "testSource": "65bc7639fd987e2986be51a100ad96f95df2e57b",
+      "debugDylibSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "appExecutableSHA256": "ba1b1df4aba20201b578d6b38eda19199e3e3a9b3880c8ed54916284764d3ed1",
+      "appResourceFilesChecked": 931,
+      "unchangedAppFiles": true,
+      "testExecutableSHA256": "36472da26b56c39839ff2528526504e0b372c9824abea9fdfb0ae8e600106ddc",
+      "xctestrunSHA256": "298006c8745d675b649cd6d37f973768a330e9834758f9c701751ff51f8b3f48"
+    }
+  ],
+  "ipadWindow": {
+    "raw": "build/heeler-lab-gui/pad/e-9f99d05c-host-half-window-frames.json",
+    "observedAt": "2026-11-28T00:50:08.546+08:00",
+    "displayPoints": [
+      1133,
+      744
+    ],
+    "windowFrames": {
+      "dev.bybee.heeler": [
+        0.0,
+        0.0,
+        561.5,
+        744.0
+      ]
+    }
+  },
+  "ipadSkill": {
+    "raw": "build/heeler-lab-gui/pad/e-9f99d05c-real-pi-result.json",
+    "program": "pi",
+    "sendTapped": false,
+    "invocationInTerminal": false,
+    "historiesUnchanged": {
+      "target": true,
+      "neighbor": true
+    }
+  },
+  "phoneTitle": {
+    "raw": "build/heeler-lab-gui/phone/e-3bd57f6b-pi-title-official.json",
+    "surface": "Direct keys in the selected Agent Terminal",
+    "agentLabel": "heeler-lab-e-pi-manager-3bd57f6b",
+    "officialTitle": [
+      "heeler-lab-3bd57f6b-conversation"
+    ],
+    "peerOfficialTitles": []
+  },
+  "ordinaryAppCaseLinkage": "The fixture identifier labels the private accounts and files. The observer checked the installed application digest for each case. The original app SHA appears in each runtime receipt.",
+  "lostEnter": {
+    "mac": {
+      "raw": "build/heeler-lab-evidence/final-5c655f380-receipt-mac-host.json",
+      "wire": {
+        "matchingPastes": 1,
+        "enterRequests": 1,
+        "droppedResponses": 1
+      }
+    },
+    "linux": {
+      "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-lost-enter/after.json",
+      "wire": {
+        "matchingPastes": 1,
+        "enterRequests": 1,
+        "droppedResponses": 1
+      },
+      "verifiedStagedFileCount": 2,
+      "staged": [
+        {
+          "size": 24,
+          "sha256": "c6948166a0b497e8d17e7340bd1e8b8374044baeb96d0e67972fb5469cae3162"
+        },
+        {
+          "size": 67,
+          "sha256": "d44c0303173ecdb8ba72a7ab688f020583b31865537e2f9ab57e56aeec687807"
+        }
+      ],
+      "transcripts": {
+        "target": {
+          "bytes": 4156,
+          "fileSHA256": "3543d9ecd9fcfe6b8fdd19f7da75579466adb0a92b966ba125ab13cb0fefb985",
+          "markerMessageCounts": {
+            "user": 1,
+            "assistant": 1
+          },
+          "markedUserImageParts": 0
+        },
+        "peer": {
+          "bytes": 3151,
+          "fileSHA256": "3859e431704dab51d48a3e9c759c263dde047d7865173f99f8238539b6c2d4d3",
+          "markerMessageCounts": {
+            "user": 0,
+            "assistant": 0
+          },
+          "markedUserImageParts": 0
+        }
+      }
+    }
+  },
+  "terminalHandover": {
+    "mac": {
+      "raw": "build/heeler-lab-evidence/final-5c655f380-takeover-mac-host.json",
+      "wire": {
+        "acceptedPastes": 1,
+        "releasedPasteReceipts": 1,
+        "mobileAfterPaste": [],
+        "peerWrites": 0,
+        "desktopTextVerifiedBeforeRelease": true
+      },
+      "targetAndPeer": {
+        "target": {
+          "sameShellPID": true,
+          "exactDesktopText": true,
+          "commandExecuted": false
+        },
+        "peer": {
+          "sameShellPID": true,
+          "exactDesktopText": true,
+          "commandExecuted": false
+        }
+      }
+    },
+    "linux": {
+      "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-terminal-takeover/after.json",
+      "wire": {
+        "acceptedPastes": 1,
+        "releasedPasteReceipts": 1,
+        "mobileAfterPaste": [],
+        "peerWrites": 0,
+        "desktopTextVerifiedBeforeRelease": true
+      },
+      "targetAndPeer": {
+        "target": {
+          "sameShellPID": true,
+          "exactDesktopText": true,
+          "commandExecuted": false
+        },
+        "peer": {
+          "sameShellPID": true,
+          "exactDesktopText": true,
+          "commandExecuted": false
+        }
+      }
+    }
+  },
+  "repeatedApproval": {
+    "linux-claude": {
+      "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-approval-claude/after.json",
+      "wire": {
+        "targetWrites": 1,
+        "peerWrites": 0,
+        "successfulTargetResponses": 1,
+        "droppedResponses": 1
+      },
+      "official": {
+        "targetCalls": 1,
+        "targetResults": 1,
+        "peerContainsCall": false,
+        "peerContainsMarker": false
+      },
+      "expectedFileMatches": true,
+      "callIdSHA256": "17588c03ebc7be90249a4f622c6de124c1866fae58de8e598d20ce395322ab79",
+      "targetSHA256": "f08aee4d1a80626bd836c07459d72621a4a0ea1158ee45409b07ea041d98cfc4",
+      "peerSHA256": "6e903c8ba7c1a2b51664d83c38c7e30595e6787313f0c741a9d2b2827670e50c"
+    },
+    "mac-claude": {
+      "run": "build/heeler-lab-evidence/native-chat/5c655f380-mac-aclaude-q5c65583860213.xcresult",
+      "targetWrites": 1,
+      "peerWrites": 0,
+      "droppedResponses": 1,
+      "successfulTargetResponses": 1,
+      "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-approval-official-q5c65583860213/claude-receipt.json",
+      "storeInvocations": 3,
+      "sameSnapshot": true,
+      "officialTranscripts": {
+        "target": {
+          "matchingOfficialCalls": 1,
+          "matchingOfficialResults": 1,
+          "officialOutcomes": [
+            "allowed"
+          ],
+          "matchingMarkerPresent": true
+        },
+        "peer": {
+          "matchingOfficialCalls": 0,
+          "matchingOfficialResults": 0,
+          "officialOutcomes": [],
+          "matchingMarkerPresent": false
+        }
+      },
+      "approvedOutputFileSHA256": "57765096c12864496c8730ee9c0323ccf9855863843fa80b08e63c3d84c687a5"
+    },
+    "linux-codex": {
+      "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-approval-codex/after.json",
+      "wire": {
+        "targetWrites": 1,
+        "peerWrites": 0,
+        "successfulTargetResponses": 1,
+        "droppedResponses": 1
+      },
+      "official": {
+        "targetCalls": 1,
+        "targetResults": 1,
+        "peerContainsCall": false,
+        "peerContainsMarker": false
+      },
+      "expectedFileMatches": true,
+      "callIdSHA256": "3a6370d7bf1d70025774852d33019811dd9ec5f926462a23e85453d9ae1ed5f2",
+      "targetSHA256": "73a3c8f17446208579d5a58fde9964078ab31d4094d5ebda9e82c12ad4bcba12",
+      "peerSHA256": "34e3392d784b8d87b8f0a96fa4ef646715caffc134bc582f3663fc25ce9ba3e6"
+    },
+    "mac-codex": {
+      "run": "build/heeler-lab-evidence/native-chat/5c655f380-mac-acodex-q5c655bbf6a64c.xcresult",
+      "targetWrites": 1,
+      "peerWrites": 0,
+      "droppedResponses": 1,
+      "successfulTargetResponses": 1,
+      "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-approval-official-q5c655bbf6a64c/codex-receipt.json",
+      "storeInvocations": 3,
+      "sameSnapshot": true,
+      "officialTranscripts": {
+        "target": {
+          "matchingOfficialCalls": 1,
+          "matchingOfficialResults": 1,
+          "officialOutcomes": [
+            "allowed"
+          ],
+          "matchingMarkerPresent": true
+        },
+        "peer": {
+          "matchingOfficialCalls": 0,
+          "matchingOfficialResults": 0,
+          "officialOutcomes": [],
+          "matchingMarkerPresent": false
+        }
+      },
+      "approvedOutputFileSHA256": "a26d5435ce300b095711358d646eced3ba68c6a1e9b84efd3e96379e701fc4ef"
+    }
+  },
+  "physicalDeviceAvailability": {
+    "command": "xcrun devicectl list devices --json-output, hardwareProperties.reality == physical",
+    "at": "2026-11-28",
+    "observed": [
+      {
+        "model": "iPad Air (5th generation)",
+        "tunnel": "unavailable",
+        "developerServices": false
+      },
+      {
+        "model": "iPhone 17 Pro Max",
+        "tunnel": "disconnected",
+        "developerServices": false
+      }
+    ]
+  },
+  "separateChecks": {
+    "tools": {
+      "checks": 7,
+      "passed": 7,
+      "failed": 0,
+      "log": "build/heeler-lab-evidence/final-5c655f380-tools.log"
+    },
+    "node": {
+      "tests": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/heeler-lab-evidence/final-5c655f380-plugin.log"
+    }
+  },
+  "officialTranscripts": {
+    "mac": {
+      "claude": {
+        "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-official-q5c65524f41452/claude-receipt.json",
+        "sameDirectory": "/private/tmp/heeler-lab-rex-native-e-dga185_y/work",
+        "transcripts": {
+          "original": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ATTACHMENT": {
+                "user": 1,
+                "assistant": 1
+              },
+              "STOP": {
+                "user": 1,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 1,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 2,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 44764,
+            "sha256": "ad158225394c58771c13b9478b687dc983b3430f66691014b69788d9fda47388"
+          },
+          "peer": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 10095,
+            "sha256": "50121f170af763ac264cb9854f27223ee265f247ad93578d4c8ffc8a35841425"
+          },
+          "after-switch": {
+            "roles": {
+              "SEED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 1,
+                "assistant": 1
+              }
+            },
+            "bytes": 20742,
+            "sha256": "e87e2618c157601a4c04ceae838fe69863d713f231fb5b019568b3ddafab5df7"
+          }
+        }
+      },
+      "grok": {
+        "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-official-q5c6552ccaf6ef/grok-receipt.json",
+        "sameDirectory": "/private/tmp/heeler-lab-rex-native-e-dga185_y/work",
+        "transcripts": {
+          "original": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 8788,
+            "sha256": "2d0c6523587c073b95c144dfafc29d559fcb3424e7962971a3cef1dddb331031"
+          },
+          "peer": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 8536,
+            "sha256": "4bf27d3370edead7eb299033852b7ab6c4a93752b3502f58be9da3b15a433770"
+          },
+          "after-switch": {
+            "roles": {
+              "SEED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 8510,
+            "sha256": "21b115abdb5ca90e53f76be8059159bb9aa1645d0356d9264db1e5cb86539b3f"
+          }
+        }
+      },
+      "codex": {
+        "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-official-q5c65583a16f4f/codex-receipt.json",
+        "sameDirectory": "/private/tmp/heeler-lab-rex-native-e-dga185_y/work",
+        "transcripts": {
+          "original": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ATTACHMENT": {
+                "user": 1,
+                "assistant": 1
+              },
+              "STOP": {
+                "user": 1,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 1,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 2,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 109901,
+            "sha256": "f21b4720b5439c574f0377d25fcdcd5e294a8a825901c47b1da2a4cf2fad3e9b"
+          },
+          "peer": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 42577,
+            "sha256": "15c1bb6ef77d91093623fc0c3b12b73233d217aedb9656c36fc68d9107f09e73"
+          },
+          "after-switch": {
+            "roles": {
+              "SEED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 1,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 61594,
+            "sha256": "7613a00cd9d78493787cfe8179b32ccfa8b398e9caf95a0680a3bb16bda0a80b"
+          }
+        }
+      },
+      "pi": {
+        "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-official-q5c65589b00137/pi-receipt.json",
+        "sameDirectory": "/private/tmp/heeler-lab-rex-native-e-dga185_y/work",
+        "transcripts": {
+          "original": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 7800,
+            "sha256": "d50b08e28ad8379f227da7b350094d98f932357faf06be286cdc5d28e4656e7f"
+          },
+          "peer": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 6968,
+            "sha256": "7afde87bb54ba1f1b8c76a84186ff253ffda8e42516bc00e1d64a6a386b893b3"
+          },
+          "after-switch": {
+            "roles": {
+              "SEED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 6955,
+            "sha256": "2fb1d802f37ae25ee151894eb10cf0d10075689f26cc12a914900abc240bc95d"
+          }
+        }
+      },
+      "omp": {
+        "raw": "build/heeler-lab-evidence/native-chat/5c655f380-mac-official-q5c655e321d751/omp-receipt.json",
+        "sameDirectory": "/private/tmp/heeler-lab-rex-native-e-dga185_y/work",
+        "transcripts": {
+          "original": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 3173,
+            "sha256": "9bdd6206a1b82a316207bbc4c37a8515776763fa305739ffcf597490395f53bc"
+          },
+          "peer": {
+            "roles": {
+              "SEED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 2169,
+            "sha256": "0c24aea61463f606c498fc7897899adbafbcc47a14f14837b8f0d7fb0b8d6c7b"
+          },
+          "after-switch": {
+            "roles": {
+              "SEED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ATTACHMENT": {
+                "user": 0,
+                "assistant": 0
+              },
+              "STOP": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SAME": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "DECLINE": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "APPROVE_WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "NEW_DRAFT": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "bytes": 2121,
+            "sha256": "bff5b8d8d026b455602245046c8457e136915f945d03401b2f0a98c9e829b826"
+          }
+        }
+      }
+    },
+    "linux": {
+      "pi": {
+        "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-pi/after.json",
+        "transcripts": {
+          "oldA": {
+            "counts": {
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 6,
+            "appendedRows": 2,
+            "endingSHA256": "bc63a26db244995945761964fc733322b153f16a2a2d46b6b7a99277c3f9c20f",
+            "beforeSHA256": "8aa400aff0b5b83351d8c45e1a55116d27ebec78091d614a633253c9be3698ac"
+          },
+          "newA": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 0,
+            "appendedRows": 6,
+            "endingSHA256": "e791242aad8ddcab6096bbfce591bc0686c9355316fd688f263992cb2f7a6936",
+            "beforeSHA256": null
+          },
+          "peer": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 6,
+            "appendedRows": 0,
+            "endingSHA256": "8cf399457db3f90982e1273df65cdacb167e8e1b5a6aaaa35efe49f2c599cb5c",
+            "beforeSHA256": "8cf399457db3f90982e1273df65cdacb167e8e1b5a6aaaa35efe49f2c599cb5c"
+          }
+        }
+      },
+      "omp": {
+        "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-omp/after.json",
+        "transcripts": {
+          "oldA": {
+            "counts": {
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 8,
+            "appendedRows": 2,
+            "endingSHA256": "291149abb327aae6e44df229cf3e92fa4b2191ed6965de07d621a123b2728fe8",
+            "beforeSHA256": "6397c7c6dae301a446ee54fc7fc656d709e406edfd64881d6a7be6e9239636a2"
+          },
+          "newA": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 0,
+            "appendedRows": 8,
+            "endingSHA256": "c2c3709e25ed402cb86fb354228ec53f5b47d0b09a0355271c3fcf14ceeb6465",
+            "beforeSHA256": null
+          },
+          "peer": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 8,
+            "appendedRows": 0,
+            "endingSHA256": "5c90a13d8bd8e85dc91c4c48a9198b1951b3733b9295f7018ff31eaf0341c7d6",
+            "beforeSHA256": "5c90a13d8bd8e85dc91c4c48a9198b1951b3733b9295f7018ff31eaf0341c7d6"
+          }
+        }
+      },
+      "grok": {
+        "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-grok/after.json",
+        "transcripts": {
+          "previous": {
+            "counts": {
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "historySHA256": "1374578382c2ce99867b56000140d4fa44cbf8c8466b33002b02cefce2652b76"
+          },
+          "new": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "historySHA256": "8a985cac5e536228732aa4fbc1dd744f4e71464194fc0c0cd42ce8bb8d2ead3b"
+          },
+          "peer": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "historySHA256": "988dc077b6f164c2093a8b25f3f40596a16de6c78b7c82f35da41cc843c62652"
+          }
+        }
+      },
+      "pure-pi": {
+        "raw": "build/heeler-lab-evidence/foreground-5c655f380d6c/u5c655-pure-pi/after.json",
+        "transcripts": {
+          "oldA": {
+            "counts": {
+              "SEND": {
+                "user": 1,
+                "assistant": 1
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 6,
+            "appendedRows": 2,
+            "endingSHA256": "8edfd7d12410abc0932e8b137c6f357362aaa04f83f298bb03523ea2a9437bf3",
+            "beforeSHA256": "f8f076666d3cf098ec6d8dff929d34cac961d96165e8f53b1e7bb0a15599b1f1"
+          },
+          "newA": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 1,
+                "assistant": 1
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 0,
+            "appendedRows": 6,
+            "endingSHA256": "8229fe929f1df49ea5793b88a127a225f84ec1b9d49c52f818bd385093a7d868",
+            "beforeSHA256": null
+          },
+          "peer": {
+            "counts": {
+              "SEND": {
+                "user": 0,
+                "assistant": 0
+              },
+              "ROTATED": {
+                "user": 0,
+                "assistant": 0
+              },
+              "HELD": {
+                "user": 0,
+                "assistant": 0
+              },
+              "WRONG_PICK": {
+                "user": 0,
+                "assistant": 0
+              },
+              "SUCCESSOR_SWITCHED": {
+                "user": 0,
+                "assistant": 0
+              }
+            },
+            "matchedInitialLines": 6,
+            "appendedRows": 0,
+            "endingSHA256": "ebed30daacae06ca330252407149f9ebe50a8e72cd857ea6a0c09ec24029e68c",
+            "beforeSHA256": "ebed30daacae06ca330252407149f9ebe50a8e72cd857ea6a0c09ec24029e68c"
+          }
+        }
+      }
+    }
+  }
+}

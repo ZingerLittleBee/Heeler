@@ -1,0 +1,47 @@
+{
+  "privateIssue": 9666,
+  "subject": "LAB_WRITE_9666",
+  "distinctMatchingBodies": 1,
+  "commentRows": 2,
+  "twoLineFormat": true,
+  "totalBytes": 72,
+  "bodySHA256": "4a3e492eea4074dfeb67a860b2c68411c74306b920bf22a0d85aabf329217566",
+  "nonceSHA256": "e3d17987592cf41a6bfb0c4917f7d7d08bcfc5080df5254a5def7eece4425be8",
+  "client": "GitHub CLI 2.23.0",
+  "allowedHost": "heeler-lab-github-write.test on 127.0.0.2:443",
+  "wireSequence": [
+    {
+      "kind": "app-detail",
+      "count": 1,
+      "http": 200,
+      "endpoint": "/api/graphql",
+      "localPeer": "127.0.0.1"
+    },
+    {
+      "kind": "gh-issue-lookup",
+      "count": 1,
+      "http": 200,
+      "endpoint": "/api/graphql",
+      "localPeer": "127.0.0.1"
+    },
+    {
+      "kind": "add-comment",
+      "count": 2,
+      "http": 200,
+      "endpoint": "/api/graphql",
+      "localPeer": "127.0.0.1"
+    },
+    {
+      "kind": "app-detail",
+      "count": 2,
+      "http": 200,
+      "endpoint": "/api/graphql",
+      "localPeer": "127.0.0.1"
+    }
+  ],
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "rowsBeforeCandidate": 1,
+  "rowsAppendedByCandidate": 1,
+  "simulatorBundle": "final-b8af66cfd-services.xcresult",
+  "selfMatch": "The Swift test generated the nonce locally and found exactly one stored body equal to the draft on the same subject."
+}

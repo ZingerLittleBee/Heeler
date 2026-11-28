@@ -1,0 +1,12 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "site": "Debian arm64",
+  "program": "Amp",
+  "agentLabel": "heeler-lab-amp-interactive-linux-a",
+  "route": "Named row, Terminal surface, native iOS Terminal message input, Send",
+  "typedUTF8": 122,
+  "inputSHA256": "ccbdd932d6330868f0994448f9d3c9ac8723d1488918eea21314821d2ac42d35",
+  "sends": 1,
+  "readOnlyPicker": false,
+  "showChat": false
+}

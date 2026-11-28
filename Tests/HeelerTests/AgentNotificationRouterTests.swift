@@ -45,6 +45,23 @@ struct AgentNotificationRouterTests {
         #expect(router.pendingTarget == nil)
     }
 
+    @Test func aCheckedForegroundBannerCannotWaitForAReplacement() {
+        let router = AgentNotificationRouter()
+        let id = UUID()
+        let visible = consoleAgent(hostID: id, paneID: "visible")
+        let old = AgentNotificationTarget(hostID: id, paneID: "reused")
+        router.agentsDidChange([visible])
+        router.path = [visible.id]
+        router.awaitsHostReport = { _ in true }
+
+        #expect(!router.open(old, requiresKnownAgent: true))
+        #expect(router.pendingTarget == nil)
+        router.agentsDidChange([visible, consoleAgent(hostID: id, paneID: "reused")])
+        #expect(router.path == [visible.id])
+        #expect(router.open(old, requiresKnownAgent: true))
+        #expect(router.path == [old.agentID])
+    }
+
     @Test func tapReplacesTheCurrentlyPresentedAgent() {
         let router = AgentNotificationRouter()
         let hostID = UUID()

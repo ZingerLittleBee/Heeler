@@ -1,0 +1,47 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "source": "Official Factory 1.21.1 on a private Rex terminal, default model",
+  "platform": "macOS",
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "sessionSHA256": "6acecea3ece8766b6d26c5dc618d166faaeb6a313b2e36b1df74e79928be7de1",
+  "parentOfficialReply": true,
+  "tool": "Script / Execute",
+  "commands": [
+    {
+      "markerSHA256": "7db6ac10bf91ab1ce09e7fdcbeb04f667456163599de08db7d7e8acfec475b3c",
+      "outerSHA256": "0b7282c80338ec6e6189e4ab9279b42e9e7a7448830a4b9c6eb32f75cbb7807d",
+      "innerSHA256": "3e475764012d00ac65303250db5824c8983f7e593a2cd914a31ff2222b547320",
+      "officialRows": {
+        "call": 6,
+        "launch": 8,
+        "completion": 16
+      },
+      "pid": 67520,
+      "exitCode": 0,
+      "stoppedBy": "process",
+      "trustedStructuredExit": true,
+      "outputFileContentsMatchOfficialEvent": true,
+      "outputFileSHA256": "6370af1b8c287cee8a126f43ddf2493bddcb155293202079ca472116eddd93f7",
+      "outputBytes": 35
+    },
+    {
+      "markerSHA256": "626b7b6e93f6f7c99955b93b986671b32d8735b8f37f9f4ace6a9ddfdc53df2b",
+      "outerSHA256": "0b7282c80338ec6e6189e4ab9279b42e9e7a7448830a4b9c6eb32f75cbb7807d",
+      "innerSHA256": "67aee733d8fd1caa9f03ef7bd4d7c8d4d0994de3f6034ac41e09047bc6b38db0",
+      "officialRows": {
+        "call": 7,
+        "launch": 9,
+        "completion": 17
+      },
+      "pid": 67521,
+      "exitCode": 17,
+      "stoppedBy": "process",
+      "trustedStructuredExit": true,
+      "outputFileContentsMatchOfficialEvent": true,
+      "outputFileSHA256": "fd76918707095c2911831c48826dfe0abab3ee078dd03972a347910f94e92c49",
+      "outputBytes": 37
+    }
+  ]
+}

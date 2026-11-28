@@ -44,19 +44,17 @@ without one; turned on then, it connects once the user starts Rex, since
 Heeler never starts the server and never runs the `rex` command-line tool to
 find it. A terminal running a known agent program is an Agent with its Agent
 Status, and the others are Terminals (ADR 0054). Its Agents open the Agent
-detail, with Chat for Claude Code, Codex, Pi and Oh My Pi, the Composer and
-the terminal. Nothing is installed on the machine for it, except that a Pi or
-Oh My Pi's Chat offers to add Heeler's extension to that Agent's own
-extension folder, and writes it only when the user says so; an Agent whose
-program reports nothing to Rex reads Unknown and has no Stop and no Blocked
-Card. Where Chat is
-offered, its Agents take images and files too, staged over the Host's SSH
-connection as on the other Server Kinds. A Rex Host offers no notifications,
-Live Activities, Usage, Changes or New Agent (ADR 0056). New Terminal starts
-a shell in a new window of a Workspace's session, left in the background, and
-New Workspace a new session holding one, the only things Heeler starts on a
-Rex server; it gives the new terminal's size back at once (ADR 0049's update
-of 2026-11-25).
+detail, with Chat for the programs its Host system can verify. An Agent
+whose program reports no owned status reads Unknown. Open its terminal to
+interrupt or answer a prompt. Attachments are staged over the Host's SSH
+connection. Pi and Oh My Pi identify their conversations through Heeler's
+extension in the Agent's extension folder. The user can install the Droid
+hook for a running Droid from Chat (ADR 0056).
+New Terminal starts a shell in a background window or a new session. On
+macOS and Linux, New Agent can start a named block in an existing Workspace,
+a new Workspace, or a new linked Git worktree. A Workspace name is a Rex
+session label. An Agent management name is its block label. The terminal's
+title and the conversation's title belong to the running program.
 Every build offers it (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
 connection. Another server instance on the socket is another server, as
@@ -520,7 +518,7 @@ herdr-core, tmux and Rex Hosts, Droid's hook identifies the session and transcri
 of the foreground Droid by PID and process start. On POSIX Herdr TUI Hosts,
 Amp Chat reads the thread selected in the foreground Amp terminal through
 Heeler's Amp plugin. Confirm its installation in Chat, then reload plugins in
-Amp. Plain text goes to that same thread through the plugin (ADR 0066). Chat holds no Attach; its Composer and draft are the
+Amp. Herdr TUI sends plain text to that thread through the plugin. On Linux Rex, Chat reads the active thread and directs all input to the terminal (ADR 0066). Chat holds no Attach; its Composer and draft are the
 terminal's. For transcript-backed Chat on Herdr TUI, Send is one `agent.prompt` request, made only after a screen read
 shows the program's input box empty, and refused for text the program would
 run rather than read. Its `/` menu offers the Agent's skills and `/compact`;

@@ -1,0 +1,127 @@
+{
+  "before": {
+    "version": 1,
+    "instance": "f10100fc-7da2-4bf2-9d6f-8f13010adaa0",
+    "revision": 1,
+    "thread": "T-01a21da5-053a-7305-afa9-8f097bcc0378",
+    "pid": 8721,
+    "start": "Fri Nov 27 15:34:34 2026"
+  },
+  "after": {
+    "version": 1,
+    "instance": "f10100fc-7da2-4bf2-9d6f-8f13010adaa0",
+    "revision": 3,
+    "thread": "T-01a21db7-d690-744c-b7f5-cedaf9507174",
+    "pid": 8721,
+    "start": "Fri Nov 27 15:34:34 2026"
+  },
+  "peer": {
+    "version": 1,
+    "instance": "75aba1ea-0371-46a9-b444-491ea77c22f6",
+    "revision": 1,
+    "thread": "T-01a21da5-0f4b-7752-b2a9-02162c0ea653",
+    "pid": 8827,
+    "start": "Fri Nov 27 15:34:36 2026"
+  },
+  "official": {
+    "first": {
+      "thread": "T-01a21da5-053a-7305-afa9-8f097bcc0378",
+      "exportSHA256": "f77657f76d1e445e5d1220e4a279cc2375cd9d850901f9c3f3fa85aeb2451d1e",
+      "privateMarkerCounts": {
+        "first": [
+          1,
+          1
+        ],
+        "peer": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ],
+        "stale": [
+          0,
+          0
+        ]
+      },
+      "matchingMessages": [
+        {
+          "role": "user",
+          "text": "Reply with only REX_LAB_AMP_MAC_A_B067767D. Do not use tools."
+        },
+        {
+          "role": "assistant",
+          "text": "REX_LAB_AMP_MAC_A_B067767D"
+        }
+      ]
+    },
+    "peer": {
+      "thread": "T-01a21da5-0f4b-7752-b2a9-02162c0ea653",
+      "exportSHA256": "484bf8d7001ea9a3ead078358fc6d7781d04164ddc1f2efe0355f1f28c52d716",
+      "privateMarkerCounts": {
+        "first": [
+          0,
+          0
+        ],
+        "peer": [
+          1,
+          1
+        ],
+        "new": [
+          0,
+          0
+        ],
+        "stale": [
+          0,
+          0
+        ]
+      },
+      "matchingMessages": [
+        {
+          "role": "user",
+          "text": "Reply with only REX_LAB_AMP_MAC_B_5C5A235F. Do not use tools."
+        },
+        {
+          "role": "assistant",
+          "text": "REX_LAB_AMP_MAC_B_5C5A235F"
+        }
+      ]
+    },
+    "new": {
+      "thread": "T-01a21db7-d690-744c-b7f5-cedaf9507174",
+      "exportSHA256": "27f1fce998fc79a5cd0a1e948f8c93e659d0c8b6bae0751f9b9598f9efcc0078",
+      "privateMarkerCounts": {
+        "first": [
+          0,
+          0
+        ],
+        "peer": [
+          0,
+          0
+        ],
+        "new": [
+          1,
+          1
+        ],
+        "stale": [
+          0,
+          0
+        ]
+      },
+      "matchingMessages": [
+        {
+          "role": "user",
+          "text": "Reply with only REX_LAB_AMP_READONLY_EB68233A8. Do not use tools."
+        },
+        {
+          "role": "assistant",
+          "text": "REX_LAB_AMP_READONLY_EB68233A8"
+        }
+      ]
+    }
+  },
+  "unloaded": true,
+  "peerUnchanged": true,
+  "unrelatedPreferencesPreserved": true
+}

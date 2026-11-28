@@ -48,6 +48,164 @@ struct BlockedCardStoreTests {
         #expect(store.progress == .ready)
     }
 
+    @Test func aRexAnswerRequiresTheSameUniqueOpenCallAtTheTapAndInTheInputLane() async throws {
+        let screen = try ScreenFixture.screen("claude-02-c1-bash-blocked")
+        let pane = FakePane(screen)
+        let first = Self.bash("toolu_first", "touch c1.txt")
+        let next = Self.bash("toolu_next", "touch c1.txt")
+        var live = [first]
+        let store = Self.store(.claude, pane: pane)
+        store.captureSessionCheck = { ("session", { true }) }
+        store.readRexRequests = { live }
+        store.update(activity: .blocked)
+        store.update(transcript: Self.transcript(pending: [first]))
+        await store.refresh()
+        guard case .card(let firstCard) = store.content else {
+            Issue.record("The first pending tool call should have a card.")
+            return
+        }
+        let firstGeneration = store.dialogGeneration
+
+        // The Host has already recorded the next call. The list on screen still shows the first one.
+        live = [next]
+        await store.perform(.choose(ordinal: 1), shownCard: firstCard)
+        #expect(await pane.keys.isEmpty)
+        store.update(transcript: Self.transcript(pending: [next], resolved: [first]))
+        await store.refresh()
+        guard case .card(let nextCard) = store.content else {
+            Issue.record("The second open call should have its own card.")
+            return
+        }
+        #expect(nextCard.dialog.fingerprint == firstCard.dialog.fingerprint)
+        #expect(store.dialogGeneration != firstGeneration)
+        await store.perform(.choose(ordinal: 1), shownCard: firstCard)
+        await store.perform(.choose(ordinal: 1))
+        #expect(await pane.keys.isEmpty)
+
+        live = [first, next]
+        await store.perform(.choose(ordinal: 1), shownCard: nextCard)
+        store.update(transcript: Self.transcript(pending: live))
+        await store.refresh()
+        #expect(store.content == .unreadable)
+        #expect(store.unreadableNote != nil)
+        await store.press(number: 1)
+        await store.sendKeys(["enter"])
+        #expect(await pane.keys.isEmpty)
+
+        live = [next]
+        store.update(transcript: Self.transcript(pending: live))
+        await store.refresh()
+        await pane.react(to: ["1"], with: try ScreenFixture.screen("claude-29-c3-after-immediate"))
+        await store.perform(.choose(ordinal: 1), shownCard: nextCard)
+        #expect(await pane.keys == [["1"]])
+    }
+
+    @Test func aRexCodexLiteralExecApprovalRequiresTheWholeCommand() async throws {
+        let pane = FakePane(try ScreenFixture.screen("codex-01-x1-exec"))
+        let store = Self.store(.codex, pane: pane)
+        var request = ChatPendingRequest(
+            entryID: ChatEntryID("command"), callID: "call", kind: .command,
+            toolName: "exec_command", summary: "touch x1.txt.bak")
+        store.captureSessionCheck = { ("session", { true }) }
+        store.readRexRequests = { [request] }
+        store.update(activity: .blocked)
+        store.update(transcript: Self.transcript(pending: [request]))
+        await store.refresh()
+        #expect(store.content == .unreadable)
+        await store.press(number: 1)
+        #expect(await pane.keys.isEmpty)
+
+        request.summary = "touch x1.txt"
+        store.update(transcript: Self.transcript(pending: [request]))
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("Expected the literal command with its recorded call.")
+            return
+        }
+        #expect(card.request == request)
+    }
+
+    @Test func aRexQuestionFormChecksItsRecordedCallBeforeEveryPageAndField() async throws {
+        let tui = FakeQuestionTUI(.codex, QuestionFormTests.codexQuestions)
+        let io = BlockedScreenIO(readScreen: { await tui.read() }, sendKeys: { await tui.send($0) }, paste: { await tui.paste($0) })
+        let store = BlockedCardStore(program: .codex, io: io, clock: ManualClock().clock)
+        let original = QuestionFormTests.codexRequest
+        var replacement = original
+        replacement.callID = "call_next"
+        replacement.entryID = ChatEntryID("call_next")
+        var reads = 0
+        store.captureSessionCheck = { ("session", { true }) }
+        store.readRexRequests = {
+            reads += 1
+            return reads == 1 ? [original] : [replacement]
+        }
+        store.update(transcript: Self.transcript(pending: [original]))
+        store.update(activity: .blocked)
+        await store.refresh()
+        guard case .card(let card) = store.content else {
+            Issue.record("The question should have a card.")
+            return
+        }
+        _ = try #require(QuestionForm(card: card))
+        let answers: [QuestionFormAnswer] = [.option(1), .text("Medium please")]
+        await store.submit(answers)
+        #expect(await tui.keys.isEmpty)
+        await store.submit(answers, shownCard: card)
+        #expect(await tui.keys == [["2"]])
+        #expect(await tui.pastes.isEmpty)
+        #expect(await tui.state != .submitted)
+    }
+
+    @Test func aRexAnswerWithALostReceiptCannotBeRepeatedByADoubleTapOrEscape() async throws {
+        let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
+        let request = Self.bash("toolu_lost", "touch c1.txt")
+        let io = BlockedScreenIO(readScreen: { try await pane.read() }, sendKeys: { _ in }, paste: { _ in },
+            typeWhileShowing: { typing, verify in
+                guard try await verify(pane.read()), case .keys(let keys) = typing else { throw TransportError.cancelled }
+                await pane.send(keys)
+                throw TransportError.coreMutationOutcomeUnknown
+            })
+        let store = BlockedCardStore(program: .claude, io: io, clock: ManualClock().clock)
+        var session = "first"
+        store.captureSessionCheck = { (session, { true }) }
+        store.readRexRequests = { [request] }
+        store.update(activity: .blocked)
+        store.update(transcript: Self.transcript(pending: [request]))
+        await store.refresh()
+        guard case .card(let displayed) = store.content else {
+            Issue.record("The pending tool call should have a card.")
+            return
+        }
+
+        async let tap: Void = store.perform(.choose(ordinal: 1), shownCard: displayed)
+        await store.perform(.choose(ordinal: 1), shownCard: displayed)
+        await tap
+        #expect(store.progress == .unconfirmed)
+        await store.perform(.dismiss, shownCard: displayed)
+        await store.sendKeys(["esc"])
+        // A transient status change or screen reread must not re-arm the same call.
+        store.update(activity: .working)
+        store.update(activity: .blocked)
+        await store.refresh()
+        #expect(store.content == .unreadable)
+        await store.perform(.choose(ordinal: 1), shownCard: displayed)
+        #expect(await pane.keys == [["1"]])
+
+        // Another conversation may reuse an id. Returning to the first keeps its lost receipt held.
+        session = "second"
+        store.displayedInputSessionChanged()
+        await store.refresh()
+        guard case .card = store.content else {
+            Issue.record("A separate conversation owns its own call identifiers.")
+            return
+        }
+        session = "first"
+        store.displayedInputSessionChanged()
+        await store.refresh()
+        #expect(store.content == .unreadable)
+        #expect(await pane.keys == [["1"]])
+    }
+
     @Test func anOptionWaitsOutTheGraceThenSendsItsDigitOnce() async throws {
         let pane = FakePane(try ScreenFixture.screen("claude-02-c1-bash-blocked"))
         await pane.react(to: ["1"], with: try ScreenFixture.screen("claude-29-c3-after-immediate"))

@@ -177,7 +177,7 @@ struct TerminalListProjectionTests {
     /// named alike on two Servers stay two cards.
     @MainActor @Test func aHostWithTwoServersIsOneGroupByItsName() throws {
         let (tui, tmux, build) = twoServerHosts()
-        #expect(tmux.displayName == "m3 · tmux")
+        #expect(tmux.displayName == "m3 · Tmux")
         let list = projection(
             hosts: [tui, build, tmux],
             terminals: [
@@ -229,7 +229,7 @@ struct TerminalListProjectionTests {
         #expect(m3.readiness.text == "Connected")
         #expect(m3.readiness.nameEmphasis == .full)
         #expect(m3.issues.map(\.hostID) == [tmux.id])
-        #expect(m3.issues.first?.message.hasPrefix("m3 · tmux: ") == true)
+        #expect(m3.issues.first?.message.hasPrefix("m3 · Tmux: ") == true)
         #expect(m3.terminalCount == 1)
         #expect(groups.map(\.opensConnectionDetail) == [false, true])
 

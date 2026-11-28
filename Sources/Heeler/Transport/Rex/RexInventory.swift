@@ -78,10 +78,8 @@ struct RexServerLineage: Codable, Equatable, Sendable {
 }
 
 /// The machine a Rex server runs on, as `server.version` names it: its
-/// `platform` starts with the system, as `darwin_arm64` did on a Mac (Rex
-/// 0.1.0-preview.14, rex-compatibility.md). No Linux value was seen, so one
-/// that names `linux` anywhere reads as Linux, one that names `windows` as
-/// native Windows, and anything else as unknown.
+/// `platform` includes the system, such as `darwin_arm64` and `linux_arm64`
+/// in the preview.25 labs. Unrecognized platforms stay unknown.
 enum RexServerPlatform {
     /// The kernel as a probe's `uname -s` prints it, or nil.
     static func kernel(reading result: JSONValue) -> String? {
@@ -155,6 +153,7 @@ struct RexTerminalDetails: Sendable, Equatable {
     /// interpreter runs: what says which program it is, and whether a Program
     /// Status is its own (ADR 0054).
     var processID: Int?
+    var lastExit: ProgramExit?
     var argv0: String?
     var script: String?
     /// The Program Status the terminal's programs last reported without an id,
@@ -184,6 +183,7 @@ struct RexTerminalDetails: Sendable, Equatable {
         program = process.program
         directory = process.directory
         processID = process.processID
+        lastExit = process.lastExit
         argv0 = process.argv0
         script = process.script
     }
@@ -261,12 +261,21 @@ struct RexInventory: Sendable, Equatable {
         var detached: [Terminal]
 
         var terminals: [Terminal] { windows.flatMap(\.terminals) + detached }
+
+        /// A launch with no directory inherits the selected terminal in the active window.
+        var launchDirectory: String? {
+            let active = windows.first { $0.id == activeWindowID }
+            let focused = active?.terminals.first { $0.blockID == active?.focusedBlockID }
+            return focused?.details.directory ?? active?.terminals.compactMap(\.details.directory).first
+                ?? terminals.compactMap(\.details.directory).first
+        }
     }
 
     struct Window: Sendable, Equatable {
         let id: String
         /// Nil when the window carries the label Rex gives every new window.
         var label: String?
+        var focusedBlockID: String?
         var terminals: [Terminal]
     }
 
@@ -360,6 +369,7 @@ enum RexInventoryWire {
     struct ViewWindow: Sendable, Equatable {
         let id: String
         let label: String?
+        var focusedBlockID: String?
         /// The window's blocks in reading order.
         let blocks: [BlockFacts]
 
@@ -396,13 +406,15 @@ enum RexInventoryWire {
         let program: String?
         let directory: String?
         let processID: Int?
+        let lastExit: ProgramExit?
         let argv0: String?
         let script: String?
 
         init(
             program: String?, directory: String?, processID: Int? = nil, argv0: String? = nil,
-            script: String? = nil
+            script: String? = nil, lastExit: ProgramExit? = nil
         ) {
+            self.lastExit = lastExit
             self.program = program
             self.directory = directory
             self.processID = processID
@@ -456,9 +468,13 @@ enum RexInventoryWire {
         func text(_ key: String) -> String? {
             foreground?[key]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
         }
+        var lastExit: ProgramExit?
+        if foreground?["pid"]?.rexWholeNumber == nil, case .object(let exit)? = result?["last_exit"] {
+            lastExit = ProgramExit(code: exit["exit_code"]?.rexWholeNumber)
+        }
         return Process(
             program: text("name"), directory: text("cwd"), processID: foreground?["pid"]?.rexWholeNumber,
-            argv0: text("argv0"), script: text("script"))
+            argv0: text("argv0"), script: text("script"), lastExit: lastExit)
     }
 
     /// The root record of a terminal's `program_status` answer, the one with
@@ -522,8 +538,10 @@ enum RexInventoryWire {
 
     private static func window(_ value: JSONValue) -> ViewWindow? {
         guard let id = value["window_id"]?.stringValue else { return nil }
+        let label = value["label"]?.stringValue
+        let focusedBlock = value["focused_block_id"]?.stringValue
         guard case .array(let layers)? = value["layers"] else {
-            return ViewWindow(id: id, label: value["label"]?.stringValue, blocks: [])
+            return ViewWindow(id: id, label: label, focusedBlockID: focusedBlock, blocks: [])
         }
         // The tiled layout reads first, then each floating layer as listed.
         let ordered =
@@ -543,7 +561,7 @@ enum RexInventoryWire {
                 blocks.append(block)
             }
         }
-        return ViewWindow(id: id, label: value["label"]?.stringValue, blocks: blocks)
+        return ViewWindow(id: id, label: label, focusedBlockID: focusedBlock, blocks: blocks)
     }
 
     /// A layout tree's blocks, the part before each split ahead of the part after.

@@ -1,0 +1,96 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "site": "linux",
+  "program": "Grok Build 1.0.92",
+  "initiator": "Independent desktop client, one gated loopback request",
+  "nativeChatShowedExpectedSeed": true,
+  "activePromptWasDisplayedBeforeStop": true,
+  "initial": {
+    "a": {
+      "user": 1,
+      "assistant": 0,
+      "updates": [
+        "user_message_chunk"
+      ],
+      "pid": 148415,
+      "uuid": "01a21d32-683e-7763-9892-824b82342271"
+    },
+    "b": {
+      "user": 0,
+      "assistant": 0,
+      "updates": [],
+      "pid": 148472,
+      "uuid": "01a21d32-683b-7e50-ace5-c3241f37549e"
+    },
+    "ownedProgramStatus": [
+      {
+        "state": "working",
+        "app": "grok",
+        "effective_app": "grok",
+        "owner": {
+          "pid": 148415,
+          "name": "grok"
+        }
+      }
+    ],
+    "providerStarted": true,
+    "providerCancelledBeforeRelease": false,
+    "providerReleased": false,
+    "independentScreenTerms": [
+      "cancel",
+      "stop"
+    ]
+  },
+  "activeAccessibilityLabels": [
+    "You: Reply only with REX_LAB_GROK_STOP_SEED_LINUX_A. Do not use tools.",
+    "REX_LAB_GROK_STOP_SEED_LINUX_A",
+    "Working",
+    "Stop",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok"
+  ],
+  "nativeStopTapped": true,
+  "finalAccessibilityLabels": [
+    "You: Reply only with REX_LAB_GROK_STOP_SEED_LINUX_A. Do not use tools.",
+    "REX_LAB_GROK_STOP_SEED_LINUX_A",
+    "Stopped before a reply, Grok Build put the message back in its input box.",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok"
+  ],
+  "final": {
+    "a": {
+      "user": 1,
+      "assistant": 0,
+      "updates": [
+        "user_message_chunk"
+      ],
+      "pid": 148415,
+      "uuid": "01a21d32-683e-7763-9892-824b82342271"
+    },
+    "b": {
+      "user": 0,
+      "assistant": 0,
+      "updates": [],
+      "pid": 148472,
+      "uuid": "01a21d32-683b-7e50-ace5-c3241f37549e"
+    },
+    "ownedProgramStatus": [
+      {
+        "state": "idle",
+        "app": "grok",
+        "effective_app": "grok",
+        "owner": {
+          "pid": 148415,
+          "name": "grok"
+        }
+      }
+    ],
+    "providerStarted": true,
+    "providerCancelledBeforeRelease": true,
+    "providerReleased": false,
+    "independentScreenTerms": [
+      "stop"
+    ]
+  }
+}

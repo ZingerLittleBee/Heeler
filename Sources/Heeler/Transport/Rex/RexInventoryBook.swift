@@ -174,8 +174,8 @@ struct RexInventoryBook {
         for event in waiting where event.seq > seq { apply(event) }
     }
 
-    /// Events went missing: the list is read again, and with it everything else.
-    mutating func sequenceBroke() {
+    /// Read the list and everything it names again, after a gap or an explicit refresh.
+    mutating func requestListing() {
         needsListing = true
     }
 
@@ -484,7 +484,8 @@ struct RexInventoryBook {
                 owner: record.owners[facts.id].map(\.owner) ?? facts.owner, details: shown)
         }
         let windows = (record.view?.windows ?? []).map { window in
-            RexInventory.Window(id: window.id, label: window.customLabel, terminals: window.blocks.compactMap(terminal))
+            RexInventory.Window(id: window.id, label: window.customLabel, focusedBlockID: window.focusedBlockID,
+                                terminals: window.blocks.compactMap(terminal))
         }
         let placed = Set((record.view?.windows ?? []).flatMap { $0.blocks.map(\.id) })
         // A block is detached when the listing says so. One the listing places

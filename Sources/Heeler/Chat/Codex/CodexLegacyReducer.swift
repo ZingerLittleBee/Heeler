@@ -133,7 +133,7 @@ struct CodexLegacyBuilder {
             } else if let settingEffort {
                 effort = settingEffort
             }
-        case .item, .questionCall, .codeModePatch:
+        case .item, .questionCall, .codeModePatch, .execApproval:
             // Paginated records.
             break
         }

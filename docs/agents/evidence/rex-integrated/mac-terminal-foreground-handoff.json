@@ -1,0 +1,34 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "appSHA256": "f9b75bc7ebb9dd66953db74a611f80c6f52df5daf1d583e4f4203d9de99d9287",
+  "observerSHA256": "851364f0aff5e989806a9f96127d8392846d2c7af1e482b87582bf9bb830dc23",
+  "simulator": "234A2C04-15B6-46FD-BA43-B0F3467B2E49",
+  "notes": "Independent iOS Simulator process calling the candidate ConsoleStore and real SSH. The separate Darwin observer accepts the canonical /private/tmp QA path. This is not a GUI or XCTest invocation.",
+  "refusedWithoutSubmitting": true,
+  "mobileDraftRestored": true,
+  "wire": {
+    "acceptedPastes": 1,
+    "releasedPasteReceipts": 1,
+    "mobileAfterPaste": [
+      "Aw=="
+    ],
+    "peerWrites": 0,
+    "desktopTextVerifiedBeforeRelease": true
+  },
+  "shells": {
+    "target": {
+      "sameShellPID": true,
+      "commandExecuted": false,
+      "exactDesktopText": false,
+      "expectedBytes": 84,
+      "actualBytes": 0
+    },
+    "peer": {
+      "sameShellPID": true,
+      "commandExecuted": false,
+      "exactDesktopText": true,
+      "expectedBytes": 79,
+      "actualBytes": 79
+    }
+  }
+}

@@ -206,21 +206,13 @@ extension HerdrCoreSessionBinder {
             }
             return nil
         case .pi, .omp:
-            guard let session = Self.piSession(inFileName: leaf), RemoteFilePath.isAcceptable(path) else { return nil }
+            guard let session = ConversationReference.piSession(inFileName: leaf), RemoteFilePath.isAcceptable(path) else { return nil }
             return Found(session: session, file: path)
         case .agy:
             return Self.antigravityConversation(held: path).map { Found(session: $0) }
         case .codex, .droid, .devin, .amp:
             return nil
         }
-    }
-
-    /// The UUID ending a Pi or Oh My Pi session file's name.
-    private static func piSession(inFileName name: String) -> String? {
-        guard name.hasSuffix(".jsonl") else { return nil }
-        let stem = name.dropLast(".jsonl".count)
-        guard stem.count >= 36 else { return nil }
-        return ConversationReference.canonicalUUID(String(stem.suffix(36)))
     }
 
     private func heldCodexRoots(of process: HostProcessReader.Facts) async throws -> [Found] {
@@ -399,7 +391,7 @@ extension HerdrCoreSessionBinder {
                 RemoteFileListingRequest(directory: folder, kinds: [.regular], nameSuffixes: [".jsonl"]))
             for entry in listing?.entries ?? [] where (entry.status.size ?? 0) > 0 {
                 let path = RemoteFilePath.join(folder, entry.name)
-                if let session = Self.piSession(inFileName: entry.name), RemoteFilePath.isAcceptable(path) {
+                if let session = ConversationReference.piSession(inFileName: entry.name), RemoteFilePath.isAcceptable(path) {
                     found.append(Found(session: session, file: path, modified: entry.status.modificationTime))
                 }
             }

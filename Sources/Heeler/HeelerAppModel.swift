@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 /// The stores every window shares, and the app-wide wiring between them.
 ///
@@ -106,7 +107,7 @@ final class HeelerAppModel {
             transports: console,
             deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
             relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL },
-            ceremony: NotificationRegistrationCeremony(gate: registrationGate))
+            ceremony: NotificationRegistrationCeremony(gate: registrationGate), rexBannerDefaults: .standard)
         self.notificationPreferences = notificationPreferences
         notificationPreferences.followSeenMarks(of: console)
         // What each Host holds is read over the Console's connection as it
@@ -139,13 +140,22 @@ final class HeelerAppModel {
             noteRexSocket: { [weak hostStore] id, socket in try? hostStore?.noteRexSocket(socket, for: id) })
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
-        // reads each Host's confirmed notify flags and fails closed on
-        // unknowns.
-        bannerStore = AgentNotificationBannerStore(
+        // reads the device's opt-in for Rex and the Host's confirmed notify
+        // flags for remote delivery.
+        let bannerStore = AgentNotificationBannerStore(
             presentedAgent: { [weak sceneDirectory] in sceneDirectory?.keyScenePresentedAgent },
             triggers: { [weak notificationPreferences] in
-                notificationPreferences?.confirmedTriggers(for: $0)
+                notificationPreferences?.rexBannerTriggers(for: $0) ?? notificationPreferences?.confirmedTriggers(for: $0)
+            },
+            rexRecipient: { [weak console] in console?.rexBannerRecipient(for: $0) },
+            verifyRexRecipient: { [weak console] id, captured in
+                await console?.verifyRexBannerRecipient(captured, for: id) == true
             })
+        self.bannerStore = bannerStore
+        notificationPreferences.onRexBannersChanged = { [weak console, weak bannerStore] id in
+            guard let console else { return }
+            bannerStore?.rexPreferencesDidChange(for: id, agents: console.agents)
+        }
         // One Live Activity per Host: the Console Agent list is the source
         // of truth while foregrounded; the plugin takes over over APNs
         // after the app suspends. Fail closed on a missing opt-in, key, or
@@ -226,12 +236,13 @@ final class HeelerAppModel {
         // The banner store diffs the Agent list for foreground Blocked/Done
         // transitions (#77); both it and the Live Activities take the
         // current list as their baseline before the Hosts connect.
+        bannerStore.setRexForeground(UIApplication.shared.applicationState == .active, agents: console.agents)
         bannerStore.agentsDidChange(console.agents)
         liveActivities.agentsDidChange(console.agents)
 
         Task {
             console.setHosts(hostStore.hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
-            notificationPreferences.setHosts(hostStore.hosts)
+            notificationPreferences.setHosts(hostStore.hosts, rexKernels: console.hostCoreKernels)
             await console.resume()
         }
         // Only a real suspension moves the connections: a backgrounding the
@@ -298,6 +309,7 @@ final class HeelerAppModel {
 
     /// The app's aggregate scene phase: active while any window is.
     func scenePhaseDidChange(_ phase: ScenePhase) {
+        bannerStore.setRexForeground(phase == .active, agents: console.agents)
         switch phase {
         case .active:
             activity.didBecomeActive()
@@ -352,7 +364,7 @@ final class HeelerAppModel {
             guard let self else { return }
             liveActivityHosts.publish(hosts)
             console.setHosts(hosts, hostsOutOfSight: hostStore.hostsOutOfSight)
-            notificationPreferences.setHosts(hosts)
+            notificationPreferences.setHosts(hosts, rexKernels: console.hostCoreKernels)
             liveActivities.layoutsDidChange()
             hostUpdates.catalogDidChange()
         }
@@ -363,6 +375,9 @@ final class HeelerAppModel {
             let arrived = new.subtracting(old)
             guard !arrived.isEmpty else { return }
             Task { await hostUpdates.hostsDidConnect(Array(arrived)) }
+        }
+        observe({ console.hostCoreKernels }) { kernels in
+            notificationPreferences.updateRexBannerHosts(hostStore.hosts, kernels: kernels)
         }
         observe({ console.agents }) { [weak self] agents in
             self?.bannerStore.agentsDidChange(agents)

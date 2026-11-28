@@ -338,12 +338,7 @@ struct AgentChatSurfaceView: View {
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
                 title: String(localized: "Rename Agent"),
-                store: RenameStore(
-                    subject: .agent(detectedKind: agent.agent.kind),
-                    currentValue: agent.agent.name ?? ""
-                ) { [console, agent] name in
-                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID, keepingTo: session.corePin)
-                })
+                store: console.agentNameStore(for: agent, keepingTo: session.corePin))
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
         }
@@ -352,9 +347,9 @@ struct AgentChatSurfaceView: View {
                 title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
-                ) { [console, agent] label in
+                ) { [console, agent, corePin = session.corePin] label in
                     try await console.renameWorkspace(
-                        agent.agent.workspaceID, label: label, on: agent.hostID)
+                        agent.agent.workspaceID, label: label, on: agent.hostID, keepingTo: corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
@@ -456,9 +451,11 @@ struct AgentChatSurfaceView: View {
             chat?.draftDidChange(to: draft)
         }
         // The writer's lock can become readable after Chat has loaded the
-        // session. Bind when the verified draft owner becomes available.
+        // session. Bind when its displayed draft owner becomes available.
         .onChange(of: chat?.composerSessionID, initial: true) { _, session in
-            if program.pinsComposerToSession { composer.bindDroidDraft(to: session, program: program) }
+            if program.pinsComposerToSession || chat?.tracksConversationDraft == true {
+                composer.bindChatDraft(to: session, program: program)
+            }
         }
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
@@ -515,6 +512,14 @@ struct AgentChatSurfaceView: View {
         themeColors.colorScheme ?? themeAppearance
     }
 
+    private var isBoundAntigravity: Bool {
+        program == .agy && console.capabilities(for: agent.hostID).requiresBoundAntigravity
+    }
+
+    private var showsChatInput: Bool {
+        !console.capabilities(for: agent.hostID).readOnlyChatPrograms.contains(program) && chat?.isReadingPickedConversation != true
+    }
+
     private var chatSurface: some View {
         conversation
         .overlay(alignment: .bottom) { floatingTimelineControls }
@@ -551,18 +556,20 @@ struct AgentChatSurfaceView: View {
             // Agent switcher isolated to their own child slots so 1-second
             // transcript polls, scroll-state changes, and other Agents' status
             // updates never rebuild `AgentComposerView` or re-measure the draft.
-            KeyedContent(key: composerChromeKey) { composerChrome }
-                .equatable()
-                // Its own background, so the fade rides every change of the
-                // Composer's place and height with it: the keyboard, the
-                // input's fold, the strip of work folding over it.
-                .background {
-                    ChatBottomFade(color: themeColors.background)
-                        .ignoresSafeArea(.container, edges: .horizontal)
-                }
-                .keyboardLiftPadding(
-                    keyboardInset, restingInset: composerKeyboardLayout.contentInset,
-                    isEnabled: composerKeyboardPresentation != .tools)
+            if showsChatInput {
+                KeyedContent(key: composerChromeKey) { composerChrome }
+                    .equatable()
+                    // Its own background, so the fade rides every change of the
+                    // Composer's place and height with it: the keyboard, the
+                    // input's fold, the strip of work folding over it.
+                    .background {
+                        ChatBottomFade(color: themeColors.background)
+                            .ignoresSafeArea(.container, edges: .horizontal)
+                    }
+                    .keyboardLiftPadding(
+                        keyboardInset, restingInset: composerKeyboardLayout.contentInset,
+                        isEnabled: composerKeyboardPresentation != .tools)
+            }
         }
         // The Composer's fold and the condensed background work change the
         // chrome's height with the keyboard. Out here, so the conversation
@@ -578,19 +585,21 @@ struct AgentChatSurfaceView: View {
         // In place at the system keyboard's last height, as on the terminal,
         // and shown only while the Composer has switched to it.
         .overlay(alignment: .bottom) {
-            AgentChatToolsKeyboard(
-                insertText: { composer.insertIntoDraft($0) },
-                skills: skills.map { store in
-                    TerminalSkillsContext(store: store) { viewingSkill = $0 }
-                },
-                snippets: terminal.snippets,
-                manageSnippets: { isManagingSnippets = true },
-                agentKeys: session.agentKeys,
-                height: composerKeyboardLayout.availableToolsHeight)
-            .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
-            .disabled(composerKeyboardPresentation != .tools)
-            .allowsHitTesting(composerKeyboardPresentation == .tools)
-            .accessibilityHidden(composerKeyboardPresentation != .tools)
+            if showsChatInput {
+                AgentChatToolsKeyboard(
+                    insertText: { composer.insertIntoDraft($0) },
+                    skills: skills.map { store in
+                        TerminalSkillsContext(store: store) { viewingSkill = $0 }
+                    },
+                    snippets: terminal.snippets,
+                    manageSnippets: { isManagingSnippets = true },
+                    agentKeys: isBoundAntigravity ? nil : session.agentKeys,
+                    height: composerKeyboardLayout.availableToolsHeight)
+                .opacity(composerKeyboardPresentation == .tools ? 1 : 0)
+                .disabled(composerKeyboardPresentation != .tools)
+                .allowsHitTesting(composerKeyboardPresentation == .tools)
+                .accessibilityHidden(composerKeyboardPresentation != .tools)
+            }
         }
         .padding(.top, topInset)
         .overlay(alignment: .top) {
@@ -804,7 +813,7 @@ struct AgentChatSurfaceView: View {
                 retry: { startCheckAgain() },
                 showAgentTerminal: { showAgentTerminal() },
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
-                reviewEdit: reviewOpenCodeEdit,
+                reviewEdit: openCodeEditAction,
                 addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
                 installDroidHook: console.capabilities(for: agent.hostID).offersDroidChatHook ? { showsDroidHook = true } : nil,
                 installAmp: {
@@ -832,6 +841,11 @@ struct AgentChatSurfaceView: View {
                 "Not Connected", systemImage: "wifi.slash",
                 description: Text("Chat shows the conversation once this Agent's Host connects."))
         }
+    }
+
+    private var openCodeEditAction: (() -> Void)? {
+        guard !console.capabilities(for: agent.hostID).readOnlyChatPrograms.contains(.opencode) else { return nil }
+        return { reviewOpenCodeEdit() }
     }
 
     private func reviewOpenCodeEdit() {
@@ -920,7 +934,7 @@ struct AgentChatSurfaceView: View {
             hostStatus: console.hostStatuses[agent.hostID], conversation: chat?.conversation,
             hasPendingEchoes: !pendingEchoes.isEmpty, launchNotice: chat?.visibleLaunchNotice,
             departure: console.chatDeparture(of: agent.id))
-        return lines.map { line in
+        var banners = lines.map { line in
             var banner = Banner(
                 id: line.id, systemImage: line.systemImage, text: line.text, showsProgress: line.showsProgress)
             switch line {
@@ -937,9 +951,9 @@ struct AgentChatSurfaceView: View {
                     banner.actionTitle = AgentDetailSurface.terminal.showTitle
                     banner.action = { showAgentTerminal() }
                 }
-                if reason.offersOpenCodePluginEdit {
+                if reason.offersOpenCodePluginEdit, let openCodeEditAction {
                     banner.secondaryActionTitle = OpenCodePluginEdit.offerTitle
-                    banner.secondaryAction = reviewOpenCodeEdit
+                    banner.secondaryAction = openCodeEditAction
                 }
             case .departure:
                 banner.actionTitle = AgentDetailSurface.terminal.showTitle
@@ -959,6 +973,21 @@ struct AgentChatSurfaceView: View {
             }
             return banner
         }
+        if chat?.ampConnection?.isReadOnly == true, chat?.displayedAmpBinding != nil {
+            banners.append(Banner(id: "rex-amp-read-only", systemImage: "eye", text: AmpChatProblem.readOnly.explanation,
+                actionTitle: AgentDetailSurface.terminal.showTitle, action: { showAgentTerminal() }))
+        }
+        if chat?.isReadingPickedConversation == true {
+            var banner = Banner(id: "rex-picked-conversation", systemImage: "eye",
+                text: AgentChatStore.rexReadOnlyConversation, actionTitle: AgentDetailSurface.terminal.showTitle,
+                action: { showAgentTerminal() })
+            if offersCandidates {
+                banner.secondaryActionTitle = ChatCandidatePickerView.title
+                banner.secondaryAction = { isChoosingConversation = true }
+            }
+            banners.append(banner)
+        }
+        return banners
     }
 
     // MARK: Conversation
@@ -1133,12 +1162,13 @@ struct AgentChatSurfaceView: View {
 
     /// What every Skills entry here reads: nil hides them, the `/` menu's included.
     private var skills: SkillsPaneStore? {
-        console.capabilities(for: agent.hostID).hostScripts ? skillsStore : nil
+        !isBoundAntigravity && console.capabilities(for: agent.hostID).readsProjects ? skillsStore : nil
     }
 
     /// The `/` menu: the Host's skills once loaded, plus `/compact`.
     private var commands: [ChatCommand] {
-        ChatCommandMenu.commands(
+        guard !isBoundAntigravity else { return [] }
+        return ChatCommandMenu.commands(
             skills: skills?.skills ?? [],
             agentIsIdle: ChatAgentActivity(agent.agent.status) == .idle,
             program: program)
@@ -1158,6 +1188,10 @@ struct AgentChatSurfaceView: View {
             displayedDroidTarget: { [chat] in chat?.displayedDroidTarget }, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
+        policy.sessionWrite = chat?.composerWriteCheck(for: composer)
+        if isBoundAntigravity {
+            policy.restrictAntigravityToMessages(hasAttachments: !composer.imageAttachments.isEmpty)
+        }
         if program == .amp {
             let connection = chat?.ampConnection
             let displayed = chat?.displayedAmpBinding
@@ -1204,18 +1238,13 @@ struct AgentChatSurfaceView: View {
     /// herdr-core Host. Without a store there is nothing to check with, so
     /// nothing is sent.
     private var confirmSession: (@MainActor () async -> String?)? {
-        guard chat?.confirmsSessionBeforeSend ?? program.confirmsSessionBeforeSend else { return nil }
-        let chat = chat
-        let program = program
-        let composer = composer
-        return {
-            guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
-            if let reason = await chat.confirmSessionBeforeSend() { return reason }
-            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.composerSessionID) {
-                return program.draftOwnerGuidance
-            }
-            return nil
+        guard let chat else {
+            let program = program
+            return { AgentChatStore.uncheckedSessionReason(program) }
         }
+        guard chat.confirmsSessionBeforeSend else { return nil }
+        let composer = composer
+        return { await chat.confirmSessionBeforeSend(for: composer) }
     }
 
     /// The refusal Chat already knows the check would give, before any await.
@@ -1460,6 +1489,7 @@ struct AgentChatSurfaceView: View {
 
     /// Session settings switched from Chat's header or status line.
     private var sessionControls: AgentSessionControls? {
+        guard !isBoundAntigravity else { return nil }
         let status = agent.agent.status
         let isEnabled = (status == .idle || status == .done)
             && !isSwitchingSetting && !isComposerSending && !session.agentKeys.isRunningQueuedWork
@@ -1968,7 +1998,7 @@ struct AgentChatSurfaceView: View {
     /// Chat's Stop: the program's Stop plan, in line with the Agent page's
     /// keys, as typed keys would arrive.
     private var stopInterrupt: AgentComposerInterrupt? {
-        guard program != .amp else { return nil }
+        guard program != .amp, !isBoundAntigravity else { return nil }
         return console.chatInterrupt(
             for: agent, program: program, keepingTo: session.corePin,
             context: stopContext, agentKeys: session.agentKeys, followThrough: stopFollowThrough)
@@ -1979,7 +2009,7 @@ struct AgentChatSurfaceView: View {
     /// Background Work keeps the Agent Working after its foreground turn
     /// already finished, there is no open foreground turn to place.
     private var stopFollowThrough: (@MainActor () -> ChatStopFollowThrough?)? {
-        guard program == .agy, let chat else { return nil }
+        guard program == .agy, !isBoundAntigravity, let chat else { return nil }
         let composer = composer
         return {
             guard chat.agent.status == .working else { return nil }
@@ -2014,7 +2044,7 @@ struct AgentChatSurfaceView: View {
     /// though the store can keep the card it showed, or read an Antigravity
     /// CLI for its trust prompt as the departure clears its status.
     private var showsBlockedCard: Bool {
-        chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
+        !isBoundAntigravity && showsChatInput && chat?.blocked.replacesComposer == true && console.chatDeparture(of: agent.id) == nil
     }
 
     /// A Blocked Agent's dialog, answered in the Composer's place, or a sign
@@ -2038,7 +2068,7 @@ struct AgentChatSurfaceView: View {
     /// zero with the last row.
     private var backgroundWorkStrip: some View {
         VStack(spacing: 0) {
-            if let chat, presentation == .timeline {
+            if !isBoundAntigravity, let chat, presentation == .timeline {
                 BackgroundWorkInset(
                     chat: chat,
                     isHostConnected: isHostConnected,
@@ -2095,10 +2125,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: offers.attachments && program != .amp ? { isSelectingPhoto = true } : nil,
-            pasteImage: offers.attachments && program != .amp
+            addImage: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments && program != .amp && !isBoundAntigravity
                 ? { session.pasteClipboard() } : nil,
-            addFile: offers.attachments && program != .amp ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {

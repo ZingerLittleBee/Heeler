@@ -1,0 +1,11 @@
+{
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "source": "Read-only official evidence on the isolated Debian Host",
+  "shellCount": 2,
+  "independentOutputMarkers": 2,
+  "verifiedExitCodes": [
+    0,
+    0
+  ],
+  "fixtureScope": "Two earlier signed native background shells. This exact app reopens both over SSH twice. This case has no child."
+}

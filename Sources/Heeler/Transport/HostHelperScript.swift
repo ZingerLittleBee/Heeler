@@ -92,7 +92,7 @@ struct HostHelperScript: Sendable, Equatable {
     static let rexSessionFolderName = "heeler-session"
     /// What every extension that reports inside a Rex terminal reads, so a
     /// copy without it is one from before it could.
-    static let rexExtensionMark = "REX_BLOCK"
+    static let rexExtensionMark = "Rex session report format v2"
     /// That file in the Helper's tree.
     static let extensionPath = "extensions/\(extensionFileName)"
     /// The script that finds those folders, in the Helper's tree.

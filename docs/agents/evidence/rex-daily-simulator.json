@@ -1,0 +1,184 @@
+{
+  "candidate": "5c655f380d6cf63629f69d7436666ddba80f29c9",
+  "sha256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+  "scenarioEvidence": "rex-final/scenario-evidence.json",
+  "methodLedger": "rex-final/results.json",
+  "previous": "rex-daily-simulator-4c07c2b34.json",
+  "ordinaryCases": {
+    "pad-banner-done": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-done-9u_i1ovl/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-done-9u_i1ovl/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:54:52.819+08:00",
+      "end": "2026-11-28T00:55:26.820+08:00"
+    },
+    "pad-banner-off": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-2r30sh1p/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-2r30sh1p/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:52:53.778+08:00",
+      "end": "2026-11-28T00:53:39.429+08:00"
+    },
+    "pad-banner-off-again": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-again-wcq09758/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-off-again-wcq09758/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:55:27.158+08:00",
+      "end": "2026-11-28T00:56:11.850+08:00"
+    },
+    "pad-banner-repeat": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-repeat-igazqegw/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-repeat-igazqegw/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:53:39.759+08:00",
+      "end": "2026-11-28T00:54:24.263+08:00"
+    },
+    "pad-banner-tap": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-tap-18tvkh2u/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-banner-tap-18tvkh2u/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:54:24.623+08:00",
+      "end": "2026-11-28T00:54:52.492+08:00"
+    },
+    "pad-end": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-end-evatl3kj/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-end-evatl3kj/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:56:12.209+08:00",
+      "end": "2026-11-28T00:56:42.302+08:00"
+    },
+    "pad-files-skill": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-files-skill-usddvvyk/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-files-skill-usddvvyk/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:51:37.463+08:00",
+      "end": "2026-11-28T00:52:14.878+08:00"
+    },
+    "pad-host": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-host-6t13bwmg/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-host-6t13bwmg/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:49:50.938+08:00",
+      "end": "2026-11-28T00:50:48.886+08:00"
+    },
+    "pad-real-pi-files-skill": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-real-pi-files-skill-k1434taq/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-real-pi-files-skill-k1434taq/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:52:15.283+08:00",
+      "end": "2026-11-28T00:52:53.443+08:00"
+    },
+    "pad-worktree": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-worktree-izimyk0y/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/pad-worktree-izimyk0y/driver.xcresult",
+      "udid": "BC0A885C-C04E-41D8-879D-3FAC08209085",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:50:49.274+08:00",
+      "end": "2026-11-28T00:51:37.070+08:00"
+    },
+    "phone-host": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-host-wlkltd0s/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-host-wlkltd0s/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T00:58:13.121+08:00",
+      "end": "2026-11-28T00:58:54.690+08:00"
+    },
+    "phone-new-workspace": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-new-workspace-vttouf6m/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/unified/phone-new-workspace-vttouf6m/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "9f99d05c6589b4c54cd44194347f996dd445fc76",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T01:08:56.369+08:00",
+      "end": "2026-11-28T01:09:43.529+08:00"
+    },
+    "phone-pi-names": {
+      "case": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/titlerun/phone-pi-names-6u9h8rz7/case.json",
+      "bundle": "build/heeler-lab-gui/foreground/5c655f380d6cf63629f69d7436666ddba80f29c9/titlerun/phone-pi-names-6u9h8rz7/driver.xcresult",
+      "udid": "38FC9720-0863-416A-89F3-45CED5F13CE6",
+      "fixtureIdentifier": "3bd57f6b283e00c1be0cafaae96eabad468970bc",
+      "appSHA256": "58d2518e856a141d5838be745b68a7990a5a7abb376af811a5f738c3a81a5ee5",
+      "start": "2026-11-28T01:09:46.686+08:00",
+      "end": "2026-11-28T01:10:24.569+08:00"
+    }
+  },
+  "screenshots": {
+    "iphone-linux-capabilities.png": {
+      "raw": "build/heeler-lab-gui/phone/e-9f99d05c-linux-features-visible.png",
+      "sha256": "bac2df3844278e8252c63dde4b053aa37d2fb0e452424b489ee878e326d32ad2",
+      "case": "phone-host"
+    },
+    "iphone-verified-shell.png": {
+      "raw": "build/heeler-lab-gui/phone/e-9f99d05c-new-shell-marked.png",
+      "sha256": "a18852d988f3c3c4cda2d0b0a835cc3bd8cae7b583f4fdc628bfa9d5e9b5af83",
+      "case": "phone-new-workspace"
+    },
+    "iphone-pi-title.png": {
+      "raw": "build/heeler-lab-gui/phone/e-3bd57f6b-pi-official-title.png",
+      "sha256": "0dad9090566e2cd0953abe50599369e1f4ad2594c06f2265a5dcacf27e3bbfb6",
+      "case": "phone-pi-names"
+    },
+    "ipad-worktree.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-worktree-preset-form.png",
+      "sha256": "6b0597cfb8f98d2ddced102d2f45b7bf8eed1b793854f7b42bb7f363f478afe7",
+      "case": "pad-worktree"
+    },
+    "ipad-skill-draft.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-real-pi-selected-skill-draft.png",
+      "sha256": "44a7b9dfb2d0bb3ee651f6b403150d168519bfca9d77a3bc65bdb8d1b11ed8aa",
+      "case": "pad-real-pi-files-skill"
+    },
+    "ipad-blocked-recipient.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-tap-recipient.png",
+      "sha256": "d8f8686583d5b3e655a065eb7c5ff4a71bd1240951ef968c227a6300a185e9b9",
+      "case": "pad-banner-tap"
+    },
+    "ipad-done-recipient.png": {
+      "raw": "build/heeler-lab-gui/pad/e-9f99d05c-linux-done-recipient.png",
+      "sha256": "33c4bf81ef6f7e7910a71ada143668b9849097a5617dc7ed823ef95238c8f963",
+      "case": "pad-banner-done"
+    },
+    "iphone-grok-stop.png": {
+      "raw": "build/heeler-lab-evidence/chat/5c655f380-mac-grok-stop-q5c655aa0671f0-active.png",
+      "sha256": "9d2f8fbe4b58bb597dda787592d4a9bc54e70d7a930a3bd1b827575761c013c0",
+      "case": "Grok native Stop on macOS"
+    }
+  },
+  "nativeDeviceAvailability": {
+    "command": "xcrun devicectl list devices --json-output, hardwareProperties.reality == physical",
+    "at": "2026-11-28",
+    "observed": [
+      {
+        "model": "iPad Air (5th generation)",
+        "tunnel": "unavailable",
+        "developerServices": false
+      },
+      {
+        "model": "iPhone 17 Pro Max",
+        "tunnel": "disconnected",
+        "developerServices": false
+      }
+    ]
+  }
+}

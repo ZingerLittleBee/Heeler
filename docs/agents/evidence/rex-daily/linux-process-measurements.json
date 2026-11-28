@@ -1,0 +1,239 @@
+{
+  "frozenCandidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "candidate": "05a49f2bb673679ced131f482ad0f0af2be2a99d",
+  "sourceSHA256": "419ae7fc6cf513794d117302a085da438bc2293b7ae3a3edbf6965b9e9946ec7",
+  "results": {
+    "rex-plan-extra": {
+      "visibleProcDirectories": 6151,
+      "recordsPerRead": 24,
+      "orderedCompleteWireEqual": true,
+      "lockBelongsToOnlyDirectACPForExpectedSlug": true,
+      "ownerIsNotInteractive": true,
+      "expectedSlugHash": "94f223890de9",
+      "samples": [
+        {
+          "case": "frozen",
+          "ms": 1131.4
+        },
+        {
+          "case": "candidate",
+          "ms": 134.9
+        },
+        {
+          "case": "candidate",
+          "ms": 139.8
+        },
+        {
+          "case": "frozen",
+          "ms": 961.8
+        },
+        {
+          "case": "frozen",
+          "ms": 947.1
+        },
+        {
+          "case": "candidate",
+          "ms": 171.3
+        },
+        {
+          "case": "candidate",
+          "ms": 146.4
+        },
+        {
+          "case": "frozen",
+          "ms": 980.4
+        },
+        {
+          "case": "frozen",
+          "ms": 1066.6
+        },
+        {
+          "case": "candidate",
+          "ms": 159.5
+        },
+        {
+          "case": "candidate",
+          "ms": 250.9
+        },
+        {
+          "case": "frozen",
+          "ms": 1013.2
+        }
+      ]
+    },
+    "rex-plan-solo": {
+      "visibleProcDirectories": 6154,
+      "recordsPerRead": 24,
+      "orderedCompleteWireEqual": true,
+      "lockBelongsToOnlyDirectACPForExpectedSlug": true,
+      "ownerIsNotInteractive": true,
+      "expectedSlugHash": "211118c15f53",
+      "samples": [
+        {
+          "case": "frozen",
+          "ms": 1116.2
+        },
+        {
+          "case": "candidate",
+          "ms": 239.6
+        },
+        {
+          "case": "candidate",
+          "ms": 219.7
+        },
+        {
+          "case": "frozen",
+          "ms": 1001.4
+        },
+        {
+          "case": "frozen",
+          "ms": 928.7
+        },
+        {
+          "case": "candidate",
+          "ms": 131.6
+        },
+        {
+          "case": "candidate",
+          "ms": 190.5
+        },
+        {
+          "case": "frozen",
+          "ms": 1000.6
+        },
+        {
+          "case": "frozen",
+          "ms": 866.0
+        },
+        {
+          "case": "candidate",
+          "ms": 222.7
+        },
+        {
+          "case": "candidate",
+          "ms": 289.6
+        },
+        {
+          "case": "frozen",
+          "ms": 964.8
+        }
+      ]
+    },
+    "rex": {
+      "visibleProcDirectories": 6160,
+      "recordsPerRead": 24,
+      "orderedCompleteWireEqual": true,
+      "lockBelongsToOnlyDirectACPForExpectedSlug": true,
+      "ownerIsNotInteractive": true,
+      "expectedSlugHash": "c9d577bcde05",
+      "samples": [
+        {
+          "case": "frozen",
+          "ms": 919.4
+        },
+        {
+          "case": "candidate",
+          "ms": 143.7
+        },
+        {
+          "case": "candidate",
+          "ms": 148.2
+        },
+        {
+          "case": "frozen",
+          "ms": 966.5
+        },
+        {
+          "case": "frozen",
+          "ms": 1122.3
+        },
+        {
+          "case": "candidate",
+          "ms": 166.2
+        },
+        {
+          "case": "candidate",
+          "ms": 143.0
+        },
+        {
+          "case": "frozen",
+          "ms": 1178.3
+        },
+        {
+          "case": "frozen",
+          "ms": 1233.1
+        },
+        {
+          "case": "candidate",
+          "ms": 161.3
+        },
+        {
+          "case": "candidate",
+          "ms": 147.7
+        },
+        {
+          "case": "frozen",
+          "ms": 991.8
+        }
+      ]
+    },
+    "bg-rex": {
+      "visibleProcDirectories": 6164,
+      "recordsPerRead": 24,
+      "orderedCompleteWireEqual": true,
+      "lockBelongsToOnlyDirectACPForExpectedSlug": true,
+      "ownerIsNotInteractive": true,
+      "expectedSlugHash": "2382f1b2eaa7",
+      "samples": [
+        {
+          "case": "frozen",
+          "ms": 1133.0
+        },
+        {
+          "case": "candidate",
+          "ms": 211.7
+        },
+        {
+          "case": "candidate",
+          "ms": 173.8
+        },
+        {
+          "case": "frozen",
+          "ms": 1119.6
+        },
+        {
+          "case": "frozen",
+          "ms": 1265.8
+        },
+        {
+          "case": "candidate",
+          "ms": 162.2
+        },
+        {
+          "case": "candidate",
+          "ms": 921.6
+        },
+        {
+          "case": "frozen",
+          "ms": 3006.8
+        },
+        {
+          "case": "frozen",
+          "ms": 1792.2
+        },
+        {
+          "case": "candidate",
+          "ms": 301.4
+        },
+        {
+          "case": "candidate",
+          "ms": 491.3
+        },
+        {
+          "case": "frozen",
+          "ms": 1864.9
+        }
+      ]
+    }
+  }
+}

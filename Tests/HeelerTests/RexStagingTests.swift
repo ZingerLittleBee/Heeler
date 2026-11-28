@@ -165,14 +165,16 @@ struct RexStagingTests {
         (HerdrCoreLocator.windowsKernel, true),
     ] as [(String?, Bool)])
     func uploadsOpenWhereChatDoes(kernel: String?, opens: Bool) {
-        let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+        let capabilities = HostCapabilities(serverKind: .rex, coreKernel: kernel, rexAcceptsCommand: true)
         #expect(capabilities.uploads == opens)
         #expect(capabilities.chat == opens)
         #expect(capabilities.composerSend)
         let offers = AgentDetailMenuOffers(
             capabilities: capabilities, workspaceID: "session:studio", removesSavedChat: false)
         #expect(offers.attachments == opens)
-        #expect(!offers.newAgent && !offers.renameAgent && !offers.renameWorkspace && !offers.close)
+        let posix = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        #expect(offers.newAgent == posix && offers.renameWorkspace == posix)
+        #expect(offers.renameAgent == posix && !offers.close)
         // The catalog's Host knows no kernel, so nothing offers them ahead.
         #expect(!Self.rex.capabilities.uploads)
     }
@@ -524,6 +526,42 @@ struct RexStagingTests {
         #expect(composer.readyImagePaths.isEmpty && composer.draft.isEmpty)
         #expect(
             await rig.connection.log == ["control \(Self.socket)", "stage image.jpg", "stage lab_notes.txt"])
+    }
+
+    @Test func editDraftRecoversTheStagedFileAndImageAfterAReceiptIsLost() async throws {
+        let rig = try await rig()
+        defer { rig.console.setHosts([]) }
+        let (composer, staging) = rig.composer()
+        let source = try Self.pickedFile(named: "notes 中文.txt", contents: Data("lab attachment".utf8))
+        defer { try? FileManager.default.removeItem(at: source.deletingLastPathComponent()) }
+
+        try #require(staging.begin(.file(source)) != nil)
+        try await waitUntil("the staged file") { Self.completed(staging)?.medium == .file }
+        let fileDraft = composer.draft
+        try #require(!fileDraft.isEmpty)
+        try #require(staging.begin(try Self.photo()) != nil)
+        try await waitUntil("the staged image") { composer.readyImagePaths.count == 1 }
+        let images = composer.readyImagePaths
+        let draft = fileDraft + "heeler-lab-receipt"
+        composer.replaceDraft(with: draft)
+        var policy = ComposerDeliveryPolicy.terminal
+        policy.route = .chat
+
+        await rig.server.stopAnswering(RexChatRig.write)
+        let send = Task { await composer.send(policy: policy) }
+        try await waitUntil("Rex received Enter") { await rig.written() == ["\r"] }
+        await rig.server.drop()
+        #expect(await send.value == .outcomeUnknown)
+        let pending = try #require(composer.messages.first)
+        #expect(pending.state == .outcomeUnknown && pending.stagedImagePaths == images)
+        #expect(await composer.retry(pending.id, policy: policy) == .ignored)
+
+        composer.withdrawToDraft(pending.id)
+        #expect(composer.messages.isEmpty)
+        #expect(composer.draft == draft && composer.readyImagePaths == images)
+        #expect(await rig.connection.stagedFiles.count == 2)
+        #expect(await rig.pasted().count == 1)
+        #expect(await rig.written() == ["\r"])
     }
 
     /// A staging that fails, as one whose connection dropped mid-transfer

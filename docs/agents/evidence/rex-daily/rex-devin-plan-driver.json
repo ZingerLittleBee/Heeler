@@ -1,0 +1,19 @@
+{
+  "runtimeCandidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "runtimeSHA256": "05eef8008b0f47e4bca158e9413a3f91d4f15ccdbb45eff012bb81f9e7a60f79",
+  "baseTestSHA256": "df727c92f097181096fb67232e212bb3f6eb40287abdb7db0eb466b6e16a7798",
+  "testPatchSHA256": "1d5c523b4de27ee3fd2681de9816e09648b7e5b2ce33675a46072464704e3ede",
+  "patchedSourceSHA256": "116214c75a2915a4448630ac94e6d1f96f82623391322c429594775b22f26525",
+  "originalSourceSHA256": "2118f48669bfd45826aae4a18191db877f5452447b47c4126e7ed5357a5c723e",
+  "changes": [
+    "Tests/HeelerLiveTests/DevinChatLiveTests.swift"
+  ],
+  "patchedTestSHA256": "2e0a2cdca2d1f2f5089e796162a1275859f7693d93a2fe455863e746068ac2ef",
+  "xctestrunSHA256": "428bf81f95546358108c7db6140047133e626f6b67b8d873cbba5b1a11c10d2e",
+  "objectsRelinked": 26,
+  "testSourceObjectsRebuilt": 1,
+  "signaturesVerified": true,
+  "outerAppResealedForEmbeddedTests": true,
+  "launcherWithoutSignaturesSHA256": "e4ea1bc85aa88ef05da891063e678f449fed207dbab215d7d7c1b5a4f7f96757",
+  "rawLauncherChangedOnlyInSignature": true
+}

@@ -1,0 +1,25 @@
+{
+  "candidate": "4c07c2b34e7c5816631dbb2ff2f65484c8820879",
+  "platform": "macOS",
+  "officialUserRows": {
+    "success": [],
+    "failure": [],
+    "child": []
+  },
+  "officialCounts": {
+    "success": 0,
+    "failure": 0,
+    "child": 0
+  },
+  "officialToolCallsByName": {},
+  "typedToolEvidence": [],
+  "officialParentReplyRows": [],
+  "matchingChildRelays": [],
+  "childReleaseSignalExists": false,
+  "childGateStillPending": true,
+  "exactMarkersVisibleInCurrentBlock": {
+    "success": true,
+    "failure": false,
+    "child": false
+  }
+}

@@ -86,13 +86,14 @@ struct AmpChatPage: Decodable, Sendable {
 }
 
 enum AmpChatProblem: Error, Equatable, Sendable {
-    case missing, update, reload, noThread, changed, incompatible, unidentified, conflict, unreachable
+    case missing, update, reload, noThread, changed, incompatible, unidentified, conflict, unreachable, readOnly
 
     var explanation: String {
         switch self {
-        case .missing: String(localized: "Install Heeler’s plugin on the Host to read and reply to the thread open in this Amp terminal.")
+        case .readOnly: String(localized: "Read this Amp thread in Chat. Use its terminal to send messages or answer requests.")
+        case .missing: String(localized: "Install Heeler’s plugin on the Host to read the thread open in this Amp terminal.")
         case .update: String(localized: "Update Heeler’s Amp plugin on this Host to read complete messages and tool output.")
-        case .reload: String(localized: "In the Amp terminal, press Ctrl+O, search for reload, and choose Plugins › Reload. Then check again here.")
+        case .reload: String(localized: "Make sure Heeler’s plugin is enabled in the Amp terminal. Press Ctrl+O, search for reload, choose Plugins › Reload, then check again here.")
         case .noThread: String(localized: "Start or open a thread in this Amp terminal. Chat will follow it here.")
         case .changed: String(localized: "The Amp terminal changed threads or reloaded its plugin. Check the current conversation before sending.")
         case .incompatible: String(localized: "This Amp plugin uses a different protocol version.")
@@ -116,11 +117,12 @@ extension AmpChatHost {
 }
 
 struct AmpPluginLocation: Identifiable, Equatable, Sendable {
-    var id: String { "\(pid):\(start):\(directory)" }
+    var id: String { [rexInstance, String(pid), start, directory].compactMap { $0 }.joined(separator: ":") }
     let pid: Int
     let start: String
     let home: String
     let directory: String
+    let rexInstance: String?
     var recordPath: String { "\(home)/.local/state/heeler/amp/\(pid).json" }
     var pluginPath: String { "\(directory)/heeler-chat.js" }
 
@@ -170,7 +172,7 @@ struct AmpPluginLocation: Identifiable, Equatable, Sendable {
         return matches.count == 1 ? matches.first?.pid : nil
     }
 
-    init?(pid: Int, facts: HostProcessReader.Facts) {
+    init?(pid: Int, facts: HostProcessReader.Facts, rexInstance: String? = nil) {
         guard case .value(let start) = facts.start,
             case .value(let home) = facts.variables["HOME"], RemoteFilePath.isAcceptable(home)
         else { return nil }
@@ -181,6 +183,7 @@ struct AmpPluginLocation: Identifiable, Equatable, Sendable {
         default: return nil
         }
         self.pid = pid
+        self.rexInstance = rexInstance
         self.start = start
         self.home = home
         directory = (root as NSString).appendingPathComponent("amp/plugins")

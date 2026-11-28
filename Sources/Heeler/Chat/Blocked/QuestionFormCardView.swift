@@ -164,7 +164,7 @@ struct QuestionFormCard: View {
         if draft.isLastPage {
             guard let answers = draft.answers else { return }
             isTextFocused = false
-            Task { await store.submit(answers) }
+            Task { await store.submit(answers, shownCard: card) }
         } else {
             go(to: page + 1)
         }
@@ -184,12 +184,12 @@ struct QuestionFormCard: View {
 
     private func stop() {
         isTextFocused = false
-        Task { await store.perform(.dismiss) }
+        Task { await store.perform(.dismiss, shownCard: card) }
     }
 
     private func chatInstead() {
         guard let chat else { return }
         isTextFocused = false
-        Task { await store.perform(.choose(ordinal: chat.ordinal)) }
+        Task { await store.perform(.choose(ordinal: chat.ordinal), shownCard: card) }
     }
 }

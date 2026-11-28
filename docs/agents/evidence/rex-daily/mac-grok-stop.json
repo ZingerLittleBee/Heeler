@@ -1,0 +1,93 @@
+{
+  "candidate": "b8af66cfd488a20062147e174b00009b6ebd1a54",
+  "site": "mac",
+  "program": "Grok Build 1.0.92",
+  "initiator": "Independent desktop client, one gated loopback request",
+  "nativeChatShowedExpectedSeed": true,
+  "activePromptWasDisplayedBeforeStop": true,
+  "initial": {
+    "a": {
+      "user": 1,
+      "assistant": 0,
+      "updates": [
+        "user_message_chunk"
+      ],
+      "pid": 11446,
+      "uuid": "01a21d32-4303-73c1-a8c4-62fde351a7ed"
+    },
+    "b": {
+      "user": 0,
+      "assistant": 0,
+      "updates": [],
+      "pid": 11499,
+      "uuid": "01a21d32-44a5-77f0-a3af-795fe26b1a10"
+    },
+    "ownedProgramStatus": [
+      {
+        "state": "working",
+        "app": "grok",
+        "effective_app": "grok",
+        "owner": {
+          "pid": 11446,
+          "name": "grok-1.0.92-macos-aarch64"
+        }
+      }
+    ],
+    "providerStarted": true,
+    "providerCancelledBeforeRelease": false,
+    "providerReleased": false,
+    "independentScreenTerms": [
+      "cancel",
+      "stop"
+    ]
+  },
+  "activeAccessibilityLabels": [
+    "You: Reply only with REX_LAB_GROK_STOP_SEED_MAC_A. Do not use tools.",
+    "REX_LAB_GROK_STOP_SEED_MAC_A",
+    "Working",
+    "Stop",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok"
+  ],
+  "nativeStopTapped": true,
+  "finalAccessibilityLabels": [
+    "You: Reply only with REX_LAB_GROK_STOP_SEED_MAC_A. Do not use tools.",
+    "REX_LAB_GROK_STOP_SEED_MAC_A",
+    "Stopped before a reply, Grok Build put the message back in its input box.",
+    "Reply only with REX_LAB_GROK_STOP_SEED_\u2026 - grok"
+  ],
+  "final": {
+    "a": {
+      "user": 1,
+      "assistant": 0,
+      "updates": [
+        "user_message_chunk"
+      ],
+      "pid": 11446,
+      "uuid": "01a21d32-4303-73c1-a8c4-62fde351a7ed"
+    },
+    "b": {
+      "user": 0,
+      "assistant": 0,
+      "updates": [],
+      "pid": 11499,
+      "uuid": "01a21d32-44a5-77f0-a3af-795fe26b1a10"
+    },
+    "ownedProgramStatus": [
+      {
+        "state": "idle",
+        "app": "grok",
+        "effective_app": "grok",
+        "owner": {
+          "pid": 11446,
+          "name": "grok-1.0.92-macos-aarch64"
+        }
+      }
+    ],
+    "providerStarted": true,
+    "providerCancelledBeforeRelease": true,
+    "providerReleased": false,
+    "independentScreenTerms": [
+      "stop"
+    ]
+  }
+}

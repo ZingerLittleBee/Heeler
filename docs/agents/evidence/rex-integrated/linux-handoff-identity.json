@@ -1,0 +1,18 @@
+{
+  "A": {
+    "previousFileActive": false,
+    "previousMarkerInCurrent": false,
+    "pid": 3661,
+    "foregroundStart": "3784189",
+    "currentFileSHA256": "a842f1272eec5fa29d05e6e39519fe1f00d26b82d945f60c11c7e65b2da34dac",
+    "sourceAndPeerMarkersDistinct": true
+  },
+  "B": {
+    "previousFileActive": true,
+    "previousMarkerInCurrent": true,
+    "pid": 3681,
+    "foregroundStart": "3784193",
+    "currentFileSHA256": "b805a3d603381d93e5407fcad0ea35e0bc548fe30c77e6f076407aa885eabed8",
+    "sourceAndPeerMarkersDistinct": true
+  }
+}

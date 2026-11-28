@@ -37,6 +37,7 @@ struct NewTerminalView: View {
                     }
                 },
                 awaitTerminal: { await console.waitForTerminal($0, on: $1) },
+                offersTabNames: { console.capabilities(for: $0).tabNames },
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces }))
     }
 
@@ -104,7 +105,7 @@ struct NewTerminalView: View {
                     } header: {
                         Text("Tab")
                     } footer: {
-                        Text("Empty keeps herdr's numbered tab name.")
+                        Text("Leave empty to use the Server’s default tab name.")
                     }
                 }
 

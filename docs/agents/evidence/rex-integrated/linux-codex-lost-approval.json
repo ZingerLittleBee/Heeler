@@ -1,0 +1,22 @@
+{
+  "wire": {
+    "targetWrites": 1,
+    "peerWrites": 0,
+    "successfulTargetResponses": 1,
+    "droppedResponses": 1
+  },
+  "official": {
+    "targetCalls": 1,
+    "targetResults": 1,
+    "peerContainsCall": false,
+    "peerContainsMarker": false
+  },
+  "expectedFileMatches": true,
+  "callIdSHA256": "99e2cd1dd4a8b64aac3070e38ee70b2e17dc4cf4041742a3a32f3f1cb2033305",
+  "targetSHA256": "474a96e1a53292fa4cf509035b5ecc06eefe5d671341704f89016130cd815f00",
+  "peerSHA256": "e84aa681051625250d8ccaf9d6908bb60081fdfc26a2a5d23ef9ab4fb9d799fc",
+  "candidate": "86f2604950d65f4784f6b10c56abd253ba3d69e1",
+  "program": "codex",
+  "host": "Debian 12.15 arm64; Rex preview.25, revision 19",
+  "bundle": "linux-native-86f2604950d6/codex-kitty-dropped-approval.xcresult"
+}

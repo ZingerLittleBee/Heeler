@@ -269,7 +269,7 @@ enum RexChatScreen {
             if hasLineAbove, position == 0 { continue }
             rows.append(ScreenRow(index: rows.count, runs: runs))
         }
-        return Reading(screen: ANSIScreen(rows: rows), kittyKeyboardFlags: flags)
+        return Reading(screen: ANSIScreen(rows: rows, reportedColumns: grid.columns), kittyKeyboardFlags: flags)
     }
 
     /// Removes the kitty keyboard flags Rex appends after the last row, and
