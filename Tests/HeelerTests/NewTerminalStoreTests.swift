@@ -26,6 +26,13 @@ struct NewTerminalStoreTests {
             snapshotOrder: 0, snapshotAgentKind: nil)
     }
 
+    private func makeRecents() -> RecentLaunchStore {
+        let name = "new-terminal-recents-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return RecentLaunchStore(defaults: defaults)
+    }
+
     private func makeStore(
         hosts: [Host]? = nil,
         workspaces: [ConsoleWorkspace] = [
@@ -35,6 +42,7 @@ struct NewTerminalStoreTests {
         directories: [String: String] = ["w1": "/srv/api"],
         home: String = "/home/dev",
         refreshes: Bool = true,
+        recents: RecentLaunchStore? = nil,
         recorder: Recorder
     ) -> NewTerminalStore {
         let terminal = terminal(for: host)
@@ -50,7 +58,8 @@ struct NewTerminalStoreTests {
                 recorder.destinations.append(destination)
                 return identity
             },
-            awaitTerminal: { _, _ in refreshes ? terminal : nil })
+            awaitTerminal: { _, _ in refreshes ? terminal : nil },
+            recents: recents ?? makeRecents())
     }
 
     @Test func singleHostIsPreselectedWithItsFirstWorkspaceInOrder() {
@@ -198,6 +207,27 @@ struct NewTerminalStoreTests {
         #expect(store.newWorkspaceDirectory.isEmpty)
         #expect(store.newWorkspaceLabel.isEmpty)
         #expect(store.selectedWorkspaceID == "w1")
+    }
+
+    @Test func remembersTheLastBrowsedDirectoryPerHostAcrossReopenings() {
+        let rex = Host(name: "studio", address: "host.example", username: "dev", serverKind: .rex)
+        let other = Host.fixture(name: "other", address: "other.example")
+        let recents = makeRecents()
+
+        let first = makeStore(hosts: [host, rex, other], recents: recents, recorder: Recorder())
+        first.selectedHostID = host.id
+        first.applyBrowsedDirectory("/srv/studio-project")
+        #expect(first.initialBrowseDirectory == "/srv/studio-project")
+
+        first.selectedHostID = rex.id
+        #expect(first.initialBrowseDirectory == "/srv/studio-project")
+
+        first.selectedHostID = other.id
+        #expect(first.initialBrowseDirectory == nil)
+
+        let reopened = makeStore(hosts: [host, rex, other], recents: recents, recorder: Recorder())
+        reopened.selectedHostID = rex.id
+        #expect(reopened.initialBrowseDirectory == "/srv/studio-project")
     }
 }
 

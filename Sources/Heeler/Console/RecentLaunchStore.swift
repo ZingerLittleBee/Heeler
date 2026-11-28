@@ -8,12 +8,27 @@ import Foundation
 /// Hosts are kept in recency order by Server record ID, so both the last Host
 /// and the last Server picked on each multi-Server Host are remembered. The
 /// Workspace is remembered per Server record because a workspace ID only means
-/// something inside one session. The Agent kind is a single preference across
-/// Hosts: a Host that lacks it falls back to its own first kind.
+/// something inside one session. Browsed directories belong to the Host's
+/// filesystem and are remembered per Host machine across its Servers. The Agent
+/// kind and each kind's Launch Preset are device preferences across Hosts: a
+/// Host that lacks the kind or a deleted preset falls back cleanly.
 struct RecentLaunchStore {
+    enum PresetChoice: Equatable, Sendable {
+        case noPreset
+        case preset(LaunchPreset.ID)
+    }
+
+    private struct RememberedDirectory: Codable, Equatable, Sendable {
+        var connection: HostMachine.Connection
+        var path: String
+    }
+
     private static let hostIDsKey = "recent-host-ids"
     private static let workspaceKey = "recent-workspace-by-host"
+    private static let directoryKey = "recent-directory-by-host"
     private static let agentKindKey = "recent-agent-kind"
+    private static let presetKey = "recent-preset-by-agent-kind"
+    private static let nonePresetValue = "none"
 
     private let defaults: UserDefaults
 
@@ -57,6 +72,32 @@ struct RecentLaunchStore {
         defaults.set(updated, forKey: Self.workspaceKey)
     }
 
+    func directory(for connection: HostMachine.Connection) -> String? {
+        guard let path = directoriesByHost.first(where: { $0.connection == connection })?.path,
+            RemoteHostPath.isAbsolute(path)
+        else { return nil }
+        return path
+    }
+
+    func rememberDirectory(_ path: String, for connection: HostMachine.Connection) {
+        guard RemoteHostPath.isAbsolute(path) else { return }
+        var updated = directoriesByHost
+        if let index = updated.firstIndex(where: { $0.connection == connection }) {
+            updated[index].path = path
+        } else {
+            updated.append(RememberedDirectory(connection: connection, path: path))
+        }
+        saveDirectories(updated)
+    }
+
+    func forgetDirectory(for connection: HostMachine.Connection) {
+        var updated = directoriesByHost
+        let before = updated.count
+        updated.removeAll { $0.connection == connection }
+        guard updated.count != before else { return }
+        saveDirectories(updated)
+    }
+
     /// Nil until the first successful launch, or when a later version drops
     /// the stored kind.
     var agentKind: SupportedAgentKind? {
@@ -65,6 +106,18 @@ struct RecentLaunchStore {
 
     func rememberAgentKind(_ kind: SupportedAgentKind) {
         defaults.set(kind.rawValue, forKey: Self.agentKindKey)
+    }
+
+    func presetChoice(for kind: SupportedAgentKind) -> PresetChoice? {
+        guard let raw = presetsByAgentKind[kind.rawValue] else { return nil }
+        if raw == Self.nonePresetValue { return .noPreset }
+        return UUID(uuidString: raw).map(PresetChoice.preset)
+    }
+
+    func rememberPreset(_ presetID: LaunchPreset.ID?, for kind: SupportedAgentKind) {
+        var updated = presetsByAgentKind
+        updated[kind.rawValue] = presetID?.uuidString ?? Self.nonePresetValue
+        defaults.set(updated, forKey: Self.presetKey)
     }
 
     /// Remove Host forgets its workspace. Entries left by Hosts removed before it
@@ -89,5 +142,22 @@ struct RecentLaunchStore {
 
     private var workspacesByHost: [String: String] {
         defaults.dictionary(forKey: Self.workspaceKey) as? [String: String] ?? [:]
+    }
+
+    private var directoriesByHost: [RememberedDirectory] {
+        guard let data = defaults.data(forKey: Self.directoryKey) else { return [] }
+        return (try? JSONDecoder().decode([RememberedDirectory].self, from: data)) ?? []
+    }
+
+    private func saveDirectories(_ directories: [RememberedDirectory]) {
+        if directories.isEmpty {
+            defaults.removeObject(forKey: Self.directoryKey)
+        } else if let data = try? JSONEncoder().encode(directories) {
+            defaults.set(data, forKey: Self.directoryKey)
+        }
+    }
+
+    private var presetsByAgentKind: [String: String] {
+        defaults.dictionary(forKey: Self.presetKey) as? [String: String] ?? [:]
     }
 }
