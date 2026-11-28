@@ -1045,10 +1045,14 @@ actor HeelerSSHTransport: Transport {
     /// for `sessionFileClientIdleTimeout`.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
         let path: String
-        if readsChatFilesOnWindows, RemoteHostPath.isWindowsAbsolute(range.path),
-            isWindowsHost || (try? await hostFileEnvironment().isWindows) == true
-        {
-            path = RemoteFilePath.windowsForSFTP(range.path)
+        if readsChatFilesOnWindows, RemoteHostPath.isWindowsAbsolute(range.path) {
+            let onWindows: Bool
+            if isWindowsHost {
+                onWindows = true
+            } else {
+                onWindows = (try? await hostFileEnvironment().isWindows) == true
+            }
+            path = onWindows ? RemoteFilePath.windowsForSFTP(range.path) : range.path
         } else {
             path = range.path
         }
@@ -4774,8 +4778,14 @@ extension HeelerSSHTransport: RexHostConnection, RexHostProjects {
         let nonce = HostProcessReader.makeNonce()
         let executables = SupportedAgentKind.allCases.map(\.executable)
         let versioned = SupportedAgentKind.opencode.executable
+        let onWindows: Bool
+        if isWindowsHost {
+            onWindows = true
+        } else {
+            onWindows = (try? await hostPlatform()) == .nativeWindows
+        }
         let result: GitExecResult
-        if isWindowsHost || (try? await hostPlatform()) == .nativeWindows {
+        if onWindows {
             let command = HerdrCoreShellLaunch.windowsDiscoveryCommand(
                 executables: executables, versionOf: versioned, nonce: nonce)
             result = try await runWindowsCommand(command, for: .agentDiscovery)
