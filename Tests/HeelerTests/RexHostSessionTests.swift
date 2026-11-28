@@ -664,7 +664,7 @@ struct RexHostSessionTests {
                     sessionID: "session:studio", windowID: windowID, label: ""))
         #expect(world.sessions.first?.windows.first?.label == "Window 0000a0a0")
 
-        await server.answer(RexControlProtocol.setWindowLabelMethod, with: .result(.object([:])))
+        await server.answer(RexControlProtocol.setWindowLabelMethod) { _ in .result(.object([:])) }
         await #expect(throws: TransportError.self) {
             try await session.setWindowLabel(sessionID: "session:studio", windowID: windowID, label: "Unconfirmed")
         }
