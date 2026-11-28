@@ -117,12 +117,12 @@ extension AmpChatHost {
 }
 
 struct AmpPluginLocation: Identifiable, Equatable, Sendable {
-    var id: String { [rexInstance, String(pid), start, directory].compactMap { $0 }.joined(separator: ":") }
+    var id: String { [serverInstance, String(pid), start, directory].compactMap { $0 }.joined(separator: ":") }
     let pid: Int
     let start: String
     let home: String
     let directory: String
-    let rexInstance: String?
+    let serverInstance: String?
     var recordPath: String { "\(home)/.local/state/heeler/amp/\(pid).json" }
     var pluginPath: String { "\(directory)/heeler-chat.js" }
 
@@ -172,7 +172,7 @@ struct AmpPluginLocation: Identifiable, Equatable, Sendable {
         return matches.count == 1 ? matches.first?.pid : nil
     }
 
-    init?(pid: Int, facts: HostProcessReader.Facts, rexInstance: String? = nil) {
+    init?(pid: Int, facts: HostProcessReader.Facts, serverInstance: String? = nil) {
         guard case .value(let start) = facts.start,
             case .value(let home) = facts.variables["HOME"], RemoteFilePath.isAcceptable(home)
         else { return nil }
@@ -183,7 +183,7 @@ struct AmpPluginLocation: Identifiable, Equatable, Sendable {
         default: return nil
         }
         self.pid = pid
-        self.rexInstance = rexInstance
+        self.serverInstance = serverInstance
         self.start = start
         self.home = home
         directory = (root as NSString).appendingPathComponent("amp/plugins")

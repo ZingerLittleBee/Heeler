@@ -280,8 +280,8 @@ struct HerdrCoreChatTests {
         #expect(!windowsPlatform.offersChat(for: .codex))
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]),
-            ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]),
+            ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)

@@ -200,10 +200,11 @@ struct TmuxChatTests {
     @Test func hostCapabilitiesOfferTmuxChatOnlyOnLinuxAndMacOSForConfirmedPrograms() {
         #expect(!HostCapabilities(serverKind: .tmux).chat)
         #expect(!HostCapabilities(serverKind: .tmux, coreKernel: "FreeBSD").chat)
-        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
+        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
         for kernel in ["Linux", "Darwin"] {
             let capabilities = HostCapabilities(serverKind: .tmux, coreKernel: kernel)
             #expect(capabilities.chat)
+            #expect(capabilities.offersAmpPlugin)
             #expect(capabilities.chatPrograms == expected)
             for program in ChatProgram.allCases {
                 #expect(capabilities.offersChat(for: program) == expected.contains(program))
@@ -221,6 +222,8 @@ struct TmuxChatTests {
         ("Darwin", "omp", ["omp"], .omp),
         ("Darwin", "opencode", ["opencode"], .opencode),
         ("Linux", "opencode", ["opencode"], .opencode),
+        ("Linux", "amp", ["amp"], .amp),
+        ("Darwin", "amp", ["amp"], .amp),
         ("FreeBSD", "claude", ["claude"], nil),
     ])
     func chatOfferFollowsKernelAndProgram(

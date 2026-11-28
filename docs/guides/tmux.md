@@ -147,7 +147,8 @@ In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and
 | Oh My Pi | Binds with the [Host Helper](#host-helper), or after its first message opens its session file; otherwise use **Choose a Conversation**. |
 | Antigravity CLI | Chat follows a verified local Agent session. |
 | Devin | Chat follows the local session held by the foreground CLI. Use the Terminal when a first-trust screen cannot be matched to its directory. |
-| OpenCode, Amp | Open the Terminal. Native Chat requires proof of the conversation currently displayed by this Pane. |
+| Amp | On macOS and Linux, install Heeler's Amp plugin from Chat and reload plugins in Amp (**Ctrl+O** → **plugins › reload**). Chat reads and sends in the active thread; use the terminal for attachments, commands, and approvals. |
+| OpenCode | Opens on macOS and Linux. Binds when Heeler started it or with Heeler's OpenCode plugin (offered from Chat). Otherwise use **Choose a Conversation**. |
 
 When Chat cannot prove which conversation a Pane is showing, it displays **Can't Tell the Conversation** with **Check Again** and **Choose a Conversation**. Picking a conversation and tapping **Use This Conversation** remembers that choice for the Pane until the Agent or tmux server ends.
 

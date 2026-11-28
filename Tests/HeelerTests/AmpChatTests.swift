@@ -23,30 +23,31 @@ struct AmpChatTests {
         #expect(AmpPluginLocation(pid: pid, facts: facts) == nil)
     }
 
-    @Test func posixRexReadsAmpPagesAndRejectsPluginInput() async throws {
-        struct RecordingHost: AmpChatHost {
-            func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
-                .init(binding: nil, page: nil, sent: nil, error: request.op)
-            }
-        }
-        let rex = RexReadOnlyAmp(connection: RecordingHost())
-        let record = AmpPluginRecord(version: 1, pid: 123, start: "45", uid: 1000, instance: UUID())
-        for operation in ["binding", "page"] {
-            #expect(try await rex.exchangeAmpChat(.init(operation), record: record).error == operation)
-        }
-        for operation in ["send", "other"] {
-            await #expect(throws: AmpChatProblem.readOnly) {
-                _ = try await rex.exchangeAmpChat(.init(operation), record: record)
-            }
-        }
-        #expect(!HostCapabilities.rexChatPrograms.contains(.amp))
+    @Test func posixBackendsOfferReadWriteAmpChatAndWindowsAndUnknownStayOff() async throws {
+        #expect(HostCapabilities.rexChatPrograms.contains(.amp))
+        #expect(HostCapabilities.confirmedLinuxCoreChatPrograms.contains(.amp))
+        #expect(HostCapabilities.confirmedMacOSCoreChatPrograms.contains(.amp))
+        #expect(HostCapabilities.tmuxChatPrograms.contains(.amp))
         for kernel in [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel] {
-            let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
-            #expect(host.offersAmpPlugin && host.offersChat(for: .amp) && host.readOnlyChatPrograms.contains(.amp))
+            let rex = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+            #expect(rex.offersAmpPlugin && rex.offersChat(for: .amp) && !rex.readOnlyChatPrograms.contains(.amp))
+            let core = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
+            #expect(core.offersAmpPlugin && core.offersChat(for: .amp) && !core.readOnlyChatPrograms.contains(.amp))
+            let tmux = HostCapabilities(serverKind: .tmux, coreKernel: kernel)
+            #expect(tmux.offersAmpPlugin && tmux.offersChat(for: .amp) && !tmux.readOnlyChatPrograms.contains(.amp))
         }
         for kernel in [nil, HerdrCoreLocator.windowsKernel] {
-            let host = HostCapabilities(serverKind: .rex, coreKernel: kernel)
-            #expect(!host.offersAmpPlugin && !host.offersChat(for: .amp))
+            let rex = HostCapabilities(serverKind: .rex, coreKernel: kernel)
+            #expect(!rex.offersAmpPlugin && !rex.offersChat(for: .amp))
+            let core = HostCapabilities(
+                serverKind: .herdrCore,
+                platform: kernel == HerdrCoreLocator.windowsKernel ? .nativeWindows : .posix,
+                coreKernel: kernel)
+            #expect(!core.offersAmpPlugin && !core.offersChat(for: .amp))
+        }
+        for kernel in [nil, "FreeBSD"] {
+            let tmux = HostCapabilities(serverKind: .tmux, coreKernel: kernel)
+            #expect(!tmux.offersAmpPlugin && !tmux.offersChat(for: .amp))
         }
     }
 
@@ -223,5 +224,382 @@ struct AmpChatTests {
             }, read: { _ in .init(data: contents, length: size) }, home: { "/home/test" })
             #expect(try await location.installation(regular).problem == problem)
         }
+    }
+
+    private nonisolated static let ampThread = "T-0a4a7c8e-7a53-4f0e-8a7e-0d7a4b1f9c11"
+
+    private actor RecordingAmpPlugin {
+        let record: AmpPluginRecord
+        let binding: AmpChatBinding
+        private(set) var requests: [AmpChatRequest] = []
+        private(set) var installs: [(directory: String, previous: Data?)] = []
+
+        init(pid: Int, start: String, thread: String = AmpChatTests.ampThread) {
+            let instance = UUID()
+            record = AmpPluginRecord(version: 1, contentRevision: 2, pid: pid, start: start, uid: 1000, instance: instance)
+            binding = AmpChatBinding(version: 1, instance: instance, revision: 1, thread: thread, pid: pid, start: start)
+        }
+
+        func exchange(_ request: AmpChatRequest, record incoming: AmpPluginRecord) throws -> AmpChatReply {
+            #expect(incoming == record)
+            requests.append(request)
+            switch request.op {
+            case "binding":
+                return AmpChatReply(binding: binding, page: nil, sent: nil, error: nil)
+            case "page":
+                let row = AmpChatPage.Row(
+                    id: "s:0", role: "assistant", createdAt: nil, end: "end_turn",
+                    blocks: [.init(type: "text", text: "Hello from Amp", call: nil, name: nil, status: nil)])
+                return AmpChatReply(
+                    binding: nil, page: AmpChatPage(offset: request.offset ?? 0, total: 1, rows: [row]),
+                    sent: nil, error: nil)
+            case "send":
+                return AmpChatReply(binding: nil, page: nil, sent: true, error: nil)
+            default:
+                return AmpChatReply(binding: nil, page: nil, sent: nil, error: "invalid")
+            }
+        }
+
+        func install(directory: String, previous: Data?) {
+            installs.append((directory, previous))
+        }
+    }
+
+    private struct AmpCoreHostServices: HostServices {
+        let files: VirtualHostFiles
+        let plugin: RecordingAmpPlugin
+
+        func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+            try await files.readRange(range)
+        }
+
+        func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
+            try await files.fileStatus(atPath: path)
+        }
+
+        func listFiles(_ request: RemoteFileListingRequest) async throws -> RemoteFileListing? {
+            try await files.listFiles(request)
+        }
+
+        func hostHomeDirectory() async throws -> String {
+            try await files.home()
+        }
+
+        func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+            try await plugin.exchange(request, record: record)
+        }
+
+        func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+            await plugin.install(directory: directory, previous: previous)
+        }
+    }
+
+    private func waitUntil(
+        _ what: String, _ condition: @MainActor () async -> Bool,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async throws {
+        var budget = PollBudget(.seconds(5))
+        while budget.hasTimeLeft {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+            budget.charge()
+        }
+        Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+    }
+
+    @Test(arguments: [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel])
+    func herdrCoreAmpBindsPagesSendsInstallsAndRechecksForegroundAndCore(_ kernel: String) async throws {
+        let home = "/home/dev"
+        let pid = 420
+        let start = "987654321"
+        let host = Host(address: "core.example", username: "dev", serverKind: .herdrCore)
+        let files = VirtualHostFiles(home: home)
+        let plugin = RecordingAmpPlugin(pid: pid, start: start)
+        func coreRecord(pid: Int, name: String, argv: [String]) -> JSONValue {
+            .object([
+                "address": .string("t1"), "cwd": .string("/work/app"), "state": .string("live"),
+                "argv": .array([.string("/bin/zsh")]), "keep": .bool(false), "title": .string(""),
+                "cols": .number(80), "rows": .number(24), "name": .null, "reason": .null,
+                "pid": .number(10),
+                "foreground": .object([
+                    "pid": .number(Double(pid)), "name": .string(name),
+                    "argv": .array(argv.map(JSONValue.string)), "cwd": .string("/work/app"),
+                ]),
+                "status": .null, "labels": .object([:]),
+            ])
+        }
+        let ampRecord = coreRecord(pid: pid, name: "amp", argv: ["amp"])
+        let subscribe = JSONValue.object(["seq": .number(1), "terminals": .array([ampRecord]), "channel": .number(1)])
+        let transport = ScriptedCoreTransport(
+            coreID: "core-1", subscribeResults: [subscribe],
+            services: AmpCoreHostServices(files: files, plugin: plugin))
+        await transport.setKernel(kernel)
+        await transport.setTerminalRecords([.success(ampRecord)])
+        await transport.processTable.add(.init(
+            pid: 10, name: "zsh", start: "100",
+            environment: ["HC_SCOPE": "scope-1", "HOME": home]))
+        await transport.processTable.add(.init(
+            pid: pid, parent: 10, name: "amp", start: start,
+            environment: ["HC_SCOPE": "scope-1", "HOME": home, "XDG_CONFIG_HOME": "/srv/xdg"]))
+
+        let store = ConsoleStore(
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not TUI") },
+                    keepalive: nil)
+            },
+            makeCoreSession: { _ in HerdrCoreHostSession(connect: { transport }, keepalive: nil) })
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+        try await waitUntil("core snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }
+        await store.resolveHostPlatform(host.id)
+        try await waitUntil("core platform and kernel") {
+            store.hostPlatforms[host.id] == .posix && store.hostCoreKernels[host.id] == kernel
+        }
+
+        let agent = try #require(store.agents.first)
+        #expect(store.chatProgram(for: agent) == .amp)
+        let chat = try #require(store.chatStore(for: agent, program: .amp))
+        defer { chat.end() }
+        let connection = try #require(chat.ampConnection)
+        #expect(!connection.isReadOnly)
+
+        #expect(try await connection.evidence() == .unavailable(.amp(.missing)))
+        let place = try #require(connection.location)
+        #expect(place.directory == "/srv/xdg/amp/plugins")
+        #expect(place.serverInstance == "core-1")
+        try await connection.install(place)
+        #expect(await plugin.installs.map(\.directory) == ["/srv/xdg/amp/plugins"])
+
+        await files.write(try JSONEncoder().encode(plugin.record), at: place.recordPath)
+        #expect(try await connection.evidence() == .bound(sessionID: Self.ampThread, transcriptRoot: nil, directory: nil))
+        let target = try #require(connection.current)
+        let (_, page) = try await connection.page(thread: Self.ampThread, expected: target, offset: nil, limit: 20)
+        #expect(page.rows.first?.blocks.first?.text == "Hello from Amp")
+        let sendID = UUID()
+        let outcome = await connection.send(id: sendID, text: "Ship it", target: target)
+        #expect(outcome == .submitted)
+        let sent = try #require(await plugin.requests.last)
+        #expect(sent.op == "send" && sent.requestID == sendID && sent.text == "Ship it")
+
+        await transport.setTerminalRecords([.success(coreRecord(pid: 999, name: "bash", argv: ["bash"]))])
+        let refused = await connection.send(id: UUID(), text: "Stale", target: target)
+        #expect(refused == .refused(.inputNotReady(AmpChatProblem.changed.explanation)))
+        await #expect(throws: AmpChatProblem.changed) { try await connection.install(place) }
+
+        await transport.setTerminalRecords([.success(ampRecord)])
+        await transport.setCoreID("core-2")
+        await transport.endLink()
+        try await waitUntil("replacement core") { store.capabilities(for: host.id).offersAmpPlugin }
+        try await waitUntil("core-2 scope") {
+            let newPlace = try? await (connection.evidence(), connection.location).1
+            return newPlace?.serverInstance == "core-2"
+        }
+        await #expect(throws: AmpChatProblem.changed) { try await connection.install(place) }
+    }
+
+    @Test(arguments: [HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel])
+    func tmuxAmpBindsPagesSendsInstallsAndRechecksForegroundAndServer(_ kernel: String) async throws {
+        let home = ScriptedTmuxHost.home
+        let shellPID = 3000
+        let ampPID = 3001
+        let start = "Thu Nov 12 06:00:00 2026"
+        let host = Host(
+            address: "tmux.example", username: "dev", serverKind: .tmux, tmuxPaths: ScriptedTmuxHost.paths())
+        let files = VirtualHostFiles(home: home)
+        let tmux = ScriptedTmuxHost(kernel: kernel, virtualFiles: files)
+        let plugin = RecordingAmpPlugin(pid: ampPID, start: start)
+        await tmux.setAmpHandlers(
+            exchange: { try await plugin.exchange($0, record: $1) },
+            install: { await plugin.install(directory: $0, previous: $1) })
+        await tmux.setPanes([
+            .make(pane: 0, processID: shellPID, command: "amp", path: "/work/app", arguments: ["amp"]),
+        ])
+        await tmux.setForegroundPID(ampPID, of: "%0")
+        let wrongTmux = "\(ScriptedTmuxHost.socketPath()),\(ScriptedTmuxHost.instance.pid),0"
+        await tmux.setProcessEnvironment(["TMUX": wrongTmux, "TMUX_PANE": "%9", "HOME": home], forProcess: shellPID, name: "zsh", start: "1")
+        await tmux.setProcessEnvironment(["TMUX": wrongTmux, "TMUX_PANE": "%9", "HOME": home], forProcess: ampPID, name: "amp", parent: shellPID, start: start)
+
+        let store = ConsoleStore(
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not TUI") },
+                    keepalive: nil)
+            },
+            makeTmuxSession: { candidate in
+                TmuxHostSession(
+                    storedPaths: candidate.storedTmuxPaths,
+                    connect: { paths in
+                        await tmux.transport(socketName: candidate.tmuxSocketName, storedPaths: paths)
+                    },
+                    reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(20), multiplier: 1, maxDelay: .milliseconds(40)),
+                    keepalive: KeepalivePolicy(interval: .seconds(60)),
+                    settledLoopLife: .zero)
+            })
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+        try await waitUntil("tmux snapshot") { !store.hostsAwaitingSnapshot.contains(host.id) }
+
+        let agent = try #require(store.agents.first)
+        #expect(store.chatProgram(for: agent) == .amp)
+        let chat = try #require(store.chatStore(for: agent, program: .amp))
+        defer { chat.end() }
+        let connection = try #require(chat.ampConnection)
+        #expect(!connection.isReadOnly)
+
+        #expect(try await connection.evidence() == .unavailable(.amp(.unidentified)))
+
+        await tmux.setProcessEnvironment(["TMUX": wrongTmux, "TMUX_PANE": "%0", "HOME": home], forProcess: shellPID, name: "zsh", start: "1")
+        await tmux.setProcessEnvironment(["TMUX": wrongTmux, "TMUX_PANE": "%0", "HOME": home, "XDG_CONFIG_HOME": nil], forProcess: ampPID, name: "amp", parent: shellPID, start: start)
+        #expect(try await connection.evidence() == .unavailable(.amp(.missing)))
+        let place = try #require(connection.location)
+        #expect(place.directory == "\(home)/.config/amp/plugins")
+        #expect(place.serverInstance == ScriptedTmuxHost.instance.id)
+        try await connection.install(place)
+        #expect(await plugin.installs.map(\.directory) == ["\(home)/.config/amp/plugins"])
+
+        await files.write(try JSONEncoder().encode(plugin.record), at: place.recordPath)
+        #expect(try await connection.evidence() == .bound(sessionID: Self.ampThread, transcriptRoot: nil, directory: nil))
+        let target = try #require(connection.current)
+        let (_, page) = try await connection.page(thread: Self.ampThread, expected: target, offset: nil, limit: 20)
+        #expect(page.rows.first?.blocks.first?.text == "Hello from Amp")
+        let sendID = UUID()
+        #expect(await connection.send(id: sendID, text: "Run checks", target: target) == .submitted)
+        let sent = try #require(await plugin.requests.last)
+        #expect(sent.op == "send" && sent.requestID == sendID && sent.text == "Run checks")
+
+        await tmux.setPanes([
+            .make(pane: 0, processID: shellPID, command: "zsh", path: "/work/app", arguments: ["zsh"]),
+        ])
+        await tmux.setForegroundPID(shellPID, of: "%0")
+        #expect(await connection.send(id: UUID(), text: "Stale", target: target)
+                == .refused(.inputNotReady(AmpChatProblem.changed.explanation)))
+        await #expect(throws: AmpChatProblem.changed) { try await connection.install(place) }
+
+        let replacement = TmuxServerInstance(pid: 9191, startTime: 1_794_399_999)
+        await tmux.startServer(instance: replacement, panes: [
+            .make(pane: 0, processID: shellPID, command: "amp", path: "/work/app", arguments: ["amp"]),
+        ])
+        await tmux.setForegroundPID(ampPID, of: "%0")
+        let nextTmux = "\(ScriptedTmuxHost.socketPath()),\(replacement.pid),0"
+        await tmux.setProcessEnvironment(["TMUX": nextTmux, "TMUX_PANE": "%0", "HOME": home], forProcess: shellPID, name: "zsh", start: "1")
+        await tmux.setProcessEnvironment(["TMUX": nextTmux, "TMUX_PANE": "%0", "HOME": home, "XDG_CONFIG_HOME": nil], forProcess: ampPID, name: "amp", parent: shellPID, start: start)
+        try await waitUntil("replacement tmux server") {
+            let newPlace = try? await (connection.evidence(), connection.location).1
+            return newPlace?.serverInstance == replacement.id
+        }
+        await #expect(throws: AmpChatProblem.changed) { try await connection.install(place) }
+    }
+
+    @Test(arguments: [("linux_x86_64", HerdrCoreLocator.linuxKernel), ("darwin_arm64", HerdrCoreLocator.macOSKernel)])
+    func rexAmpAllowsSendChecksScreenInstallsAndRechecksForegroundAndServer(
+        _ platform: String, _ expectedKernel: String
+    ) async throws {
+        let socket = "/run/user/1000/rex/server.sock"
+        let home = "/home/dev"
+        let pid = 4242
+        let start = "Thu Nov 12 06:00:00 2026"
+        let host = Host(
+            name: "Rex", address: "rex.example", username: "dev", serverKind: .rex,
+            rexSocket: RexSocket(path: socket))
+        var studio = FakeRexWorld.studio()
+        var ampBlock = FakeRexWorld.Block.running("block:left", program: "amp")
+        ampBlock.label = "amp"
+        ampBlock.directory = "/home/dev/app"
+        studio.windows[0].layers[0].blocks[2] = ampBlock
+        let world = FakeRexWorld(sessions: [studio], platform: platform)
+        let firstServer = FakeRexServer()
+        await world.install(on: firstServer)
+        let idleScreen = try ScreenFixture.text("amp-01-idle")
+        await firstServer.answer(RexInventoryWire.terminalMethod("screen"), using: { _ in
+            .result(["screen": .string(idleScreen), "cols": 80, "rows": 24])
+        })
+        let secondServer = FakeRexServer()
+        await world.install(on: secondServer)
+
+        let files = VirtualHostFiles(home: home)
+        let table = ScriptedProcessTable()
+        await table.add(.init(pid: pid, name: "amp", start: start, environment: ["HOME": home]))
+        let plugin = RecordingAmpPlugin(pid: pid, start: start)
+        let connection = ScriptedRexHost(
+            control: [.server(firstServer), .server(secondServer)],
+            files: files,
+            processes: { try await table.read($0) })
+        await connection.setAmpHandlers(
+            exchange: { try await plugin.exchange($0, record: $1) },
+            install: { await plugin.install(directory: $0, previous: $1) })
+
+        let dialer = RexHostSessionTests.Dialer([connection])
+        let store = ConsoleStore(
+            chatCache: VolatileChatTranscriptCache(),
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not TUI") },
+                    keepalive: nil)
+            },
+            makeRexSession: { candidate in
+                RexHostSession(
+                    storedSocket: candidate.rexSocket,
+                    connect: { try await dialer.dial($0, $1) },
+                    reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)))
+            })
+        store.setHosts([host])
+        await store.resume()
+        defer { store.setHosts([]) }
+        try await waitUntil("rex snapshot and kernel") {
+            !store.hostsAwaitingSnapshot.contains(host.id) && store.hostCoreKernels[host.id] == expectedKernel
+                && !store.agents.isEmpty
+        }
+
+        let paneID = RexPaneAddress(sessionID: "session:studio", blockID: "block:left").paneID
+        let agent = try #require(store.agents.first { $0.agent.paneID == paneID })
+        #expect(store.chatProgram(for: agent) == .amp)
+        let chat = try #require(store.chatStore(for: agent, program: .amp))
+        defer { chat.end() }
+        let amp = try #require(chat.ampConnection)
+        #expect(!amp.isReadOnly)
+
+        let screen = try await chat.screenIO.readScreen()
+        #expect(AmpInputBox.read(screen) == .empty(placeholder: nil))
+
+        #expect(try await amp.evidence() == .unavailable(.amp(.missing)))
+        let place = try #require(amp.location)
+        #expect(place.directory == "\(home)/.config/amp/plugins")
+        #expect(place.serverInstance == "instance-0001")
+        try await amp.install(place)
+        #expect(await plugin.installs.map(\.directory) == ["\(home)/.config/amp/plugins"])
+
+        await files.write(try JSONEncoder().encode(plugin.record), at: place.recordPath)
+        #expect(try await amp.evidence() == .bound(sessionID: Self.ampThread, transcriptRoot: nil, directory: nil))
+        let target = try #require(amp.current)
+        let (_, page) = try await amp.page(thread: Self.ampThread, expected: target, offset: nil, limit: 20)
+        #expect(page.rows.first?.blocks.first?.text == "Hello from Amp")
+        let sendID = UUID()
+        #expect(await amp.send(id: sendID, text: "Hello Rex Amp", target: target) == .submitted)
+        let sent = try #require(await plugin.requests.last)
+        #expect(sent.op == "send" && sent.requestID == sendID && sent.text == "Hello Rex Amp")
+        #expect(await connection.log.contains("amp send"))
+
+        await firstServer.answer(RexInventoryWire.terminalMethod("process"), using: { _ in
+            .result(["foreground": ["name": "bash", "argv0": "/bin/bash", "pid": 4242]])
+        })
+        #expect(await amp.send(id: UUID(), text: "Stale", target: target)
+                == .refused(.inputNotReady(AmpChatProblem.changed.explanation)))
+        await #expect(throws: AmpChatProblem.changed) { try await amp.install(place) }
+
+        world.restart(as: "instance-0002")
+        await firstServer.close(.goingAway, reason: "restart")
+        try await waitUntil("rex instance-0002") {
+            let newPlace = try? await (amp.evidence(), amp.location).1
+            return newPlace?.serverInstance == "instance-0002"
+        }
+        await #expect(throws: AmpChatProblem.changed) { try await amp.install(place) }
     }
 }

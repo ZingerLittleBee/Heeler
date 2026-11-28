@@ -1980,3 +1980,73 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         throw HeelerPluginUnavailableError.herdrCore
     }
 }
+
+extension HerdrCoreConsoleProjection: AmpChatProjection {
+    func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation {
+        guard kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel,
+            hasInventory, departedAgentsByPane[pane] == nil, let core = inventoryCore
+        else { throw AmpChatProblem.unidentified }
+        let before: HerdrCoreTerminalRecord
+        do {
+            before = try await readTerminalRecord(at: pane)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw AmpChatProblem.unidentified
+        } catch TransportError.herdrCoreInventoryStale {
+            throw AmpChatProblem.changed
+        }
+        guard inventoryCore == core,
+            HerdrCoreAgentRule.agent(in: before)?.kind == ChatProgram.amp.rawValue,
+            let foregroundPID = before.foreground?.pid, foregroundPID > 0
+        else { throw AmpChatProblem.unidentified }
+        let binder = chatBinder(paneID: pane, program: .amp, core: core)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(values: ["HOME", "XDG_CONFIG_HOME"])
+        guard let tree = try await binder.readTerminalProcesses(of: before, ask: ask),
+            let pidString = binder.ampProcess(in: tree, foreground: before.foreground),
+            let pid = Int(pidString), pid > 0,
+            let fact = tree.facts[pidString],
+            let place = AmpPluginLocation(pid: pid, facts: fact, serverInstance: core)
+        else { throw AmpChatProblem.unidentified }
+        let after: HerdrCoreTerminalRecord
+        do {
+            after = try await readTerminalRecord(at: pane)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw AmpChatProblem.changed
+        } catch TransportError.herdrCoreInventoryStale {
+            throw AmpChatProblem.changed
+        }
+        guard inventoryCore == core,
+            HerdrCoreAgentRule.agent(in: after)?.kind == ChatProgram.amp.rawValue,
+            after.foreground?.pid == foregroundPID
+        else { throw AmpChatProblem.changed }
+        return place
+    }
+
+    func exchangeAmp(_ request: AmpChatRequest, record: AmpPluginRecord, at place: AmpPluginLocation, in pane: String) async throws -> AmpChatReply {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.exchangeAmpChat(request, record: record)
+        }
+    }
+
+    func installAmp(at place: AmpPluginLocation, replacing previous: Data?, in pane: String) async throws {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.installAmpChatPlugin(in: place.directory, replacing: previous)
+        }
+    }
+
+    private func withAmp<Value: Sendable>(
+        at place: AmpPluginLocation, in pane: String,
+        operation: @escaping @Sendable (any AmpChatHost) async throws -> Value
+    ) async throws -> Value {
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        let result: Value
+        do {
+            result = try await session.withTransport(servingCore: place.serverInstance) { transport in
+                try await operation(transport.hostServices)
+            }
+        } catch TransportError.herdrCoreInventoryStale {
+            throw AmpChatProblem.changed
+        }
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        return result
+    }
+}

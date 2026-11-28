@@ -49,6 +49,33 @@ final actor ScriptedRexHost: RexHostConnection {
     private let processes: ProcessRead?
     private let editFiles: InMemoryHostFiles?
     private let openCodeVersion: String?
+    private var ampExchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)?
+    private var ampInstall: (@Sendable (String, Data?) async throws -> Void)?
+    private(set) var ampInstallCalls: [(directory: String, previous: Data?)] = []
+
+    func setAmpHandlers(
+        exchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)? = nil,
+        install: (@Sendable (String, Data?) async throws -> Void)? = nil
+    ) {
+        ampExchange = exchange
+        ampInstall = install
+    }
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        log.append("amp \(request.op)")
+        guard let ampExchange else { throw AmpChatProblem.unreachable }
+        return try await ampExchange(request, record)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        log.append("amp install \(directory)")
+        ampInstallCalls.append((directory, previous))
+        if let ampInstall {
+            try await ampInstall(directory, previous)
+            return
+        }
+        throw AmpChatProblem.unreachable
+    }
 
     init(
         probe: [String]? = nil, socketCheck: String? = nil, control: [Channel] = [], data: [Channel] = [],

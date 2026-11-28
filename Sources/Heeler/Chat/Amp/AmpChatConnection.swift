@@ -1,7 +1,5 @@
 import Foundation
 
-/// The operations a host supplies for one foreground Amp client. Rex checks its block
-/// on the control link and limits the plugin connection to binding and page requests.
 @MainActor
 protocol AmpChatProjection: AnyObject {
     func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation
@@ -99,7 +97,12 @@ final class AmpChatConnection {
         request.limit = limit
         request.fullText = true
         request.expandedCall = expandedCall
-        let reply = try await exchange(request, record: target.record)
+        let reply: AmpChatReply
+        do {
+            reply = try await exchange(request, record: target.record)
+        } catch let problem as AmpChatProblem {
+            throw ChatSourceUnavailable(reason: .amp(problem))
+        }
         guard current == target, reply.error != "stale" else { throw ChatSourceUnavailable(reason: .amp(.changed)) }
         guard let page = reply.page, page.total >= 0, page.offset >= 0, page.rows.count <= limit,
             page.offset <= Int.max - page.rows.count,

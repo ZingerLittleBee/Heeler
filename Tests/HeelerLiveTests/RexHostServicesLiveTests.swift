@@ -544,7 +544,7 @@ struct RexOpenCodeHistoryLiveTests {
         }
         try #require(bothAreVisible())
         let agent = try #require(console.agents.first { $0.agent.paneID == pane })
-        try #require(console.capabilities(for: host.id).readOnlyChatPrograms.contains(.opencode))
+        try #require(!console.capabilities(for: host.id).readOnlyChatPrograms.contains(.opencode))
         let chat = try #require(console.chatStore(for: agent, program: .opencode))
         defer { chat.end() }
         await chat.step()
@@ -659,12 +659,12 @@ struct RexAmpChatLiveTests {
         let agent = try #require(console.agents.first { $0.agent.paneID == pane })
         let other = try #require(console.agents.first { $0.agent.paneID == peer })
         let capabilities = console.capabilities(for: host.id)
-        try #require(capabilities.offersAmpPlugin && capabilities.readOnlyChatPrograms.contains(.amp))
+        try #require(capabilities.offersAmpPlugin && capabilities.offersChat(for: .amp) && !capabilities.readOnlyChatPrograms.contains(.amp))
         let chat = try #require(console.chatStore(for: agent, program: .amp))
         let peerChat = try #require(console.chatStore(for: other, program: .amp))
         defer { chat.end(); peerChat.end() }
         let connection = try #require(chat.ampConnection)
-        try #require(connection.isReadOnly)
+        try #require(!connection.isReadOnly)
         let peerConnection = try #require(peerChat.ampConnection)
         try #require(try await peerConnection.evidence() == .bound(sessionID: steps.peerThread, transcriptRoot: nil, directory: nil))
         let peerTarget = try #require(peerConnection.current)

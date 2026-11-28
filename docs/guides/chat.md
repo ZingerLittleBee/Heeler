@@ -40,7 +40,7 @@ With the alias, run plain `codex` and `codex resume`: Codex refuses `--no-daemon
 
 For Antigravity CLI on a macOS or Linux Rex Host, open **Terminal** for the first message. **Chat** becomes available when Heeler can match the foreground to its official conversation. Use Chat for history and plain text. Open the same Agent’s Terminal for approval dialogs, attachments, commands and Stop.
 
-On macOS and Linux Rex Hosts, Amp Chat reads the thread selected in that terminal through Heeler’s Amp plugin. The terminal handles input and approvals. See [Amp setup on Rex](rex.md#chat).
+On macOS and Linux, Amp Chat reads and sends messages in the thread selected in that terminal through Heeler’s Amp plugin on Herdr TUI, herdr-core, tmux, and Rex Hosts. Use the terminal for attachments, commands, and approvals. See [Amp setup on Rex](rex.md#chat).
 
 ## Open Chat
 

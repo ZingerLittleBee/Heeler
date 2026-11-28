@@ -163,7 +163,6 @@ extension HostCapabilities {
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
             if posix {
-                readOnlyChatPrograms = [.amp]
                 offersAmpPlugin = true
                 requiresBoundAntigravity = true
             }
@@ -196,7 +195,9 @@ extension HostCapabilities {
                 startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true,
                 worktrees: true, uploads: true, composerSend: true, chat: tmuxChatPrograms != nil,
                 tabNames: true, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
-                composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
+                composerStop: true, chatPrograms: tmuxChatPrograms,
+                offersAmpPlugin: tmuxChatPrograms?.contains(.amp) == true,
+                hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
             renamesExistingTabs = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
@@ -230,7 +231,7 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
-            offersAmpPlugin: offered && platform == .posix,
+            offersAmpPlugin: (offered && platform == .posix) || (coreOnPosix && coreChatPrograms?.contains(.amp) == true),
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
@@ -266,16 +267,16 @@ extension HostCapabilities {
     /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
+    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
     /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
     /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
     /// process start in the local account registry (rex-chat-parity.md).
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
