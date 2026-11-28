@@ -55,7 +55,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Stop opening Antigravity CLI's browser sign-in page on a Mac each time Usage reads Antigravity limits through the Host Helper. Over SSH, `agy` could not reach the login keychain and asked for a new sign-in; the Helper now reads the limits in the Mac's desktop session, and says they need your own login on the Mac when nobody is logged in there.
+- Stop opening Antigravity CLI's browser sign-in page on a Mac each time Usage reads Antigravity limits through the Host Helper. Over SSH, `agy` could not reach the login keychain and asked for a new sign-in; the Helper now reads the limits in the Mac's desktop session, and says they need your own login on the Mac when nobody is logged in there. (PR #887)
 - Return a new Rex terminal's size to the Rex server when the connection drops or the server is slow to answer right after **New Terminal** or **New Workspace**. Until Heeler disconnected, a terminal nobody opened on the phone kept the phone's size on other devices. (PR #883)
 - Open a new terminal on the first tap of **Open Terminal** on an Agent, or of **New Terminal** in a terminal's drawer, on a Rex Host. Heeler said the Workspace hadn't refreshed yet and opened the terminal only on a second tap. (PR #880, PR #881)
 - A macOS Rex Host reports when SSH refuses to forward its running socket under either `/tmp` or `/private/tmp`. (PR #875)
