@@ -755,19 +755,29 @@ enum RemoteHostPath {
             return lastOnly.count <= limit ? lastOnly : "…" + path.suffix(max(limit - 1, 1))
         }
         while !components.isEmpty {
-            let fromTail = tail.count <= head.count
-            let candidate = fromTail
-                ? joined(head, [components.last ?? ""] + tail)
-                : joined(head + [components.first ?? ""], tail)
-            guard candidate.count <= limit else { break }
-            if fromTail {
+            let withTail = joined(head, [components.last ?? ""] + tail)
+            let withHead = joined(head + [components.first ?? ""], tail)
+            if tail.count <= head.count || withHead.count > limit, withTail.count <= limit {
                 tail.insert(components.removeLast(), at: 0)
-            } else {
+            } else if withHead.count <= limit {
                 head.append(components.removeFirst())
+            } else {
+                break
             }
         }
         if components.isEmpty { return path }
         return joined(head, tail)
+    }
+
+    static func abbreviatingHome(_ path: String, home: String?) -> String {
+        guard var home, !home.isEmpty else { return path }
+        while home.count > 1, let last = home.last, last == "/" || last == "\\" { home.removeLast() }
+        guard home.count > 1 else { return path }
+        if path == home { return "~" }
+        guard path.hasPrefix(home), let next = path.dropFirst(home.count).first, next == "/" || next == "\\" else {
+            return path
+        }
+        return "~" + path.dropFirst(home.count)
     }
 
     static func lastComponent(of path: String) -> String {

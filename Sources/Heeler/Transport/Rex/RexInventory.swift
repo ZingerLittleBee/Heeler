@@ -156,6 +156,7 @@ struct RexTerminalDetails: Sendable, Equatable {
     var lastExit: ProgramExit?
     var argv0: String?
     var script: String?
+    var home: String?
     /// The Program Status the terminal's programs last reported without an id,
     /// whichever program it came from; nil for none.
     var status: RexProgramStatus?
@@ -186,6 +187,7 @@ struct RexTerminalDetails: Sendable, Equatable {
         lastExit = process.lastExit
         argv0 = process.argv0
         script = process.script
+        if let home = process.home { self.home = home }
     }
 }
 
@@ -269,6 +271,8 @@ struct RexInventory: Sendable, Equatable {
             return focused?.details.directory ?? active?.terminals.compactMap(\.details.directory).first
                 ?? terminals.compactMap(\.details.directory).first
         }
+
+        var home: String? { terminals.lazy.compactMap(\.details.home).first }
     }
 
     struct Window: Sendable, Equatable {
@@ -409,11 +413,13 @@ enum RexInventoryWire {
         let lastExit: ProgramExit?
         let argv0: String?
         let script: String?
+        let home: String?
 
         init(
             program: String?, directory: String?, processID: Int? = nil, argv0: String? = nil,
-            script: String? = nil, lastExit: ProgramExit? = nil
+            script: String? = nil, lastExit: ProgramExit? = nil, home: String? = nil
         ) {
+            self.home = home
             self.lastExit = lastExit
             self.program = program
             self.directory = directory
@@ -474,7 +480,8 @@ enum RexInventoryWire {
         }
         return Process(
             program: text("name"), directory: text("cwd"), processID: foreground?["pid"]?.rexWholeNumber,
-            argv0: text("argv0"), script: text("script"), lastExit: lastExit)
+            argv0: text("argv0"), script: text("script"), lastExit: lastExit,
+            home: result?["home"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// The root record of a terminal's `program_status` answer, the one with
