@@ -72,7 +72,11 @@ struct HostCapabilities: Equatable, Sendable {
     /// Whether an Agent in this directory offers Files: a path SFTP can
     /// list. A native Windows machine's directories wait for a test there.
     func offersFiles(directory: String?) -> Bool {
-        guard let directory, !isNativeWindowsCore else { return false }
+        guard let directory else { return false }
+        if offersWindowsFiles {
+            return RemoteFilePath.isAcceptable(RemoteFilePath.windowsForSFTP(directory))
+        }
+        guard !isNativeWindowsTUI else { return false }
         return RemoteFilePath.isAcceptable(directory)
     }
 
@@ -109,6 +113,8 @@ struct HostCapabilities: Equatable, Sendable {
     /// A Host whose directories, as it reports them, may be a native Windows
     /// machine's: a Rex Host's, on whichever system its server runs.
     var startsInWindowsDirectories = false
+    var offersWindowsFiles = false
+    var isNativeWindowsTUI = false
 
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
@@ -155,13 +161,16 @@ extension HostCapabilities {
                 default: nil
                 }
             let posix = coreKernel == HerdrCoreLocator.macOSKernel || coreKernel == HerdrCoreLocator.linuxKernel
+            let hasKnownKernel = rexChatPrograms != nil
             self.init(
-                startsAgents: posix && rexAcceptsCommand, startsTerminals: true, renameAgent: posix, renamesWorkspaces: posix,
-                worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
-                tabNames: posix, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
+                startsAgents: posix && rexAcceptsCommand, startsTerminals: true, renameAgent: hasKnownKernel, renamesWorkspaces: hasKnownKernel,
+                worktrees: false, uploads: hasKnownKernel, composerSend: true, chat: hasKnownKernel,
+                tabNames: hasKnownKernel, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
+            renamesExistingTabs = hasKnownKernel
+            offersWindowsFiles = coreKernel == HerdrCoreLocator.windowsKernel
             if posix {
                 offersAmpPlugin = true
                 requiresBoundAntigravity = true
@@ -204,6 +213,7 @@ extension HostCapabilities {
             return
         }
         let offered = serverKind == .herdrTUI
+        let tuiOnWindows = offered && platform == .nativeWindows
         let coreOnPosix = serverKind == .herdrCore && platform == .posix
         let coreChatPrograms: Set<ChatProgram>? =
             switch coreKernel {
@@ -221,7 +231,7 @@ extension HostCapabilities {
         let starts = !coreStillUnknown
         self.init(
             startsAgents: starts, startsTerminals: starts,
-            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
+            renameAgent: offered || serverKind == .herdrCore, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix || coreOnWindows,
             composerSend: offered || coreOnPosix || coreOnWindows,
             chat: offered || coreChat || !windowsChatPrograms.isEmpty,
@@ -232,9 +242,13 @@ extension HostCapabilities {
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
             offersAmpPlugin: (offered && platform == .posix) || (coreOnPosix && coreChatPrograms?.contains(.amp) == true),
-            hostScripts: !coreOnWindows,
-            copiesPaneID: offered,
-            movesPanes: offered)
+            hostScripts: !coreOnWindows && !tuiOnWindows,
+            rowsReadChanges: !tuiOnWindows,
+            copiesPaneID: offered || serverKind == .herdrCore,
+            movesPanes: offered,
+            startsInWindowsDirectories: tuiOnWindows)
+        offersWindowsFiles = coreOnWindows
+        isNativeWindowsTUI = tuiOnWindows
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
         renamesConversationTitles = offered
     }
@@ -287,7 +301,9 @@ extension Host {
     /// For a directory the Host reported, which says its own platform: a core
     /// or Rex Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore || serverKind == .rex)
+        RemoteHostPath.isStartDirectory(
+            directory,
+            allowingWindows: serverKind == .herdrCore || serverKind == .rex || serverKind == .herdrTUI)
     }
 }
 

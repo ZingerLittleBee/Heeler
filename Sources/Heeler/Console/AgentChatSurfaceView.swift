@@ -380,7 +380,12 @@ struct AgentChatSurfaceView: View {
 
     private func filePreview(_ preview: HostFilePreview) -> some View {
         let insert: () -> Void = {
-            let path = agent.directory.map { HostFilesBrowser.reference(to: preview.path, from: $0) } ?? preview.path
+            let usesWindowsFiles = console.capabilities(for: agent.hostID).offersWindowsFiles
+            let path = agent.directory.map {
+                HostFilesBrowser.reference(
+                    to: preview.path,
+                    from: usesWindowsFiles ? RemoteFilePath.windowsForSFTP($0) : $0)
+            } ?? preview.path
             composer.insertIntoDraft(path)
             previewedFile = nil
         }
@@ -1436,7 +1441,7 @@ struct AgentChatSurfaceView: View {
 
     /// Runs a Host script, so only where the Host runs them.
     private func loadAgyModels() async {
-        guard program == .agy, console.capabilities(for: agent.hostID).hostScripts,
+        guard program == .agy, console.capabilities(for: agent.hostID).readsProjects,
             console.isHostReadyForInput(agent.hostID)
         else { return }
         if agyModels.isEmpty {

@@ -2481,7 +2481,7 @@ actor HeelerSSHTransport: Transport {
         // alone, in the account's own temp folder (ADR 0056's update of
         // 2026-11-25): Rex has no counterpart of herdr-core's `terminal.put`,
         // and the POSIX parent command cannot run there.
-        if servesRexHost {
+        if servesRexHost || isWindowsHost {
             let isWindows = try? await hostFileEnvironment().isWindows
             if isWindowsHost || isWindows == true {
                 return try await stageOnWindows(source, progress: progress)

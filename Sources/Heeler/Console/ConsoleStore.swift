@@ -818,6 +818,48 @@ final class ConsoleStore {
         }
     }
 
+    func resolveOMPSessionFilePath(for agent: ConsoleAgent) async -> String? {
+        if let path = agent.sessionFilePath { return path }
+        guard agent.agent.kind == ConsoleAgent.sessionFileAgent,
+            hostPlatforms[agent.hostID] == .posix,
+            let projection = projections[agent.hostID],
+            projection.usesProcessBoundChat,
+            capabilities(for: agent.hostID).offersChat(for: .omp)
+        else { return nil }
+        guard let evidence = try? await projection.checkChatSession(paneID: agent.agent.paneID, program: .omp)
+        else { return nil }
+        let sessionID: String
+        let transcriptRoot: String?
+        let directory: String?
+        switch evidence {
+        case .bound(let id, let root, let dir):
+            sessionID = id
+            transcriptRoot = root
+            directory = dir
+        case .picked(let id, let root):
+            sessionID = id
+            transcriptRoot = root
+            directory = nil
+        case .pickUnconfirmed, .unavailable, .launching:
+            return nil
+        }
+        if sessionID.hasPrefix("/") {
+            guard RemoteFilePath.isAcceptable(sessionID), sessionID.hasSuffix(".jsonl") else { return nil }
+            return sessionID
+        }
+        let reference = ConversationReference(program: .omp, sessionID: sessionID)
+        let directories = [directory, agent.directory, agent.agent.cwd].compactMap { $0 }
+        let locator = PiTranscriptLocator(files: chatHostFiles(for: agent.hostID))
+        guard let result = try? await locator.locate(
+            reference: reference,
+            directories: directories,
+            sessionsRoot: transcriptRoot,
+            searchesEveryProject: transcriptRoot == nil),
+            case .success(let path) = result
+        else { return nil }
+        return path
+    }
+
     private func liveSessionFileReader(for hostID: Host.ID) -> SessionFileReader? {
         projections[hostID]?.sessionFileReader()
     }
@@ -994,8 +1036,13 @@ final class ConsoleStore {
         if let cached = agyModelsCache[hostID], cached.generation == generation {
             return cached.models
         }
-        let models = try await projection(for: hostID).withHostServices { services in
-            try await services.listAgyModels()
+        let models: [AgyModelCatalog.Choice]
+        if let rex = projections[hostID] as? RexConsoleProjection {
+            models = try await rex.listAgyModels()
+        } else {
+            models = try await projection(for: hostID).withHostServices { services in
+                try await services.listAgyModels()
+            }
         }
         if !models.isEmpty {
             agyModelsCache[hostID] = (generation, models)
@@ -2622,6 +2669,27 @@ final class ConsoleStore {
                 projection.kernel.map { (projection.host.id, $0) }
             })
         if hostCoreKernels != nextCoreKernels { hostCoreKernels = nextCoreKernels }
+        for projection in current {
+            let hostID = projection.host.id
+            switch projection.host.serverKind {
+            case .tmux:
+                if hostPlatforms[hostID] != .posix {
+                    hostPlatforms[hostID] = .posix
+                }
+            case .rex:
+                let inferred: HostPlatform? =
+                    switch projection.kernel {
+                    case HerdrCoreLocator.macOSKernel, HerdrCoreLocator.linuxKernel: .posix
+                    case HerdrCoreLocator.windowsKernel: .nativeWindows
+                    default: projection.host.rexSocket?.isWindowsPipe == true ? .nativeWindows : nil
+                    }
+                if let inferred, hostPlatforms[hostID] != inferred {
+                    hostPlatforms[hostID] = inferred
+                }
+            case .herdrTUI, .herdrCore, .unconfirmed:
+                break
+            }
+        }
         let nextCores = Dictionary(
             uniqueKeysWithValues: current.compactMap { projection in
                 projection.inventoryCore.map { (projection.host.id, $0) }
@@ -2878,6 +2946,7 @@ final class ConsoleStore {
             let hostID = projection.host.id
             // A Rex Host is POSIX without a probe (ADR 0056).
             guard projection.host.serverKind != .rex,
+                projection.host.serverKind != .tmux,
                 hostPlatformGenerations[hostID] != projection.transportGeneration,
                 mayOfferChat(on: projection)
                     || (projection.host.serverKind == .herdrCore
@@ -3494,7 +3563,7 @@ final class ConsoleStore {
     func grokBuildEditFlow(
         for explanation: HerdrCoreStatusExplanation, on hostID: Host.ID
     ) -> HarnessConfigEditFlow? {
-        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).hostScripts else {
+        guard explanation.offersGrokBuildEdit, capabilities(for: hostID).readsProjects else {
             return nil
         }
         return grokBuildEditFlow(on: hostID, process: explanation.agentProcess)
@@ -3505,6 +3574,9 @@ final class ConsoleStore {
             hostID: hostID, editID: GrokBuildProgramStatusEdit.id, store: harnessEdits,
             services: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
+                if let rex = self.projections[hostID] as? RexConsoleProjection {
+                    return try await rex.grokBuildEditFiles()
+                }
                 return try await self.harnessEditServices(on: hostID)
             },
             makeEdit: { [weak self] in
@@ -3736,15 +3808,15 @@ final class ConsoleStore {
 
     private func grokBuildEdit(on hostID: Host.ID, process: Int?) async throws -> HarnessConfigEdit {
         let grokHome: String?
+        let home: String
         if let core = projections[hostID] as? HerdrCoreConsoleProjection {
-            // Only an environment that was read can say `GROK_HOME` is unset. Taking an
-            // unreadable one for unset would edit a file this Agent may not read.
             guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
             switch await core.processVariable("GROK_HOME", pid: process) {
             case .value(let value): grokHome = value
             case .unset: grokHome = nil
             case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
             }
+            home = try await harnessEditServices(on: hostID).hostHomeDirectory()
         } else if let tmux = projections[hostID] as? TmuxConsoleProjection {
             guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
             switch await tmux.grokBuildProcessVariable("GROK_HOME", paneProcessID: process) {
@@ -3752,10 +3824,15 @@ final class ConsoleStore {
             case .unset: grokHome = nil
             case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
             }
+            home = try await harnessEditServices(on: hostID).hostHomeDirectory()
+        } else if let rex = projections[hostID] as? RexConsoleProjection {
+            guard let process else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+            let context = try await rex.grokBuildEditContext(process: process)
+            grokHome = context.grokHome
+            home = context.home
         } else {
             throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
         }
-        let home = try await harnessEditServices(on: hostID).hostHomeDirectory()
         guard let path = GrokBuildProgramStatusEdit.configPath(grokHome: grokHome, home: home) else {
             throw HarnessConfigEditError.unresolvedPath
         }
@@ -4484,6 +4561,7 @@ extension ConsoleStore: GitHubHostAccess {
     func isNativeWindows(_ recordID: Host.ID) -> Bool {
         catalog.first(where: { $0.id == recordID })?.rexSocket?.isWindowsPipe == true
             || hostPlatforms[recordID] == .nativeWindows
+            || hostCoreKernels[recordID] == HerdrCoreLocator.windowsKernel
     }
 
     /// Straight to the desktop session on a connection whose gh needed it
