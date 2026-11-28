@@ -313,7 +313,7 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .amp])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp])
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).offersChat(for: .grok))
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel).offersChat(for: .grok))
         #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))
@@ -872,5 +872,35 @@ struct RexChatTests {
         #expect(flow.applied == nil)
         #expect(await editFiles.files == [configPath: original])
         #expect(await editFiles.folders.isEmpty)
+    }
+
+    @Test func boundAntigravityAllowsStagedAttachmentPathsAndRefusesSlashCommands() async throws {
+        #expect(ChatSendRules.isLeadingSlashCommand("/clear"))
+        #expect(ChatSendRules.isLeadingSlashCommand("  /compact "))
+        #expect(ChatSendRules.isLeadingSlashCommand("\u{200B}/plan"))
+        #expect(!ChatSendRules.isLeadingSlashCommand("/var/folders/ab/heeler/photo.png "))
+        #expect(!ChatSendRules.isLeadingSlashCommand("/tmp/heeler-stage/doc.pdf"))
+        #expect(!ChatSendRules.isLeadingSlashCommand("Look at /tmp/heeler-stage/photo.png"))
+
+        var policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 },
+            validate: { _ in nil }, preflight: { _ in nil }, verify: nil)
+        policy.restrictAntigravityToMessages()
+
+        #expect(await policy.preflight?("/clear") == .inputNotReady("Use the Antigravity terminal for commands."))
+        #expect(await policy.preflight?("/var/folders/ab/heeler/photo.png ") == nil)
+        #expect(await policy.preflight?("Describe /tmp/heeler-stage/photo.png ") == nil)
+    }
+
+    @Test func agyTranscriptReducerRecordsImageOnlyPromptForEchoMatching() {
+        let line = #"""
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-28T06:00:00Z","content":"<USER_REQUEST>\n\n</USER_REQUEST>","media":[{"mime_type":"image/png","uri":"/tmp/heeler-stage/photo.png"}]}
+            """#
+        var reducer = AgyTranscriptReducer()
+        reducer.append([ChatLine(offset: 0, length: line.utf8.count, data: Data(line.utf8))])
+        let transcript = reducer.transcript(ChatProjectionContext(windowStart: 0, activity: .idle))
+
+        #expect(transcript.recordedPrompts.count == 1)
+        #expect(transcript.recordedPrompts.first?.pastedImagePaths == [])
     }
 }

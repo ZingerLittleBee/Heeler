@@ -30,7 +30,7 @@ struct RexConsoleTests {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin, .amp]
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin, .opencode, .amp]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }
