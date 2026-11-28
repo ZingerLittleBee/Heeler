@@ -35,7 +35,7 @@
     },
     {
       "path": "core/turn-state.js",
-      "sha256": "b1ae73eaa2f5bfc2216c3aff7293782dd9cb551129a0f11f8d7e5acf7e0e4b17"
+      "sha256": "c9a039af0e352658b395ad2e5668f4287eeb066c8b68c190724cfebdd2a17ced"
     },
     {
       "path": "extensions/extension-folders.js",
@@ -43,7 +43,7 @@
     },
     {
       "path": "extensions/heeler-session.js",
-      "sha256": "ab32417d0f17532e4cb74b7a386807d636d268e9dc672094d61f4c18832102f9"
+      "sha256": "fdc549da3372b1c8aa5db9ddc3a77f9195dc908fd3a42bb0414f51a7974af476"
     },
     {
       "path": "extensions/opencode/index.js",
@@ -251,7 +251,7 @@
     },
     {
       "path": "tmux/pipe-reader.js",
-      "sha256": "8d7f65077e2169f754988dcb28c23aaa5bb83698ef09eacbba1b0c8080ba0816"
+      "sha256": "e80a3ac3793c9ae4480c3fb5a9f5860d37edae810c7c33e7d1169221c8d94e9b"
     },
     {
       "path": "tmux/quoted-format.js",
@@ -263,7 +263,7 @@
     },
     {
       "path": "tmux/status.js",
-      "sha256": "9ac7e6c05eafaeff0fbb338146f370d6c29e5efb52ea65495f166a83e0209973"
+      "sha256": "87549b7a7ab3f2845720a09586e470d6c13c6095d327899a863a6a56b8a0194c"
     },
     {
       "path": "tmux/transcript-watcher.js",

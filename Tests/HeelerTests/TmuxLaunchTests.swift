@@ -148,6 +148,20 @@ struct TmuxLaunchTests {
         #expect(try namedLaunch(command) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'CLAUDE_CODE_CHILD_SESSION=keep' -e 'CLAUDE_CODE_SKIP_PROMPT_HISTORY=' -e 'FOO=bar baz' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' claude --resume abc")
     }
 
+    @Test func antigravityEnablesOsc7501ByDefaultAndRespectsPresetOverride() throws {
+        let defaultCommand = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(kind: "agy", name: "agy", workspaceID: "$0", cwd: "/work"),
+            on: server())
+        #expect(try namedLaunch(defaultCommand) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'AGY_CLI_OSC7501=on' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' agy")
+
+        let presetCommand = try TmuxLaunch.agentWindow(
+            AgentLaunchRequest(
+                kind: "agy", name: "agy", workspaceID: "$0", cwd: "/work",
+                environment: ["AGY_CLI_OSC7501": "off"]),
+            on: server())
+        #expect(try namedLaunch(presetCommand) == "\"$t\" -N -S \"$s\" new-window -d -t '$0' -c '/work' -e 'AGY_CLI_OSC7501=off' -P -F '#{pid}:#{start_time} #{pane_pid} \(Self.paneFormat)' -- '/bin/zsh' -ic 'exec \"$@\"' '/bin/zsh' agy")
+    }
+
     @Test func aFishShellReplacesItselfWithTheAgent() throws {
         let command = try TmuxLaunch.agentWindow(
             AgentLaunchRequest(

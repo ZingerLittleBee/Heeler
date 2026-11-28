@@ -209,7 +209,10 @@ extension HostCapabilities {
         }
         let offered = serverKind == .herdrTUI
         let tuiOnWindows = offered && platform == .nativeWindows
-        let coreOnPosix = serverKind == .herdrCore && platform == .posix
+        let coreOnWindows =
+            serverKind == .herdrCore
+            && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
+        let coreOnPosix = serverKind == .herdrCore && platform == .posix && !coreOnWindows
         let coreChatPrograms: Set<ChatProgram>? =
             switch coreKernel {
             case HerdrCoreLocator.linuxKernel where coreOnPosix: coreLinuxChatPrograms
@@ -217,9 +220,6 @@ extension HostCapabilities {
             default: nil
             }
         let coreChat = coreChatPrograms != nil
-        let coreOnWindows =
-            serverKind == .herdrCore
-            && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
         let windowsChatPrograms = coreOnWindows ? coreWindowsChatPrograms.intersection(Self.windowsCoreChatCandidates) : []
         let coreStillUnknown =
             serverKind == .herdrCore && isLocatingCore && platform == nil && coreKernel == nil

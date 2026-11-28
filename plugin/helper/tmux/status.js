@@ -4,7 +4,7 @@
 import { REPORTED_APPS } from "../core/agent-rule.js";
 
 /** Programs known to report done, so their idle ends no turn (tmux-heeler-status-v1.json). */
-export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build", "droid"]);
+export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build", "droid", "antigravity"]);
 
 /**
  * The word `status` reports for a Pane whose known Agent is `kind`, or null

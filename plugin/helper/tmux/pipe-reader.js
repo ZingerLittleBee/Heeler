@@ -19,6 +19,7 @@ const PIPE_PROGRAMS = new Set([
   // floor.
   "opencode",
   "omp",
+  "agy",
 ]);
 const PIPE_OPTION = "@heeler-pipe";
 const PIPED_OPTION = "@heeler-piped";
