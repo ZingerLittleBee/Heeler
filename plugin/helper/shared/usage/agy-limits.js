@@ -144,7 +144,7 @@ export async function agyVersion(runtime, directory, known) {
   return { identity, version };
 }
 
-function keychainUsable(runtime, directory) {
+export function keychainUsable(runtime, directory) {
   return new Promise(resolve => execFile("security", ["show-keychain-info"], {
     cwd: directory, env: strings(runtime.env), timeout: 5_000, killSignal: "SIGKILL", maxBuffer: 64 * 1024,
   }, error => resolve(!error)));
@@ -178,19 +178,18 @@ function runAgyUsageCommand(executable, runtime, directory) {
       child.stderr.destroy();
       resolve(result);
     };
-    const timer = setTimeout(() => finish({ outcome: failed("timeout"), stderr: "" }), 15_000);
-    child.stdout.on("error", () => finish({ outcome: failed("requestFailed"), stderr }));
-    child.stderr.on("error", () => finish({ outcome: failed("requestFailed"), stderr }));
-    child.on("error", error => finish({
-      outcome: error.code === "ENOENT" || error.code === "EACCES" ? unavailable("programMissing") : failed("requestFailed"),
-      stderr,
-    }));
+    const timer = setTimeout(() => finish(failed("timeout")), 15_000);
+    child.stdout.on("error", () => finish(failed("requestFailed")));
+    child.stderr.on("error", () => finish(failed("requestFailed")));
+    child.on("error", error => finish(
+      error.code === "ENOENT" || error.code === "EACCES" ? unavailable("programMissing") : failed("requestFailed"),
+    ));
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", chunk => {
       if (result) return;
       stdoutBytes += Buffer.byteLength(chunk);
-      if (stdoutBytes > 1024 * 1024) { finish({ outcome: failed("invalidResponse"), stderr }); return; }
+      if (stdoutBytes > 1024 * 1024) { finish(failed("invalidResponse")); return; }
       stdout += chunk;
     });
     child.stderr.on("data", chunk => {
@@ -202,18 +201,14 @@ function runAgyUsageCommand(executable, runtime, directory) {
     child.on("close", code => {
       clearTimeout(timer);
       if (result) { resolve(result); return; }
-      if (code === 126 || code === 127) { resolve({ outcome: unavailable("programMissing"), stderr }); return; }
+      if (code === 126 || code === 127) { resolve(unavailable("programMissing")); return; }
       const combined = `${stderr}\n${stdout}`;
-      if (AUTH_FAILURE.test(combined)) { resolve({ outcome: unavailable("notSignedIn"), stderr: combined }); return; }
+      if (AUTH_FAILURE.test(combined)) { resolve(unavailable("notSignedIn")); return; }
       if (code !== 0) {
-        if (/flag provided but not defined|unknown flag/i.test(combined)) {
-          resolve({ outcome: unavailable("programTooOld"), stderr: combined });
-          return;
-        }
-        resolve({ outcome: failed("requestFailed"), stderr: combined });
+        resolve(/flag provided but not defined|unknown flag/i.test(combined) ? unavailable("programTooOld") : failed("requestFailed"));
         return;
       }
-      resolve({ outcome: parseAgyReading(stdout), stderr: combined });
+      resolve(parseAgyReading(stdout));
     });
   });
 }
@@ -226,14 +221,10 @@ export async function readAgyLimits(runtime, directory, version = null) {
   const executable = agyExecutable(runtime);
   if (!executable) return unavailable("programMissing");
   if (!Array.isArray(version) || agyAtOrBefore(version)) return unavailable("programTooOld");
-  const { outcome, stderr } = await runAgyUsageCommand(executable, runtime, directory);
-  if (process.platform === "darwin" && (
-    (outcome.state === "unavailable" && (outcome.reason === "notSignedIn" || outcome.reason === "noPlanLimits"))
-    || (outcome.state === "error" && /keychain/i.test(stderr))
-  ) && !(await keychainUsable(runtime, directory))) {
+  if (process.platform === "darwin" && !(await keychainUsable(runtime, directory))) {
     return unavailable("keychainUnavailable");
   }
-  return outcome;
+  return runAgyUsageCommand(executable, runtime, directory);
 }
 
 export const AGY_REQUEST = "agy-request.json";
