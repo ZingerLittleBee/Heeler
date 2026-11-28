@@ -9,7 +9,7 @@
 ## 开始之前
 
 - 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)。
-- 一台运行 [herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 herdr、只运行 herdr-core、tmux 或 Rex 时，也能用一条命令配对：请直接跳到[配对没有 herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
+- 一台运行 [Herdr](https://herdr.dev/docs/install/) 0.7.5 或更高版本的 Mac 或 Linux 机器，并安装 [Node.js](https://nodejs.org/) 20 或更高版本。机器上没有 Herdr、只运行 Herdr Core、Tmux 或 Rex 时，也能用一条命令配对：请直接跳到[配对没有 Herdr 的机器](#配对没有-herdr-的机器)。Windows Host 不支持配对，请按 [Windows 配置](windows-setup.md)手动添加。
 - iPhone 或 iPad 与这台机器处于同一网络（例如同一个 Wi-Fi），或连接到同一个 VPN。配对不会使用 Heeler 中 **Settings > Overlay Networks** 里的网络；这些网络可以在配对完成后再添加，用于[外出时使用](#外出时使用)。
 - 预留约两分钟：配对码只能使用一次，两分钟后失效。
 
@@ -43,19 +43,19 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中 **Herdr TUI** Server 的页面（先打开 Host，再打开该 Server）会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
+Herdr 会下载并构建插件。当插件版本低于当前 Heeler 所需的版本时，Heeler 中 **Herdr TUI** Server 的页面（先打开 Host，再打开该 Server）会给出提示，并可以直接帮你更新；在 Host 上再次运行同一条命令也能更新。
 
 ## 3. 显示配对码
 
 **运行位置：Mac 或 Linux**
 
-用 Heeler 将要登录的账户打开 herdr（运行 `herdr`），并把窗口调大到约 40 行高、90 列宽，以便完整显示二维码。在 herdr 的任一窗格中运行：
+用 Heeler 将要登录的账户打开 Herdr（运行 `herdr`），并把窗口调大到约 40 行高、90 列宽，以便完整显示二维码。在 Herdr 的任一窗格中运行：
 
 ```sh
 herdr plugin action invoke heeler.pair
 ```
 
-配对码会以弹窗形式显示在 herdr 窗口之上。
+配对码会以弹窗形式显示在 Herdr 窗口之上。
 
 1. 弹窗会列出这台机器的网络地址。勾选 iPhone 或 iPad 能够访问到的每个地址，通常是机器的 Wi-Fi 或以太网地址：用方向键移动，按空格键勾选或取消勾选。每个勾选的地址都会成为该 Host 的一条路由，因此可以勾选多个。如果其中没有 iPhone 或 iPad 能访问到的地址，请参见[通过端口映射配对](#通过端口映射配对)。
 2. 按 Enter。弹窗会显示二维码及其失效时间。
@@ -73,7 +73,7 @@ herdr plugin action invoke heeler.pair
 2. 允许访问相机；如果 iOS 询问，也请允许访问本地网络中的设备。然后将相机对准二维码。
 3. 配对会立即开始，Heeler 会逐项显示每个步骤的完成情况。无需核对指纹：配对码中已包含指纹。
 
-4. 配对完成后，Heeler 会查看这台机器并列出它运行的 Server：**Herdr TUI**，以及机器上有的 **herdr-core**、每个 tmux 服务端和 **Rex**。保留想要的勾选项，需要的话给 Host 起个名字，然后轻点 **Add Host with 1 Server**（数字随勾选的数量变化）。
+4. 配对完成后，Heeler 会查看这台机器并列出它运行的 Server：**Herdr TUI**，以及机器上有的 **Herdr Core**、每个 Tmux 服务端和 **Rex**。保留想要的勾选项，需要的话给 Host 起个名字，然后轻点 **Add Host with 1 Server**（数字随勾选的数量变化）。
 
 如果无法使用相机，请在弹窗中按 `c`。在 Mac 上，这会复制配对码；把它传到 iPhone 或 iPad 上（例如通过通用剪贴板），然后在 **Scan to Pair** 中轻点 **Paste Pairing Code**。在 Linux 上，按 `c` 会在二维码下方打印配对码：把它发送到 iPhone 或 iPad（例如发到自己的备忘录或消息中），在设备上复制后按同样方式粘贴。
 
@@ -93,17 +93,17 @@ herdr plugin action invoke heeler.pair
 - 没有勾选的 Server，或之后才启动的 Server，可以在 Host 页面上用开关打开。
 - 如需在 iPhone 或 iPad 上收到 Agent 等待处理（**Blocked**）或任务完成（**Done**）的通知，请前往 **Settings > Notifications**，依次轻点 **Enable Notifications** 和 **Continue**，并在 iOS 询问时允许通知。然后在 **Hosts** 下打开该 Host 的开关。
 
-## 配对没有 herdr 的机器
+## 配对没有 Herdr 的机器
 
 **运行位置：Mac 或 Linux**
 
-只运行 herdr-core、tmux 或 Rex、没有 herdr 的机器没有插件可以显示配对码。按[步骤 1](#1-开启-ssh) 开启 SSH，然后以 Heeler 要登录的账户，在这台机器的终端中运行下面的命令。需要 [Node.js](https://nodejs.org/) 20 或更高版本，以及 0.1.20 之后的 Heeler 版本：
+只运行 Herdr Core、Tmux 或 Rex、没有 Herdr 的机器没有插件可以显示配对码。按[步骤 1](#1-开启-ssh) 开启 SSH，然后以 Heeler 要登录的账户，在这台机器的终端中运行下面的命令。需要 [Node.js](https://nodejs.org/) 20 或更高版本，以及 0.1.20 之后的 Heeler 版本：
 
 ```sh
 npx -y heeler-pair@latest
 ```
 
-`npx` 会下载并运行这条命令，不会留下任何安装内容。它显示的界面与弹窗相同：勾选 iPhone 或 iPad 能访问到的地址，按 Enter，然后按[步骤 4](#4-在-heeler-中扫码) 扫描二维码。Heeler 会列出在这台机器上找到的 Server，例如 **herdr-core** 和 **tmux**。尚未运行的 Server 可以之后在 Host 页面上打开。
+`npx` 会下载并运行这条命令，不会留下任何安装内容。它显示的界面与弹窗相同：勾选 iPhone 或 iPad 能访问到的地址，按 Enter，然后按[步骤 4](#4-在-heeler-中扫码) 扫描二维码。Heeler 会列出在这台机器上找到的 Server，例如 **Herdr Core** 和 **Tmux**。尚未运行的 Server 可以之后在 Host 页面上打开。
 
 机器位于端口映射之后时，直接用参数传入 iPhone 或 iPad 实际访问的地址和端口，无需编写 `pair.json`：
 
@@ -111,7 +111,7 @@ npx -y heeler-pair@latest
 npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 ```
 
-在 **herdr-core** 和 **tmux** Server（不含 Rex）上，Agent Notifications、Live Activity 和 Usage 需要 Host Helper，Heeler 会在对应 Server 的页面上提供安装入口，参见[连接 herdr-core](herdr-core.md#host-helper) 和[连接 tmux](tmux.md#host-helper)。Rex 不使用 Host Helper，也不提供通知、Live Activity 或 Usage。
+在 **Herdr Core** 和 **Tmux** Server（不含 Rex）上，Agent Notifications、Live Activity 和 Usage 需要 Host Helper，Heeler 会在对应 Server 的页面上提供安装入口，参见[连接 Herdr Core](herdr-core.md#host-helper) 和[连接 Tmux](tmux.md#host-helper)。Rex 不使用 Host Helper，也不提供通知、Live Activity 或 Usage。
 
 ## 外出时使用
 
@@ -121,7 +121,7 @@ npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 
 **运行位置：Mac 或 Linux**
 
-弹窗只会列出这台机器自身网络接口上的地址。如果 iPhone 或 iPad 需要通过其他方式访问 herdr，例如 herdr 运行在 Docker 容器中、其 SSH 通过 NAS 上的某个端口对外发布，或者机器位于 NAT 之后，请告诉插件要写入配对码的地址和端口。此功能需要 Heeler 插件 0.6.2 或更高版本；如需更新，请重新运行[第 2 步](#2-安装-heeler-插件)中的安装命令。
+弹窗只会列出这台机器自身网络接口上的地址。如果 iPhone 或 iPad 需要通过其他方式访问 Herdr，例如 Herdr 运行在 Docker 容器中、其 SSH 通过 NAS 上的某个端口对外发布，或者机器位于 NAT 之后，请告诉插件要写入配对码的地址和端口。此功能需要 Heeler 插件 0.6.2 或更高版本；如需更新，请重新运行[第 2 步](#2-安装-heeler-插件)中的安装命令。
 
 1. 找到插件的配置目录：
 
@@ -137,17 +137,17 @@ npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 
 3. 重新运行 `herdr plugin action invoke heeler.pair`。`pair.json` 中的地址会排在弹窗最前面并已勾选，机器自身的地址排在其后，默认不勾选。
 
-该端口必须通向运行 herdr 的那台机器上的 OpenSSH 服务器，因为配对码携带的是它在 `/etc/ssh` 下的主机密钥指纹。如果弹窗提示无法使用 `pair.json`，请修正该文件，按 `q` 后重新运行命令。各字段的完整说明见[插件 README](../../../plugin/README.md#install)。
+该端口必须通向运行 Herdr 的那台机器上的 OpenSSH 服务器，因为配对码携带的是它在 `/etc/ssh` 下的主机密钥指纹。如果弹窗提示无法使用 `pair.json`，请修正该文件，按 `q` 后重新运行命令。各字段的完整说明见[插件 README](../../../plugin/README.md#install)。
 
 ## 故障排查
 
 | 现象 | 处理方法 |
 | --- | --- |
-| 终端显示 **no herdr server is running** | 先运行 `herdr`，再在它的某个窗格中运行该命令。 |
+| 终端显示 **no Herdr server is running** | 先运行 `herdr`，再在它的某个窗格中运行该命令。 |
 | 二维码底部显示不全，或显示 **This terminal is too small for the Pairing Code.** | 调大窗口或缩小终端字号。如果二维码没有自动出现，请按 `q` 并重新运行该命令。 |
 | **No SSH host key found under /etc/ssh.**（弹窗） | 开启“远程登录”（Remote Login），或运行 `sudo ssh-keygen -A`，然后重新运行该命令。 |
 | **No routable network address found.**（弹窗） | 将机器连接到 Wi-Fi、以太网或 VPN，然后重新运行该命令。 |
-| 弹窗中没有 iPhone 或 iPad 能访问到的地址，例如只有 `172.17.x.x` 这样的容器地址 | herdr 位于端口映射或 NAT 之后。按[通过端口映射配对](#通过端口映射配对)的说明，把 iPhone 或 iPad 能访问到的地址写入 `pair.json`，然后重新运行该命令。 |
+| 弹窗中没有 iPhone 或 iPad 能访问到的地址，例如只有 `172.17.x.x` 这样的容器地址 | Herdr 位于端口映射或 NAT 之后。按[通过端口映射配对](#通过端口映射配对)的说明，把 iPhone 或 iPad 能访问到的地址写入 `pair.json`，然后重新运行该命令。 |
 | **The Host did not answer at any of its addresses.** | 让 iPhone 或 iPad 与机器处于同一网络或 VPN，确认 iOS 的 **Settings > Privacy & Security > Local Network**（设置 > 隐私与安全性 > 本地网络）中已允许 Heeler，并确认已开启“远程登录”，然后轻点 **Try Again**。 |
 | **This Pairing Code has expired.**、**The Host rejected this Pairing Code.** 或 **The Host has no pairing in progress for this code.** | 配对码只能使用一次，有效期两分钟，弹窗关闭后也会失效。在弹窗中按 Enter 生成新的配对码，或重新运行该命令，然后轻点 **Scan Again**。 |
 | **Enrollment did not complete, likely a network hiccup.** 或 **This device was enrolled, but the verifying reconnect did not get through.** | 轻点 **Try Again**。 |
@@ -156,10 +156,10 @@ npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 | 提示更新 App 和配对插件 | 如果显示了 **Try Again**，请再试一次。否则请更新 Heeler 并重新运行安装命令，然后生成新的配对码并轻点 **Scan Again**。 |
 | **Camera Access Needed** 或 **Scanning Unavailable** | 轻点 **Open Settings** 并允许访问相机，或使用 **Paste Pairing Code**。 |
 
-配对错误会显示在弹窗或 Heeler 中，不会写入 herdr 的插件日志。
+配对错误会显示在弹窗或 Heeler 中，不会写入 Herdr 的插件日志。
 
-## herdr-app / herdr-core
+## herdr-app / Herdr Core
 
-配对会列出在这台机器上找到的每个 Server。如果 Agent 是在 Herdr 桌面端中启动的，请在最后一步保持勾选 **herdr-core**，或稍后在 Host 页面上打开它。安装了桌面端但没有 `herdr` 命令的机器，可以使用 [`heeler-pair`](#配对没有-herdr-的机器) 配对。在 Windows 上请[通过 SSH 添加 Host](herdr-core.md)。
+配对会列出在这台机器上找到的每个 Server。如果 Agent 是在 Herdr 桌面端中启动的，请在最后一步保持勾选 **Herdr Core**，或稍后在 Host 页面上打开它。安装了桌面端但没有 `herdr` 命令的机器，可以使用 [`heeler-pair`](#配对没有-herdr-的机器) 配对。在 Windows 上请[通过 SSH 添加 Host](herdr-core.md)。
 
 核对依据为 Heeler 插件 0.6.0（2026-10-14）。

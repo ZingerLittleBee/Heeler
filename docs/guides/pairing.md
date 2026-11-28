@@ -7,7 +7,7 @@ Show a Pairing Code on the machine and scan it in Heeler. The Host is added with
 ## Before you start
 
 - [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
-- A Mac or Linux machine that runs [herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. A machine that runs herdr-core, tmux, or Rex without herdr pairs too, with one command: skip to [Pair a machine without herdr](#pair-a-machine-without-herdr). Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
+- A Mac or Linux machine that runs [Herdr](https://herdr.dev/docs/install/) 0.7.5 or newer, with [Node.js](https://nodejs.org/) 20 or newer. A machine that runs Herdr Core, Tmux, or Rex without Herdr pairs too, with one command: skip to [Pair a machine without Herdr](#pair-a-machine-without-herdr). Windows Hosts can't pair; add them by hand with [Windows setup](windows-setup.md).
 - Your iPhone or iPad on the same network as the machine, such as the same Wi-Fi, or connected to the same VPN. Pairing doesn't use the networks in Heeler's **Settings > Overlay Networks**; you can add those afterwards for [use away from home](#use-it-away-from-home).
 - About two minutes: a Pairing Code works once and expires after two minutes.
 
@@ -41,19 +41,19 @@ node --version
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the **Herdr TUI** Server's page in Heeler (open the Host, then the Server) says so and can update it for you; running the same command on the Host also updates it.
+Herdr downloads and builds the plugin. When the plugin is older than your version of Heeler expects, the **Herdr TUI** Server's page in Heeler (open the Host, then the Server) says so and can update it for you; running the same command on the Host also updates it.
 
 ## 3. Show a Pairing Code
 
 **Run on: Mac or Linux**
 
-Open herdr (run `herdr`) as the account Heeler should sign in to, and make its window large: about 40 lines tall and 90 columns wide, so the whole QR code fits. In one of its panes, run:
+Open Herdr (run `herdr`) as the account Heeler should sign in to, and make its window large: about 40 lines tall and 90 columns wide, so the whole QR code fits. In one of its panes, run:
 
 ```sh
 herdr plugin action invoke heeler.pair
 ```
 
-The Pairing Code opens in a popup over the herdr window.
+The Pairing Code opens in a popup over the Herdr window.
 
 1. The popup lists the machine's network addresses. Check each one your iPhone or iPad can reach, usually the machine's Wi-Fi or Ethernet address: use the arrow keys to move and Space to check or uncheck. Each checked address becomes a route of the Host, so checking more than one is fine. If none of them is one your iPhone or iPad can reach, see [Pair through a port mapping](#pair-through-a-port-mapping).
 2. Press Enter. A QR code appears, along with the time it stops working.
@@ -71,7 +71,7 @@ Leave the popup open and don't press any keys while you scan. Any key except `c`
 2. Allow camera access and, if iOS asks, access to devices on your local network. Then point the camera at the QR code.
 3. Pairing starts right away and Heeler shows each step as it completes. There is no fingerprint to compare: the code carries it.
 
-4. When pairing finishes, Heeler looks at the machine and lists what it runs: **Herdr TUI**, and **herdr-core**, each tmux server, and **Rex** if the machine has them. Leave the ones you want checked, name the Host if you like, and tap **Add Host with 1 Server** (the number follows what you checked).
+4. When pairing finishes, Heeler looks at the machine and lists what it runs: **Herdr TUI**, and **Herdr Core**, each Tmux server, and **Rex** if the machine has them. Leave the ones you want checked, name the Host if you like, and tap **Add Host with 1 Server** (the number follows what you checked).
 
 If you can't use the camera, press `c` in the popup. On a Mac this copies the code; get it onto your iPhone or iPad (for example with Universal Clipboard) and tap **Paste Pairing Code** in **Scan to Pair**. On Linux, `c` prints the code below the QR code instead: send it to your iPhone or iPad, for example in a note or message to yourself, then copy it there and paste it the same way.
 
@@ -91,17 +91,17 @@ The popup shows **Device paired** and the key that was just added. If you didn't
 - A Server you left unchecked, or one that starts later, has a switch on the Host's page.
 - To get notifications on your iPhone or iPad when an Agent needs you (**Blocked**) or finishes (**Done**), go to **Settings > Notifications**, tap **Enable Notifications**, tap **Continue**, and allow notifications when iOS asks. Then turn on this Host's switch under **Hosts**.
 
-## Pair a machine without herdr
+## Pair a machine without Herdr
 
 **Run on: Mac or Linux**
 
-A machine that runs herdr-core, tmux, or Rex and no herdr has no plugin to show the code. Turn on SSH as in [step 1](#1-turn-on-ssh), then run this in a terminal on the machine, as the account Heeler should sign in to. It needs [Node.js](https://nodejs.org/) 20 or newer and a Heeler version after 0.1.20:
+A machine that runs Herdr Core, Tmux, or Rex and no Herdr has no plugin to show the code. Turn on SSH as in [step 1](#1-turn-on-ssh), then run this in a terminal on the machine, as the account Heeler should sign in to. It needs [Node.js](https://nodejs.org/) 20 or newer and a Heeler version after 0.1.20:
 
 ```sh
 npx -y heeler-pair@latest
 ```
 
-`npx` downloads the command and runs it; nothing stays installed. It shows the same screens as the popup: check the addresses your iPhone or iPad can reach, press Enter, then scan the QR code as in [step 4](#4-scan-it-in-heeler). Heeler lists the Servers it finds on the machine, such as **herdr-core** and **tmux**. One that isn't running yet can be turned on later from the Host's page.
+`npx` downloads the command and runs it; nothing stays installed. It shows the same screens as the popup: check the addresses your iPhone or iPad can reach, press Enter, then scan the QR code as in [step 4](#4-scan-it-in-heeler). Heeler lists the Servers it finds on the machine, such as **Herdr Core** and **Tmux**. One that isn't running yet can be turned on later from the Host's page.
 
 Behind a port mapping, pass the address and port your iPhone or iPad reaches instead of writing `pair.json`:
 
@@ -109,7 +109,7 @@ Behind a port mapping, pass the address and port your iPhone or iPad reaches ins
 npx -y heeler-pair@latest --port 2222 --address 192.168.1.10
 ```
 
-On **herdr-core** and **tmux** Servers (not Rex), Agent Notifications, Live Activity, and Usage need the Host Helper, which Heeler offers on each Server's page: see [Connect herdr-core](herdr-core.md#host-helper) and [Connect tmux](tmux.md#host-helper). Rex does not use a Host Helper or offer notifications, Live Activity, or Usage.
+On **Herdr Core** and **Tmux** Servers (not Rex), Agent Notifications, Live Activity, and Usage need the Host Helper, which Heeler offers on each Server's page: see [Connect Herdr Core](herdr-core.md#host-helper) and [Connect Tmux](tmux.md#host-helper). Rex does not use a Host Helper or offer notifications, Live Activity, or Usage.
 
 ## Use it away from home
 
@@ -119,7 +119,7 @@ A paired Host has only the addresses you checked, so it connects on the networks
 
 **Run on: Mac or Linux**
 
-The popup lists only the addresses on the machine's own network interfaces. When your iPhone or iPad reaches herdr some other way, for example herdr runs in a Docker container whose SSH is published on a port of a NAS, or the machine sits behind NAT, tell the plugin which address and port to put in the code. This needs Heeler plugin 0.6.2 or later; to update it, run the install command from [step 2](#2-install-the-heeler-plugin) again.
+The popup lists only the addresses on the machine's own network interfaces. When your iPhone or iPad reaches Herdr some other way, for example Herdr runs in a Docker container whose SSH is published on a port of a NAS, or the machine sits behind NAT, tell the plugin which address and port to put in the code. This needs Heeler plugin 0.6.2 or later; to update it, run the install command from [step 2](#2-install-the-heeler-plugin) again.
 
 1. Find the plugin's config directory:
 
@@ -135,17 +135,17 @@ The popup lists only the addresses on the machine's own network interfaces. When
 
 3. Run `herdr plugin action invoke heeler.pair` again. The addresses from `pair.json` come first in the popup and are already checked. The machine's own addresses follow, unchecked.
 
-The port must lead to the OpenSSH server of the machine that runs herdr, because the code carries the fingerprint of its host key under `/etc/ssh`. If the popup says it could not use `pair.json`, fix the file, press `q`, and run the command again. The [plugin README](../../plugin/README.md#install) describes every field.
+The port must lead to the OpenSSH server of the machine that runs Herdr, because the code carries the fingerprint of its host key under `/etc/ssh`. If the popup says it could not use `pair.json`, fix the file, press `q`, and run the command again. The [plugin README](../../plugin/README.md#install) describes every field.
 
 ## Troubleshooting
 
 | What you see | What to do |
 | --- | --- |
-| **no herdr server is running** in the terminal | Run `herdr` first, then run the command in one of its panes. |
+| **no Herdr server is running** in the terminal | Run `herdr` first, then run the command in one of its panes. |
 | The bottom of the QR code is cut off, or **This terminal is too small for the Pairing Code.** | Make the window larger, or zoom out the terminal. If the code doesn't appear by itself, press `q` and run the command again. |
 | **No SSH host key found under /etc/ssh.** (popup) | Turn on Remote Login, or run `sudo ssh-keygen -A`, then run the command again. |
 | **No routable network address found.** (popup) | Connect the machine to Wi-Fi, Ethernet, or a VPN, then run the command again. |
-| The popup lists no address your iPhone or iPad can reach, for example only a `172.17.x.x` container address | herdr is behind a port mapping or NAT. Add the address your iPhone or iPad reaches to `pair.json`, as [Pair through a port mapping](#pair-through-a-port-mapping) describes, then run the command again. |
+| The popup lists no address your iPhone or iPad can reach, for example only a `172.17.x.x` container address | Herdr is behind a port mapping or NAT. Add the address your iPhone or iPad reaches to `pair.json`, as [Pair through a port mapping](#pair-through-a-port-mapping) describes, then run the command again. |
 | **The Host did not answer at any of its addresses.** | Put your iPhone or iPad on the same network or VPN as the machine, check that Heeler is allowed in iOS **Settings > Privacy & Security > Local Network** and that Remote Login is on, then tap **Try Again**. |
 | **This Pairing Code has expired.**, **The Host rejected this Pairing Code.**, or **The Host has no pairing in progress for this code.** | Codes work once, for two minutes, and stop working when the popup closes. Press Enter in the popup for a new code, or run the command again, then tap **Scan Again**. |
 | **Enrollment did not complete, likely a network hiccup.** or **This device was enrolled, but the verifying reconnect did not get through.** | Tap **Try Again**. |
@@ -154,10 +154,10 @@ The port must lead to the OpenSSH server of the machine that runs herdr, because
 | A message to update the app and the pairing plugin | If **Try Again** is shown, try once more. Otherwise update Heeler and run the install command again, then show a new code and tap **Scan Again**. |
 | **Camera Access Needed** or **Scanning Unavailable** | Tap **Open Settings** and allow the camera, or use **Paste Pairing Code**. |
 
-Pairing errors appear in the popup or in Heeler, not in herdr's plugin log.
+Pairing errors appear in the popup or in Heeler, not in Herdr's plugin log.
 
-## herdr-app / herdr-core
+## herdr-app / Herdr Core
 
-Pairing lists every Server it finds on the machine. For Agents started in the Herdr desktop app, leave **herdr-core** checked on the last step, or turn it on later on the Host's page. A machine with the desktop app and no `herdr` command pairs with [`heeler-pair`](#pair-a-machine-without-herdr). On Windows, [add the Host over SSH](herdr-core.md).
+Pairing lists every Server it finds on the machine. For Agents started in the Herdr desktop app, leave **Herdr Core** checked on the last step, or turn it on later on the Host's page. A machine with the desktop app and no `herdr` command pairs with [`heeler-pair`](#pair-a-machine-without-herdr). On Windows, [add the Host over SSH](herdr-core.md).
 
 Checked against Heeler plugin 0.6.0 on 2026-10-14.

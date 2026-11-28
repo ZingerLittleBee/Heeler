@@ -9,7 +9,7 @@
 
 **The iPhone and iPad console for the coding agents running on your own machines.**
 
-Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (herdr-core), tmux, and Rex.
+Works with [Herdr TUI](https://herdr.dev), the Herdr desktop app (Herdr Core), Tmux, and Rex.
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -25,9 +25,9 @@ English | [简体中文](./README-zh.md) | [繁體中文](./README-zh-TW.md) | [
 
 ---
 
-Heeler is an independent, open-source agent console and **herdr mobile client** for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents keep running on your own machines in Herdr TUI, the Herdr desktop app (herdr-core), or tmux, and Heeler connects to them over SSH, so your code never passes through our servers. See which Agent needs you, answer in native Chat or the real terminal, and get an encrypted notification the moment one goes Blocked or Done.
+Heeler is an independent, open-source agent console and **Herdr mobile client** for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents keep running on your own machines in Herdr TUI, the Herdr desktop app (Herdr Core), or Tmux, and Heeler connects to them over SSH, so your code never passes through our servers. See which Agent needs you, answer in native Chat or the real terminal, and get an encrypted notification the moment one goes Blocked or Done.
 
-**[Website](https://heeler.bybee.dev)** · **[Quick Start](#adding-a-machine)** · **[Documentation](https://docs.heeler.bybee.dev)** ([Pairing](https://docs.heeler.bybee.dev/pairing) · [tmux](https://docs.heeler.bybee.dev/tmux) · [Windows](https://docs.heeler.bybee.dev/windows-setup)) · [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md)
+**[Website](https://heeler.bybee.dev)** · **[Quick Start](#adding-a-machine)** · **[Documentation](https://docs.heeler.bybee.dev)** ([Pairing](https://docs.heeler.bybee.dev/pairing) · [Tmux](https://docs.heeler.bybee.dev/tmux) · [Windows](https://docs.heeler.bybee.dev/windows-setup)) · [Privacy](PRIVACY.md) · [Changelog](CHANGELOG.md)
 
 ## Screenshots
 
@@ -59,7 +59,7 @@ Heeler is an independent, open-source agent console and **herdr mobile client** 
 ## Features
 
 - **Console**: every Agent on every machine in one live list, sorted with Blocked first and filterable by Host.
-- **Chat**: an Agent's conversation as native messages, with buttons to answer a Blocked Agent. For Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI. Droid works on macOS and Linux with Herdr TUI, herdr-core, tmux and Rex. Amp works on macOS and Linux Herdr TUI Hosts. [Chat guide](https://docs.heeler.bybee.dev/chat)
+- **Chat**: an Agent's conversation as native messages, with buttons to answer a Blocked Agent. For Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, and Antigravity CLI. Droid works on macOS and Linux with Herdr TUI, Herdr Core, Tmux and Rex. Amp works on macOS and Linux Herdr TUI Hosts. [Chat guide](https://docs.heeler.bybee.dev/chat)
 - **Live terminal**: the Agent's real terminal, rendered by libghostty with native scrollback and selection, and a plain shell in the Agent's directory.
 - **Notifications and Live Activities**: an end-to-end encrypted push when an Agent goes Blocked or Done, and your Agents on the Lock Screen and Dynamic Island. The relay cannot read the content. [Privacy](PRIVACY.md)
 - **Usage**: Claude Code, Codex, and Antigravity CLI Usage Limits with their reset times, up to 30 days of Token Usage with its estimated API cost, and Home Screen and Lock Screen widgets. [Usage guide](https://docs.heeler.bybee.dev/usage)
@@ -75,24 +75,24 @@ Install Heeler from the [App Store](https://apps.apple.com/us/app/id6797263135) 
 | --- | --- | --- |
 | [Herdr TUI](https://herdr.dev/docs/install/) | macOS, Linux | [Pair by scanning](https://docs.heeler.bybee.dev/pairing) |
 | Herdr TUI 0.9.3 or newer | Native Windows | [Windows setup](https://docs.heeler.bybee.dev/windows-setup) |
-| Herdr desktop app or herdr-core | macOS, Linux, native Windows | [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) |
-| tmux 3.3 or newer | macOS, Linux | [Connect tmux](https://docs.heeler.bybee.dev/tmux) |
+| Herdr desktop app or Herdr Core | macOS, Linux, native Windows | [Connect Herdr Core](https://docs.heeler.bybee.dev/herdr-core) |
+| Tmux 3.3 or newer | macOS, Linux | [Connect Tmux](https://docs.heeler.bybee.dev/tmux) |
 | Rex (Heeler 0.1.21+ on macOS/Linux, 0.1.24+ for native Windows and New Terminal) | macOS, Linux, native Windows | [Connect Rex](https://docs.heeler.bybee.dev/rex) |
 
 ## Adding a machine
 
 Turn on the machine's OpenSSH server first (macOS: **System Settings > General > Sharing > Remote Login**).
 
-**Scan a Pairing Code.** On a macOS or Linux machine running Herdr TUI (herdr 0.7.5 or newer, Node 20 or newer), run:
+**Scan a Pairing Code.** On a macOS or Linux machine running Herdr TUI (Herdr 0.7.5 or newer, Node 20 or newer), run:
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-Scan the code it shows and the machine is added as a Host, with its addresses, host key fingerprint, and SSH key in place. On a machine without herdr, such as one that runs only herdr-core or tmux, `npx -y heeler-pair@latest` shows the same code (Node 20 or newer, Heeler 0.1.21+). [Pairing guide](https://docs.heeler.bybee.dev/pairing)
+Scan the code it shows and the machine is added as a Host, with its addresses, host key fingerprint, and SSH key in place. On a machine without Herdr, such as one that runs only Herdr Core or Tmux, `npx -y heeler-pair@latest` shows the same code (Node 20 or newer, Heeler 0.1.21+). [Pairing guide](https://docs.heeler.bybee.dev/pairing)
 
-**Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, herdr-core, each tmux server, and Rex. One Host can carry several of them. [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [Connect tmux](https://docs.heeler.bybee.dev/tmux) · [Connect Rex](https://docs.heeler.bybee.dev/rex) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
+**Or enter the address.** This works for every backend. In **Hosts**, tap **+**, enter the address and your SSH user, and Heeler lists what the machine runs: Herdr TUI, Herdr Core, each Tmux server, and Rex. One Host can carry several of them. [Connect Herdr Core](https://docs.heeler.bybee.dev/herdr-core) · [Connect Tmux](https://docs.heeler.bybee.dev/tmux) · [Connect Rex](https://docs.heeler.bybee.dev/rex) · [Windows setup](https://docs.heeler.bybee.dev/windows-setup)
 
 **Away from home.** Reach the machine over a built-in [overlay network](https://docs.heeler.bybee.dev/overlay-networks) ([Tailscale](https://docs.heeler.bybee.dev/tailscale), [ZeroTier](https://docs.heeler.bybee.dev/zerotier), [EasyTier](https://docs.heeler.bybee.dev/easytier), [tailcat](https://docs.heeler.bybee.dev/tailcat)), a [Jump Host](https://docs.heeler.bybee.dev/vps-jump-host-setup), or [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel), and give the Host [several routes](https://docs.heeler.bybee.dev/host-routes) so it works at home and away.
 
@@ -100,12 +100,12 @@ Scan the code it shows and the machine is added as a Host, with its addresses, h
 
 Heeler needs only SSH access and a running backend: no server changes, and no extra packages to connect.
 
-- **Herdr TUI**: herdr's JSON API over stream-local forwarding to `herdr.sock`, with terminals on an SSH PTY. OpenSSH allows the forwarding by default, though [SELinux on Fedora or RHEL](https://docs.heeler.bybee.dev/selinux) can deny it.
-- **herdr-core**: one framed link to the core's socket.
-- **tmux**: control mode, attached per Pane alongside your desktop clients, with Agent status reported by Claude Code hooks, Pi/Oh My Pi extensions, and the optional Host Helper.
+- **Herdr TUI**: Herdr's JSON API over stream-local forwarding to `herdr.sock`, with terminals on an SSH PTY. OpenSSH allows the forwarding by default, though [SELinux on Fedora or RHEL](https://docs.heeler.bybee.dev/selinux) can deny it.
+- **Herdr Core**: one framed link to the core's socket.
+- **Tmux**: control mode, attached per Pane alongside your desktop clients, with Agent status reported by Claude Code hooks, Pi/Oh My Pi extensions, and the optional Host Helper.
 - **Rex**: one WebSocket link to a running Rex server (over its Unix socket on macOS/Linux, or Rex's stdio bridge on native Windows), plus one channel per open terminal. Heeler never starts a Rex server, and Rex has no notifications, Live Activities, or Usage (on Windows, Chat supports Claude Code only).
 
-On macOS and Linux Hosts, notifications, Live Activities, and Usage come from the [Heeler plugin](plugin/README.md) on Herdr TUI and from the optional Host Helper on herdr-core and tmux. [Update the plugin and Host Helper](https://docs.heeler.bybee.dev/updates)
+On macOS and Linux Hosts, notifications, Live Activities, and Usage come from the [Heeler plugin](plugin/README.md) on Herdr TUI and from the optional Host Helper on Herdr Core and Tmux. [Update the plugin and Host Helper](https://docs.heeler.bybee.dev/updates)
 
 Private keys are generated on the device and stay in the Keychain. A Host's key is pinned by its Pairing Code or confirmed by fingerprint on first connect. The decisions behind the transport are recorded in [`docs/adr/`](docs/adr).
 
@@ -115,7 +115,7 @@ Private keys are generated on the device and stay in the Keychain. A Host's key 
 heeler://agent?host=my-mac&session=work&pane=w1%3Ap1
 ```
 
-`host` is a saved Host's address or name (case is ignored), `session` is the herdr session (leave it out for the default), and `pane` is the pane id (leave it out to open the Console). Percent-encode each value, with `%20` for a space rather than `+`. A link that matches no saved Host, or more than one, opens the Console.
+`host` is a saved Host's address or name (case is ignored), `session` is the Herdr session (leave it out for the default), and `pane` is the pane id (leave it out to open the Console). Percent-encode each value, with `%20` for a space rather than `+`. A link that matches no saved Host, or more than one, opens the Console.
 
 ## Contributing
 
@@ -127,4 +127,4 @@ Released on the [App Store](https://apps.apple.com/us/app/id6797263135).
 It is not yet available in every country or region; where it is missing, the
 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) build stays available.
 Built for personal use first and shaped by daily driving, so expect rough edges and
-fast iteration. Not affiliated with the herdr project.
+fast iteration. Not affiliated with the Herdr project.

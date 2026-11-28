@@ -1,6 +1,6 @@
 # Update the Heeler plugin and Host Helper
 
-A new version of Heeler can bring a newer Heeler plugin for Herdr TUI Hosts, or a newer Host Helper for herdr-core and tmux Hosts. Update them from Heeler, or by hand when an update from the app keeps failing.
+A new version of Heeler can bring a newer Heeler plugin for Herdr TUI Hosts, or a newer Host Helper for Herdr Core and Tmux Hosts. Update them from Heeler, or by hand when an update from the app keeps failing.
 
 ## Update from Heeler
 
@@ -37,7 +37,7 @@ On the Host, run the command that installed the plugin. It also updates it:
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr downloads the plugin from GitHub and builds it with Node.js 20 or newer and npm, so the Host needs both. When the Host uses a named herdr session, tap the **Heeler Plugin** row on its **Herdr TUI** Server's page to see the command with that session filled in.
+Herdr downloads the plugin from GitHub and builds it with Node.js 20 or newer and npm, so the Host needs both. When the Host uses a named Herdr session, tap the **Heeler Plugin** row on its **Herdr TUI** Server's page to see the command with that session filled in.
 
 **It worked if** the **Heeler Plugin** row shows the new version after you pull down on **Updates**, or open the Server's page again.
 
@@ -45,7 +45,7 @@ herdr downloads the plugin from GitHub and builds it with Node.js 20 or newer an
 
 The Host Helper comes inside the Heeler app, so there is no command to run on the Host. Update it from the Server's page, one Host at a time:
 
-1. Open the Host in **Hosts**, tap its **herdr-core** or **tmux** Server, then tap **Host Helper**.
+1. Open the Host in **Hosts**, tap its **Herdr Core** or **Tmux** Server, then tap **Host Helper**.
 2. Tap **Update**, or **Repair** when the row reads **Damaged**. The sheet says what went wrong when it fails.
 3. If it still fails, tap **Remove**, then **Install**.
 

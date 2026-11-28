@@ -15,7 +15,7 @@ Both modes work on your home network. To connect over cellular or another outsid
 
 ## Before you start
 
-- Finish [Prepare the Host](overlay-networks.md#prepare-the-host) (Remote Login, herdr, and a sign-in method).
+- Finish [Prepare the Host](overlay-networks.md#prepare-the-host) (Remote Login, Herdr, and a sign-in method).
 - Find your Mac's local IP address in **System Settings > Network**. The examples use `192.168.1.20`.
 - Choose a network name and a strong secret. The secret is not your SSH password.
 

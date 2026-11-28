@@ -9,7 +9,7 @@
 
 **在 iPhone 和 iPad 上掌控你自己機器上執行的寫程式 Agent。**
 
-支援 [Herdr TUI](https://herdr.dev)、Herdr 桌面應用程式（herdr-core）、tmux 與 Rex。
+支援 [Herdr TUI](https://herdr.dev)、Herdr 桌面應用程式（Herdr Core）、Tmux 與 Rex。
 
 [![GitHub stars](https://img.shields.io/github/stars/ZingerLittleBee/Heeler?style=flat-square&color=E8B923&logo=github&logoColor=white)](https://github.com/ZingerLittleBee/Heeler/stargazers)
 [![CI](https://img.shields.io/github/actions/workflow/status/ZingerLittleBee/Heeler/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/ZingerLittleBee/Heeler/actions/workflows/ci.yml)
@@ -25,9 +25,9 @@
 
 ---
 
-Heeler 是 iPhone 和 iPad 上獨立、開源的 Agent 主控台，也是一款 **herdr 行動裝置用戶端**，用來管理 Claude Code、Codex 及其他寫程式 Agent。Agent 繼續在你自己的機器上執行，運行於 Herdr TUI、Herdr 桌面應用程式（herdr-core）或 tmux 中；Heeler 透過 SSH 直接連線，程式碼不會經過我們的伺服器。你可以一眼看出哪個 Agent 在等你，用原生對話或真實終端機回覆，並在 Agent 受阻或完成時收到加密通知。
+Heeler 是 iPhone 和 iPad 上獨立、開源的 Agent 主控台，也是一款 **Herdr 行動裝置用戶端**，用來管理 Claude Code、Codex 及其他寫程式 Agent。Agent 繼續在你自己的機器上執行，運行於 Herdr TUI、Herdr 桌面應用程式（Herdr Core）或 Tmux 中；Heeler 透過 SSH 直接連線，程式碼不會經過我們的伺服器。你可以一眼看出哪個 Agent 在等你，用原生對話或真實終端機回覆，並在 Agent 受阻或完成時收到加密通知。
 
-**[官方網站](https://heeler.bybee.dev)** · **[快速開始](#新增機器)** · **[文件 (English)](https://docs.heeler.bybee.dev)**（[掃碼配對](https://docs.heeler.bybee.dev/pairing) · [tmux](https://docs.heeler.bybee.dev/tmux) · [Windows](https://docs.heeler.bybee.dev/windows-setup) · [簡體中文文件](https://docs.heeler.bybee.dev/zh)）· [隱私權](PRIVACY.md) · [更新日誌](CHANGELOG.md)
+**[官方網站](https://heeler.bybee.dev)** · **[快速開始](#新增機器)** · **[文件 (English)](https://docs.heeler.bybee.dev)**（[掃碼配對](https://docs.heeler.bybee.dev/pairing) · [Tmux](https://docs.heeler.bybee.dev/tmux) · [Windows](https://docs.heeler.bybee.dev/windows-setup) · [簡體中文文件](https://docs.heeler.bybee.dev/zh)）· [隱私權](PRIVACY.md) · [更新日誌](CHANGELOG.md)
 
 ## 螢幕截圖
 
@@ -75,24 +75,24 @@ Heeler 是 iPhone 和 iPad 上獨立、開源的 Agent 主控台，也是一款 
 | --- | --- | --- |
 | [Herdr TUI](https://herdr.dev/docs/install/) | macOS、Linux | [掃碼配對](https://docs.heeler.bybee.dev/pairing) |
 | Herdr TUI 0.9.3 或更新版本 | 原生 Windows | [Windows 設定](https://docs.heeler.bybee.dev/windows-setup) |
-| Herdr 桌面應用程式或 herdr-core | macOS、Linux、原生 Windows | [連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core) |
-| tmux 3.3 或更新版本 | macOS、Linux | [連線到 tmux](https://docs.heeler.bybee.dev/tmux) |
+| Herdr 桌面應用程式或 Herdr Core | macOS、Linux、原生 Windows | [連線到 Herdr Core](https://docs.heeler.bybee.dev/herdr-core) |
+| Tmux 3.3 或更新版本 | macOS、Linux | [連線到 Tmux](https://docs.heeler.bybee.dev/tmux) |
 | Rex（macOS/Linux 需要 Heeler 0.1.21+，原生 Windows 與 New Terminal 需要 0.1.24+） | macOS、Linux、原生 Windows | [連線到 Rex](https://docs.heeler.bybee.dev/rex) |
 
 ## 新增機器
 
 請先開啟機器上的 OpenSSH 伺服器（macOS：**系統設定 > 一般 > 共享 > 遠端登入**）。
 
-**掃描配對碼。** 在執行 Herdr TUI 的 macOS 或 Linux 機器上（herdr 0.7.5 或更新版本、Node 20 或更新版本）執行：
+**掃描配對碼。** 在執行 Herdr TUI 的 macOS 或 Linux 機器上（Herdr 0.7.5 或更新版本、Node 20 或更新版本）執行：
 
 ```bash
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 herdr plugin action invoke heeler.pair
 ```
 
-掃描它顯示的配對碼，這台機器就會新增為主機，位址、主機金鑰指紋與 SSH 金鑰一併就緒。機器上沒有 herdr、只執行 herdr-core 或 tmux 時，執行 `npx -y heeler-pair@latest` 可以顯示同樣的配對碼（需要 Node 20 或更新版本，以及 Heeler 0.1.21+）。[配對指南 (English)](https://docs.heeler.bybee.dev/pairing)
+掃描它顯示的配對碼，這台機器就會新增為主機，位址、主機金鑰指紋與 SSH 金鑰一併就緒。機器上沒有 Herdr、只執行 Herdr Core 或 Tmux 時，執行 `npx -y heeler-pair@latest` 可以顯示同樣的配對碼（需要 Node 20 或更新版本，以及 Heeler 0.1.21+）。[配對指南 (English)](https://docs.heeler.bybee.dev/pairing)
 
-**或者輸入位址。** 適用於所有後端。在**主機**分頁點一下 **+**，輸入位址和 SSH 使用者，Heeler 會列出這台機器上執行的 Herdr TUI、herdr-core、每個 tmux 伺服器和 Rex。一台主機可以同時使用其中多個。[連線到 herdr-core](https://docs.heeler.bybee.dev/herdr-core) · [連線到 tmux](https://docs.heeler.bybee.dev/tmux) · [連線到 Rex](https://docs.heeler.bybee.dev/rex) · [Windows 設定](https://docs.heeler.bybee.dev/windows-setup) (English)
+**或者輸入位址。** 適用於所有後端。在**主機**分頁點一下 **+**，輸入位址和 SSH 使用者，Heeler 會列出這台機器上執行的 Herdr TUI、Herdr Core、每個 Tmux 伺服器和 Rex。一台主機可以同時使用其中多個。[連線到 Herdr Core](https://docs.heeler.bybee.dev/herdr-core) · [連線到 Tmux](https://docs.heeler.bybee.dev/tmux) · [連線到 Rex](https://docs.heeler.bybee.dev/rex) · [Windows 設定](https://docs.heeler.bybee.dev/windows-setup) (English)
 
 **不在同一個網路時。** 透過內建的[覆蓋網路](https://docs.heeler.bybee.dev/overlay-networks)（[Tailscale](https://docs.heeler.bybee.dev/tailscale)、[ZeroTier](https://docs.heeler.bybee.dev/zerotier)、[EasyTier](https://docs.heeler.bybee.dev/easytier)、[tailcat](https://docs.heeler.bybee.dev/tailcat)）、[跳板主機](https://docs.heeler.bybee.dev/vps-jump-host-setup)或 [Cloudflare Tunnel](https://docs.heeler.bybee.dev/cloudflare-tunnel) 連線，並為主機設定[多條路由](https://docs.heeler.bybee.dev/host-routes)（以上指南皆為 English），在家或在外都能連上。
 
@@ -100,12 +100,12 @@ herdr plugin action invoke heeler.pair
 
 Heeler 只需要 SSH 連線和一個執行中的後端：不需變更伺服器，連線本身也不需額外安裝套件。
 
-- **Herdr TUI**：透過 stream-local 轉送連到 `herdr.sock`，使用 herdr 的 JSON API，終端機則在 SSH PTY 上執行。OpenSSH 預設允許這種轉送，但 [Fedora 或 RHEL 上的 SELinux (English)](https://docs.heeler.bybee.dev/selinux) 可能會拒絕。
-- **herdr-core**：與 core 的 socket 之間使用一條分幀連線。
-- **tmux**：以控制模式逐窗格接入，與桌面用戶端並存，Agent 狀態由 Claude Code hooks、Pi/Oh My Pi 擴充功能與選用的 Host Helper 回報。
+- **Herdr TUI**：透過 stream-local 轉送連到 `herdr.sock`，使用 Herdr 的 JSON API，終端機則在 SSH PTY 上執行。OpenSSH 預設允許這種轉送，但 [Fedora 或 RHEL 上的 SELinux (English)](https://docs.heeler.bybee.dev/selinux) 可能會拒絕。
+- **Herdr Core**：與 core 的 socket 之間使用一條分幀連線。
+- **Tmux**：以控制模式逐窗格接入，與桌面用戶端並存，Agent 狀態由 Claude Code hooks、Pi/Oh My Pi 擴充功能與選用的 Host Helper 回報。
 - **Rex**：與已在執行的 Rex 伺服器之間使用一條 WebSocket 連線（macOS/Linux 透過 Unix socket，原生 Windows 透過 Rex 內建的 stdio 橋接），每個開啟的終端機另用一條通道。Heeler 絕不會啟動 Rex 伺服器，Rex 上也沒有通知、即時動態與用量（Windows 上的對話僅支援 Claude Code）。
 
-在 macOS 與 Linux 主機上，通知、即時動態與用量由 [Heeler 外掛](plugin/README.md)（Herdr TUI）或選用的 Host Helper（herdr-core、tmux）提供。[更新外掛與 Host Helper (English)](https://docs.heeler.bybee.dev/updates)
+在 macOS 與 Linux 主機上，通知、即時動態與用量由 [Heeler 外掛](plugin/README.md)（Herdr TUI）或選用的 Host Helper（Herdr Core、Tmux）提供。[更新外掛與 Host Helper (English)](https://docs.heeler.bybee.dev/updates)
 
 私密金鑰在裝置上產生，只存放在鑰匙圈。主機金鑰由配對碼固定，或在首次連線時由你核對指紋後確認。傳輸層的設計決策記錄在 [`docs/adr/`](docs/adr)。
 
@@ -115,7 +115,7 @@ Heeler 只需要 SSH 連線和一個執行中的後端：不需變更伺服器�
 heeler://agent?host=my-mac&session=work&pane=w1%3Ap1
 ```
 
-`host` 是已儲存主機的位址或名稱（不分大小寫），`session` 是 herdr 的工作階段（省略即為預設工作階段），`pane` 是窗格 ID（省略則開啟主控台）。每個值都要進行百分比編碼，空格寫成 `%20` 而不是 `+`。找不到符合的已儲存主機，或符合的不只一台時，連結會開啟主控台。
+`host` 是已儲存主機的位址或名稱（不分大小寫），`session` 是 Herdr 的工作階段（省略即為預設工作階段），`pane` 是窗格 ID（省略則開啟主控台）。每個值都要進行百分比編碼，空格寫成 `%20` 而不是 `+`。找不到符合的已儲存主機，或符合的不只一台時，連結會開啟主控台。
 
 ## 參與貢獻
 
@@ -127,4 +127,4 @@ Heeler 以 SwiftUI 開發，支援 iOS 18+；SSH 使用存放庫內的 `Packages
 尚未在所有國家或地區提供；在尚未上架的地區，仍可使用
 [TestFlight](https://testflight.apple.com/join/aXSxRn4r) 版本。
 本專案以自用為出發點，並在日常使用中逐步成形，因此可能還有不夠完善之處，
-並會快速迭代。與 herdr 專案無任何隸屬關係。
+並會快速迭代。與 Herdr 專案無任何隸屬關係。

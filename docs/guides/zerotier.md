@@ -1,12 +1,12 @@
 # Connect Heeler through ZeroTier
 
-Use this guide to reach the Mac that runs herdr through a private ZeroTier network. The Mac runs the ZeroTier One app. Heeler joins the network by itself, so the phone needs no ZeroTier app or VPN.
+Use this guide to reach the Mac that runs Herdr through a private ZeroTier network. The Mac runs the ZeroTier One app. Heeler joins the network by itself, so the phone needs no ZeroTier app or VPN.
 
 You need a Heeler version with **Settings > Overlay Networks**.
 
 ## Before you start
 
-- On the Mac, finish [Prepare the Host](overlay-networks.md#prepare-the-host): Remote Login, herdr, a sign-in method, and the Mac's SSH fingerprint.
+- On the Mac, finish [Prepare the Host](overlay-networks.md#prepare-the-host): Remote Login, Herdr, a sign-in method, and the Mac's SSH fingerprint.
 - You need admin access to the Mac and a ZeroTier Central account.
 - Keep the Mac awake during setup.
 

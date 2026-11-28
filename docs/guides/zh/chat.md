@@ -3,13 +3,13 @@
 
 在 iPhone 或 iPad 上通过 Heeler 的原生 Chat 使用 Claude Code 和 Codex。你可以阅读对话并通过 SSH 回复，Agent 继续在 Host 上运行。
 
-你需要一台运行 herdr、[herdr-core](herdr-core.md#chat)、[tmux](tmux.md#chat) 或 [Rex](rex.md#chat)（仅限 Claude Code、Codex、Pi 和 Oh My Pi）的 Host，并在上面运行受支持的编程 Agent（Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 或 Antigravity CLI）。
+你需要一台运行 Herdr、[Herdr Core](herdr-core.md#chat)、[Tmux](tmux.md#chat) 或 [Rex](rex.md#chat)（仅限 Claude Code、Codex、Pi 和 Oh My Pi）的 Host，并在上面运行受支持的编程 Agent（Claude Code、Codex、Pi、Oh My Pi、Grok Build、OpenCode 或 Antigravity CLI）。
 
 ## 配置 Host
 
 **运行位置：Mac 或 Linux**
 
-Chat 需要 herdr 为你使用的每个程序安装集成（integration）。先检查：
+Chat 需要 Herdr 为你使用的每个程序安装集成（integration）。先检查：
 
 ```sh
 herdr integration status
@@ -29,9 +29,9 @@ herdr integration install claude
 codex --no-daemon
 ```
 
-Codex 的共享后台服务无法告诉 herdr 对话在哪个终端里，Chat 可能一直等待，或显示另一个 Agent 的对话。只在 Codex 设置中关闭 `daemon_auto_start` 是不够的。
+Codex 的共享后台服务无法告诉 Herdr 对话在哪个终端里，Chat 可能一直等待，或显示另一个 Agent 的对话。只在 Codex 设置中关闭 `daemon_auto_start` 是不够的。
 
-在 Codex 修复之前，可以在 shell 的启动文件（如 `~/.zshrc`、`~/.bashrc` 或 `~/.config/fish/config.fish`）中加一个别名。herdr 重启后恢复的 Agent 也会用上它：
+在 Codex 修复之前，可以在 shell 的启动文件（如 `~/.zshrc`、`~/.bashrc` 或 `~/.config/fish/config.fish`）中加一个别名。Herdr 重启后恢复的 Agent 也会用上它：
 
 ```sh
 alias codex='codex --no-daemon'
@@ -66,7 +66,7 @@ Heeler 会记住你的选择，之后打开的 Agent 都会先显示 Chat，直�
 - **Agent 工作时**，Claude Code、Codex、Pi 和 Grok Build 会立即接收你的消息；Oh My Pi、OpenCode 和 Antigravity CLI 要等这一轮结束。
 - **停止。** Agent 工作时，如果输入框是空的，**Send** 会变成 **Stop**。轻点它可以中断这一轮。
 - **命令。** 输入 `/` 可以选择 `/compact` 或 Agent 的技能。其他命令（例如 `/model`）请在终端中运行。
-- **图片和文件。** 在 Herdr TUI、herdr-core、tmux 和 Rex Host 上，轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
+- **图片和文件。** 在 Herdr TUI、Herdr Core、Tmux 和 Rex Host 上，轻点 **+**，再选择 **Add Image**、**Paste Image** 或 **Add File**。Paste Image 使用剪贴板里的图片，直接把图片粘贴到消息里也一样。Heeler 会把它上传到 Host，并把路径加到你的消息里。
 
 如果 Chat 不能发送某条消息（例如以 `!` 开头的消息），它会保留你的文字，并在输入框下方说明原因。
 
@@ -95,4 +95,4 @@ Codex 询问 "Implement this plan?" 时，或者要在 Oh My Pi、Grok Build、O
 
 Heeler 会在设备上保存最近的对话，即使连不上 Host 也能继续阅读。这些 Agent 会留在 **Agents** 中，并带有 **Saved** 标记。Host 重新连接后，工具输出和发送功能都会恢复。
 
-最后核对于 2026-10-25，基于 herdr 0.9.5。
+最后核对于 2026-10-25，基于 Herdr 0.9.5。

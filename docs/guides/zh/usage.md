@@ -5,7 +5,7 @@
 
 Usage 还会显示每台 Host 上的 Agent 最近 30 天用了多少 token，以及按 API 标价折算的估算费用。估算费用不是你的订阅账单。
 
-你需要在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)，并准备一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host，或在 [herdr-core](herdr-core.md#host-helper) 或 [tmux](tmux.md#host-helper) Host 上安装 Host Helper。Antigravity CLI 用量需要 Heeler 插件 0.10.0 或更新版本（或 Host Helper 0.5.8 及更新版本），其 Usage Limits 还要求 Host 上装有 `agy` 1.1.11 或更新版本。
+你需要在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)，并准备一台装有 Heeler 插件 0.7.0 或更新版本的 macOS 或 Linux Host，或在 [Herdr Core](herdr-core.md#host-helper) 或 [Tmux](tmux.md#host-helper) Host 上安装 Host Helper。Antigravity CLI 用量需要 Heeler 插件 0.10.0 或更新版本（或 Host Helper 0.5.8 及更新版本），其 Usage Limits 还要求 Host 上装有 `agy` 1.1.11 或更新版本。
 
 ## 配置 Host
 
@@ -17,7 +17,7 @@ Usage 还会显示每台 Host 上的 Agent 最近 30 天用了多少 token，以
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-如果 Usage 提示先使用一次 Agent，就在那台电脑上启动任意一个 Agent，或者重启 herdr，然后下拉刷新。
+如果 Usage 提示先使用一次 Agent，就在那台电脑上启动任意一个 Agent，或者重启 Herdr，然后下拉刷新。
 
 ## 查看 Usage
 
@@ -35,7 +35,7 @@ herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 
 ### 打开 Claude Code limits
 
-Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件（在 herdr-core 或 tmux Host 上则是 [Host Helper](herdr-core.md#host-helper)）会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
+Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limits** 旁的 **Details**，然后打开 **Claude Code limits**。插件（在 Herdr Core 或 Tmux Host 上则是 [Host Helper](herdr-core.md#host-helper)）会向那台电脑上的 Claude Code 询问你的套餐额度；Heeler 从不经手你的登录信息。
 
 ## 关闭 Usage
 
@@ -45,7 +45,7 @@ Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limi
 
 如果一台 Host 上同时用着不止一个 Claude Code 订阅，各自从自己的配置目录登录（例如用 `CLAUDE_CONFIG_DIR=~/.claude-2` 启动的 Agent），就把每个目录添加为一个 Account，Usage 会把它们分开统计。Account 需要那台 Host 装有 Heeler 插件 0.8.0 或更新版本；上面的安装命令也能用来更新。
 
-每台 Host 一开始都有 **Default** Account，也就是 herdr 启动 Claude Code 时它使用的目录。你添加的每个 Account 都有自己的 Token Usage，列在 Claude Code 下面。打开 **Claude Code limits** 后，它还有自己的 Usage Limits，并在 Usage Limits 小组件里单独占一行。
+每台 Host 一开始都有 **Default** Account，也就是 Herdr 启动 Claude Code 时它使用的目录。你添加的每个 Account 都有自己的 Token Usage，列在 Claude Code 下面。打开 **Claude Code limits** 后，它还有自己的 Usage Limits，并在 Usage Limits 小组件里单独占一行。
 
 1. 在 Usage 中选择一台 Host。如果 Heeler 找到了疑似账户文件夹的目录，会出现 **Found 1 Account folder**（中文界面：**找到 1 个账户文件夹**）这样的提示，轻点它。否则前往 **Settings > Agents & Accounts**，选择该 Host，找到 **Claude Code** 分组。
 2. 在列出的建议目录旁，轻点 **Add** 开始统计它，或轻点 **Ignore** 不再建议它。Heeler 建议的是正在运行的 Agent 使用的目录，或你主目录里的目录；在你添加之前，它们都不计入。
@@ -57,7 +57,7 @@ Claude Code limits 默认关闭，需要逐台 Host 打开。轻点 **Usage Limi
 
 要移除你添加的 Account，在它上面向左轻扫或按住它，然后轻点 **Remove** 和 **Remove Account**。它的 Token Usage 和 Usage Limits 不再显示；目录和其中的登录信息仍留在 Host 上。Default Account 可以重命名，但不能移除。
 
-如果 herdr 本身用 `CLAUDE_CONFIG_DIR` 启动 Claude Code，`~/.claude` 就不再计入 Default Account。Heeler 会把它列为建议；如果你还在用它，就把它添加进来。
+如果 Herdr 本身用 `CLAUDE_CONFIG_DIR` 启动 Claude Code，`~/.claude` 就不再计入 Default Account。Heeler 会把它列为建议；如果你还在用它，就把它添加进来。
 
 Account 保存在 Host 上，所以无论从哪台设备连接，看到的都是同一份列表。
 

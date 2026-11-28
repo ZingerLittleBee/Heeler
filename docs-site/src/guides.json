@@ -70,8 +70,8 @@
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "Set up a Jump Host",
       "vps-jump-host": "Jump Host in depth",
-      "herdr-core": "herdr-core",
-      "tmux": "tmux",
+      "herdr-core": "Herdr Core",
+      "tmux": "Tmux",
       "rex": "Rex",
       "updates": "Plugin and Helper updates",
       "host-routes": "Multiple routes",
@@ -93,8 +93,8 @@
       "cloudflare-tunnel": "Cloudflare Tunnel",
       "vps-jump-host-setup": "配置 Jump Host",
       "vps-jump-host": "Jump Host 详解",
-      "herdr-core": "herdr-core",
-      "tmux": "tmux",
+      "herdr-core": "Herdr Core",
+      "tmux": "Tmux",
       "rex": "Rex",
       "updates": "插件与 Helper 更新",
       "host-routes": "多条路由",
@@ -109,24 +109,24 @@
   "seo": {
     "en": {
       "index": {
-        "seoTitle": "Heeler Docs — iPhone & iPad Console for Claude Code, Codex, herdr & tmux",
-        "seoDescription": "Set up Heeler on iPhone and iPad to monitor and control Claude Code, Codex, and other coding agents over SSH with Herdr TUI, herdr-core, tmux, or Rex."
+        "seoTitle": "Heeler Docs — iPhone & iPad Console for Claude Code, Codex, Herdr & Tmux",
+        "seoDescription": "Set up Heeler on iPhone and iPad to monitor and control Claude Code, Codex, and other coding agents over SSH with Herdr TUI, Herdr Core, Tmux, or Rex."
       },
       "pairing": {
         "seoTitle": "Pair a Mac or Linux Host via QR Code over SSH",
         "seoDescription": "Connect iPhone or iPad to a Mac or Linux Host over SSH by scanning a one-time Pairing Code from the Heeler plugin or npx heeler-pair—no manual key setup."
       },
       "tmux": {
-        "seoTitle": "Connect tmux on macOS or Linux over SSH",
-        "seoDescription": "Monitor and control Claude Code, Codex, Grok Build, Pi, and Oh My Pi with native Chat (and OpenCode in the terminal) on macOS or Linux tmux 3.3+, plus hooks and Host Helper."
+        "seoTitle": "Connect Tmux on macOS or Linux over SSH",
+        "seoDescription": "Monitor and control Claude Code, Codex, Grok Build, Pi, and Oh My Pi with native Chat (and OpenCode in the terminal) on macOS or Linux Tmux 3.3+, plus hooks and Host Helper."
       },
       "herdr-core": {
-        "seoTitle": "Connect herdr-core and Herdr Desktop App over SSH",
-        "seoDescription": "Connect Heeler over SSH to the Herdr desktop app or headless herdr-core on macOS, Linux, and native Windows, with native Chat and macOS/Linux Host Helper notifications and Usage."
+        "seoTitle": "Connect Herdr Core and Herdr Desktop App over SSH",
+        "seoDescription": "Connect Heeler over SSH to the Herdr desktop app or headless Herdr Core on macOS, Linux, and native Windows, with native Chat and macOS/Linux Host Helper notifications and Usage."
       },
       "windows-setup": {
         "seoTitle": "Windows 11 Setup: OpenSSH and Native Herdr TUI",
-        "seoDescription": "Enable Win32-OpenSSH, firewall rules, and native Herdr TUI auto-start on Windows 11 for live Agents and terminals in Heeler, plus paths to Windows herdr-core and Rex."
+        "seoDescription": "Enable Win32-OpenSSH, firewall rules, and native Herdr TUI auto-start on Windows 11 for live Agents and terminals in Heeler, plus paths to Windows Herdr Core and Rex."
       },
       "tailscale": {
         "seoTitle": "Connect Heeler over Tailscale Without an iOS VPN App",
@@ -138,7 +138,7 @@
       },
       "chat": {
         "seoTitle": "Native Chat for Claude Code, Codex & Coding Agents",
-        "seoDescription": "Read conversations, send prompts, stop turns, and answer Blocked prompts with buttons in Heeler's native Chat over SSH across Herdr TUI, herdr-core, tmux, and Rex."
+        "seoDescription": "Read conversations, send prompts, stop turns, and answer Blocked prompts with buttons in Heeler's native Chat over SSH across Herdr TUI, Herdr Core, Tmux, and Rex."
       },
       "chat-troubleshooting": {
         "seoTitle": "Chat Troubleshooting: Codex --no-daemon & Session Binding",
@@ -151,24 +151,24 @@
     },
     "zh": {
       "index": {
-        "seoTitle": "Heeler 文档 — iPhone 与 iPad 上的 Claude Code、Codex、herdr 与 tmux 控制台",
-        "seoDescription": "在 iPhone 和 iPad 上配置 Heeler，通过 SSH 连接 Herdr TUI、herdr-core、tmux 或 Rex，远程查看并控制 Claude Code、Codex 等编程 Agent。"
+        "seoTitle": "Heeler 文档 — iPhone 与 iPad 上的 Claude Code、Codex、Herdr 与 Tmux 控制台",
+        "seoDescription": "在 iPhone 和 iPad 上配置 Heeler，通过 SSH 连接 Herdr TUI、Herdr Core、Tmux 或 Rex，远程查看并控制 Claude Code、Codex 等编程 Agent。"
       },
       "pairing": {
         "seoTitle": "扫码配对 Mac 或 Linux Host（SSH 免手动填表）",
         "seoDescription": "扫描 Heeler 插件或 npx heeler-pair 生成的一次性配对码，免手动配置 SSH 密钥与指纹，将 iPhone 或 iPad 连接到 Mac 或 Linux Host。"
       },
       "tmux": {
-        "seoTitle": "通过 SSH 连接 macOS 或 Linux 上的 tmux 服务端",
-        "seoDescription": "在 iPhone 或 iPad 上连接已有的 macOS 或 Linux tmux 3.3+ 服务端，在原生 Chat 中使用 Claude Code、Codex、Grok Build、Pi 和 Oh My Pi（OpenCode 仅提供终端），并支持 hooks 与 Host Helper 通知。"
+        "seoTitle": "通过 SSH 连接 macOS 或 Linux 上的 Tmux 服务端",
+        "seoDescription": "在 iPhone 或 iPad 上连接已有的 macOS 或 Linux Tmux 3.3+ 服务端，在原生 Chat 中使用 Claude Code、Codex、Grok Build、Pi 和 Oh My Pi（OpenCode 仅提供终端），并支持 hooks 与 Host Helper 通知。"
       },
       "herdr-core": {
-        "seoTitle": "通过 SSH 连接 herdr-core 与 Herdr 桌面端",
-        "seoDescription": "通过 SSH 将 Heeler 连接到 macOS、Linux 或原生 Windows 上的 Herdr 桌面端与无界面 herdr-core，支持原生 Chat，并在 macOS/Linux 上通过 Host Helper 启用通知与 Usage。"
+        "seoTitle": "通过 SSH 连接 Herdr Core 与 Herdr 桌面端",
+        "seoDescription": "通过 SSH 将 Heeler 连接到 macOS、Linux 或原生 Windows 上的 Herdr 桌面端与无界面 Herdr Core，支持原生 Chat，并在 macOS/Linux 上通过 Host Helper 启用通知与 Usage。"
       },
       "windows-setup": {
         "seoTitle": "Windows 11 配置：OpenSSH 与原生 Herdr TUI",
-        "seoDescription": "在 Windows 11 上启用 OpenSSH、放行防火墙并配置原生 Herdr TUI 开机自启，用于 Heeler 实时 Agent 与终端，同时指引 Windows herdr-core 与 Rex 入口。"
+        "seoDescription": "在 Windows 11 上启用 OpenSSH、放行防火墙并配置原生 Herdr TUI 开机自启，用于 Heeler 实时 Agent 与终端，同时指引 Windows Herdr Core 与 Rex 入口。"
       },
       "tailscale": {
         "seoTitle": "通过 Tailscale 连接 Heeler（iPhone 无需安装 VPN 应用）",
@@ -180,7 +180,7 @@
       },
       "chat": {
         "seoTitle": "在原生 Chat 中使用 Claude Code、Codex 等编程 Agent",
-        "seoDescription": "通过 SSH 在 Heeler 原生 Chat 中阅读对话、发送提示、停止运行并用按钮回答 Blocked 提问，支持 Herdr TUI、herdr-core、tmux 及 Rex。"
+        "seoDescription": "通过 SSH 在 Heeler 原生 Chat 中阅读对话、发送提示、停止运行并用按钮回答 Blocked 提问，支持 Herdr TUI、Herdr Core、Tmux 及 Rex。"
       },
       "chat-troubleshooting": {
         "seoTitle": "Chat 疑难排解：Codex --no-daemon 与会话识别问题",

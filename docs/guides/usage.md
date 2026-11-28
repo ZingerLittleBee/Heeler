@@ -4,7 +4,7 @@ Check Claude Code, Codex, and Antigravity CLI Usage Limits on iPhone or iPad, wi
 
 Usage also shows how many tokens each Host's Agents used over the last 30 days, with what those tokens would cost at API list prices. The estimated cost is not your subscription bill.
 
-You need [Heeler](https://apps.apple.com/app/id6797263135) on your iPhone or iPad and a macOS or Linux Host with the Heeler plugin 0.7.0 or newer, or the Host Helper on a [herdr-core](herdr-core.md#host-helper) or [tmux](tmux.md#host-helper) Host. Antigravity CLI usage requires plugin 0.10.0 or newer (or Host Helper 0.5.8 or newer), and its Usage Limits also need `agy` 1.1.11 or newer on the Host.
+You need [Heeler](https://apps.apple.com/app/id6797263135) on your iPhone or iPad and a macOS or Linux Host with the Heeler plugin 0.7.0 or newer, or the Host Helper on a [Herdr Core](herdr-core.md#host-helper) or [Tmux](tmux.md#host-helper) Host. Antigravity CLI usage requires plugin 0.10.0 or newer (or Host Helper 0.5.8 or newer), and its Usage Limits also need `agy` 1.1.11 or newer on the Host.
 
 ## Set up the Host
 
@@ -16,7 +16,7 @@ Install or update the plugin:
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-If Usage asks you to use an Agent once, start any Agent on that computer, or restart herdr, then pull to refresh.
+If Usage asks you to use an Agent once, start any Agent on that computer, or restart Herdr, then pull to refresh.
 
 ## Read Usage
 
@@ -34,7 +34,7 @@ The estimated cost is not a bill. It prices the tokens this Host's Transcripts s
 
 ### Turn on Claude Code limits
 
-Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin, or on a herdr-core or tmux Host the [Host Helper](herdr-core.md#host-helper), asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
+Claude Code limits are off until you turn them on for each Host. Tap **Details** beside **Usage Limits**, then turn on **Claude Code limits**. The plugin, or on a Herdr Core or Tmux Host the [Host Helper](herdr-core.md#host-helper), asks Claude Code on that computer for your plan limits; Heeler never handles your sign-in.
 
 ## Turn Usage off
 
@@ -44,7 +44,7 @@ If you don't need Usage, turn off **Usage** in **Settings**. The tab and each Ho
 
 If a Host runs more than one Claude Code subscription, each signed in from its own config directory (for example, Agents started with `CLAUDE_CONFIG_DIR=~/.claude-2`), add each directory as an Account so Usage keeps them apart. Accounts need the Heeler plugin 0.8.0 or newer on that Host; the install command above also updates it.
 
-Every Host starts with the **Default** Account: the directory Claude Code uses when herdr starts it. Each Account you add gets its own Token Usage, listed under Claude Code. With **Claude Code limits** on, it also gets its own Usage Limits and its own line in the Usage Limits widget.
+Every Host starts with the **Default** Account: the directory Claude Code uses when Herdr starts it. Each Account you add gets its own Token Usage, listed under Claude Code. With **Claude Code limits** on, it also gets its own Usage Limits and its own line in the Usage Limits widget.
 
 1. In Usage, choose one Host. If Heeler found directories that look like Account folders, a notice such as **Found 1 Account folder** appears; tap it. Otherwise open **Settings > Agents & Accounts**, choose the Host, and find the **Claude Code** section.
 2. For a suggested folder listed there, tap **Add** to count it, or **Ignore** to stop suggesting it. Heeler suggests directories that a running Agent uses or that sit in your home folder, and counts none until you add it.
@@ -56,7 +56,7 @@ Tap an Account to rename it. Names appear in Usage, Usage Limits, and widgets, s
 
 To remove an added Account, swipe left on it or touch and hold it, then tap **Remove** and **Remove Account**. Its Token Usage and Usage Limits stop showing; the directory and its sign-in stay on the Host. The Default Account can be renamed but not removed.
 
-If herdr itself starts Claude Code with `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward the Default Account. Heeler suggests it instead, so add it if you still use it.
+If Herdr itself starts Claude Code with `CLAUDE_CONFIG_DIR`, `~/.claude` no longer counts toward the Default Account. Heeler suggests it instead, so add it if you still use it.
 
 The Accounts are saved on the Host, so every device you connect from shows the same list.
 

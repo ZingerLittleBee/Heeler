@@ -2,7 +2,7 @@
 
 # 通过 Cloudflare Tunnel 连接 Mac
 
-Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接入 Cloudflare，路由器无需开放任何端口。手机上运行的 Cloudflare 客户端 App 再承载 Heeler 的 SSH 会话。Mac 上依然需要开启“远程登录”并运行 herdr，Host 的配置与其它指南完全一致。
+Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接入 Cloudflare，路由器无需开放任何端口。手机上运行的 Cloudflare 客户端 App 再承载 Heeler 的 SSH 会话。Mac 上依然需要开启“远程登录”并运行 Herdr，Host 的配置与其它指南完全一致。
 
 这与 [Overlay Network](overlay-networks.md) 是两条不同的路径：你不需要在 **Settings > Overlay Networks** 里添加任何内容，Heeler 也不会新增一个网络。Cloudflare 自己的 App 在手机上以系统 VPN 的方式运行，使 Mac 的私有地址变为可达，然后由 Host 的路由指向该地址。
 
@@ -18,7 +18,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 ## 开始之前
 
 - 一个已开通 Zero Trust 的 Cloudflare 账号，并因此拥有 team name。个人免费计划通常足够；如果某项功能需要更高计划，控制台会明确提示。
-- Mac 已完成[“远程登录”与 herdr 的准备](overlay-networks.md#准备-host)，并记下它的私有地址，例如 `192.168.1.10`。Heeler 连接的就是这个地址。
+- Mac 已完成[“远程登录”与 Herdr 的准备](overlay-networks.md#准备-host)，并记下它的私有地址，例如 `192.168.1.10`。Heeler 连接的就是这个地址。
 - 支持多条路由（Host Routes）的当前版本 Heeler，以及你要用来连接的手机或 iPad。
 
 ## 1. 将 Mac 接入 Cloudflare
@@ -66,7 +66,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 
 ## 4. 在 Heeler 中添加 Host
 
-按[准备 Host](overlay-networks.md#准备-host) 中的说明，在 Mac 上准备好账户、登录方式与 herdr 会话，然后按以下步骤添加 Host：
+按[准备 Host](overlay-networks.md#准备-host) 中的说明，在 Mac 上准备好账户、登录方式与 Herdr 会话，然后按以下步骤添加 Host：
 
 1. 打开 **Hosts** 并轻点 **+**。填写第 2 步的地址。在 **More Options** 下，**Network** 保持 **Direct**，端口保持 `22`，**Jump Host** 留空。（**Direct** 表示由 Heeler 自己发起连接，是 VPN App 让该地址变得可达。）
 2. 填写 **User** 和登录方式，然后轻点 **Connect**。
@@ -94,7 +94,7 @@ Cloudflare Tunnel 通过一条只由 Mac 主动发起的出站连接把 Mac 接�
 | 改完设置，手机上没有任何变化 | 等待十分钟，然后断开并重新连接 VPN App。 |
 | 手机就在 Mac 的局域网内，却显示 **Can't Connect** 并超时 | iOS 可能拒绝给 Heeler 本地网络权限。请检查手机上的 **Settings > Privacy & Security > Local Network**。 |
 | SSH 登录失败 | 检查用户名、“远程登录”访问权限，以及所用的密钥或密码。 |
-| SSH 正常，但 herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 herdr，或已开启的 Server 不是 herdr 正在运行的会话。 |
+| SSH 正常，但 Herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 Herdr，或已开启的 Server 不是 Herdr 正在运行的会话。 |
 | 局域网内其它设备能访问本不该访问的服务 | CIDR 路由会暴露其中的所有地址，且默认允许组织内每台已注册设备使用它。把路由收窄到 Mac 的 `/32`，并在 **Traffic policies** 中添加 Gateway 网络策略，只放行需要访问的目标。 |
 
 ## 附录：改用 VPS 替代 VPN 应用
