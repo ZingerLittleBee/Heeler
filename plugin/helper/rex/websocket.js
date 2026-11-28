@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
 
-const GUID = "256EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const HEADER_LIMIT = 64 * 1024;
 const MAX_MESSAGE_BYTES = 16 * 1024 * 1024;
 const HANDSHAKE_TIMEOUT_MS = 10_000;

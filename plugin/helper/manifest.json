@@ -95,7 +95,7 @@
     },
     {
       "path": "rex/websocket.js",
-      "sha256": "542ff648249397d5ec86a032acfaf8a8ca8a3f3cc4494cb42105d48c1b34eff3"
+      "sha256": "53c2d2a4c1e416b7d6d63140d7cddb84ccb5930561940d10d5c08ad7bd1ca9b1"
     },
     {
       "path": "shared/activity-envelope.js",
