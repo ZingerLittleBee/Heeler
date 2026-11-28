@@ -779,6 +779,68 @@ struct ConsoleChatCacheTests {
         #expect(await cache.loadAgentDirectory(for: host).agents.first?.title == "Title 3")
     }
 
+    @Test func cachedAgentEncodesDecodesCoreScopeAndDecodesLegacyJSONWithoutIt() throws {
+        let host = Host(address: "core.example", username: "dev", serverKind: .herdrCore)
+        let agent = Self.agent(host: host, session: Self.sessionA)
+        let scope = ChatCacheKey.coreScope(session: "default", coreID: "core-1")
+        let cached = ChatCachedAgent(agent, coreScope: scope)
+
+        let encoded = try JSONEncoder().encode(cached)
+        let decoded = try JSONDecoder().decode(ChatCachedAgent.self, from: encoded)
+        #expect(decoded == cached)
+        #expect(decoded.coreScope == scope)
+
+        var jsonObject = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        jsonObject.removeValue(forKey: "coreScope")
+        let legacyData = try JSONSerialization.data(withJSONObject: jsonObject)
+        let legacy = try JSONDecoder().decode(ChatCachedAgent.self, from: legacyData)
+        #expect(legacy.coreScope == nil)
+        #expect(legacy.paneID == cached.paneID)
+        #expect(legacy.agentSession == cached.agentSession)
+    }
+
+    @Test func confirmPersistsCoreScopeAndObservePreventsLeakingAcrossChangedCoreScope() async throws {
+        let host = Host(address: "core.example", username: "dev", serverKind: .herdrCore)
+        let cache = VolatileChatTranscriptCache()
+        let directory = ConsoleChatCache(cache: cache)
+        directory.setHosts([host])
+        await directory.settled()
+
+        let scopeA = ChatCacheKey.coreScope(session: "default", coreID: "core-a")
+        let scopeB = ChatCacheKey.coreScope(session: "default", coreID: "core-b")
+        let liveWithoutSession = Self.agent(host: host, session: nil)
+        let confirmed = Self.agent(host: host, session: Self.sessionA).agent
+
+        directory.observe([liveWithoutSession], coreScope: scopeA, on: host)
+        directory.confirm(confirmed, for: liveWithoutSession, coreScope: scopeA, on: host)
+        await directory.settled()
+
+        #expect(directory.cachedCoreScope(for: liveWithoutSession.agent, on: host) == scopeA)
+        #expect(await cache.loadAgentDirectory(for: host).agents.first?.coreScope == scopeA)
+        #expect(await directory.cachedSession(for: liveWithoutSession.agent, on: host, coreScope: scopeA)?.value == Self.sessionA)
+        #expect(await directory.cachedSession(for: liveWithoutSession.agent, on: host, coreScope: scopeB) == nil)
+
+        let reopened = ConsoleChatCache(cache: cache)
+        reopened.setHosts([host])
+        await reopened.settled()
+        #expect(reopened.cachedCoreScope(for: liveWithoutSession.agent, on: host) == scopeA)
+
+        reopened.observe([liveWithoutSession], coreScope: scopeA, on: host)
+        #expect(reopened.agents(on: host).first?.agent.agentSession?.value == Self.sessionA)
+        #expect(reopened.cachedCoreScope(for: liveWithoutSession.agent, on: host) == scopeA)
+
+        reopened.observe([liveWithoutSession], coreScope: scopeB, on: host)
+        await reopened.settled()
+        #expect(reopened.agents(on: host).isEmpty)
+        #expect(reopened.cachedCoreScope(for: liveWithoutSession.agent, on: host) == nil)
+        #expect(await cache.loadAgentDirectory(for: host).agents.isEmpty)
+
+        directory.observe([liveWithoutSession], coreScope: scopeB, on: host)
+        await directory.settled()
+        #expect(directory.agents(on: host).isEmpty)
+        #expect(await directory.cachedSession(for: liveWithoutSession.agent, on: host, coreScope: scopeB) == nil)
+    }
+
     private static func waitUntil(_ condition: @MainActor () async -> Bool) async throws {
         for _ in 0..<400 {
             if await condition() { return }

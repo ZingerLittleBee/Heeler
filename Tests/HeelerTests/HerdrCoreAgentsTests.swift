@@ -867,4 +867,83 @@ struct HerdrCoreAgentsTests {
         try await waitUntil("the sample folded") { agent(store, "t1")?.agent.status == .working }
         #expect(agent(store, "t1")?.agent.cwd == "/home/dev/proj")
     }
+
+    @Test func renameAgentSetsClearsCustomAliasAndIgnoresStalePIDOrKind() async throws {
+        let initial = Self.claude("t1", name: "fallback")
+        let (store, transport) = try await started([initial])
+        defer { store.setHosts([]) }
+        await transport.setTerminalRecords([.success(initial)])
+
+        try await store.renameAgent("t1", name: "reviewer", on: host.id)
+        #expect(
+            await transport.labelWrites.last
+                == .object([
+                    "terminal": .string("t1"),
+                    "labels": .object([HerdrCoreOrganization.agentNameLabel: .string("40:claude:reviewer")]),
+                ]))
+        #expect(agent(store, "t1")?.agent.name == "reviewer")
+
+        await transport.deliver(
+            Self.event(sequence: 2, type: "foreground", terminal: "t1", data: Self.foreground(["claude"], pid: 99)))
+        try await waitUntil("stale pid ignored") { agent(store, "t1")?.agent.name == "fallback" }
+
+        await transport.deliver(
+            Self.event(sequence: 3, type: "foreground", terminal: "t1", data: Self.foreground(["codex"], pid: 40)))
+        await transport.deliver(
+            Self.statusEvent(sequence: 4, terminal: "t1", Self.report("working", app: "codex")))
+        try await waitUntil("stale kind ignored") { agent(store, "t1")?.agent.kind == "codex" }
+        #expect(agent(store, "t1")?.agent.name == "fallback")
+
+        await transport.deliver(
+            Self.event(sequence: 5, type: "foreground", terminal: "t1", data: Self.foreground(["claude"], pid: 40)))
+        await transport.deliver(
+            Self.statusEvent(sequence: 6, terminal: "t1", Self.report("working", app: "claude-code")))
+        try await waitUntil("matching foreground restored") { agent(store, "t1")?.agent.name == "reviewer" }
+
+        try await store.renameAgent("t1", name: "", on: host.id)
+        #expect(
+            await transport.labelWrites.last
+                == .object([
+                    "terminal": .string("t1"),
+                    "labels": .object([HerdrCoreOrganization.agentNameLabel: .string("")]),
+                ]))
+        #expect(agent(store, "t1")?.agent.name == "fallback")
+    }
+
+    @Test func movePaneMovesBetweenDesktopSpacesAndNewWorkspaceAndRefusesDerivedWorkspaces() async throws {
+        let t1 = Self.claude("t1", cwd: "/work/app", labels: Self.inSpace("s1", "tb1"))
+        let t2 = Self.claude("t2", cwd: "/work/beta", labels: Self.inSpace("s2", "tb2"))
+        let t3 = Self.claude("t3", cwd: "/work/derived")
+        let (store, transport) = try await started([t1, t2, t3], document: Self.zetaThenAlpha)
+        defer { store.setHosts([]) }
+
+        let derivedID = HerdrCoreOrganization.workspaceID(directory: "/work/derived")
+        #expect(store.workspaces(for: host.id).contains { $0.id == derivedID })
+        #expect(Set(store.movableWorkspaces(for: host.id).map(\.id)) == ["space-s1", "space-s2"])
+
+        await transport.setTerminalRecords([.success(t1)])
+        await #expect(throws: TransportError.self) {
+            _ = try await store.movePane("t1", on: host.id, to: .workspace(id: derivedID))
+        }
+        #expect(await transport.labelWrites.isEmpty)
+
+        let movedToSpace = try await store.movePane("t1", on: host.id, to: .workspace(id: "space-s2"))
+        #expect(movedToSpace == "t1")
+        #expect(agent(store, "t1")?.agent.workspaceID == "space-s2")
+        let spaceWrite = try #require(await transport.labelWrites.first)
+        #expect(spaceWrite["terminal"] == .string("t1"))
+        #expect(spaceWrite["labels"]?["herdr.space"] == .string("s2"))
+        let spaceTab = try #require(spaceWrite["labels"]?["herdr.tab"]?.stringValue)
+        #expect(spaceTab.hasPrefix("tb"))
+
+        let movedToNew = try await store.movePane("t1", on: host.id, to: .newWorkspace)
+        #expect(movedToNew == "t1")
+        let newWrite = try #require(await transport.labelWrites.last)
+        #expect(newWrite["terminal"] == .string("t1"))
+        let newSpace = try #require(newWrite["labels"]?["herdr.space"]?.stringValue)
+        let newTab = try #require(newWrite["labels"]?["herdr.tab"]?.stringValue)
+        #expect(newSpace.hasPrefix("sp"))
+        #expect(newTab.hasPrefix("tb"))
+        #expect(agent(store, "t1")?.agent.workspaceID == HerdrCoreOrganization.spaceWorkspaceID(newSpace))
+    }
 }

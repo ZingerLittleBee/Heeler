@@ -617,6 +617,343 @@ struct RexHostSessionTests {
         }
         await session.end()
     }
+
+    @Test func setWindowLabelSendsWirePayloadConfirmsTrimmedNameAndResetsToDefault() async throws {
+        let world = world()
+        let server = await server(world)
+        let windowID = "window:0000-0000-0000-00000000a0a0"
+        await server.answer(RexControlProtocol.setWindowLabelMethod) { [world] request in
+            guard let sessionID = request.payload?["session_id"]?.stringValue,
+                let targetWindowID = request.payload?["window_id"]?.stringValue,
+                let label = request.payload?["label"]?.stringValue
+            else {
+                return .error(code: "bad_request", message: "missing fields", status: 400)
+            }
+            let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            world.update { sessions in
+                guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }),
+                    let windowIndex = sessions[sessionIndex].windows.firstIndex(where: { $0.id == targetWindowID })
+                else { return }
+                if trimmed.isEmpty {
+                    let digits = targetWindowID.split(separator: ":").last
+                        .map { $0.replacingOccurrences(of: "-", with: "") } ?? ""
+                    sessions[sessionIndex].windows[windowIndex].label = "Window \(digits.suffix(8))"
+                } else {
+                    sessions[sessionIndex].windows[windowIndex].label = trimmed
+                }
+            }
+            return .result(.object([:]))
+        }
+        let session = session(Dialer([ScriptedRexHost(control: [.server(server)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+
+        try await session.setWindowLabel(sessionID: "session:studio", windowID: windowID, label: "  Build Logs  ")
+        try await session.setWindowLabel(sessionID: "session:studio", windowID: windowID, label: "")
+
+        let writes = await server.requests.filter { $0.method == RexControlProtocol.setWindowLabelMethod }
+        #expect(writes.count == 2)
+        #expect(
+            writes[0].payload
+                == RexControlProtocol.setWindowLabelPayload(
+                    sessionID: "session:studio", windowID: windowID, label: "  Build Logs  "))
+        #expect(
+            writes[1].payload
+                == RexControlProtocol.setWindowLabelPayload(
+                    sessionID: "session:studio", windowID: windowID, label: ""))
+        #expect(world.sessions.first?.windows.first?.label == "Window 0000a0a0")
+
+        await server.answer(RexControlProtocol.setWindowLabelMethod, with: .result(.object([:])))
+        await #expect(throws: TransportError.self) {
+            try await session.setWindowLabel(sessionID: "session:studio", windowID: windowID, label: "Unconfirmed")
+        }
+
+        await session.end()
+    }
+
+    @MainActor
+    @Test func projectionRenameTabRenamesWindowResetsDefaultAndRejectsDetachedTab() async throws {
+        let world = world()
+        let server = await server(world)
+        let windowID = "window:0000-0000-0000-00000000a0a0"
+        await server.answer(RexControlProtocol.setWindowLabelMethod) { [world] request in
+            guard let sessionID = request.payload?["session_id"]?.stringValue,
+                let targetWindowID = request.payload?["window_id"]?.stringValue,
+                let label = request.payload?["label"]?.stringValue
+            else {
+                return .error(code: "bad_request", message: "missing fields", status: 400)
+            }
+            let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            world.update { sessions in
+                guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }),
+                    let windowIndex = sessions[sessionIndex].windows.firstIndex(where: { $0.id == targetWindowID })
+                else { return }
+                if trimmed.isEmpty {
+                    let digits = targetWindowID.split(separator: ":").last
+                        .map { $0.replacingOccurrences(of: "-", with: "") } ?? ""
+                    sessions[sessionIndex].windows[windowIndex].label = "Window \(digits.suffix(8))"
+                } else {
+                    sessions[sessionIndex].windows[windowIndex].label = trimmed
+                }
+            }
+            return .result(.object([:]))
+        }
+        let host = Host(address: "rex.example", username: "dev", serverKind: .rex, rexSocket: RexSocket(path: Self.path))
+        let rexSession = session(Dialer([ScriptedRexHost(control: [.server(server)])]))
+        let suite = "rex-rename-tab-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let projection = RexConsoleProjection(
+            host: host, session: rexSession, memory: HerdrCoreHostMemory(defaults: defaults),
+            pins: PinnedAgentsStore(), onChange: {})
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        for _ in 0..<500 where projection.inventory == nil || projection.kernel == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(projection.inventory != nil)
+        try #require(projection.kernel != nil)
+
+        try await projection.renameTab(windowID, label: "  Editor  ")
+        try await projection.renameTab(windowID, label: "")
+
+        let writesAfterValid = await server.requests.filter { $0.method == RexControlProtocol.setWindowLabelMethod }
+        #expect(writesAfterValid.count == 2)
+        #expect(writesAfterValid[0].payload?["label"] == .string("  Editor  "))
+        #expect(writesAfterValid[1].payload?["label"] == .string(""))
+
+        let detachedTabID = RexOrganization.detachedTabID(ofSession: "session:studio")
+        await #expect(throws: TransportError.self) {
+            try await projection.renameTab(detachedTabID, label: "Detached")
+        }
+        let writesAfterDetached = await server.requests.filter { $0.method == RexControlProtocol.setWindowLabelMethod }
+        #expect(writesAfterDetached.count == 2)
+    }
+
+    @Test func rev20To24WirePayloadsAndCapabilitiesGateByNegotiatedRevision() {
+        #expect(RexControlProtocol.apiRevision == 24)
+        #expect(RexControlProtocol.undoableCloseMinimumRevision == 20)
+        #expect(RexControlProtocol.transferWindowMinimumRevision == 22)
+        #expect(RexControlProtocol.closeBlockMethod == "block.close")
+        #expect(RexControlProtocol.closeWindowMethod == "session.close_window")
+        #expect(RexControlProtocol.transferWindowMethod == "session.transfer_window")
+        #expect(RexControlProtocol.createSessionMethod == "session.create")
+        #expect(RexControlProtocol.destroySessionMethod == "session.destroy")
+
+        #expect(
+            RexControlProtocol.closeBlockPayload(sessionID: "session:studio", blockID: "block:left", undoable: true)
+                == ["session_id": "session:studio", "block_id": "block:left", "undoable": true])
+        #expect(
+            RexControlProtocol.closeWindowPayload(sessionID: "session:studio", windowID: "window:1", undoable: true)
+                == ["session_id": "session:studio", "window_id": "window:1", "undoable": true])
+        #expect(
+            RexControlProtocol.transferWindowPayload(
+                sessionID: "session:studio", windowID: "window:1", toSessionID: "session:dest")
+                == ["session_id": "session:studio", "window_id": "window:1", "to_session_id": "session:dest", "focus": false])
+        #expect(RexControlProtocol.createEmptySessionPayload(label: nil) == [:])
+        #expect(RexControlProtocol.createEmptySessionPayload(label: "Scratch") == ["label": "Scratch"])
+        #expect(RexControlProtocol.destroySessionPayload(sessionID: "session:tmp") == ["session_id": "session:tmp"])
+
+        let rev19 = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAPIRevision: 19)
+        #expect(!rev19.closeTab)
+        #expect(!rev19.movesPanes)
+
+        let rev20 = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAPIRevision: 20)
+        #expect(rev20.closeTab)
+        #expect(!rev20.movesPanes)
+
+        let rev22 = HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel, rexAPIRevision: 22)
+        #expect(rev22.closeTab)
+        #expect(rev22.movesPanes)
+    }
+
+    @Test func rev20CloseBlockAndCloseWindowAttachAndSendUndoablePayloads() async throws {
+        let world = world()
+        let server = await server(world)
+        let windowID = "window:0000-0000-0000-00000000a0a0"
+        await server.answer(RexControlProtocol.closeBlockMethod) { request in
+            let blockID = request.payload?["block_id"]?.stringValue ?? ""
+            return .result(["block_id": .string(blockID), "revision": 4])
+        }
+        await server.answer(RexControlProtocol.closeWindowMethod, with: .result(["revision": 5]))
+        var welcome = FakeRexServer.Welcome()
+        welcome.apiRevision = 24
+        welcome.serverRevision = 24
+        let session = session(Dialer([ScriptedRexHost(control: [.server(server, welcome: welcome)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+
+        try await session.closeBlock(RexPaneAddress(sessionID: "session:studio", blockID: "block:left"), undoable: true)
+        try await session.closeWindow(sessionID: "session:studio", windowID: windowID, undoable: true)
+
+        let requests = await server.requests
+        let attachIndex = try #require(requests.firstIndex {
+            $0.method == "session.attach" && $0.payload?["session_id"] == "session:studio"
+        })
+        let closeBlockIndex = try #require(requests.firstIndex { $0.method == RexControlProtocol.closeBlockMethod })
+        #expect(attachIndex < closeBlockIndex)
+        #expect(
+            requests[closeBlockIndex].payload
+                == RexControlProtocol.closeBlockPayload(
+                    sessionID: "session:studio", blockID: "block:left", undoable: true))
+        let closeWindow = try #require(requests.first { $0.method == RexControlProtocol.closeWindowMethod })
+        #expect(
+            closeWindow.payload
+                == RexControlProtocol.closeWindowPayload(
+                    sessionID: "session:studio", windowID: windowID, undoable: true))
+
+        await session.end()
+    }
+
+    @Test func rev22TransferWindowMovesToExistingAndNewSession() async throws {
+        let studio = FakeRexWorld.studio()
+        let dest = FakeRexWorld.Session(id: "session:dest", label: "dest", activeWindowID: nil, windows: [])
+        let world = FakeRexWorld(sessions: [studio, dest])
+        let server = await server(world)
+        let windowID = "window:0000-0000-0000-00000000a0a0"
+        await server.answer(RexControlProtocol.createSessionMethod) { [world] request in
+            let label = request.payload?["label"]?.stringValue ?? "unnamed"
+            world.update { sessions in
+                sessions.append(FakeRexWorld.Session(id: "session:created-1", label: label, activeWindowID: nil, windows: []))
+            }
+            return .result(["session_id": "session:created-1"])
+        }
+        await server.answer(RexControlProtocol.transferWindowMethod) { [world] request in
+            guard let sourceID = request.payload?["session_id"]?.stringValue,
+                let targetWindowID = request.payload?["window_id"]?.stringValue,
+                let destID = request.payload?["to_session_id"]?.stringValue
+            else {
+                return .error(code: "bad_request", message: "missing transfer fields", status: 400)
+            }
+            world.update { sessions in
+                guard let sourceIndex = sessions.firstIndex(where: { $0.id == sourceID }),
+                    let destIndex = sessions.firstIndex(where: { $0.id == destID }),
+                    let windowIndex = sessions[sourceIndex].windows.firstIndex(where: { $0.id == targetWindowID })
+                else { return }
+                let moved = sessions[sourceIndex].windows.remove(at: windowIndex)
+                sessions[destIndex].windows.append(moved)
+                sessions[sourceIndex].revision += 1
+                sessions[destIndex].revision += 1
+            }
+            return .result(["revision": 4, "to_revision": 2])
+        }
+        var welcome = FakeRexServer.Welcome()
+        welcome.apiRevision = 24
+        welcome.serverRevision = 24
+        let session = session(Dialer([ScriptedRexHost(control: [.server(server, welcome: welcome)])]))
+        let log = UpdateLog(session)
+        await session.resume()
+        try await waitForSettledInventory(log)
+
+        let movedToExisting = try await session.transferWindow(
+            sessionID: "session:studio", windowID: windowID, to: .session("session:dest"),
+            blockIDs: ["block:left", "block:right"])
+        #expect(movedToExisting == "session:dest")
+
+        let movedToNew = try await session.transferWindow(
+            sessionID: "session:dest", windowID: windowID, to: .newSession(label: "Moved"),
+            blockIDs: ["block:left", "block:right"])
+        #expect(movedToNew == "session:created-1")
+
+        let creates = await server.requests.filter { $0.method == RexControlProtocol.createSessionMethod }
+        #expect(creates.count == 1)
+        #expect(creates[0].payload == RexControlProtocol.createEmptySessionPayload(label: "Moved"))
+
+        let transfers = await server.requests.filter { $0.method == RexControlProtocol.transferWindowMethod }
+        #expect(transfers.count == 2)
+        #expect(
+            transfers[0].payload
+                == RexControlProtocol.transferWindowPayload(
+                    sessionID: "session:studio", windowID: windowID, toSessionID: "session:dest", focus: false))
+        #expect(
+            transfers[1].payload
+                == RexControlProtocol.transferWindowPayload(
+                    sessionID: "session:dest", windowID: windowID, toSessionID: "session:created-1", focus: false))
+
+        await session.end()
+    }
+
+    @MainActor
+    @Test func projectionMovePaneTransfersSinglePaneWindowAndRejectsDetachedOrMultiPaneWindows() async throws {
+        var studio = FakeRexWorld.studio()
+        let single = FakeRexWorld.Block("block:single")
+        studio.windows.append(
+            FakeRexWorld.Window(
+                id: "window:0000-0000-0000-00000000c0c0", label: "single",
+                layers: [FakeRexWorld.Layer(layout: .block(single.id), blocks: [single])]))
+        let destBlock = FakeRexWorld.Block("block:dest")
+        let dest = FakeRexWorld.Session(
+            id: "session:dest", label: "dest", activeWindowID: "window:0000-0000-0000-00000000d0d0",
+            windows: [
+                FakeRexWorld.Window(
+                    id: "window:0000-0000-0000-00000000d0d0", label: "main",
+                    layers: [FakeRexWorld.Layer(layout: .block(destBlock.id), blocks: [destBlock])])
+            ])
+        let world = FakeRexWorld(sessions: [studio, dest])
+        let server = await server(world)
+        await server.answer(RexControlProtocol.transferWindowMethod) { [world] request in
+            guard let sourceID = request.payload?["session_id"]?.stringValue,
+                let targetWindowID = request.payload?["window_id"]?.stringValue,
+                let destID = request.payload?["to_session_id"]?.stringValue
+            else {
+                return .error(code: "bad_request", message: "missing transfer fields", status: 400)
+            }
+            world.update { sessions in
+                guard let sourceIndex = sessions.firstIndex(where: { $0.id == sourceID }),
+                    let destIndex = sessions.firstIndex(where: { $0.id == destID }),
+                    let windowIndex = sessions[sourceIndex].windows.firstIndex(where: { $0.id == targetWindowID })
+                else { return }
+                let moved = sessions[sourceIndex].windows.remove(at: windowIndex)
+                sessions[destIndex].windows.append(moved)
+                sessions[sourceIndex].revision += 1
+                sessions[destIndex].revision += 1
+            }
+            return .result(["revision": 4, "to_revision": 2])
+        }
+        var welcome = FakeRexServer.Welcome()
+        welcome.apiRevision = 24
+        welcome.serverRevision = 24
+        let host = Host(address: "rex.example", username: "dev", serverKind: .rex, rexSocket: RexSocket(path: Self.path))
+        let rexSession = session(Dialer([ScriptedRexHost(control: [.server(server, welcome: welcome)])]))
+        let suite = "rex-move-pane-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let projection = RexConsoleProjection(
+            host: host, session: rexSession, memory: HerdrCoreHostMemory(defaults: defaults),
+            pins: PinnedAgentsStore(), onChange: {})
+        projection.start(isActive: true)
+        defer { projection.end() }
+
+        for _ in 0..<500 where projection.inventory == nil || projection.kernel == nil || projection.apiRevision != 24 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(projection.inventory != nil)
+        try #require(projection.kernel != nil)
+        try #require(projection.apiRevision == 24)
+
+        let moved = try await projection.movePane("session:studio/block:single", to: .workspace(id: "session:dest"))
+        #expect(moved == "session:dest/block:single")
+
+        let transfersAfterValid = await server.requests.filter { $0.method == RexControlProtocol.transferWindowMethod }
+        #expect(transfersAfterValid.count == 1)
+        #expect(
+            transfersAfterValid[0].payload
+                == RexControlProtocol.transferWindowPayload(
+                    sessionID: "session:studio", windowID: "window:0000-0000-0000-00000000c0c0",
+                    toSessionID: "session:dest", focus: false))
+
+        await #expect(throws: (any Error).self) {
+            _ = try await projection.movePane("session:studio/block:left", to: .workspace(id: "session:dest"))
+        }
+        await #expect(throws: (any Error).self) {
+            _ = try await projection.movePane("session:studio/block:detached", to: .workspace(id: "session:dest"))
+        }
+        let transfersAfterRejected = await server.requests.filter { $0.method == RexControlProtocol.transferWindowMethod }
+        #expect(transfersAfterRejected.count == 1)
+    }
 }
 
 /// A snapshot of a session's updates, for a wait's condition.

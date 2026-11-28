@@ -748,6 +748,77 @@ struct TmuxConsoleTests {
         await first.releaseSecondAsk()
         await session.end()
     }
+
+    @Test func onboardingStartTmuxRunsShellSessionAndRechecksOnLinuxAndShowsManualInstructionsOnMacOS() async throws {
+        func makeOnboarding(_ host: Host, tmux: ScriptedTmuxHost) -> HostOnboardingStore {
+            let connector = FakeTransportConnector(
+                outcome: .connects(pingResult: .failure(.cancelled)),
+                tmux: tmux)
+            return HostOnboardingStore(
+                host: host,
+                connector: connector,
+                knownHosts: InMemoryKnownHostsStore(),
+                credentials: HostCredentialsProvider(
+                    deviceKeys: DeviceKeyStore(secrets: InMemorySecretStore()),
+                    rsaKeys: RSAKeyStore(secrets: InMemorySecretStore()),
+                    secrets: InMemorySecretStore()))
+        }
+
+        let linuxTmux = ScriptedTmuxHost(sockets: [], kernel: "Linux", shell: "/bin/bash")
+        let linuxHost = Host(
+            address: "linux.example", username: "dev", serverKind: .tmux, sessionName: "work",
+            tmuxPaths: ScriptedTmuxHost.paths("work"))
+        let linuxStore = makeOnboarding(linuxHost, tmux: linuxTmux)
+
+        await linuxStore.runChecks()
+        #expect(linuxStore.phase == .finished)
+        #expect(linuxStore.isWaitingForTmuxServer)
+        #expect(linuxStore.tmuxStartOffer == .start)
+        #expect(linuxStore.tmuxStart == .idle)
+        #expect(await linuxTmux.commands.isEmpty)
+
+        linuxStore.requestTmuxStart()
+        #expect(linuxStore.tmuxStartConfirmation == TmuxStartConfirmation(socket: "work"))
+        linuxStore.cancelTmuxStart()
+        #expect(linuxStore.tmuxStartConfirmation == nil)
+
+        linuxStore.requestTmuxStart()
+        await linuxStore.confirmTmuxStart()
+        #expect(linuxStore.report == .allPassed)
+        #expect(linuxStore.tmuxStatus != nil)
+        #expect(linuxStore.tmuxStartOffer == nil)
+        #expect(linuxStore.tmuxStart == .started(socket: "work"))
+        let expectedStart = try TmuxLaunch.shellSession(
+            NewWorkspaceSpec(directory: ScriptedTmuxHost.home, label: nil),
+            tab: nil,
+            on: TmuxLaunch.Server(
+                paths: ScriptedTmuxHost.paths("work"), shell: "/bin/bash", kernel: "Linux",
+                running: false, openCodeVersion: nil))
+        #expect(await linuxTmux.commands == [String(decoding: expectedStart.script, as: UTF8.self)])
+        #expect(await linuxTmux.log.contains("command login"))
+
+        let macTmux = ScriptedTmuxHost(sockets: [], kernel: "Darwin", shell: "/bin/zsh")
+        let macDefaultHost = Host(
+            address: "mac.example", username: "dev", serverKind: .tmux,
+            tmuxPaths: ScriptedTmuxHost.paths())
+        let macDefaultStore = makeOnboarding(macDefaultHost, tmux: macTmux)
+        await macDefaultStore.runChecks()
+        #expect(macDefaultStore.isWaitingForTmuxServer)
+        #expect(macDefaultStore.tmuxStartOffer == .instructions(command: "tmux"))
+        macDefaultStore.requestTmuxStart()
+        #expect(macDefaultStore.tmuxStartConfirmation == nil)
+        await macDefaultStore.confirmTmuxStart()
+        #expect(macDefaultStore.tmuxStart == .idle)
+        #expect(await macTmux.commands.isEmpty)
+
+        let macNamedHost = Host(
+            address: "mac.example", username: "dev", serverKind: .tmux, sessionName: "work",
+            tmuxPaths: ScriptedTmuxHost.paths("work"))
+        let macNamedStore = makeOnboarding(macNamedHost, tmux: macTmux)
+        await macNamedStore.runChecks()
+        #expect(macNamedStore.tmuxStartOffer == .instructions(command: "tmux -L work"))
+        #expect(await macTmux.commands.isEmpty)
+    }
 }
 
 private actor HangingSecondAskTmuxTransport: TmuxTransport {
