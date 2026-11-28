@@ -216,3 +216,29 @@ The write also compares it with the displayed conversation and the owner of
 the current draft. Reading the same process tree a second time inside a single
 write consumed part of the two-second submit window on both POSIX Hosts.
 The deadline and the separate read before the next key still apply.
+
+## Update 2026-11-28: Claude questions answer under the record's end
+
+Claude Code 2.1.330 and 2.1.332 write an AskUserQuestion call, and the
+assistant message that carries it, only once the question is answered.
+On a Rex Host the record therefore never held one open request for the
+question on screen, and every Claude question fell back to the terminal.
+
+A Claude question page or its review page that no open call in the record
+can be asking about now answers under the end of the fully read record
+instead of a call ID. The card keeps the end Chat had read when it showed.
+Before each key the input lane reads the record to its end again and
+requires the same end, the same independently bound conversation and the
+same screen. An answer from any client makes Claude append the call and its
+result, so the end moves and the card goes back to the terminal, as a new
+call ID would. Heeler holds the end after an uncertain acknowledgement, a
+submitted review page or a dismissal, as it holds a call. Turning a page of
+several questions appends nothing, so the next page keeps the same end.
+
+Any other append while the question shows, such as a desktop client queueing
+a message, also moves the end. The card then rebinds to the new end and asks
+for the tap again. A program that records a call before its dialog shows
+keeps the call ID, and a record with an open call that could be the
+question keeps the existing rule. Without a call, the form cannot list
+every question, so the card answers one page at a time as it does on a
+Herdr TUI Host.

@@ -498,6 +498,24 @@ newer Claude Code may word it differently; check before relying on it.
   and Stop interrupted it. Only a shell was put in the background in this
   run; a background agent's wording was not seen.
 
+### Claude Code's question before it is answered
+
+Seen with a real Claude Code 2.1.332 on Rex 0.1.0-preview.25, macOS 27.0,
+2026-11-28, on a user's Agent. A newer Claude Code may record it earlier;
+check before relying on it.
+
+- **While the question shows.** The Agent read Blocked and its screen held
+  an AskUserQuestion page of three questions. The record's last assistant
+  line was the previous Bash call, followed only by a `queue-operation` for
+  a message queued earlier. Neither the question nor the text Claude wrote
+  before it was in the file, and the file did not change for more than three
+  minutes while the question stayed on screen.
+- **What Heeler does.** Without an open call to match, a Claude question
+  page or review page answers under the record's end instead of a call ID
+  ([ADR 0055](../adr/0055-rex-chat-types-on-the-control-connection.md#update-2026-11-28-claude-questions-answer-under-the-records-end)).
+  Before this, the card read "Chat needs one verified, unanswered request"
+  and sent the user to the terminal for every Claude question on Rex.
+
 ### Processes and Chat evidence
 
 From a lab run on Rex 0.1.0-preview.14, API revision 12, macOS 27.0, over a

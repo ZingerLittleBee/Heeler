@@ -75,6 +75,7 @@ struct BlockedCard: Equatable, Sendable {
     let dialog: BlockedDialog
     /// The call the dialog asks about, when the transcript shows it.
     let request: ChatPendingRequest?
+    var rexRecordEnd: UInt64? = nil
 }
 
 /// Chat's answer to herdr's Blocked (ADR 0024): the dialog on the Agent's
@@ -178,11 +179,17 @@ final class BlockedCardStore {
     /// manually selected conversation. Keep the displayed session with it.
     typealias RexSessionCheck = (sessionID: String, verify: ChatSessionInputCheck)
     @ObservationIgnored var captureSessionCheck: (@MainActor () -> RexSessionCheck?)?
-    /// Rex's live, fully read record. An absent or ambiguous call leaves the prompt in Terminal.
+    /// Rex's live, fully read record.
     @ObservationIgnored var readRexRequests: (@MainActor () async -> [ChatPendingRequest]?)?
-    @ObservationIgnored private var displayedRexCallID: String?
+    @ObservationIgnored var readRexRecordEnd: (@MainActor () async -> UInt64?)?
+    private enum RexAnswerKey: Hashable {
+        case call(String)
+        case recordEnd(UInt64)
+    }
+    @ObservationIgnored private var rexRecordEnd: UInt64?
+    @ObservationIgnored private var displayedRexKey: RexAnswerKey?
     @ObservationIgnored private var actingRexCard: BlockedCard?
-    @ObservationIgnored private var answeredRexCalls: [String: Set<String>] = [:]
+    @ObservationIgnored private var answeredRexKeys: [String: Set<RexAnswerKey>] = [:]
     @ObservationIgnored private var shownSessionCheck: RexSessionCheck?
     @ObservationIgnored private var actingSessionCheck: RexSessionCheck?
     @ObservationIgnored private var inputConversationGeneration = 0
@@ -369,9 +376,10 @@ final class BlockedCardStore {
     /// The conversation as last read: requests a card can match, and calls
     /// whose results confirm an answer or, on Grok Build, whose starts show
     /// it took.
-    func update(transcript: ChatTranscript) {
+    func update(transcript: ChatTranscript, recordEnd: UInt64? = nil) {
         let waiting = Set(pendingRequests.compactMap(\.callID))
         pendingRequests = transcript.pendingRequests
+        rexRecordEnd = recordEnd
         let openCalls = Set(pendingRequests.compactMap(\.callID))
         if openCalls != waiting { consecutiveCleanIdleReads = 0 }
         if let lastUserIndex = transcript.entries.lastIndex(where: {
@@ -563,7 +571,9 @@ final class BlockedCardStore {
         ) { observation throws(DialogPlanError) in
             guard let dialog = observation.result.dialog else { throw .unsupported(Self.changedMessage) }
             let request = matchingRequest(for: dialog)
-            if readRexRequests != nil, request != shown.request { throw .unsupported(Self.changedMessage) }
+            if readRexRequests != nil, request != shown.request || unrecordedRexEnd(for: dialog) != shown.rexRecordEnd {
+                throw .unsupported(Self.changedMessage)
+            }
             if program.pinsComposerToSession, observedDroidTarget != shown.target || request?.callID != shown.request?.callID { throw .unsupported(Self.changedMessage) }
             // Each program's planner decides whether the call's result
             // confirms the answer.
@@ -1229,15 +1239,22 @@ final class BlockedCardStore {
             guard let card = actingDroidCard else { throw TransportError.cancelled }
             try await typeDroid(typing, on: card, whileShowing: check)
         } else if let readRexRequests {
-            guard let card = actingRexCard, let session = actingSessionCheck, let request = card.request else {
+            guard let card = actingRexCard, let session = actingSessionCheck, let key = Self.rexKey(of: card) else {
                 throw TransportError.cancelled
             }
             let io = io
+            let readRexRecordEnd = readRexRecordEnd
             let verify: @Sendable (ANSIScreen) async -> Bool = { [weak self] screen in
                 guard check(screen), await session.verify(), let latest = try? await io.readScreen(), check(latest),
-                      let current = DialogObservation(screen: latest, program: program).result.dialog,
-                      let calls = await readRexRequests(), Self.uniqueRequest(for: current, in: calls) == request,
-                      let self, await self.stillAnswersRex(card) else { return false }
+                      let current = DialogObservation(screen: latest, program: program).result.dialog else { return false }
+                switch key {
+                case .call:
+                    guard let calls = await readRexRequests(), Self.uniqueRequest(for: current, in: calls) == card.request
+                    else { return false }
+                case .recordEnd(let end):
+                    guard let readRexRecordEnd, await readRexRecordEnd() == end else { return false }
+                }
+                guard let self, await self.stillAnswersRex(card) else { return false }
                 return true
             }
             if io.typeWhileShowing == nil {
@@ -1257,7 +1274,7 @@ final class BlockedCardStore {
 
     private func beginRexAnswer(_ current: BlockedCard, from displayed: BlockedCard?) -> Bool {
         guard readRexRequests != nil else { return true }
-        guard displayed == current, canAnswerRex(current.request?.callID, in: shownSessionCheck) else {
+        guard displayed == current, canAnswerRex(Self.rexKey(of: current), in: shownSessionCheck) else {
             notice = Self.changedMessage
             return false
         }
@@ -1265,20 +1282,37 @@ final class BlockedCardStore {
         return true
     }
 
-    private func canAnswerRex(_ id: String?, in session: RexSessionCheck?) -> Bool {
-        guard let id, let session else { return false }
-        return answeredRexCalls[session.sessionID]?.contains(id) != true
+    private static func rexKey(request: ChatPendingRequest?, recordEnd: UInt64?) -> RexAnswerKey? {
+        if let id = request?.callID { return .call(id) }
+        return recordEnd.map(RexAnswerKey.recordEnd)
+    }
+
+    private static func rexKey(of card: BlockedCard) -> RexAnswerKey? {
+        rexKey(request: card.request, recordEnd: card.rexRecordEnd)
+    }
+
+    private static let recordedOnceAnswered: Set<BlockedDialogKind> = [.claudeQuestion, .claudeQuestionReview]
+
+    private func unrecordedRexEnd(for dialog: BlockedDialog) -> UInt64? {
+        guard readRexRecordEnd != nil, Self.recordedOnceAnswered.contains(dialog.kind),
+              BlockedRequestMatch.requests(answering: dialog, in: pendingRequests).isEmpty else { return nil }
+        return rexRecordEnd
+    }
+
+    private func canAnswerRex(_ key: RexAnswerKey?, in session: RexSessionCheck?) -> Bool {
+        guard let key, let session else { return false }
+        return answeredRexKeys[session.sessionID]?.contains(key) != true
     }
 
     private func stillAnswersRex(_ card: BlockedCard) -> Bool {
         !Task.isCancelled && activity != .unknown && actingRexCard == card
             && card.conversationGeneration == inputConversationGeneration
-            && canAnswerRex(card.request?.callID, in: actingSessionCheck)
+            && canAnswerRex(Self.rexKey(of: card), in: actingSessionCheck)
     }
 
     private func holdAnsweredRexCall() {
-        guard let id = actingRexCard?.request?.callID, let session = actingSessionCheck else { return }
-        answeredRexCalls[session.sessionID, default: []].insert(id)
+        guard let card = actingRexCard, let key = Self.rexKey(of: card), let session = actingSessionCheck else { return }
+        answeredRexKeys[session.sessionID, default: []].insert(key)
     }
 
     private func typeDroid(_ typing: BlockedScreenIO.Typing, on card: BlockedCard,
@@ -1532,11 +1566,13 @@ final class BlockedCardStore {
     private func present(_ observation: DialogObservation) {
         let fingerprint = observation.result.fingerprint
         let request = observation.result.dialog.flatMap(matchingRequest)
-        let changedCall = readRexRequests != nil && displayedRexCallID != request?.callID
+        let recordEnd = observation.result.dialog.flatMap(unrecordedRexEnd)
+        let rexKey = Self.rexKey(request: request, recordEnd: recordEnd)
+        let changedCall = readRexRequests != nil && displayedRexKey != rexKey
         if changedCall {
-            displayedRexCallID = request?.callID
+            displayedRexKey = rexKey
             degraded = nil
-            if progress == .unconfirmed, canAnswerRex(displayedRexCallID, in: shownSessionCheck) {
+            if progress == .unconfirmed, canAnswerRex(displayedRexKey, in: shownSessionCheck) {
                 progress = .ready
                 unconfirmedFingerprint = nil
             }
@@ -1557,14 +1593,15 @@ final class BlockedCardStore {
         switch observation.result {
         case .dialog(let dialog):
             if readRexRequests != nil,
-               !canAnswerRex(request?.callID, in: shownSessionCheck) || degraded?.fingerprint.matches(dialog.fingerprint) == true {
+               !canAnswerRex(rexKey, in: shownSessionCheck) || degraded?.fingerprint.matches(dialog.fingerprint) == true {
                 next = .unreadable
             } else if let degraded, degraded.fingerprint.matches(dialog.fingerprint) {
                 next = .generic(Self.excerpt(of: dialog, on: observation.screen, reason: degraded.reason))
             } else {
                 if let id = request?.callID { noteShown(dialog, forCall: id) }
                 next = .card(BlockedCard(conversationGeneration: captureSessionCheck == nil ? nil : inputConversationGeneration,
-                    target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request))
+                    target: observedDroidTarget, patch: observedDroidPatch, dialog: dialog, request: request,
+                    rexRecordEnd: recordEnd))
             }
         case .unrecognized(let excerpt):
             next = readRexRequests == nil ? .generic(excerpt) : .unreadable
@@ -1629,7 +1666,7 @@ final class BlockedCardStore {
         isCollapsed = false
         firstSeen = nil
         shownSessionCheck = nil
-        displayedRexCallID = nil
+        displayedRexKey = nil
         degraded = nil
     }
 

@@ -37,6 +37,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Answer Claude Code's questions from **Chat** on a Rex Host. Claude Code records a question only once it is answered, so Chat found no open request to check and sent every question to the terminal. (PR #891)
 - Clear "Sent. It hasn't appeared in the conversation yet." under a message sent from **Chat** once the Agent recorded it, when Chat was left or Heeler went to the background right after sending and the Agent then wrote more than Chat reads at first. Chat now loads earlier messages until it reaches the one you sent, which also shows again above the reply. (PR #890)
 - Stop opening Antigravity CLI's browser sign-in page on a Mac each time Usage reads Antigravity limits through the Host Helper. Over SSH, `agy` could not reach the login keychain and asked for a new sign-in; the Helper now reads the limits in the Mac's desktop session, and says they need your own login on the Mac when nobody is logged in there. (PR #887)
 - Return a new Rex terminal's size to the Rex server when the connection drops or the server is slow to answer right after **New Terminal** or **New Workspace**. Until Heeler disconnected, a terminal nobody opened on the phone kept the phone's size on other devices. (PR #883)
