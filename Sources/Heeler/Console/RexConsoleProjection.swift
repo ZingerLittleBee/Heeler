@@ -294,6 +294,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 memory.noteKernel(nil, for: host.id)
             }
             self.server = server
+            apiRevision = session.currentAPIRevision
             checkCommandSchema(on: server)
             inventoryCore = server.coreID
             inventoryInstance = server.instanceID
@@ -336,7 +337,7 @@ final class RexConsoleProjection: ConsoleHostProjection {
                 return (revision, RexNewTerminal.acceptsAgentCommand(reply))
             }
             guard let self, !hasEnded, !Task.isCancelled, server == expected else { return }
-            apiRevision = capabilities?.0
+            apiRevision = capabilities?.0 ?? session.currentAPIRevision
             acceptsAgentCommand = capabilities?.1 == true
             onChange()
         }
@@ -1048,8 +1049,95 @@ final class RexConsoleProjection: ConsoleHostProjection {
         ShellTerminalIdentity(
             paneID: created.address.paneID, tabID: created.windowID, terminalID: created.address.paneID)
     }
-    func closePane(_: String) async throws { throw Self.unavailable }
-    func closeTab(_: String) async throws { throw Self.unavailable }
+    func closePane(_ paneID: String) async throws {
+        guard let server, (apiRevision ?? 0) >= RexControlProtocol.undoableCloseMinimumRevision,
+            let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address)
+        else { throw Self.unavailable }
+        try await verifyForegroundBeforeClose(at: address, listed: listed, server: server)
+        try await session.closeBlock(address, undoable: true, keepingTo: server)
+        await refreshTerminalInventory()
+    }
+
+    func closeTab(_ tabID: String) async throws {
+        guard let server, (apiRevision ?? 0) >= RexControlProtocol.undoableCloseMinimumRevision, let inventory else {
+            throw Self.unavailable
+        }
+        if let detachedOwner = inventory.sessions.first(where: { RexOrganization.detachedTabID(ofSession: $0.id) == tabID }) {
+            guard detachedOwner.detached.count == 1, let terminal = detachedOwner.detached.first else {
+                throw Self.unavailable
+            }
+            try await closePane(RexPaneAddress(sessionID: detachedOwner.id, blockID: terminal.blockID).paneID)
+            return
+        }
+        guard let owningSession = inventory.sessions.first(where: { $0.windows.contains(where: { $0.id == tabID }) }),
+            let window = owningSession.windows.first(where: { $0.id == tabID })
+        else { throw Self.unavailable }
+        for terminal in window.terminals {
+            let address = RexPaneAddress(sessionID: owningSession.id, blockID: terminal.blockID)
+            try await verifyForegroundBeforeClose(at: address, listed: terminal.details, server: server)
+        }
+        try await session.closeWindow(sessionID: owningSession.id, windowID: tabID, undoable: true, keepingTo: server)
+        await refreshTerminalInventory()
+    }
+
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        guard let server, (apiRevision ?? 0) >= RexControlProtocol.transferWindowMinimumRevision else {
+            throw Self.unavailable
+        }
+        guard let address = RexPaneAddress(paneID: paneID), let inventory,
+            let sourceSession = inventory.sessions.first(where: { $0.id == address.sessionID })
+        else { throw TransportError.rexServerGone }
+        if sourceSession.detached.contains(where: { $0.blockID == address.blockID }) {
+            throw TransportError.malformedResponse(
+                String(localized: "Detached terminals cannot be moved to another Workspace in Rex."))
+        }
+        guard let window = sourceSession.windows.first(where: { $0.terminals.contains(where: { $0.blockID == address.blockID }) }),
+            let terminal = window.terminals.first(where: { $0.blockID == address.blockID })
+        else { throw TransportError.rexServerGone }
+        guard window.terminals.count == 1 else {
+            throw TransportError.malformedResponse(
+                String(localized: "This Tab has multiple Panes. Separate them in Rex before moving."))
+        }
+        let rexDestination: RexWindowTransferDestination
+        switch destination {
+        case .workspace(let targetID):
+            guard targetID != address.sessionID, inventory.sessions.contains(where: { $0.id == targetID }) else {
+                throw TransportError.malformedResponse(String(localized: "The destination Workspace has changed."))
+            }
+            rexDestination = .session(targetID)
+        case .newWorkspace:
+            let label = terminal.details.directory.flatMap(RexNewTerminal.sessionLabel(for:))
+            rexDestination = .newSession(label: label)
+        }
+        let targetSessionID = try await session.transferWindow(
+            sessionID: address.sessionID, windowID: window.id, to: rexDestination,
+            blockIDs: [address.blockID], keepingTo: server)
+        chatTypings[paneID] = nil
+        titleRenameTokens[paneID] = nil
+        await refreshTerminalInventory()
+        return RexPaneAddress(sessionID: targetSessionID, blockID: address.blockID).paneID
+    }
+
+    private func verifyForegroundBeforeClose(
+        at address: RexPaneAddress, listed: RexTerminalDetails, server activeServer: RexServerStatus
+    ) async throws {
+        let fresh: RexTerminalDetails
+        do {
+            fresh = try await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
+        } catch let error as RexControlError {
+            throw TransportError(rexControl: error)
+        }
+        if let listedPID = listed.processID, let freshPID = fresh.processID, freshPID != listedPID {
+            throw TransportError.rexRejected(
+                code: "foreground_changed",
+                message: String(localized: "Another program is now running in this terminal. Check it before closing."))
+        }
+        if let listedKind = RexAgentRule.agentKind(in: listed), RexAgentRule.agentKind(in: fresh) != listedKind {
+            throw TransportError.rexRejected(
+                code: "foreground_changed",
+                message: String(localized: "Another program is now running in this terminal. Check it before closing."))
+        }
+    }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
         guard supportsProjectOperations else { throw Self.unavailable }

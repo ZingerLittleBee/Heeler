@@ -439,8 +439,13 @@ enum RexInventoryWire {
 
     /// `session.view`'s windows, each with its blocks in reading order.
     static func view(_ result: JSONValue) -> View? {
-        guard let revision = result["revision"]?.rexWholeNumber, case .array(let windows)? = result["windows"] else {
-            return nil
+        guard let revision = result["revision"]?.rexWholeNumber else { return nil }
+        let windows: [JSONValue]
+        if let raw = result["windows"], raw != .null {
+            guard case .array(let array) = raw else { return nil }
+            windows = array
+        } else {
+            windows = []
         }
         return View(
             revision: revision, label: result["label"]?.stringValue,

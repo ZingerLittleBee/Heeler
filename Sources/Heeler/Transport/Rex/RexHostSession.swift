@@ -24,6 +24,11 @@ struct RexConnection: Sendable {
     let server: RexServerStatus
 }
 
+enum RexWindowTransferDestination: Sendable, Equatable {
+    case session(String)
+    case newSession(label: String?)
+}
+
 /// Owns a Rex Host's connection (ADRs 0049 and 0050), as `TmuxHostSession`
 /// owns a tmux Host's. It reuses `EventsSession`'s reconnect policy and status,
 /// and suspends and resumes with the app the same way.
@@ -67,6 +72,8 @@ actor RexHostSession {
     private nonisolated let latencyBox = Mutex<Duration?>(nil)
     nonisolated var currentRouteID: UUID? { routeIDBox.withLock { $0 } }
     private nonisolated let routeIDBox = Mutex<UUID?>(nil)
+    nonisolated var currentAPIRevision: Int? { apiRevisionBox.withLock { $0 } }
+    private nonisolated let apiRevisionBox = Mutex<Int?>(nil)
     /// Advances with each new SSH connection.
     nonisolated var currentConnectionGeneration: UInt64 { generationBox.withLock { $0 } }
     private nonisolated let generationBox = Mutex<UInt64>(0)
@@ -357,6 +364,7 @@ actor RexHostSession {
             liveServer = nil
             latencyBox.withLock { $0 = nil }
             routeIDBox.withLock { $0 = nil }
+            apiRevisionBox.withLock { $0 = nil }
         }
         updatesContinuation.yield(.status(status))
     }
@@ -388,7 +396,7 @@ actor RexHostSession {
                 guard activationIsCurrent(generation) else { break }
                 await settleTerminals(on: link, server: server)
                 guard activationIsCurrent(generation) else { break }
-                announce(server, latency: started.duration(to: .now), routeID: transport.routeID)
+                announce(server, apiRevision: link.apiRevision, latency: started.duration(to: .now), routeID: transport.routeID)
                 let followed = ContinuousClock.now
                 let follow = await follow(link, server: server)
                 guard activationIsCurrent(generation) else { break }
@@ -459,9 +467,10 @@ actor RexHostSession {
         }
     }
 
-    private func announce(_ server: RexServerStatus, latency: Duration, routeID: UUID?) {
+    private func announce(_ server: RexServerStatus, apiRevision: Int, latency: Duration, routeID: UUID?) {
         latencyBox.withLock { $0 = latency }
         routeIDBox.withLock { $0 = routeID }
+        apiRevisionBox.withLock { $0 = apiRevision }
         let previous = liveServer
         liveServer = server
         if previous == nil { updatesContinuation.yield(.status(.connected)) }
@@ -862,6 +871,146 @@ actor RexHostSession {
             }
         } catch let error as RexControlError {
             throw TransportError(rexControl: error)
+        }
+    }
+
+    func closeBlock(
+        _ address: RexPaneAddress, undoable: Bool = true, keepingTo server: RexServerStatus? = nil
+    ) async throws {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        if let server, server != ready.server { throw TransportError.rexServerGone }
+        if undoable, ready.control.apiRevision < RexControlProtocol.undoableCloseMinimumRevision {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Closing Tabs on this Rex server"))
+        }
+        let control = ready.control
+        try await attachForSessionMutation(address.sessionID, on: control)
+        do {
+            let response = try await control.call(
+                RexControlProtocol.closeBlockMethod,
+                payload: RexControlProtocol.closeBlockPayload(
+                    sessionID: address.sessionID, blockID: address.blockID, undoable: undoable))
+            let result = try response.result(JSONValue.self)
+            guard result["block_id"]?.stringValue == address.blockID else {
+                throw TransportError.rexAnswerUnreadable(
+                    String(localized: "Rex did not confirm closing the terminal. Check the list before trying again."))
+            }
+        } catch let error as RexControlError {
+            throw TransportError(rexControl: error)
+        }
+    }
+
+    func closeWindow(
+        sessionID: String, windowID: String, undoable: Bool = true, keepingTo server: RexServerStatus? = nil
+    ) async throws {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        if let server, server != ready.server { throw TransportError.rexServerGone }
+        if undoable, ready.control.apiRevision < RexControlProtocol.undoableCloseMinimumRevision {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Closing Tabs on this Rex server"))
+        }
+        let control = ready.control
+        try await attachForSessionMutation(sessionID, on: control)
+        do {
+            let response = try await control.call(
+                RexControlProtocol.closeWindowMethod,
+                payload: RexControlProtocol.closeWindowPayload(
+                    sessionID: sessionID, windowID: windowID, undoable: undoable))
+            let result = try response.result(JSONValue.self)
+            guard case .number? = result["revision"] else {
+                throw TransportError.rexAnswerUnreadable(
+                    String(localized: "Rex did not confirm closing the Tab. Check the list before trying again."))
+            }
+        } catch let error as RexControlError {
+            throw TransportError(rexControl: error)
+        }
+    }
+
+    func transferWindow(
+        sessionID: String, windowID: String, to destination: RexWindowTransferDestination,
+        blockIDs: [String] = [], keepingTo server: RexServerStatus? = nil
+    ) async throws -> String {
+        guard let ready = readyConnection else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        if let server, server != ready.server { throw TransportError.rexServerGone }
+        guard ready.control.apiRevision >= RexControlProtocol.transferWindowMinimumRevision else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Moving Panes on this Rex server"))
+        }
+        let control = ready.control
+        let epoch = clientEpoch
+        try await attachForSessionMutation(sessionID, on: control)
+        let targetSessionID: String
+        var createdSessionID: String?
+        do {
+            switch destination {
+            case .session(let id):
+                guard id != sessionID else {
+                    throw TransportError.malformedResponse(String(localized: "The destination Workspace has changed."))
+                }
+                targetSessionID = id
+            case .newSession(let label):
+                let response = try await control.call(
+                    RexControlProtocol.createSessionMethod,
+                    payload: RexControlProtocol.createEmptySessionPayload(label: label))
+                let result = try response.result(JSONValue.self)
+                guard let id = result["session_id"]?.stringValue, !id.isEmpty else {
+                    throw TransportError.rexAnswerUnreadable(
+                        String(localized: "Rex did not name the new Workspace."))
+                }
+                targetSessionID = id
+                createdSessionID = id
+            }
+            let response = try await control.call(
+                RexControlProtocol.transferWindowMethod,
+                payload: RexControlProtocol.transferWindowPayload(
+                    sessionID: sessionID, windowID: windowID, toSessionID: targetSessionID, focus: false))
+            let result = try response.result(JSONValue.self)
+            guard case .number? = result["revision"], case .number? = result["to_revision"] else {
+                throw TransportError.rexAnswerUnreadable(
+                    String(localized: "Rex did not confirm moving the Tab. Check the list before trying again."))
+            }
+        } catch let error as RexControlError {
+            if let createdSessionID {
+                await destroyEmptySession(createdSessionID, on: control)
+            }
+            throw TransportError(rexControl: error)
+        } catch {
+            if let createdSessionID {
+                await destroyEmptySession(createdSessionID, on: control)
+            }
+            throw error
+        }
+        if attachedSessions[targetSessionID] == epoch, !blockIDs.isEmpty {
+            for blockID in blockIDs {
+                _ = await control.deliver(
+                    RexTerminalAttach.giveBackMethod,
+                    payload: RexTerminalAttach.ownershipPayload(
+                        RexPaneAddress(sessionID: targetSessionID, blockID: blockID), take: false),
+                    deadline: terminalOptions.giveBackDeadline)
+            }
+        }
+        return targetSessionID
+    }
+
+    private func destroyEmptySession(_ sessionID: String, on control: RexControlLink) async {
+        try? await attachSession(sessionID, on: control)
+        _ = try? await control.call(
+            RexControlProtocol.destroySessionMethod,
+            payload: RexControlProtocol.destroySessionPayload(sessionID: sessionID))
+    }
+
+    private func attachForSessionMutation(_ sessionID: String, on control: RexControlLink) async throws {
+        do {
+            try await attachSession(sessionID, on: control)
+        } catch RexTerminalEnding.finished {
+            throw TransportError.rexRejected(
+                code: "session_not_found",
+                message: String(localized: "This Workspace is no longer on the Rex server."))
+        } catch is RexTerminalEnding {
+            throw TransportError.channelFailed(detail: String(localized: "Rex did not answer. Try again."))
         }
     }
 

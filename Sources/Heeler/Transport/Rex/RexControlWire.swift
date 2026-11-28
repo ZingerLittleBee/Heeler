@@ -11,18 +11,25 @@ enum RexControlProtocol {
     static let path = "/api/control"
     static let subprotocol = "rex.control.v1"
     /// The newest API revision this build speaks, offered in each hello.
-    static let apiRevision = 19
+    static let apiRevision = 24
     /// The oldest API revision this build speaks. A server picks the newest
     /// revision both sides speak, so a server whose newest is older than this
     /// one, or whose oldest is newer than `apiRevision`, is refused.
     static let minimumAPIRevision = 12
     static let apiRevisions = minimumAPIRevision...apiRevision
+    static let undoableCloseMinimumRevision = 20
+    static let transferWindowMinimumRevision = 22
     /// Rex drops a client whose hello is 512 bytes or more.
     static let helloByteLimit = 511
     /// Every Rex server accepts messages at least this large; used when a
     /// welcome names no limit.
     static let minimumMessageLimit = 65536
     static let setWindowLabelMethod = "session.set_window_label"
+    static let closeBlockMethod = "block.close"
+    static let closeWindowMethod = "session.close_window"
+    static let transferWindowMethod = "session.transfer_window"
+    static let createSessionMethod = "session.create"
+    static let destroySessionMethod = "session.destroy"
 
     static func setWindowLabelPayload(sessionID: String, windowID: String, label: String) -> JSONValue {
         .object([
@@ -30,6 +37,45 @@ enum RexControlProtocol {
             "window_id": .string(windowID),
             "label": .string(label),
         ])
+    }
+
+    static func closeBlockPayload(sessionID: String, blockID: String, undoable: Bool) -> JSONValue {
+        .object([
+            "session_id": .string(sessionID),
+            "block_id": .string(blockID),
+            "undoable": .bool(undoable),
+        ])
+    }
+
+    static func closeWindowPayload(sessionID: String, windowID: String, undoable: Bool) -> JSONValue {
+        .object([
+            "session_id": .string(sessionID),
+            "window_id": .string(windowID),
+            "undoable": .bool(undoable),
+        ])
+    }
+
+    static func transferWindowPayload(
+        sessionID: String, windowID: String, toSessionID: String, focus: Bool = false
+    ) -> JSONValue {
+        .object([
+            "session_id": .string(sessionID),
+            "window_id": .string(windowID),
+            "to_session_id": .string(toSessionID),
+            "focus": .bool(focus),
+        ])
+    }
+
+    static func createEmptySessionPayload(label: String? = nil) -> JSONValue {
+        var payload: [String: JSONValue] = [:]
+        if let label, !label.isEmpty {
+            payload["label"] = .string(String(label.prefix(128)))
+        }
+        return .object(payload)
+    }
+
+    static func destroySessionPayload(sessionID: String) -> JSONValue {
+        .object(["session_id": .string(sessionID)])
     }
 }
 

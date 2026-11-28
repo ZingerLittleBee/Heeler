@@ -162,12 +162,15 @@ extension HostCapabilities {
                 }
             let posix = coreKernel == HerdrCoreLocator.macOSKernel || coreKernel == HerdrCoreLocator.linuxKernel
             let hasKnownKernel = rexChatPrograms != nil
+            let canCloseTab = (rexAPIRevision ?? 0) >= RexControlProtocol.undoableCloseMinimumRevision
+            let canMovePanes = (rexAPIRevision ?? 0) >= RexControlProtocol.transferWindowMinimumRevision
             self.init(
                 startsAgents: hasKnownKernel && rexAcceptsCommand, startsTerminals: true, renameAgent: hasKnownKernel, renamesWorkspaces: hasKnownKernel,
                 worktrees: posix, uploads: hasKnownKernel, composerSend: true, chat: hasKnownKernel,
-                tabNames: hasKnownKernel, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
+                tabNames: hasKnownKernel, closeTab: canCloseTab, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
+                movesPanes: canMovePanes,
                 startsInWindowsDirectories: true)
             renamesExistingTabs = hasKnownKernel
             renamesConversationTitles = posix
@@ -278,12 +281,6 @@ extension HostCapabilities {
     /// process start in the local account registry (rex-chat-parity.md).
     static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    /// The programs a Rex Host's Chat opens for on native Windows, read as a
-    /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
-    /// from its own process and registry entry, which the owner's check
-    /// confirmed against Rex 0.1.0-preview.23 on Windows 11 (2026-11-25).
-    /// Codex reads open files, which nothing reads on Windows, and Pi and Oh
-    /// My Pi wait for a check of Heeler's extension in a Rex terminal there.
     static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
