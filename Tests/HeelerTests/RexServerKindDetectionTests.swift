@@ -452,12 +452,12 @@ struct RexHostOnboardingTests {
         #expect(failedCheck(refused)?.1.contains("did not let this account in") == true)
 
         var newer = FakeRexServer.Welcome()
-        newer.apiRevision = 20
-        newer.serverRevision = 20
+        newer.apiRevision = 25
+        newer.serverRevision = 25
         let store = makeStore(rexHost(), rex: ScriptedRexHost(control: [.server(FakeRexServer(), welcome: newer)]))
         await store.runChecks()
         #expect(failedCheck(store)?.0 == .protocolCompatible)
-        #expect(failedCheck(store)?.1.contains("revisions 12 to 19") == true)
+        #expect(failedCheck(store)?.1.contains("revisions 12 to 24") == true)
     }
 
     /// A Rex Host's checks never ask herdr or tmux, or open a detection connection.

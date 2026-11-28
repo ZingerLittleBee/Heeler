@@ -42,7 +42,7 @@ struct RexControlLinkTests {
         #expect(upgrade.field("Sec-WebSocket-Protocol") == "rex.control.v1")
         #expect(hello["type"] == .string("hello"))
         #expect(hello["client"]?["kind"] == .string("other"))
-        #expect(hello["api_revision"] == .number(19))
+        #expect(hello["api_revision"] == .number(24))
         #expect(hello["api_min_revision"] == .number(12))
         #expect(hello["reconnect_token"] == nil)
         #expect(text.utf8.count < 512)
@@ -61,8 +61,8 @@ struct RexControlLinkTests {
     /// The server picks the newest revision both sides speak: an older Rex,
     /// such as 0.1.0-preview.14, welcomes at 12, and the link keeps what it
     /// agreed on.
-    @Test(arguments: [12, 15, 19])
-    func aWelcomeAtAnyRevisionFrom12To19IsAccepted(revision: Int) async throws {
+    @Test(arguments: [12, 19, 24])
+    func aWelcomeAtAnyRevisionFrom12To24IsAccepted(revision: Int) async throws {
         var welcome = FakeRexServer.Welcome()
         welcome.apiRevision = revision
         welcome.serverRevision = revision
@@ -90,9 +90,7 @@ struct RexControlLinkTests {
         await link.close()
     }
 
-    /// Only revisions 12 to 19 over `rex.control.v1` are accepted, and the
-    /// link then leaves for good, with a close frame.
-    @Test(arguments: [(19, "rex.control.v2"), (20, "rex.control.v1"), (11, "rex.control.v1")])
+    @Test(arguments: [(24, "rex.control.v2"), (25, "rex.control.v1"), (11, "rex.control.v1")])
     func aWelcomeForAnotherRevisionIsRefused(revision: Int, protocolName: String) async throws {
         var welcome = FakeRexServer.Welcome()
         welcome.apiRevision = revision
