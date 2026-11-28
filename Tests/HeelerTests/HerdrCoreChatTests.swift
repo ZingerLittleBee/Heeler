@@ -279,10 +279,9 @@ struct HerdrCoreChatTests {
         #expect(windowsPlatform.chatPrograms == HostCapabilities.confirmedWindowsCoreChatPrograms)
         #expect(!windowsPlatform.offersChat(for: .codex))
         #expect(!HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: "FreeBSD").chat)
-        // Each kernel offers what passed its owner's check there: on Linux and on
-        // the owner's Mac every program but OpenCode.
         let shipped: [(kernel: String, offered: Set<ChatProgram>)] = [
-            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]), ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]),
+            ("Linux", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]),
+            ("Darwin", [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]),
         ]
         for (kernel, offered) in shipped {
             let capabilities = HostCapabilities(serverKind: .herdrCore, platform: .posix, coreKernel: kernel)
@@ -294,10 +293,8 @@ struct HerdrCoreChatTests {
         }
     }
 
-    /// The programs whose Chat passed on hc-lab open on a Linux core Host, and OpenCode,
-    /// whose 1.x Agent showed no messages there, does not.
     @Test(arguments: [
-        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", false),
+        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", true),
         (["pi"], "pi", "pi", true), (["omp"], "omp", "omp", true), (["grok"], "grok", "grok-build", true),
     ])
     func programsThatPassedOnLinuxOpenThere(_ argv: [String], _ name: String, _ app: String, _ opens: Bool)
@@ -312,10 +309,8 @@ struct HerdrCoreChatTests {
         rig.store.setHosts([])
     }
 
-    /// The same Agents on a macOS core Host: the programs whose Chat passed on the
-    /// owner's Mac open, and OpenCode, which reached only candidates there, does not.
     @Test(arguments: [
-        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", false),
+        (["codex"], "codex", "codex", true), (["opencode"], "opencode", "opencode", true),
         (["pi"], "pi", "pi", true), (["omp"], "omp", "omp", true), (["grok"], "grok", "grok-build", true),
     ])
     func programsThatPassedOnAMacOpenThere(_ argv: [String], _ name: String, _ app: String, _ opens: Bool)

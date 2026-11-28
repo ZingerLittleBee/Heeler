@@ -163,7 +163,6 @@ extension HostCapabilities {
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
             if posix {
-                readOnlyChatPrograms = [.opencode, .amp]
                 offersAmpPlugin = true
                 requiresBoundAntigravity = true
             }
@@ -196,7 +195,9 @@ extension HostCapabilities {
                 startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true,
                 worktrees: true, uploads: true, composerSend: true, chat: tmuxChatPrograms != nil,
                 tabNames: true, closeTab: true, syncLayoutFromPlugin: false, takeOver: false,
-                composerStop: true, chatPrograms: tmuxChatPrograms, hostScripts: true,
+                composerStop: true, chatPrograms: tmuxChatPrograms,
+                offersAmpPlugin: tmuxChatPrograms?.contains(.amp) == true,
+                hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
             renamesExistingTabs = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
@@ -230,7 +231,7 @@ extension HostCapabilities {
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
             chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
             isNativeWindowsCore: coreOnWindows,
-            offersAmpPlugin: offered && platform == .posix,
+            offersAmpPlugin: (offered && platform == .posix) || (coreOnPosix && coreChatPrograms?.contains(.amp) == true),
             hostScripts: !coreOnWindows,
             copiesPaneID: offered,
             movesPanes: offered)
@@ -254,35 +255,16 @@ extension HostCapabilities {
     /// box under the profile's band (`π-hwa > `).
     static let confirmedWindowsCoreChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
-    /// The programs whose Chat a Linux core Host opens, each once the owner's check of
-    /// it passed and was recorded (ADR 0034). On hc-lab: Claude Code 2.1.288 and 2.1.316
-    /// against a mock API (2026-11-02), and, on herdr-core 0.1.13 (2026-11-03), Codex
-    /// 0.165.0 started with `--no-daemon` and Grok Build 1.0.70 signed in, and Pi 1.4.0
-    /// and Oh My Pi 18.13.3 on an API-key provider. OpenCode stays off, since this list
-    /// turns a program on for every release: 2.2.2 passed, but on the recheck
-    /// (2026-11-04) a 1.19.5 Agent's last turn never ended in Chat, and every Send from
-    /// Chat found no input box on screen. Antigravity CLI 1.5.3 passed in core
-    /// Terminals on a boxd VM, not hc-lab, with Ubuntu 24.04.5 and herdr-core 0.1.18
-    /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
-    /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
-    /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
-    /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
-    /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
-    /// Antigravity CLI 1.5.3 passed the owner's check in a core Terminal on 2026-11-08
-    /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
-    /// bound from its presence lock, sent from Chat and answered its trust prompt,
-    /// permissions and questions from cards, and the colored one followed `/clear`.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
     /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
     /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
     /// process start in the local account registry (rex-chat-parity.md).
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound

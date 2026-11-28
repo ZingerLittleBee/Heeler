@@ -261,7 +261,7 @@ struct HostOnboardingView: View {
                     LabeledContent("Native Chat", value: names.formatted(.list(type: .and)))
                 }
                 if capabilities.requiresBoundAntigravity {
-                    Text("Antigravity opens text Chat after its first conversation is recorded. Use its terminal for the first message, commands, attachments and approval dialogs.")
+                    Text("Antigravity opens Chat after its first conversation is recorded. Use its terminal for the first message, commands and approval dialogs.")
                 }
                 let readOnly = ChatProgram.allCases.filter(capabilities.readOnlyChatPrograms.contains)
                     .compactMap { SupportedAgentKind(rawValue: $0.rawValue)?.displayName }

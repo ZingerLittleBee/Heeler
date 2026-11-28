@@ -1012,7 +1012,7 @@ struct RexAntigravityChatLiveTests {
                 willReadScreen: { chat.updateSends(ChatComposerEchoes.sentMessages(composer.messages, rules: rules)) },
                 conversation: { chat.conversationGeneration })
             result.sessionWrite = chat.composerWriteCheck(for: composer)
-            result.restrictAntigravityToMessages(hasAttachments: !composer.imageAttachments.isEmpty)
+            result.restrictAntigravityToMessages()
             return result
         }
         func put(_ text: String) {
@@ -1034,10 +1034,7 @@ struct RexAntigravityChatLiveTests {
         composer.imageStagingDidBegin(operationID: 1)
         composer.imageStagingDidComplete(operationID: 1, path: staged.path, preview: nil)
         put(held)
-        guard case .refused = await composer.send(policy: policy()) else {
-            Issue.record("Chat accepted a message with attachments")
-            return
-        }
+        try #require(policy().validate(composer.composedDraft) == nil)
         let pill = try #require(composer.imageAttachments.first)
         composer.removeImageAttachment(id: pill.id)
         try #require(composer.imageAttachments.isEmpty)

@@ -182,13 +182,16 @@ struct HerdrCoreTerminalRecord: Decodable, Equatable, Sendable {
         foreground = try fields.decodeIfPresent(HerdrCoreForeground.self, forKey: .foreground)
     }
 
-    init(tmuxPane pane: TmuxInventory.Pane) {
+    init(tmuxPane pane: TmuxInventory.Pane, launchSession: String? = nil) {
         var labels: [String: String] = [:]
         if !pane.agentSession.isEmpty {
             labels[HerdrCoreSessionHint.sessionLabel] = pane.agentSession
         }
         if !pane.chatPick.isEmpty {
             labels[HerdrCoreSessionHint.pickLabel] = pane.chatPick
+        }
+        if let launchSession, !launchSession.isEmpty {
+            labels[HerdrCoreLaunch.sessionHintLabel] = launchSession
         }
         let pid = pane.processID > 0 ? pane.processID : nil
         let argv = pane.foregroundArguments ?? []

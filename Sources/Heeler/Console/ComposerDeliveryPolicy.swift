@@ -172,11 +172,10 @@ struct ComposerDeliveryPolicy: Sendable {
         return await preflight?(text)
     }
 
-    /// Antigravity on Rex has verified plain text delivery. Commands and staged files use its terminal.
-    mutating func restrictAntigravityToMessages(hasAttachments: Bool) {
+    mutating func restrictAntigravityToMessages() {
         prependingPreflight { text in
-            if hasAttachments || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
-                return .inputNotReady(String(localized: "Use the Antigravity terminal for commands and attachments."))
+            if ChatSendRules.isLeadingSlashCommand(text) {
+                return .inputNotReady(String(localized: "Use the Antigravity terminal for commands."))
             }
             return nil
         }

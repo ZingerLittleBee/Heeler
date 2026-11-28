@@ -26,6 +26,7 @@ enum TmuxLaunch {
         var script: Data
         /// The Linux start, whose script is the login shell's to run.
         var throughLoginShell: Bool
+        var launchSessionID: String? = nil
     }
 
     enum Refusal: Error, Equatable {
@@ -57,10 +58,12 @@ enum TmuxLaunch {
         let directory = try required(request.cwd)
         let launch = try disposition(of: server, createsSession: false)
         let agent = program(of: request, on: server, hookSettings: hookSettings)
-        return agentCommand(
+        var built = agentCommand(
             windowWords(session: session, directory: directory, label: request.tabLabel,
                         environment: agent.environment, program: agent.argv),
             request: request, paths: server.paths, loginShell: launch.loginShell)
+        built.launchSessionID = agent.launchSessionID
+        return built
     }
 
     static func shellWindow(_ request: ShellTerminalCreationRequest, on server: Server) throws -> Command {
@@ -77,11 +80,13 @@ enum TmuxLaunch {
     ) throws -> Command {
         let launch = try disposition(of: server, createsSession: true)
         let agent = program(of: request, on: server, hookSettings: hookSettings)
-        return agentCommand(
+        var built = agentCommand(
             sessionWords(
                 name: workspace.label, directory: try required(workspace.directory), tab: request.tabLabel,
                 environment: agent.environment, program: agent.argv, inheritServerEnvironment: launch.inherit),
             request: request, paths: server.paths, loginShell: launch.loginShell)
+        built.launchSessionID = agent.launchSessionID
+        return built
     }
 
     static func shellSession(_ workspace: NewWorkspaceSpec, tab: String? = nil, on server: Server) throws -> Command {
@@ -357,17 +362,20 @@ enum TmuxLaunch {
 
     private static func program(
         of request: AgentLaunchRequest, on server: Server, hookSettings: String?
-    ) -> (argv: [String], environment: [String: String]) {
+    ) -> (argv: [String], environment: [String: String], launchSessionID: String?) {
         guard let kind = SupportedAgentKind(rawValue: request.kind) else {
             let argv = HerdrCoreShellLaunch.argv(shell: server.shell, program: [request.kind] + request.arguments)
-            return (argv, request.environment)
+            return (argv, request.environment, nil)
         }
         var arguments = request.arguments
         if kind == .claude || kind == .droid, let hookSettings { arguments = ["--settings", hookSettings] + arguments }
         let start = HerdrCoreLaunch.agentStart(
             kind: kind, arguments: arguments, environment: request.environment,
             openCodeVersion: server.openCodeVersion)
-        return (HerdrCoreShellLaunch.argv(shell: server.shell, program: start.program), start.environment)
+        return (
+            HerdrCoreShellLaunch.argv(shell: server.shell, program: start.program),
+            start.environment,
+            start.sessionHint)
     }
 
     private static func windowWords(

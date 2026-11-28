@@ -366,6 +366,9 @@ struct AgyTranscriptReducer: ChatTranscriptReducer {
             transcript.latestPromptOffset = step.offset
             if let request, request.isComplete, !request.text.isEmpty {
                 transcript.recordedPrompts.append(ChatRecordedPrompt(offset: step.offset, text: request.text, entryID: id))
+            } else if images > 0, request?.isComplete != false {
+                transcript.recordedPrompts.append(
+                    ChatRecordedPrompt(offset: step.offset, text: text, entryID: id, pastedImagePaths: []))
             }
         }
 

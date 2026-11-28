@@ -540,4 +540,49 @@ struct RexSessionBinderTests {
 
         #expect(evidence == .unavailable(.cannotTellSessionOnWindows(.claude)), "\(label)")
     }
+
+    private static let openCodeSession = "ses_e6a000000001Abcdefghijklmn"
+
+    @Test func openCodeBindsFromPerPIDRexSessionFileUnderDefaultAndCustomConfigHome() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        var env = Self.rexEnvironment()
+        env["XDG_CONFIG_HOME"] = nil
+        await table.add(.init(pid: 4000, parent: 3900, name: "opencode", start: Self.start, environment: env))
+        let hint = Data(#"{"session":"\#(Self.openCodeSession)","pid":4000,"start":"\#(Self.start)"}"#.utf8)
+        await files.write(hint, at: "\(Self.home)/.config/opencode/heeler-session/4000.json")
+
+        let binder = Self.binder(
+            .opencode, table: table, files: files,
+            scope: Self.scope(names: ["opencode"]))
+        let record = Self.record(pid: 4000, program: "opencode")
+
+        let bound = try await binder.check(record)
+        #expect(bound == .bound(sessionID: Self.openCodeSession, transcriptRoot: nil, directory: nil))
+
+        var customEnv = Self.rexEnvironment()
+        customEnv["XDG_CONFIG_HOME"] = "/srv/xdg"
+        let otherSession = "ses_e6a000000002Abcdefghijklmn"
+        await table.add(.init(pid: 4000, parent: 3900, name: "opencode", start: Self.start, environment: customEnv))
+        await files.write(
+            Data(#"{"session":"\#(otherSession)","pid":4000,"start":"\#(Self.start)"}"#.utf8),
+            at: "/srv/xdg/opencode/heeler-session/4000.json")
+
+        let customBound = try await binder.check(record)
+        #expect(customBound == .bound(sessionID: otherSession, transcriptRoot: nil, directory: nil))
+    }
+
+    @Test func openCodeRejectsStaleOrMismatchedRexSessionFile() async throws {
+        let table = ScriptedProcessTable()
+        let files = VirtualHostFiles(home: Self.home)
+        await table.add(.init(pid: 4000, parent: 3900, name: "opencode", start: Self.start, environment: Self.rexEnvironment()))
+        let stale = Data(#"{"session":"\#(Self.openCodeSession)","pid":4000,"start":"other-start"}"#.utf8)
+        await files.write(stale, at: "\(Self.home)/.config/opencode/heeler-session/4000.json")
+
+        let binder = Self.binder(
+            .opencode, table: table, files: files,
+            scope: Self.scope(names: ["opencode"]))
+        let evidence = try await binder.check(Self.record(pid: 4000, program: "opencode"))
+        #expect(evidence == .unavailable(.cannotTellSession(.opencode)))
+    }
 }

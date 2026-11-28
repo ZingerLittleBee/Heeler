@@ -47,11 +47,41 @@ final actor ScriptedRexHost: RexHostConnection {
     /// them a read fails.
     private let files: VirtualHostFiles?
     private let processes: ProcessRead?
+    private let editFiles: InMemoryHostFiles?
+    private let openCodeVersion: String?
+    private var ampExchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)?
+    private var ampInstall: (@Sendable (String, Data?) async throws -> Void)?
+    private(set) var ampInstallCalls: [(directory: String, previous: Data?)] = []
+
+    func setAmpHandlers(
+        exchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)? = nil,
+        install: (@Sendable (String, Data?) async throws -> Void)? = nil
+    ) {
+        ampExchange = exchange
+        ampInstall = install
+    }
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        log.append("amp \(request.op)")
+        guard let ampExchange else { throw AmpChatProblem.unreachable }
+        return try await ampExchange(request, record)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        log.append("amp install \(directory)")
+        ampInstallCalls.append((directory, previous))
+        if let ampInstall {
+            try await ampInstall(directory, previous)
+            return
+        }
+        throw AmpChatProblem.unreachable
+    }
 
     init(
         probe: [String]? = nil, socketCheck: String? = nil, control: [Channel] = [], data: [Channel] = [],
         admission: SSHChannelAdmission? = nil, platform: HostPlatform = .posix, closingClosesChannels: Bool = false,
-        files: VirtualHostFiles? = nil, processes: ProcessRead? = nil
+        files: VirtualHostFiles? = nil, processes: ProcessRead? = nil,
+        editFiles: InMemoryHostFiles? = nil, openCodeVersion: String? = nil
     ) {
         self.probe = probe
         self.socketCheck = socketCheck
@@ -62,6 +92,8 @@ final actor ScriptedRexHost: RexHostConnection {
         self.closingClosesChannels = closingClosesChannels
         self.files = files
         self.processes = processes
+        self.editFiles = editFiles
+        self.openCodeVersion = openCodeVersion
     }
 
     /// Serves `endpoint` for every data channel from now on.
@@ -141,8 +173,50 @@ final actor ScriptedRexHost: RexHostConnection {
     }
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        if let editFiles {
+            return try await editFiles.readHostFileRange(range)
+        }
         log.append("read \(range.path)")
         return try await scriptedFiles().readRange(range)
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        guard let editFiles else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+        }
+        try await editFiles.replaceHostTextFile(path: path, expected: expected, contents: contents)
+    }
+
+    func createHostFolder(path: String) async throws {
+        guard let editFiles else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+        }
+        try await editFiles.createHostFolder(path: path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        guard let editFiles else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+        }
+        try await editFiles.removeEmptyHostFolder(path: path)
+    }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        guard let openCodeVersion else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+        }
+        let text = String(decoding: script, as: UTF8.self)
+        let begin = Self.marker(in: text, prefix: "__HEELER_AGENTS_BEGIN_")
+        let end = Self.marker(in: text, prefix: "__HEELER_AGENTS_END_")
+        let out = "\n\(begin)\nversion \(openCodeVersion)\n\(end)\n"
+        return GitExecResult(stdout: Data(out.utf8), stderr: Data(), exitStatus: 0)
+    }
+
+    private static func marker(in script: String, prefix: String) -> String {
+        guard let range = script.range(of: prefix) else { return "" }
+        let rest = script[range.lowerBound...]
+        let end = rest.firstIndex(where: { $0 == "'" || $0 == "\n" || $0 == " " }) ?? rest.endIndex
+        return String(rest[..<end])
     }
 
     func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {

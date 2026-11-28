@@ -251,6 +251,13 @@ struct ChatSendRules: Sendable {
         case refused(ComposerRefusal)
     }
 
+    static func isLeadingSlashCommand(_ text: String) -> Bool {
+        let trimmed = removingInvisibles(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") else { return false }
+        let name = trimmed.dropFirst().prefix { !$0.isWhitespace }
+        return !name.contains("/")
+    }
+
     func validate(_ draft: String) -> ComposerRefusal? {
         if case .refused(let refusal) = read(draft) { return refusal }
         return nil

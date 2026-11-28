@@ -147,6 +147,14 @@ struct TmuxChatTests {
                         keepalive: KeepalivePolicy(interval: .seconds(60)),
                         settledLoopLife: .zero)
                 },
+                harnessEdits: HarnessConfigEditStore(),
+                hostHelperBundle: {
+                    HostHelperFixture.bundle(
+                        extraFiles: Dictionary(
+                            uniqueKeysWithValues: OpenCodePluginEdit.fileNames.map {
+                                ("extensions/opencode/\($0)", Data("// \($0)\n".utf8))
+                            }))
+                },
                 chatTiming: timing,
                 chatNow: { steppedByTheTest ? clock.now : Date() })
         }
@@ -192,10 +200,11 @@ struct TmuxChatTests {
     @Test func hostCapabilitiesOfferTmuxChatOnlyOnLinuxAndMacOSForConfirmedPrograms() {
         #expect(!HostCapabilities(serverKind: .tmux).chat)
         #expect(!HostCapabilities(serverKind: .tmux, coreKernel: "FreeBSD").chat)
-        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+        let expected: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
         for kernel in ["Linux", "Darwin"] {
             let capabilities = HostCapabilities(serverKind: .tmux, coreKernel: kernel)
             #expect(capabilities.chat)
+            #expect(capabilities.offersAmpPlugin)
             #expect(capabilities.chatPrograms == expected)
             for program in ChatProgram.allCases {
                 #expect(capabilities.offersChat(for: program) == expected.contains(program))
@@ -211,7 +220,10 @@ struct TmuxChatTests {
         ("Darwin", "grok", ["grok"], .grok),
         ("Linux", "pi", ["pi"], .pi),
         ("Darwin", "omp", ["omp"], .omp),
-        ("Darwin", "opencode", ["opencode"], nil),
+        ("Darwin", "opencode", ["opencode"], .opencode),
+        ("Linux", "opencode", ["opencode"], .opencode),
+        ("Linux", "amp", ["amp"], .amp),
+        ("Darwin", "amp", ["amp"], .amp),
         ("FreeBSD", "claude", ["claude"], nil),
     ])
     func chatOfferFollowsKernelAndProgram(
@@ -595,5 +607,68 @@ struct TmuxChatTests {
             Self.isFollowing(secondChat, suffix: "\(Self.first).jsonl")
         }
         secondChat.end()
+    }
+
+    private static let openCodeSession = "ses_e6a000000001Abcdefghijklmn"
+
+    @Test func openCodeBindsFromTmuxSessionOptionAndOffersPluginEdit() async throws {
+        let rig = Rig(host: host, kernel: "Linux")
+        let hint = Self.sessionHint(session: Self.openCodeSession)
+        await rig.tmux.setPanes([
+            .make(
+                processID: Self.pid, command: "opencode", path: Self.cwd,
+                status: "state=idle:app=opencode:turn=0:blocked=0",
+                agentSession: hint, arguments: ["opencode"]),
+        ])
+        await rig.tmux.setProcessEnvironment(
+            Self.tmuxEnvironment(extra: ["PATH": "/usr/local/bin:/usr/bin:/bin", "XDG_CONFIG_HOME": nil]),
+            forProcess: Self.pid, name: "opencode", start: Self.start)
+        await rig.tmux.setInstalled(["opencode"], openCodeVersion: "opencode v2.2.5")
+        let configPath = "\(Self.home)/.config/opencode/cli.json"
+        let folderPath = "\(Self.home)/.config/opencode/heeler-opencode"
+        let original = Data("{\n  \"theme\": \"dark\"\n}\n".utf8)
+        await rig.tmux.helper.seedFile(configPath, original)
+        try await rig.start()
+        defer { rig.store.setHosts([]) }
+
+        let agent = try #require(rig.agent)
+        #expect(rig.store.chatProgram(for: agent) == .opencode)
+        let projection = try #require(rig.store.tmuxProjection(on: host.id))
+        let evidence = try await projection.checkChatSession(paneID: "%0", program: .opencode)
+        #expect(evidence == .bound(sessionID: Self.openCodeSession, transcriptRoot: nil, directory: nil))
+
+        let flow = rig.store.openCodePluginEditFlow(for: agent.id, keepingTo: rig.store.corePin(on: host.id))
+        await flow.review()
+        guard case .review(let change) = flow.phase else {
+            Issue.record("expected review phase, got \(flow.phase)")
+            return
+        }
+        #expect(change.path == configPath)
+        #expect(change.folder?.path == folderPath)
+
+        await flow.accept()
+        #expect(flow.phase == .idle)
+        #expect(await rig.tmux.helper.files["\(folderPath)/tui.js"]?.contents == Data("// tui.js\n".utf8))
+        #expect(
+            await rig.tmux.helper.files[configPath]?.contents
+                == Data("{\n  \"plugins\": [\"./heeler-opencode\"],\n  \"theme\": \"dark\"\n}\n".utf8))
+
+        await flow.undo()
+        #expect(flow.applied == nil)
+        #expect(await rig.tmux.helper.files[configPath]?.contents == original)
+    }
+
+    @Test func openCodeLaunchOnTmuxCarriesLaunchSessionHint() async throws {
+        let server = TmuxLaunch.Server(
+            paths: ScriptedTmuxHost.paths(), shell: "/bin/zsh", kernel: "Darwin", running: true,
+            openCodeVersion: "opencode v2.2.5")
+        let request = AgentLaunchRequest(kind: "opencode", name: "oc", workspaceID: "$0", cwd: Self.cwd)
+        let command = try TmuxLaunch.agentWindow(request, on: server)
+        let sessionID = try #require(command.launchSessionID)
+        #expect(OpenCodeSessionID(sessionID) != nil)
+        let record = HerdrCoreTerminalRecord(
+            tmuxPane: .make(processID: Self.pid, command: "opencode", path: Self.cwd, arguments: ["opencode", "-s", sessionID]),
+            launchSession: sessionID)
+        #expect(record.labels[HerdrCoreLaunch.sessionHintLabel] == sessionID)
     }
 }

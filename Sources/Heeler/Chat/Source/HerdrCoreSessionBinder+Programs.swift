@@ -329,16 +329,9 @@ extension HerdrCoreSessionBinder {
 
     // MARK: OpenCode
 
-    /// OpenCode says nothing of its session on the Host, so only an id Heeler gave
-    /// it counts: a `heeler.*` hint for this very process, or the launch label,
-    /// which a launch writes before any process exists. The foreground's own argv
-    /// ties that one to this process, and a Terminal that runs anything else no
-    /// longer has it there (ADR 0034).
     func checkOpenCode(
         _ record: HerdrCoreTerminalRecord, tree: HerdrCoreTerminalProcesses
     ) async throws -> ChatSessionEvidence {
-        // Rex can read this account's database, but supplies no OpenCode route for this block.
-        if case .rex = processScope { return cannotTell }
         guard let pid = agentProcess(in: tree), let process = tree.facts[pid], process.name == "opencode",
             case .value(let start) = process.start
         else { return cannotTell }
@@ -347,11 +340,43 @@ extension HerdrCoreSessionBinder {
                 return .bound(sessionID: session.rawValue, transcriptRoot: nil, directory: nil)
             }
         }
+        if case .rex = processScope,
+            let session = try await rexOpenCodeSession(of: process, pid: pid, start: start)
+        {
+            return .bound(sessionID: session, transcriptRoot: nil, directory: nil)
+        }
         guard let label = record.labels[HerdrCoreLaunch.sessionHintLabel],
             let session = OpenCodeSessionID(label), let argv = record.foreground?.argv,
             zip(argv, argv.dropFirst()).contains(where: { $0 == "-s" && $1 == label })
         else { return cannotTell }
         return .bound(sessionID: session.rawValue, transcriptRoot: nil, directory: nil)
+    }
+
+    private static let rexOpenCodeSessionLimit = 16 * 1024
+
+    private func rexOpenCodeSession(
+        of process: HostProcessReader.Facts, pid: String, start: String
+    ) async throws -> String? {
+        guard case .value(let home)? = process.variables[Self.homeVariable], RemoteFilePath.isAcceptable(home) else {
+            return nil
+        }
+        let xdgConfigHome: String?
+        switch process.variables[Self.xdgConfigHomeVariable] {
+        case .value(let value): xdgConfigHome = value
+        case .unset: xdgConfigHome = nil
+        case .unavailable, nil: return nil
+        }
+        guard let directory = OpenCodePluginEdit.configDirectory(xdgConfigHome: xdgConfigHome, home: home) else {
+            return nil
+        }
+        let path = RemoteFilePath.join(directory, HostHelperScript.rexSessionFolderName, "\(pid).json")
+        let slice = try await files.read(RemoteFileRange(path: path, offset: 0, maxBytes: Self.rexOpenCodeSessionLimit))
+        guard slice.length != nil, slice.data.count < Self.rexOpenCodeSessionLimit,
+            let hint = HerdrCoreSessionHint(label: String(decoding: slice.data, as: UTF8.self)),
+            String(hint.pid) == pid, hint.start == start,
+            let session = OpenCodeSessionID(hint.session)
+        else { return nil }
+        return session.rawValue
     }
 
     // MARK: Antigravity CLI

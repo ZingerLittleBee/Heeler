@@ -94,6 +94,8 @@ struct HarnessConfigHunk: Codable, Equatable, Sendable {
             offset: offset + removed.count, removed: Data(), added: Data(added.dropFirst(removed.count)))
     }
 
+    var isEmpty: Bool { removed.isEmpty && added.isEmpty }
+
     /// `base` with this change made.
     func applied(to base: Data) -> Data {
         var result = base.prefix(offset)
@@ -171,6 +173,7 @@ struct HarnessConfigPendingChange: Equatable, Sendable {
     var hunk: HarnessConfigHunk { HarnessConfigHunk(before: before ?? Data(), after: after) }
     var shownLines: [HarnessConfigShownLine] { HarnessConfigShownLine.lines(of: hunk) }
     var createsFile: Bool { before == nil }
+    var changesFile: Bool { before != after }
     /// Whether any of the folder's files is new or different.
     var writesFolderFiles: Bool {
         folder?.filePaths.contains { !folderFilesInPlace.contains($0) } ?? false
@@ -255,7 +258,7 @@ struct HarnessConfigEditor: Sendable {
     /// A configuration file past this is no file Heeler should be rewriting.
     static let maximumFileSize = 1_048_576
 
-    let files: any HostServices
+    let files: any HarnessConfigFileAccess
     var now: @Sendable () -> Date = { Date() }
     var makeID: @Sendable () -> UUID = { UUID() }
     /// Folders another applied edit's file still names, which this one leaves in
@@ -267,6 +270,16 @@ struct HarnessConfigEditor: Sendable {
         let before = try await read(edit.path)
         switch edit.transform(before) {
         case .alreadyApplied:
+            if let folder = edit.folder, let before {
+                let inPlace = try await filesInPlace(folder)
+                if folder.filePaths.contains(where: { !inPlace.contains($0) }) {
+                    return .change(
+                        HarnessConfigPendingChange(
+                            editID: edit.id, harness: edit.harness, path: edit.path, before: before,
+                            after: before, folder: folder, listEntry: edit.listEntry,
+                            folderFilesInPlace: inPlace))
+                }
+            }
             return .alreadyApplied(path: edit.path)
         case .refused(let reason, let manualInstruction):
             return .refused(
@@ -307,16 +320,18 @@ struct HarnessConfigEditor: Sendable {
             do {
                 try await place(folder)
             } catch {
-                await takeBack(folder)
+                if change.changesFile { await takeBack(folder) }
                 throw error
             }
         }
-        do {
-            try await files.replaceHostTextFile(
-                path: change.path, expected: change.before, contents: change.after)
-        } catch HostTextFileError.changedSinceRead {
-            if let folder = change.folder { await takeBack(folder) }
-            throw HarnessConfigEditError.changedSinceRead
+        if change.changesFile {
+            do {
+                try await files.replaceHostTextFile(
+                    path: change.path, expected: change.before, contents: change.after)
+            } catch HostTextFileError.changedSinceRead {
+                if let folder = change.folder { await takeBack(folder) }
+                throw HarnessConfigEditError.changedSinceRead
+            }
         }
         return record(of: change)
     }
@@ -352,8 +367,12 @@ struct HarnessConfigEditor: Sendable {
     /// holds it. Nil if it holds anything else.
     func record(ofWritten change: HarnessConfigPendingChange) async throws -> HarnessConfigAppliedEdit? {
         guard try await read(change.path) == change.after else {
-            if let folder = change.folder { await takeBack(folder) }
+            if let folder = change.folder, change.changesFile { await takeBack(folder) }
             return nil
+        }
+        if let folder = change.folder {
+            let inPlace = try await filesInPlace(folder)
+            guard folder.filePaths.allSatisfy(inPlace.contains) else { return nil }
         }
         return record(of: change)
     }
@@ -376,13 +395,15 @@ struct HarnessConfigEditor: Sendable {
     func undo(_ applied: HarnessConfigAppliedEdit) async throws {
         let current = try await read(applied.path)
         do {
-            if let current, Self.digest(current) == applied.writtenDigest {
+            if let current, applied.createdFile || !applied.hunk.isEmpty,
+                Self.digest(current) == applied.writtenDigest
+            {
                 try await files.replaceHostTextFile(
                     path: applied.path, expected: current,
                     contents: applied.createdFile ? nil : applied.hunk.reverted(from: current))
             } else if let entry = applied.listEntry {
                 if let current { try await removeEntry(entry, of: applied.path, holding: current) }
-            } else {
+            } else if applied.createdFile || !applied.hunk.isEmpty {
                 throw HarnessConfigEditError.changedSinceWritten
             }
         } catch HostTextFileError.changedSinceRead {

@@ -3593,7 +3593,7 @@ final class ConsoleStore {
             services: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 guard !self.hasLeftCore(corePin, on: hostID) else { throw self.leftCoreError(on: hostID) }
-                return try await self.harnessEditServices(on: hostID)
+                return try await self.harnessConfigFileAccess(on: hostID)
             },
             makeEdit: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
@@ -3608,7 +3608,7 @@ final class ConsoleStore {
             hostID: hostID, listing: edit, store: harnessEdits,
             services: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
-                return try await self.harnessEditServices(on: hostID)
+                return try await self.harnessConfigFileAccess(on: hostID)
             })
     }
 
@@ -3658,6 +3658,13 @@ final class ConsoleStore {
 
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {
         try await projection(for: hostID).withHostServices { $0 }
+    }
+
+    private func harnessConfigFileAccess(on hostID: Host.ID) async throws -> any HarnessConfigFileAccess {
+        if let rex = projections[hostID] as? RexConsoleProjection {
+            return try await rex.openCodeEditServices()
+        }
+        return try await harnessEditServices(on: hostID)
     }
 
     private func reconcileAgyAnnotationTitles() {
@@ -3752,45 +3759,55 @@ final class ConsoleStore {
     }
 
     private func openCodePluginEdit(paneID: String, on hostID: Host.ID) async throws -> HarnessConfigEdit {
-        guard let core = projections[hostID] as? HerdrCoreConsoleProjection else {
+        let version: String?
+        let home: String
+        let xdgConfigHome: String?
+        if let core = projections[hostID] as? HerdrCoreConsoleProjection {
+            guard let foreground = core.foreground(of: paneID), let process = foreground.pid else {
+                throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+            let path: String?
+            switch await core.processVariable("PATH", pid: process) {
+            case .value(let value): path = value
+            case .unset: path = nil
+            case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+            version = try await core.openCodeVersion(
+                running: OpenCodePluginEdit.program(running: foreground.argv), path: path, directory: foreground.cwd)
+            let services = try await harnessEditServices(on: hostID)
+            switch await core.processVariable("HOME", pid: process) {
+            case .value(let value): home = value
+            case .unset: home = try await services.hostHomeDirectory()
+            case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+            switch await core.processVariable("XDG_CONFIG_HOME", pid: process) {
+            case .value(let value): xdgConfigHome = value
+            case .unset: xdgConfigHome = nil
+            case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
+            }
+        } else if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            let context = try await tmux.openCodeEditContext(paneID: paneID)
+            version = context.version
+            home = context.home
+            xdgConfigHome = context.xdgConfigHome
+        } else if let rex = projections[hostID] as? RexConsoleProjection {
+            let context = try await rex.openCodeEditContext(paneID: paneID)
+            version = context.version
+            home = context.home
+            xdgConfigHome = context.xdgConfigHome
+        } else {
             throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
         }
-        // Only an environment that was read can say a variable is unset.
-        guard let foreground = core.foreground(of: paneID), let process = foreground.pid else {
-            throw HarnessConfigEditError.agentEnvironmentUnavailable
-        }
-        // The release is the Agent's own, which its PATH found, and not the login
-        // shell's (herdr compatibility, OpenCode on a signed-in Linux core).
-        let path: String?
-        switch await core.processVariable("PATH", pid: process) {
-        case .value(let value): path = value
-        case .unset: path = nil
-        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
-        }
-        let version = try await core.openCodeVersion(
-            running: OpenCodePluginEdit.program(running: foreground.argv), path: path, directory: foreground.cwd)
         guard let form = OpenCodePluginEdit.ConfigForm.of(version: version) else {
             throw HarnessConfigEditError.openCodeVersionUnknown
         }
-        let services = try await harnessEditServices(on: hostID)
-        let home: String
-        switch await core.processVariable("HOME", pid: process) {
-        case .value(let value): home = value
-        case .unset: home = try await services.hostHomeDirectory()
-        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
-        }
-        let xdgConfigHome: String?
-        switch await core.processVariable("XDG_CONFIG_HOME", pid: process) {
-        case .value(let value): xdgConfigHome = value
-        case .unset: xdgConfigHome = nil
-        case .unavailable: throw HarnessConfigEditError.agentEnvironmentUnavailable
-        }
+        let files = try await harnessConfigFileAccess(on: hostID)
         guard let directory = OpenCodePluginEdit.configDirectory(xdgConfigHome: xdgConfigHome, home: home) else {
             throw HarnessConfigEditError.unresolvedPath
         }
         return OpenCodePluginEdit.edit(
             configDirectory: directory,
-            fileName: try await OpenCodePluginEdit.fileName(in: directory, form: form, over: services),
+            fileName: try await OpenCodePluginEdit.fileName(in: directory, form: form, over: files),
             form: form, files: try OpenCodePluginEdit.pluginFiles(from: try hostHelperBundle()))
     }
 

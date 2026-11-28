@@ -95,7 +95,7 @@ final class RexComposerSend: CheckedComposerSend {
 
         if route == .chat, held.kind == ChatProgram.agy.rawValue {
             guard verifying?.session != nil else { return .refused(.inputNotReady(AgentChatStore.rexReadOnlyConversation)) }
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
+            if ChatSendRules.isLeadingSlashCommand(text) {
                 return .refused(.inputNotReady(String(localized: "Send commands from the Antigravity terminal.")))
             }
         }

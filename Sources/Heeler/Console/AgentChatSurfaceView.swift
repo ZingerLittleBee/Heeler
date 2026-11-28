@@ -1190,7 +1190,7 @@ struct AgentChatSurfaceView: View {
             conversation: conversationStamp)
         policy.sessionWrite = chat?.composerWriteCheck(for: composer)
         if isBoundAntigravity {
-            policy.restrictAntigravityToMessages(hasAttachments: !composer.imageAttachments.isEmpty)
+            policy.restrictAntigravityToMessages()
         }
         if program == .amp {
             let connection = chat?.ampConnection
@@ -2125,10 +2125,10 @@ struct AgentChatSurfaceView: View {
         return AgentComposerActions(
             canBegin: session.staging.canBegin,
             attachLinkCount: 0,
-            addImage: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingPhoto = true } : nil,
-            pasteImage: offers.attachments && program != .amp && !isBoundAntigravity
+            addImage: offers.attachments && program != .amp ? { isSelectingPhoto = true } : nil,
+            pasteImage: offers.attachments && program != .amp
                 ? { session.pasteClipboard() } : nil,
-            addFile: offers.attachments && program != .amp && !isBoundAntigravity ? { isSelectingFile = true } : nil,
+            addFile: offers.attachments && program != .amp ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
                 ? {
