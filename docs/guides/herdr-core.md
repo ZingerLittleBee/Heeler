@@ -126,6 +126,7 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 | Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or when Heeler started it. Otherwise use **Choose a Conversation**. |
 | Oh My Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or once the first message makes it hold its session file. Otherwise use **Choose a Conversation**. |
 | Antigravity CLI | Opens on macOS and Linux. Waits for its first message, from Chat or the terminal, then follows it and `/clear`. |
+| Amp | On macOS and Linux, install Heeler's Amp plugin from Chat and reload plugins in Amp (**Ctrl+O** → **plugins › reload**). Chat reads and sends in the active thread; use the terminal for attachments, commands, and approvals. |
 | OpenCode | Off for herdr-core Hosts. Offers the terminal only. |
 
 - **Can't Tell the Conversation:** When Chat cannot prove the conversation, it shows **Can't Tell the Conversation** with the fix and **Check Again**. On macOS and Linux, tap **Choose a Conversation**, preview a conversation, and tap **Use This Conversation**.

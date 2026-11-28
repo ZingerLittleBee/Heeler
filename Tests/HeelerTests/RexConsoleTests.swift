@@ -30,7 +30,7 @@ struct RexConsoleTests {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin, .amp]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }
@@ -68,7 +68,7 @@ struct RexConsoleTests {
             #expect(offers.chat == opensChat)
             #expect(offers.chatPrograms == programs)
             let histories: Set<ChatProgram> = switch kernel {
-            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.opencode, .amp]
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.opencode]
             default: []
             }
             #expect(offers.readOnlyChatPrograms == histories)

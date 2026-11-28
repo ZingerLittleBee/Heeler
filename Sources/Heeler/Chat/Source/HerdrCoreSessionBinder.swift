@@ -277,7 +277,7 @@ struct HerdrCoreSessionBinder: Sendable {
                 ? tree.agentOnWindows(isAgent: { $0?.name == "grok" }) : tree.agent(isAgent: { $0?.name == "grok" })
         case .devin: tree.nearestAgent(isAgent: { $0?.name == "devin" })
         case .droid: tree.agent(isAgent: { $0?.name == "droid" })
-        case .amp: nil
+        case .amp: tree.agent(isAgent: { $0?.name == "amp" })
         case .opencode: tree.agent(isAgent: { $0?.name == "opencode" })
         case .pi, .omp: piFamilyAgent(in: tree)
         // A native binary that calls itself `agy`, with nothing of its own under
@@ -304,6 +304,22 @@ struct HerdrCoreSessionBinder: Sendable {
         guard let pid = agentProcess(in: tree) else { return nil }
         return try await DevinSession.target(root: pid, members: tree.descendants.filter(tree.sharesScope), facts: tree.facts,
             directory: record.foreground?.cwd ?? record.cwd, scope: scope, files: files)
+    }
+
+    func ampProcess(in tree: HerdrCoreTerminalProcesses, foreground: HerdrCoreForeground?) -> String? {
+        if let pid = agentProcess(in: tree) { return pid }
+        guard tree.rootIsForeground, tree.sharesScope(tree.root),
+            let executable = foreground?.argv.first
+        else { return nil }
+        let base = executable.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last?.lowercased() ?? ""
+        if base == "amp" { return tree.root }
+        let runtimes: Set<String> = ["node", "nodejs", "bun", "deno"]
+        if runtimes.contains(base), let foreground,
+            HerdrCoreAgentRule.program(arguments: foreground.argv, name: foreground.name) == .known(ChatProgram.amp.rawValue)
+        {
+            return tree.root
+        }
+        return nil
     }
 
     /// The hook atomically replaces one file per foreground Droid. A label can

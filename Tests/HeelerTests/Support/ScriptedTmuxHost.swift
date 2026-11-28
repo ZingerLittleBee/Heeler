@@ -100,6 +100,31 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
     private var allProcessesUnavailable = false
     private(set) var processVariableReads: [String] = []
     private(set) var processReadRequests: [HostProcessReader.Request] = []
+    private var ampExchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)?
+    private var ampInstall: (@Sendable (String, Data?) async throws -> Void)?
+    private(set) var ampInstallCalls: [(directory: String, previous: Data?)] = []
+
+    func setAmpHandlers(
+        exchange: (@Sendable (AmpChatRequest, AmpPluginRecord) async throws -> AmpChatReply)? = nil,
+        install: (@Sendable (String, Data?) async throws -> Void)? = nil
+    ) {
+        ampExchange = exchange
+        ampInstall = install
+    }
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        guard let ampExchange else { throw AmpChatProblem.unreachable }
+        return try await ampExchange(request, record)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        ampInstallCalls.append((directory, previous))
+        if let ampInstall {
+            try await ampInstall(directory, previous)
+            return
+        }
+        throw AmpChatProblem.unreachable
+    }
 
     /// Everything that happened, in order.
     private(set) var log: [String] = []
@@ -1486,6 +1511,16 @@ actor ScriptedTmuxHost: TmuxHostConnection, ServerKindDetectionConnection {
         func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
             try await requireConnected()
             return try await host.onOpenDial(id) { try await $0.readProcesses(request) }
+        }
+
+        func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+            try await requireConnected()
+            return try await host.onOpenDial(id) { try await $0.exchangeAmpChat(request, record: record) }
+        }
+
+        func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+            try await requireConnected()
+            try await host.onOpenDial(id) { try await $0.installAmpChatPlugin(in: directory, replacing: previous) }
         }
 
         func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {

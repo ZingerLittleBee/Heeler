@@ -1802,3 +1802,62 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         throw HeelerPluginUnavailableError.tmux
     }
 }
+
+extension TmuxConsoleProjection: AmpChatProjection {
+    func ampPluginLocation(in pane: String) async throws -> AmpPluginLocation {
+        guard kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel,
+            !isAwaitingSnapshot, inventory != nil, let activeServer = server
+        else { throw AmpChatProblem.unidentified }
+        guard case .live(let before) = try await readPaneForeground(pane),
+            before.instance == activeServer.instance,
+            TmuxAgentRule.agentKind(in: before.pane) == ChatProgram.amp.rawValue
+        else { throw AmpChatProblem.unidentified }
+        var record = HerdrCoreTerminalRecord(tmuxPane: before.pane)
+        if let foregroundPID = before.foregroundPID, foregroundPID > 0 {
+            record.foreground = HerdrCoreForeground(
+                pid: foregroundPID, name: before.pane.command,
+                argv: before.pane.foregroundArguments ?? [], cwd: before.pane.path)
+        }
+        let binder = chatBinder(paneID: pane, program: .amp, server: activeServer)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(values: ["HOME", "XDG_CONFIG_HOME"])
+        guard let tree = try await binder.readTerminalProcesses(of: record, ask: ask),
+            let pidString = binder.ampProcess(in: tree, foreground: record.foreground),
+            let pid = Int(pidString), pid > 0,
+            let fact = tree.facts[pidString],
+            let place = AmpPluginLocation(pid: pid, facts: fact, serverInstance: activeServer.instance.id)
+        else { throw AmpChatProblem.unidentified }
+        guard case .live(let after) = try await readPaneForeground(pane),
+            after.instance == activeServer.instance,
+            server?.instance == activeServer.instance,
+            TmuxAgentRule.agentKind(in: after.pane) == ChatProgram.amp.rawValue,
+            after.foregroundPID == before.foregroundPID,
+            after.pane.processID == before.pane.processID
+        else { throw AmpChatProblem.changed }
+        return place
+    }
+
+    func exchangeAmp(_ request: AmpChatRequest, record: AmpPluginRecord, at place: AmpPluginLocation, in pane: String) async throws -> AmpChatReply {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.exchangeAmpChat(request, record: record)
+        }
+    }
+
+    func installAmp(at place: AmpPluginLocation, replacing previous: Data?, in pane: String) async throws {
+        try await withAmp(at: place, in: pane) { endpoint in
+            try await endpoint.installAmpChatPlugin(in: place.directory, replacing: previous)
+        }
+    }
+
+    private func withAmp<Value: Sendable>(
+        at place: AmpPluginLocation, in pane: String,
+        operation: @escaping @Sendable (any AmpChatHost) async throws -> Value
+    ) async throws -> Value {
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        guard server?.instance.id == place.serverInstance else { throw AmpChatProblem.changed }
+        let result = try await session.withTransport { transport in
+            try await operation(transport.hostServices)
+        }
+        guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
+        return result
+    }
+}

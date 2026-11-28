@@ -313,7 +313,7 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .amp])
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).offersChat(for: .grok))
         #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel).offersChat(for: .grok))
         #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))

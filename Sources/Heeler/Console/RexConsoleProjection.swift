@@ -1369,7 +1369,7 @@ extension RexConsoleProjection: AmpChatProjection {
         }
         let after = try await detailsWithCurrentForeground(at: address, listed: listed, server: currentServer)
         guard after.processID == pid, RexAgentRule.agentKind(in: after) == ChatProgram.amp.rawValue, let fact = facts[key],
-              let place = AmpPluginLocation(pid: pid, facts: fact, rexInstance: currentServer.instanceID)
+              let place = AmpPluginLocation(pid: pid, facts: fact, serverInstance: currentServer.instanceID)
         else { throw AmpChatProblem.changed }
         return place
     }
@@ -1392,7 +1392,7 @@ extension RexConsoleProjection: AmpChatProjection {
     ) async throws -> Value {
         guard try await ampPluginLocation(in: pane) == place else { throw AmpChatProblem.changed }
         let result = try await session.withConnection { link in
-            guard link.server.instanceID == place.rexInstance, let endpoint = link.transport.readOnlyAmp else {
+            guard link.server.instanceID == place.serverInstance, let endpoint = link.transport.amp else {
                 throw AmpChatProblem.changed
             }
             return try await operation(endpoint)
