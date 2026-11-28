@@ -50,7 +50,7 @@ struct AgentListFieldsAddFieldSheet: View {
                                 MainActorContent { fieldButton(for: token) }
                             }
                         } header: {
-                            Text("herdr fields")
+                            Text("Herdr fields")
                         }
                     }
                     if !offer.heelerFields.isEmpty {
@@ -90,7 +90,7 @@ struct AgentListFieldsAddFieldSheet: View {
                     } header: {
                         Text("Custom field")
                     } footer: {
-                        Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text.")
+                        Text("Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from Herdr plugins and display as plain text.")
                     }
                     Section {
                         EmptyView()

@@ -3139,7 +3139,7 @@ actor HeelerSSHTransport: Transport {
                             }
                         }
                         throw TransportError.channelFailed(
-                            detail: String(localized: "The Windows herdr API bridge closed before a reply. Start the selected herdr session on the Host."))
+                            detail: String(localized: "The Windows Herdr API bridge closed before a reply. Start the selected Herdr session on the Host."))
                     } catch {
                         try? await channel.close(timeout: .seconds(2))
                         if error is SSHError { throw await self.mapOperationError(error) }
@@ -3259,7 +3259,7 @@ actor HeelerSSHTransport: Transport {
     private func refuseHerdrEndpointOnWindows() throws {
         guard herdrLauncher != nil else { return }
         throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "A herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts"))
+            feature: String(localized: "A Herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts"))
     }
 
     func remoteHomeDirectory() async throws -> String {
@@ -3323,7 +3323,7 @@ actor HeelerSSHTransport: Transport {
                     .split(whereSeparator: \.isNewline).contains("herdr-api-bridge-v1")
             else {
                 throw TransportError.hostFeatureUnavailable(
-                    feature: String(localized: "Native Windows connections require herdr 0.9.3 or newer with remote-api-bridge"))
+                    feature: String(localized: "Native Windows connections require Herdr 0.9.3 or newer with remote-api-bridge"))
             }
         }
     }
@@ -3813,7 +3813,7 @@ actor HeelerSSHTransport: Transport {
         case .namedSession(let sessionName):
             guard HerdrSessionName.isValid(sessionName) else {
                 throw TransportError.channelFailed(
-                    detail: String(localized: "The herdr session name is invalid."))
+                    detail: String(localized: "The Herdr session name is invalid."))
             }
             command = "/bin/sh -c '\(HerdrHostPath.pathExport); "
                 + "export HERDR_SOCKET_PATH=\"$1\"; "

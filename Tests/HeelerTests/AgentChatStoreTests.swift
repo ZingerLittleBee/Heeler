@@ -1172,13 +1172,13 @@ struct AgentChatStoreTests {
         #expect(reason.title == "Conversation Not Identified")
         #expect(
             reason.explanation
-                == "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's."
+                == "Herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's."
         )
         #expect(!reason.offersRetry)
         for program in [ChatProgram.claude, .codex, .pi, .omp] {
             #expect(
                 ChatUnavailableReason.unidentifiedSession(program).explanation
-                    == "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own."
+                    == "Herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own."
             )
         }
     }

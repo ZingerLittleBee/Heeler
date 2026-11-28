@@ -400,7 +400,7 @@ struct HostListView: View {
                     ContentUnavailableView {
                         Label("No Hosts", systemImage: "server.rack")
                     } description: {
-                        Text("Add a machine that runs herdr, Tmux or Rex to get started.")
+                        Text("Add a machine that runs Herdr, Tmux or Rex to get started.")
                     } actions: {
                         // Scan to Pair is the primary add-Host action; the
                         // manual form is the fallback (ADR 0007).

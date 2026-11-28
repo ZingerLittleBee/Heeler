@@ -33,10 +33,10 @@ enum PreflightCheck: CaseIterable, Sendable {
         case (.connection, _): String(localized: "SSH connection")
         case (.remoteEnvironment, _): String(localized: "remote environment")
         case (.herdrInstalled, .herdrTUI), (.herdrInstalled, .unconfirmed):
-            String(localized: "herdr installed")
+            String(localized: "Herdr installed")
         case (.herdrInstalled, .herdrCore): String(localized: "Herdr Core installed")
         case (.serverRunning, .herdrTUI), (.serverRunning, .unconfirmed):
-            String(localized: "herdr server running")
+            String(localized: "Herdr server running")
         case (.serverRunning, .herdrCore): String(localized: "Herdr Core running")
         case (.herdrInstalled, .tmux): String(localized: "Tmux installed")
         case (.serverRunning, .tmux): String(localized: "Tmux server running")
@@ -124,15 +124,15 @@ struct PreflightReport: Equatable, Sendable {
             check = .herdrInstalled
             if usesHerdrEndpoint {
                 hint =
-                    String(localized: "No herdr socket at \(path). Start the herdr instance configured for this Host and verify its socket path, then run the checks again.")
+                    String(localized: "No Herdr socket at \(path). Start the Herdr instance configured for this Host and verify its socket path, then run the checks again.")
             } else {
                 hint =
-                    String(localized: "No herdr socket at \(path). Install and start herdr on the Host, or fix the session name.")
+                    String(localized: "No Herdr socket at \(path). Install and start Herdr on the Host, or fix the session name.")
             }
         case .homeDirectoryUnresolvable(let detail):
             check = .remoteEnvironment
             hint =
-                String(localized: "Could not resolve the remote home directory, so the herdr socket path is unknown. (\(detail))")
+                String(localized: "Could not resolve the remote home directory, so the Herdr socket path is unknown. (\(detail))")
         case .invalidDirectoryPath(let path):
             check = .remoteEnvironment
             hint = String(localized: "That folder path cannot be opened: \(path).")
@@ -140,10 +140,10 @@ struct PreflightReport: Equatable, Sendable {
             check = .serverRunning
             if usesHerdrEndpoint {
                 hint =
-                    String(localized: "Could not open the herdr socket at \(path). Start the herdr instance configured for this Host, or enable SSH stream-local forwarding and run the checks again.")
+                    String(localized: "Could not open the Herdr socket at \(path). Start the Herdr instance configured for this Host, or enable SSH stream-local forwarding and run the checks again.")
             } else {
                 hint =
-                    String(localized: "Could not open the herdr socket at \(path). Start herdr on the Host, or enable SSH stream-local forwarding and run the checks again.")
+                    String(localized: "Could not open the Herdr socket at \(path). Start Herdr on the Host, or enable SSH stream-local forwarding and run the checks again.")
             }
         case .tcpForwardingUnavailable:
             check = .connection
@@ -155,12 +155,12 @@ struct PreflightReport: Equatable, Sendable {
             // carries an advisory notice instead of failing here.
             let update =
                 usesHerdrEndpoint
-                ? String(localized: "Update the herdr instance configured for this Host.") : String(localized: "Update herdr on the Host.")
+                ? String(localized: "Update the Herdr instance configured for this Host.") : String(localized: "Update Herdr on the Host.")
             hint =
-                String(localized: "The Host speaks herdr protocol \(server); this app needs at least \(supported). \(update)")
+                String(localized: "The Host speaks Herdr protocol \(server); this app needs at least \(supported). \(update)")
         case .malformedResponse(let detail):
             check = .protocolCompatible
-            hint = String(localized: "The server's reply did not parse as herdr protocol. (\(detail))")
+            hint = String(localized: "The server's reply did not parse as Herdr protocol. (\(detail))")
         case .timedOut:
             check = .connection
             hint = String(localized: "The Host did not answer in time. Check the connection and try again.")
@@ -214,7 +214,7 @@ struct PreflightReport: Equatable, Sendable {
             hint = String(localized: "The check was cancelled before it finished.")
         case .apiRejected(let code, let message):
             check = .serverRunning
-            hint = String(localized: "herdr answered but rejected the check: \(message) (\(code))")
+            hint = String(localized: "Herdr answered but rejected the check: \(message) (\(code))")
         case .channelFailed(let detail):
             check = .connection
             hint = String(
@@ -232,11 +232,11 @@ struct PreflightReport: Equatable, Sendable {
         case .herdrBinaryNotFound:
             // Windows preflight verifies the official CLI bridge capability.
             check = .herdrInstalled
-            hint = String(localized: "The herdr CLI was not found on the Host's non-interactive SSH PATH.")
+            hint = String(localized: "The Herdr CLI was not found on the Host's non-interactive SSH PATH.")
         case .herdrLauncherNotFound(let path):
             check = .herdrInstalled
             hint =
-                String(localized: "The herdr launcher at \(path) could not run. Check that this launcher exists, is executable, and can start herdr. Pair the Host again if its path changed.")
+                String(localized: "The Herdr launcher at \(path) could not run. Check that this launcher exists, is executable, and can start Herdr. Pair the Host again if its path changed.")
         case .jumpHostFailed(let underlying):
             // The first hop broke, so the Host itself was never contacted and
             // nothing about it has been disproved. Name the Jump Host as the

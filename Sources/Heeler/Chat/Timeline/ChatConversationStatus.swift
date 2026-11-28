@@ -40,7 +40,7 @@ extension ChatUnavailableReason {
         case .amp(let problem): problem.explanation
         case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
-            String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
+            String(localized: "Herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
         case .noSession(.devin), .unidentifiedSession(.devin), .cannotTellSession(.devin):
             String(localized: "Open this Devin terminal. Finish directory trust or sign-in there. For a shared daemon, resume the session with devin --process-model in-process -r SESSION.")
         case .noSession(.droid):
@@ -50,24 +50,24 @@ extension ChatUnavailableReason {
         case .noSession(.codex):
             String(localized: "Codex reports its conversation after a prompt. Send one to show it here.")
         case .noSession(.pi):
-            String(localized: "herdr hasn't reported a Pi conversation for this Agent yet. Pi reports it once it has started, after you answer whether to trust the project folder. If this lasts, check the Pi integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
+            String(localized: "Herdr hasn't reported a Pi conversation for this Agent yet. Pi reports it once it has started, after you answer whether to trust the project folder. If this lasts, check the Pi integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
         case .noSession(.omp):
-            String(localized: "herdr hasn't reported an Oh My Pi conversation for this Agent yet. Oh My Pi reports it once it has started. If this lasts, check the OMP integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
+            String(localized: "Herdr hasn't reported an Oh My Pi conversation for this Agent yet. Oh My Pi reports it once it has started. If this lasts, check the OMP integration on the Host. Chat will keep checking, and you can continue in the Agent terminal.")
         case .noSession(.grok):
-            String(localized: "herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal.")
+            String(localized: "Herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal.")
         case .noSession(.opencode):
-            String(localized: "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal.")
+            String(localized: "Herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal.")
         case .noSession(.agy):
             String(localized: "Antigravity CLI reports its conversation after a message. Send one to show it here.")
         case .unidentifiedSession(.claude), .unidentifiedSession(.codex), .unidentifiedSession(.pi),
             .unidentifiedSession(.omp), .unidentifiedSession(.grok):
-            String(localized: "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own.")
+            String(localized: "Herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own.")
         case .unidentifiedSession(.opencode):
-            String(localized: "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's.")
+            String(localized: "Herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's.")
         case .unidentifiedSession(.agy):
-            String(localized: "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's.")
+            String(localized: "Herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's.")
         case .unsupportedSession:
-            String(localized: "herdr reports a session Chat doesn't read.")
+            String(localized: "Herdr reports a session Chat doesn't read.")
         case .notFound(let searchedAll):
             searchedAll
                 ? String(localized: "Heeler couldn't find this conversation's transcript on the Host. It keeps looking while Chat is open.")
@@ -87,7 +87,7 @@ extension ChatUnavailableReason {
         case .sessionStore(_, let problem):
             problem.explanation
         case .startScreen(let program):
-            String(localized: "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it.")
+            String(localized: "\(program.chatName) is on its home screen, so the conversation Herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once Herdr reports it.")
         case .cannotTellSession(.droid):
             String(localized: "Install Heeler’s Droid hook, then restart or resume Droid in this terminal so Chat can follow its conversation.")
         case .cannotTellSession(.pi):
@@ -409,7 +409,7 @@ extension ChatSessionStoreProblem {
         case .unsupportedLayout(let detail):
             String(localized: "OpenCode's database has a layout Chat doesn't read (\(detail)). A newer OpenCode may have changed it.")
         case .subagentSession:
-            String(localized: "herdr reports a subagent's session, which Chat doesn't show. Open the main conversation in the terminal.")
+            String(localized: "Herdr reports a subagent's session, which Chat doesn't show. Open the main conversation in the terminal.")
         }
     }
 }

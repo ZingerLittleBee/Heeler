@@ -327,7 +327,7 @@ struct RexTransportTests {
         #expect(unreadable.recoverySuggestion == "Check the Rex version on the Host.")
         #expect(!TransportError.rexAnswerUnreadable("x").isRetryable)
         for error in [TransportError.rexRejected(code: "internal", message: "x"), .rexAnswerUnreadable("x")] {
-            #expect(!error.presentation.message.contains("herdr"))
+            #expect(!error.presentation.message.contains("Herdr"))
         }
     }
 }

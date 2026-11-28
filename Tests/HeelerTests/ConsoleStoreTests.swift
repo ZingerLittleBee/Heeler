@@ -2802,7 +2802,7 @@ struct ConsoleStoreTests {
         #expect(
             ConsoleStore.tabCloseFailureMessage(
                 for: HerdrAPIError(code: "tab_not_found", message: "tab w1:t9 not found"))
-                == "herdr rejected the close: tab w1:t9 not found")
+                == "Herdr rejected the close: tab w1:t9 not found")
         #expect(
             ConsoleStore.tabCloseFailureMessage(for: TransportError.sshUnreachable(detail: ""))
                 == "The Host is not connected.")

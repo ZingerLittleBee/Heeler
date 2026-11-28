@@ -106,34 +106,34 @@ extension TransportError {
                 recoverySuggestion: String(localized: "Verify the machine before updating trust."))
         case .socketNotFound(let path):
             TransportErrorPresentation(
-                summary: String(localized: "The herdr socket was not found"),
+                summary: String(localized: "The Herdr socket was not found"),
                 detail: path,
                 recoverySuggestion: String(localized: "Check this Host's session."))
         case .herdrBinaryNotFound:
             TransportErrorPresentation(
-                summary: String(localized: "herdr is not on this Host's SSH PATH"),
+                summary: String(localized: "Herdr is not on this Host's SSH PATH"),
                 detail: nil,
                 recoverySuggestion:
                     String(localized:
-                        "Put herdr's install directory on the account's non-interactive SSH PATH."))
+                        "Put Herdr's install directory on the account's non-interactive SSH PATH."))
         case .herdrLauncherNotFound(let path):
             TransportErrorPresentation(
-                summary: String(localized: "The herdr launcher could not run"),
+                summary: String(localized: "The Herdr launcher could not run"),
                 detail: path,
                 recoverySuggestion:
                     String(localized:
-                        "Check that this launcher exists, is executable, and can start herdr. Pair the Host again if its path changed."))
+                        "Check that this launcher exists, is executable, and can start Herdr. Pair the Host again if its path changed."))
         case .streamLocalOpenFailed:
             TransportErrorPresentation(
-                summary: String(localized: "herdr is not running on this Host"),
+                summary: String(localized: "Herdr is not running on this Host"),
                 detail: nil,
                 recoverySuggestion: String(localized: "If it is running, check SSH stream-local forwarding."))
         case .protocolVersionMismatch(let server, let supported):
             TransportErrorPresentation(
-                summary: String(localized: "Incompatible herdr protocol"),
+                summary: String(localized: "Incompatible Herdr protocol"),
                 detail: String(localized:
-                    "herdr speaks protocol \(server); this app needs at least \(supported)"),
-                recoverySuggestion: String(localized: "Update herdr on the Host."))
+                    "Herdr speaks protocol \(server); this app needs at least \(supported)"),
+                recoverySuggestion: String(localized: "Update Herdr on the Host."))
         case .homeDirectoryUnresolvable(let detail):
             TransportErrorPresentation(
                 summary: String(localized: "The remote home directory could not be resolved"),
@@ -355,12 +355,12 @@ extension TransportError {
                 recoverySuggestion: nil)
         case .malformedResponse(let payload):
             TransportErrorPresentation(
-                summary: String(localized: "herdr returned an invalid response"),
+                summary: String(localized: "Herdr returned an invalid response"),
                 detail: payload,
                 recoverySuggestion: String(localized: "Check its version."))
         case .apiRejected(let code, let message):
             TransportErrorPresentation(
-                summary: String(localized: "herdr rejected the request"),
+                summary: String(localized: "Herdr rejected the request"),
                 detail: "\(message) (\(code))",
                 recoverySuggestion: nil)
         case .channelFailed(let detail):
@@ -370,7 +370,7 @@ extension TransportError {
                 recoverySuggestion: nil)
         case .attachExited(let status, let output):
             TransportErrorPresentation(
-                summary: String(localized: "herdr exited with status \(status)"),
+                summary: String(localized: "Herdr exited with status \(status)"),
                 detail: output.map(Self.droppingTrailingPeriods).flatMap {
                     $0.isEmpty ? nil : $0
                 },
@@ -387,7 +387,7 @@ extension TransportError {
         return TransportErrorPresentation(
             summary: shared.summary, detail: shared.detail,
             recoverySuggestion:
-                String(localized: "Start the herdr instance configured for this Host and verify its socket path."))
+                String(localized: "Start the Herdr instance configured for this Host and verify its socket path."))
     }
 
     /// A `channelFailed` detail as the user reads it.

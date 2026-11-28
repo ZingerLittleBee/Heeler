@@ -155,7 +155,7 @@ struct HeelerPluginActionRunner: Sendable {
             return Outcome(
                 readBack: status,
                 failure: HeelerPluginActionFailure(
-                    message: String(localized: "herdr installed plugin \(String(describing: version)), the newest published, but this app expects \(String(describing: bundled)).")))
+                    message: String(localized: "Herdr installed plugin \(String(describing: version)), the newest published, but this app expects \(String(describing: bundled)).")))
         }
         return Outcome(
             readBack: status,

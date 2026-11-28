@@ -8,9 +8,9 @@ enum AccountsListing {
         let name = kind.displayName
         switch (HostAccountsStore.usageKinds.contains(kind), variable) {
         case (true, let variable?):
-            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets \(variable) to its folder.")
+            return String(localized: "Default is the folder \(name) uses in Herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets \(variable) to its folder.")
         case (true, nil):
-            return String(localized: "Default is the folder \(name) uses in herdr’s environment. It can be renamed, not removed. Name the variable \(name) reads its folder from to launch an Account.")
+            return String(localized: "Default is the folder \(name) uses in Herdr’s environment. It can be renamed, not removed. Name the variable \(name) reads its folder from to launch an Account.")
         case (false, let variable?):
             return String(localized: "Default is the folder \(name) picks itself. A Launch Preset with an Account sets \(variable) to its folder.")
         case (false, nil):

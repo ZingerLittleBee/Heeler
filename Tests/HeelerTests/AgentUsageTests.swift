@@ -174,7 +174,7 @@ struct AgentUsageStoreTests {
             (.init(pluginRoot: "/plugins/heeler", version: "0.7.0", isEnabled: false),
              .requirement("Enable the Heeler plugin on this Host to read Usage.")),
             (.init(version: "0.7.0"),
-             .requirement("herdr did not report where the Heeler plugin is installed. Update herdr on this Host to read Usage.")),
+             .requirement("Herdr did not report where the Heeler plugin is installed. Update Herdr on this Host to read Usage.")),
         ]
         for (plugin, expected) in cases {
             let transport = ScriptedTransport()

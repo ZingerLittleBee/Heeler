@@ -316,7 +316,7 @@ final class HostOnboardingStore {
                     if !Task.isCancelled { availableSessions = sessions }
                 } catch {
                     if !Task.isCancelled {
-                        sessionDiscoveryError = String(localized: "Could not discover herdr sessions. You can still enter a session name manually.")
+                        sessionDiscoveryError = String(localized: "Could not discover Herdr sessions. You can still enter a session name manually.")
                     }
                 }
             }
@@ -873,7 +873,7 @@ final class HostOnboardingStore {
             return .failure(
                 check: .herdrInstalled,
                 hint: String(
-                    localized: "The herdr launcher at \(endpoint.executablePath) did not answer like herdr. (\(detail))"))
+                    localized: "The Herdr launcher at \(endpoint.executablePath) did not answer like Herdr. (\(detail))"))
         } catch {
             guard !Task.isCancelled else { return nil }
             captureHostKeyReplacement(error)

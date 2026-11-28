@@ -11,11 +11,11 @@ struct SettingsLocalizationTests {
     @Test func theAccountsFooterIsOneParagraphPerCase() {
         #expect(
             AccountsListing.footer(for: .claude, variable: "CLAUDE_CONFIG_DIR")
-                == "Default is the folder Claude Code uses in herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets CLAUDE_CONFIG_DIR to its folder."
+                == "Default is the folder Claude Code uses in Herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets CLAUDE_CONFIG_DIR to its folder."
         )
         #expect(
             AccountsListing.footer(for: .codex, variable: nil)
-                == "Default is the folder Codex uses in herdr’s environment. It can be renamed, not removed. Name the variable Codex reads its folder from to launch an Account."
+                == "Default is the folder Codex uses in Herdr’s environment. It can be renamed, not removed. Name the variable Codex reads its folder from to launch an Account."
         )
         #expect(
             AccountsListing.footer(for: .grok, variable: "GROK_HOME")

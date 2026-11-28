@@ -333,7 +333,7 @@ enum AgentRowSlot: Equatable, Sendable {
     /// Provenance label shown beside the row title.
     var label: String {
         switch self {
-        case .herdr: "herdr"
+        case .herdr: "Herdr"
         case .heeler: "Heeler"
         }
     }

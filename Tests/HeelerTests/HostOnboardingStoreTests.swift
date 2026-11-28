@@ -303,7 +303,7 @@ struct HostOnboardingStoreTests {
         _ = try await checkThenRunPluginAction(store)
 
         #expect(store.pluginAction == .failed(HeelerPluginActionFailure(
-            message: "herdr installed plugin 0.5.0, the newest published, but this app "
+            message: "Herdr installed plugin 0.5.0, the newest published, but this app "
                 + "expects \(HeelerPluginCompatibility.bundled).")))
         #expect(store.pluginStatus == .installed(Self.outdated))
     }
@@ -671,7 +671,7 @@ struct HostOnboardingStoreTests {
 
     @Test func theChecklistIsTitledByServerKind() {
         #expect(PreflightCheck.allCases.map { $0.title(for: .herdrTUI) } == [
-            "SSH connection", "remote environment", "herdr installed", "herdr server running",
+            "SSH connection", "remote environment", "Herdr installed", "Herdr server running",
             "protocol compatible",
         ])
         #expect(PreflightCheck.allCases.map { $0.title(for: .herdrCore) } == [
@@ -1199,8 +1199,8 @@ struct HostOnboardingStoreTests {
         #expect(
             report[.herdrInstalled]
                 == .failed(
-                    hint: "The herdr launcher at \(Self.endpointLauncherPath) could not run. "
-                        + "Check that this launcher exists, is executable, and can start herdr. "
+                    hint: "The Herdr launcher at \(Self.endpointLauncherPath) could not run. "
+                        + "Check that this launcher exists, is executable, and can start Herdr. "
                         + "Pair the Host again if its path changed."))
         #expect(await transport.pingCount == 0)
         #expect(await transport.isClosed)
@@ -1221,8 +1221,8 @@ struct HostOnboardingStoreTests {
         #expect(
             report[.herdrInstalled]
                 == .failed(
-                    hint: "The herdr launcher at \(Self.endpointLauncherPath) did not answer "
-                        + "like herdr. (herdr session list returned invalid JSON: hello)"))
+                    hint: "The Herdr launcher at \(Self.endpointLauncherPath) did not answer "
+                        + "like Herdr. (herdr session list returned invalid JSON: hello)"))
         #expect(await transport.pingCount == 0)
         #expect(store.sessionDiscoveryError == nil)
     }
@@ -1251,7 +1251,7 @@ struct HostOnboardingStoreTests {
         #expect(
             report[.herdrInstalled]
                 == .failed(
-                    hint: "No herdr socket at \(Self.endpointSocketPath). Start the herdr instance "
+                    hint: "No Herdr socket at \(Self.endpointSocketPath). Start the Herdr instance "
                         + "configured for this Host and verify its socket path, then run the checks again."))
     }
 }

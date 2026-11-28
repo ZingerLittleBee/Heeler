@@ -1420,14 +1420,14 @@ final class StartAgentStore {
             // Kind captured at submit, not the picker after await. Discovery
             // does not prove herdr supports Muse (#289); keep the server
             // reason and tell the user how to recover.
-            String(localized: "herdr rejected the command: \(apiError.message). Update herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent.")
+            String(localized: "Herdr rejected the command: \(apiError.message). Update Herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent.")
         case let apiError as HerdrAPIError where apiError.isCanonicalModeRefusal:
             // The Transport resends this refusal for its whole shell-readiness
             // wait, so it lands here only once that wait ran out; "10 seconds"
             // mirrors `HeelerSSHTransport.shellReadinessBudget`.
-            String(localized: "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again.")
+            String(localized: "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, Herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again.")
         case let apiError as HerdrAPIError:
-            String(localized: "herdr rejected the command: \(apiError.message)")
+            String(localized: "Herdr rejected the command: \(apiError.message)")
         default:
             ownWords(of: error) ?? String(localized: "Starting the agent failed: \(String(describing: error))")
         }

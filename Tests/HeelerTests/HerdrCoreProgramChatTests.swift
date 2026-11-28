@@ -597,7 +597,7 @@ struct HerdrCoreProgramChatTests {
         #expect(reason.isWaiting && !reason.offersRetry)
         #expect(!reason.leavesItToAPick && !reason.hidesConversation)
         #expect(reason.explanation.contains("first message"))
-        #expect(!reason.explanation.contains("herdr"))
+        #expect(!reason.explanation.contains("Herdr"))
         #expect(reason.bannerText(showingSavedMessages: false) == "Waiting for Antigravity CLI to start the conversation.")
         #expect(reason.bannerText(showingSavedMessages: true).hasSuffix("Showing saved messages."))
     }

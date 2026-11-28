@@ -22,7 +22,7 @@ struct AgentUsageContent: View {
         case .unsupportedPlatform:
             Text("Not supported on Windows").foregroundStyle(.secondary)
         case .runtimeMissing:
-            Text("Use any Agent on this computer once, or restart herdr, then refresh Usage.")
+            Text("Use any Agent on this computer once, or restart Herdr, then refresh Usage.")
                 .foregroundStyle(.secondary)
         case .updateRequired:
             Text("Update Heeler to read this Host's Usage format.")

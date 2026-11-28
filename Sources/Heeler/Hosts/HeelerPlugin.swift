@@ -97,13 +97,13 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         case .antigravityUsage:
             String(localized: "Usage counts Antigravity from plugin \(String(describing: minimumVersion)); this Host has \(String(describing: installed)).")
         case .sidebarFields:
-            String(localized: "Sync from plugin and herdr's sidebar fields need plugin \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
+            String(localized: "Sync from plugin and Herdr's sidebar fields need plugin \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
         case .liveActivityUpdates:
             String(localized: "Live Activity updates while Heeler is in the background may need plugin \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
         case .liveActivityRows:
             String(localized: "Background Live Activity updates may not follow your Agent List Fields before plugin \(String(describing: minimumVersion)); this Host has \(String(describing: installed)).")
         case .sessionScopedNotifications:
-            String(localized: "Notifications from your other herdr sessions on this Host may reach this device until the plugin is \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
+            String(localized: "Notifications from your other Herdr sessions on this Host may reach this device until the plugin is \(String(describing: minimumVersion)) or newer; this Host has \(String(describing: installed)).")
         }
     }
 
@@ -235,15 +235,15 @@ struct HeelerPluginActionFailure: Equatable, Sendable {
             }
             let message =
                 if error.needsServerRestart {
-                    String(localized: "herdr on the Host is newer than its running server. Restart the herdr server, then try again.")
+                    String(localized: "Herdr on the Host is newer than its running server. Restart the Herdr server, then try again.")
                 } else if error.isBuildFailure {
                     String(localized: "The plugin's build step (npm ci) failed on the Host. Check that SSH commands there find Node.js 20 or newer and npm.")
                 } else if error.isDownloadFailure {
-                    String(localized: "herdr could not download the plugin. Check that the Host can reach github.com.")
+                    String(localized: "Herdr could not download the plugin. Check that the Host can reach github.com.")
                 } else if case .uninstall = error.step {
-                    String(localized: "herdr could not remove the old copy of the plugin.")
+                    String(localized: "Herdr could not remove the old copy of the plugin.")
                 } else {
-                    String(localized: "herdr could not install the plugin.")
+                    String(localized: "Herdr could not install the plugin.")
                 }
             self.init(message: message, detail: error.detail())
         case TransportError.timedOut:
@@ -253,7 +253,7 @@ struct HeelerPluginActionFailure: Equatable, Sendable {
             self.init(message: error.presentation.message)
         case let error as HerdrAPIError:
             self.init(
-                message: String(localized: "herdr could not turn the plugin on."),
+                message: String(localized: "Herdr could not turn the plugin on."),
                 detail: "\(error.code): \(error.message)")
         default:
             self.init(message: String(localized: "The change failed unexpectedly. (\(String(describing: error)))"))
@@ -362,7 +362,7 @@ struct HeelerPluginPresentation: Equatable {
             value = String(localized: "Not installed")
             notice = Notice(
                 tone: .info,
-                message: String(localized: "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields."),
+                message: String(localized: "Install the Heeler plugin for notifications, Live Activity updates, and Herdr's sidebar fields."),
                 commands: [Self.installCommand(session: session, endpoint: endpoint)],
                 notes: [],
                 action: Notice.Action(title: String(localized: "Install Plugin"), steps: [.install]))
@@ -481,8 +481,8 @@ struct HeelerPluginPresentation: Equatable {
                 Notice(
                     tone: .warning,
                     message: isLocal
-                        ? String(localized: "herdr could not read the plugin's manifest, so its version may be out of date. Check the linked checkout.")
-                        : String(localized: "herdr could not read the plugin's manifest, so its version may be out of date. Reinstall it."),
+                        ? String(localized: "Herdr could not read the plugin's manifest, so its version may be out of date. Check the linked checkout.")
+                        : String(localized: "Herdr could not read the plugin's manifest, so its version may be out of date. Reinstall it."),
                     // No action: the version herdr reports from its
                     // registry may be stale, so a reinstall could be a
                     // downgrade the app cannot see.

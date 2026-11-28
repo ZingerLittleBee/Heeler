@@ -108,15 +108,15 @@ struct RequestFailurePresentationTests {
                 for: TransportError.attachExited(
                     status: 1,
                     output: "herdr: lost connection to server: server closed connection"))
-                == "herdr exited with status 1: herdr: lost connection to server: "
+                == "Herdr exited with status 1: herdr: lost connection to server: "
                 + "server closed connection.")
         #expect(
             AttachTerminalStore.message(
                 for: TransportError.attachExited(status: 2, output: "Error: no such pane."))
-                == "herdr exited with status 2: Error: no such pane.")
+                == "Herdr exited with status 2: Error: no such pane.")
         #expect(
             AttachTerminalStore.message(for: TransportError.attachExited(status: 1, output: nil))
-                == "herdr exited with status 1.")
+                == "Herdr exited with status 1.")
     }
 
     @Test func attachNeverShowsADebugDescription() {
@@ -133,7 +133,7 @@ struct RequestFailurePresentationTests {
         #expect(
             AgentComposerStore.message(
                 for: HerdrAPIError(code: "agent_busy", message: "still working"))
-                == "herdr rejected the message: still working")
+                == "Herdr rejected the message: still working")
         #expect(
             AgentComposerStore.message(for: CancellationError())
                 == "The message could not be sent. Check the connection and retry.")

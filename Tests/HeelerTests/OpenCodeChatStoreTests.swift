@@ -195,7 +195,7 @@ struct OpenCodeChatStoreTests {
 
         #expect(
             await fixture.store.confirmSessionBeforeSend()
-                == "herdr now reports another OpenCode conversation for this Agent. Chat is switching to it; check it, then send again."
+                == "Herdr now reports another OpenCode conversation for this Agent. Chat is switching to it; check it, then send again."
         )
         await fixture.store.step()
         #expect(fixture.phase == Self.following(Self.other))

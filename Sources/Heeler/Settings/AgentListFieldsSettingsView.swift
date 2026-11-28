@@ -101,7 +101,7 @@ struct AgentListFieldsHostDetailView: View {
             .navigationTitle(host.displayName)
             .navigationBarTitleDisplayMode(.large)
             .confirmationDialog(
-                "Replace rows with herdr's fields?", isPresented: $confirmingSync, titleVisibility: .visible
+                "Replace rows with Herdr's fields?", isPresented: $confirmingSync, titleVisibility: .visible
             ) {
                 Button("Replace Rows") { Task { await sync() } }
                 Button("Cancel", role: .cancel) {}
@@ -593,11 +593,11 @@ enum AgentListFieldsSourceCaption {
     static func text(_ source: AgentListFieldsEditor.LayoutSource) -> String {
         switch source {
         case .draft, .saved: String(localized: "Your fields")
-        case .plugin: String(localized: "Following herdr plugin")
-        case .pluginDefaults: String(localized: "herdr default fields (plugin reported a problem)")
-        case .loading: String(localized: "Reading herdr fields…")
-        case .missing: String(localized: "No herdr fields snapshot")
-        case .unavailable: String(localized: "herdr fields unavailable")
+        case .plugin: String(localized: "Following Herdr plugin")
+        case .pluginDefaults: String(localized: "Herdr default fields (plugin reported a problem)")
+        case .loading: String(localized: "Reading Herdr fields…")
+        case .missing: String(localized: "No Herdr fields snapshot")
+        case .unavailable: String(localized: "Herdr fields unavailable")
         case .heeler: String(localized: "Heeler's fields")
         }
     }
@@ -610,7 +610,7 @@ enum AgentListFieldsCopy {
     static let detailIntro =
         String(localized: "Tap a field to change its style, move it, or remove it. Tap + to add one. Changes save right away.")
     static let syncConfirmation =
-        String(localized: "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. Row 3 and every row's right side stay as they are.")
+        String(localized: "Row 1 and Row 2 are replaced with this Host's Herdr fields and saved right away. Row 3 and every row's right side stay as they are.")
     static func applyConfirmation(hostName: String, otherHosts: Int) -> String {
         otherHosts == 1
             ? String(localized: "The other Host's rows, right sides included, are replaced with \(hostName)'s and saved right away. Changes you make here later stay on \(hostName).")
@@ -628,16 +628,16 @@ enum AgentListFieldsCopy {
 
     /// Sync's result when the plugin snapshot carries diagnostics.
     static let syncDiagnostics =
-        String(localized: "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's default fields were used. Update the plugin, or run herdr config check.")
+        String(localized: "The Heeler plugin couldn't read this Host's Herdr sidebar settings, so Herdr's default fields were used. Update the plugin, or run herdr config check.")
     static let unreadableCatalogTitle = String(localized: "Saved fields can’t be read")
     static let unreadableCatalog =
-        String(localized: "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing is paused until you reset.")
+        String(localized: "Heeler kept the saved data untouched. Every Host follows its Herdr fields, and editing is paused until you reset.")
     static let unreadableCatalogEdit =
         String(localized: "The saved Agent List Fields could not be read. Nothing was changed. Reset Saved Fields to start over.")
     static let resetConfirmation =
-        String(localized: "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again.")
+        String(localized: "The unreadable saved fields are deleted. Every Host returns to its Herdr fields and can be edited again.")
     static let rowSlots =
-        String(localized: "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
+        String(localized: "Row 1 and Row 2 start from Herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use Herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields.")
 
     /// Hosts without a plugin start from Heeler's two-row default; only
     /// herdr-core Terminals carry labels.

@@ -651,24 +651,24 @@
         }
       }
     },
-    "%@ could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh." : {
+    "%@ could not use this Mac’s keychain. Start Herdr from a terminal on the Mac, then refresh." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ はこの Mac のキーチェーンを利用できませんでした。Mac 上のターミナルから herdr を起動し、再読み込みしてください。"
+            "value" : "%1$@ はこの Mac のキーチェーンを利用できませんでした。Mac 上のターミナルから Herdr を起動し、再読み込みしてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 无法使用这台 Mac 的钥匙串。请在这台 Mac 的终端中启动 herdr，然后刷新。"
+            "value" : "%@ 无法使用这台 Mac 的钥匙串。请在这台 Mac 的终端中启动 Herdr，然后刷新。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 無法使用這台 Mac 的鑰匙圈。請在 Mac 上的終端機中啟動 herdr，然後重新整理。"
+            "value" : "%@ 無法使用這台 Mac 的鑰匙圈。請在 Mac 上的終端機中啟動 Herdr，然後重新整理。"
           }
         }
       }
@@ -1370,24 +1370,24 @@
         }
       }
     },
-    "%@ is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it." : {
+    "%@ is on its home screen, so the conversation Herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once Herdr reports it." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ はホーム画面を表示しているため、herdr が報告した会話はそこで開いていません。ターミナルで会話を開くか、そこで最初のメッセージを送って開始してください。herdr の報告後、チャットが追跡します。"
+            "value" : "%1$@ はホーム画面を表示しているため、Herdr が報告した会話はそこで開いていません。ターミナルで会話を開くか、そこで最初のメッセージを送って開始してください。Herdr の報告後、チャットが追跡します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 当前停留在其主界面，herdr 报告的对话已不再打开。请在终端中打开一个对话，或在终端中发送第一条消息以开始新对话。herdr 报告后，对话就会跟进。"
+            "value" : "%@ 当前停留在其主界面，Herdr 报告的对话已不再打开。请在终端中打开一个对话，或在终端中发送第一条消息以开始新对话。Herdr 报告后，对话就会跟进。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 目前停在主畫面，herdr 回報的對話已不再於其中開啟。請在終端機中開啟一個對話，或在那裡傳送第一則訊息來開始。herdr 回報後，對話檢視會自動跟上。"
+            "value" : "%@ 目前停在主畫面，Herdr 回報的對話已不再於其中開啟。請在終端機中開啟一個對話，或在那裡傳送第一則訊息來開始。Herdr 回報後，對話檢視會自動跟上。"
           }
         }
       }
@@ -6264,6 +6264,28 @@
         }
       }
     },
+    "A Herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペアリングコードによる Herdr エンドポイントは macOS と Linux のホストでのみサポートされます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自配对码的 Herdr 端点仅支持 macOS 和 Linux 主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有 macOS 與 Linux 主機支援以配對碼取得的 Herdr 端點"
+          }
+        }
+      }
+    },
     "A Host already uses this machine" : {
       "localizations" : {
         "ja" : {
@@ -6787,29 +6809,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "包含帳號、參數與環境的 Agent 工具，可在「新增 Agent」中直接選用。儲存在此裝置上。"
-          }
-        }
-      }
-    },
-    "A herdr endpoint from a Pairing Code is supported only on macOS and Linux Hosts" : {
-      "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ペアリングコードによる herdr エンドポイントは macOS と Linux のホストでのみサポートされます"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "来自配对码的 herdr 端点仅支持 macOS 和 Linux 主机"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有 macOS 與 Linux 主機支援以配對碼取得的 herdr 端點"
           }
         }
       }
@@ -8363,46 +8362,46 @@
         }
       }
     },
-    "Add a machine that runs herdr, Tmux or Rex to get started." : {
+    "Add a machine that runs Herdr, Tmux or Rex to get started." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "始めるには、herdr、Tmux、または Rex を実行しているマシンを追加してください。"
+            "value" : "始めるには、Herdr、Tmux、または Rex を実行しているマシンを追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加一台运行 herdr、Tmux 或 Rex 的主机以开始使用。"
+            "value" : "添加一台运行 Herdr、Tmux 或 Rex 的主机以开始使用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr、Tmux 或 Rex 的機器即可開始使用。"
+            "value" : "新增一台執行 Herdr、Tmux 或 Rex 的機器即可開始使用。"
           }
         }
       }
     },
-    "Add a machine that runs herdr, Tmux or Rex to see its Agents and Terminals here." : {
+    "Add a machine that runs Herdr, Tmux or Rex to see its Agents and Terminals here." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr、Tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
+            "value" : "Herdr、Tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加运行 herdr、Tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
+            "value" : "添加运行 Herdr、Tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr、Tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
+            "value" : "新增一台執行 Herdr、Tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
           }
         }
       }
@@ -15056,24 +15055,24 @@
         }
       }
     },
-    "Check that this launcher exists, is executable, and can start herdr. Pair the Host again if its path changed." : {
+    "Check that this launcher exists, is executable, and can start Herdr. Pair the Host again if its path changed." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このランチャーが存在し、実行可能で、herdr を起動できることを確認してください。パスが変わった場合はホストを再ペアリングしてください。"
+            "value" : "このランチャーが存在し、実行可能で、Herdr を起動できることを確認してください。パスが変わった場合はホストを再ペアリングしてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请确认此启动器存在、可执行且能启动 herdr。如果其路径已更改，请重新配对主机。"
+            "value" : "请确认此启动器存在、可执行且能启动 Herdr。如果其路径已更改，请重新配对主机。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請確認這個啟動器存在、可執行，且能啟動 herdr。如果它的路徑有變，請重新配對主機。"
+            "value" : "請確認這個啟動器存在、可執行，且能啟動 Herdr。如果它的路徑有變，請重新配對主機。"
           }
         }
       }
@@ -19925,24 +19924,24 @@
         }
       }
     },
-    "Could not discover herdr sessions. You can still enter a session name manually." : {
+    "Could not discover Herdr sessions. You can still enter a session name manually." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr セッションを検出できませんでした。セッション名を手動で入力することはできます。"
+            "value" : "Herdr セッションを検出できませんでした。セッション名を手動で入力することはできます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法发现 herdr 会话。你仍可手动输入会话名称。"
+            "value" : "无法发现 Herdr 会话。你仍可手动输入会话名称。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法探索 herdr 工作階段。你仍可手動輸入工作階段名稱。"
+            "value" : "無法探索 Herdr 工作階段。你仍可手動輸入工作階段名稱。"
           }
         }
       }
@@ -19992,46 +19991,46 @@
         }
       }
     },
-    "Could not open the herdr socket at %@. Start herdr on the Host, or enable SSH stream-local forwarding and run the checks again." : {
+    "Could not open the Herdr socket at %@. Start Herdr on the Host, or enable SSH stream-local forwarding and run the checks again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ の herdr ソケットを開けませんでした。ホストで herdr を起動するか、SSH の stream-local 転送を有効にして再確認を実行してください。"
+            "value" : "%@ の Herdr ソケットを開けませんでした。ホストで Herdr を起動するか、SSH の stream-local 転送を有効にして再確認を実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开位于 %@ 的 herdr 套接字。请在主机上启动 herdr，或启用 SSH stream-local 转发后重新运行检查。"
+            "value" : "无法打开位于 %@ 的 Herdr 套接字。请在主机上启动 Herdr，或启用 SSH stream-local 转发后重新运行检查。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法開啟位於 %@ 的 herdr socket。請在主機上啟動 herdr，或啟用 SSH stream-local 轉送，然後重新執行檢查。"
+            "value" : "無法開啟位於 %@ 的 Herdr socket。請在主機上啟動 Herdr，或啟用 SSH stream-local 轉送，然後重新執行檢查。"
           }
         }
       }
     },
-    "Could not open the herdr socket at %@. Start the herdr instance configured for this Host, or enable SSH stream-local forwarding and run the checks again." : {
+    "Could not open the Herdr socket at %@. Start the Herdr instance configured for this Host, or enable SSH stream-local forwarding and run the checks again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ の herdr ソケットを開けませんでした。このホスト用に設定された herdr インスタンスを起動するか、SSH の stream-local 転送を有効にして再確認を実行してください。"
+            "value" : "%@ の Herdr ソケットを開けませんでした。このホスト用に設定された Herdr インスタンスを起動するか、SSH の stream-local 転送を有効にして再確認を実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开位于 %@ 的 herdr 套接字。请启动为此主机配置的 herdr 实例，或启用 SSH stream-local 转发后重新运行检查。"
+            "value" : "无法打开位于 %@ 的 Herdr 套接字。请启动为此主机配置的 Herdr 实例，或启用 SSH stream-local 转发后重新运行检查。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法開啟位於 %@ 的 herdr socket。請啟動為此主機設定的 herdr 實例，或啟用 SSH stream-local 轉送，然後重新執行檢查。"
+            "value" : "無法開啟位於 %@ 的 Herdr socket。請啟動為此主機設定的 Herdr 實例，或啟用 SSH stream-local 轉送，然後重新執行檢查。"
           }
         }
       }
@@ -20324,24 +20323,24 @@
         }
       }
     },
-    "Could not resolve the remote home directory, so the herdr socket path is unknown. (%@)" : {
+    "Could not resolve the remote home directory, so the Herdr socket path is unknown. (%@)" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "リモートのホームディレクトリを解決できないため、herdr ソケットのパスが不明です。（%@）"
+            "value" : "リモートのホームディレクトリを解決できないため、Herdr ソケットのパスが不明です。（%@）"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法解析远程主目录，因此无法确定 herdr 套接字路径。（%@）"
+            "value" : "无法解析远程主目录，因此无法确定 Herdr 套接字路径。（%@）"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法解析遠端家目錄，因此不知道 herdr socket 的路徑。（%@）"
+            "value" : "無法解析遠端家目錄，因此不知道 Herdr socket 的路徑。（%@）"
           }
         }
       }
@@ -21658,24 +21657,24 @@
         }
       }
     },
-    "Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from herdr plugins and display as plain text." : {
+    "Custom names start with $ and contain 1–32 letters, digits, underscores or hyphens. Values come from Herdr plugins and display as plain text." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "カスタム名は $ で始まり、1〜32 文字の英字・数字・アンダースコア・ハイフンを使えます。値は herdr プラグイン由来で、プレーンテキストとして表示されます。"
+            "value" : "カスタム名は $ で始まり、1〜32 文字の英字・数字・アンダースコア・ハイフンを使えます。値は Herdr プラグイン由来で、プレーンテキストとして表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自定义名称以 $ 开头，可包含 1–32 个字母、数字、下划线或连字符。值来自 herdr 插件，并以纯文本显示。"
+            "value" : "自定义名称以 $ 开头，可包含 1–32 个字母、数字、下划线或连字符。值来自 Herdr 插件，并以纯文本显示。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自訂名稱以 $ 開頭，並包含 1–32 個字母、數字、底線或連字號。值來自 herdr 外掛，並以純文字顯示。"
+            "value" : "自訂名稱以 $ 開頭，並包含 1–32 個字母、數字、底線或連字號。值來自 Herdr 外掛，並以純文字顯示。"
           }
         }
       }
@@ -22172,48 +22171,58 @@
         }
       }
     },
-    "Default is the folder %@ uses in herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets %@ to its folder." : {
-      "comment" : "Accounts footer. %1$@ is the harness name, %2$@ its folder environment variable.",
+    "Default is the folder %@ uses in Herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets %@ to its folder." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Default is the folder %1$@ uses in Herdr’s environment. It can be renamed, not removed. A Launch Preset with an Account sets %2$@ to its folder."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "既定は %1$@ が herdr の環境で使うフォルダです。名前変更はできますが、削除はできません。アカウントを指定した起動プリセットは、%2$@ をそのフォルダに設定します。"
+            "value" : "既定は %1$@ が Herdr の環境で使うフォルダです。名前変更はできますが、削除はできません。アカウントを指定した起動プリセットは、%2$@ をそのフォルダに設定します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "默认使用 %@ 在 herdr 环境中使用的文件夹。默认账户可重命名，但不可移除。指定了账户的启动预设会将 %@ 设为该账户的文件夹。"
+            "value" : "默认使用 %@ 在 Herdr 环境中使用的文件夹。默认账户可重命名，但不可移除。指定了账户的启动预设会将 %@ 设为该账户的文件夹。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "預設為 %@ 在 herdr 環境中使用的資料夾，可重新命名，但無法移除。帶有帳號的啟動預設集會將 %@ 設為該帳號的資料夾。"
+            "value" : "預設為 %@ 在 Herdr 環境中使用的資料夾，可重新命名，但無法移除。帶有帳號的啟動預設集會將 %@ 設為該帳號的資料夾。"
           }
         }
       }
     },
-    "Default is the folder %@ uses in herdr’s environment. It can be renamed, not removed. Name the variable %@ reads its folder from to launch an Account." : {
-      "comment" : "Accounts footer when no folder variable is set. Both arguments are the harness name.",
+    "Default is the folder %@ uses in Herdr’s environment. It can be renamed, not removed. Name the variable %@ reads its folder from to launch an Account." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Default is the folder %1$@ uses in Herdr’s environment. It can be renamed, not removed. Name the variable %2$@ reads its folder from to launch an Account."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "既定は %1$@ が herdr の環境で使うフォルダです。名前変更はできますが、削除はできません。アカウントで起動するには、%2$@ がフォルダを読み取る変数の名前を指定してください。"
+            "value" : "既定は %1$@ が Herdr の環境で使うフォルダです。名前変更はできますが、削除はできません。アカウントで起動するには、%2$@ がフォルダを読み取る変数の名前を指定してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "默认使用 %@ 在 herdr 环境中使用的文件夹。默认账户可重命名，但不可移除。若要使用指定账户启动，请填写 %@ 用于读取文件夹的环境变量名称。"
+            "value" : "默认使用 %@ 在 Herdr 环境中使用的文件夹。默认账户可重命名，但不可移除。若要使用指定账户启动，请填写 %@ 用于读取文件夹的环境变量名称。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "預設為 %@ 在 herdr 環境中使用的資料夾，可重新命名，但無法移除。請填入 %@ 讀取資料夾位置所用的變數名稱，才能啟動帳號。"
+            "value" : "預設為 %@ 在 Herdr 環境中使用的資料夾，可重新命名，但無法移除。請填入 %@ 讀取資料夾位置所用的變數名稱，才能啟動帳號。"
           }
         }
       }
@@ -24122,24 +24131,24 @@
         }
       }
     },
-    "Empty lets herdr or a title plugin name the tab." : {
+    "Empty lets Herdr or a title plugin name the tab." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "空欄の場合、herdr またはタイトルプラグインがタブに名前を付けます。"
+            "value" : "空欄の場合、Herdr またはタイトルプラグインがタブに名前を付けます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "留空则由 herdr 或标题插件为标签页命名。"
+            "value" : "留空则由 Herdr 或标题插件为标签页命名。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "留空則由 herdr 或標題外掛為分頁命名。"
+            "value" : "留空則由 Herdr 或標題外掛為分頁命名。"
           }
         }
       }
@@ -27164,24 +27173,24 @@
         }
       }
     },
-    "Following herdr plugin" : {
+    "Following Herdr plugin" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr プラグインに追随"
+            "value" : "Herdr プラグインに追随"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跟随 herdr 插件"
+            "value" : "跟随 Herdr 插件"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "跟隨 herdr 外掛"
+            "value" : "跟隨 Herdr 外掛"
           }
         }
       }
@@ -30472,24 +30481,24 @@
         }
       }
     },
-    "Heeler connects over SSH to a machine that runs herdr, Tmux or Rex." : {
+    "Heeler connects over SSH to a machine that runs Herdr, Tmux or Rex." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は herdr、Tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
+            "value" : "Heeler は Herdr、Tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 通过 SSH 连接到运行 herdr、Tmux 或 Rex 的机器。"
+            "value" : "Heeler 通过 SSH 连接到运行 Herdr、Tmux 或 Rex 的机器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 透過 SSH 連線到執行 herdr、Tmux 或 Rex 的機器。"
+            "value" : "Heeler 透過 SSH 連線到執行 Herdr、Tmux 或 Rex 的機器。"
           }
         }
       }
@@ -31847,24 +31856,24 @@
         }
       }
     },
-    "Heeler kept the saved data untouched. Every Host follows its herdr fields, and editing is paused until you reset." : {
+    "Heeler kept the saved data untouched. Every Host follows its Herdr fields, and editing is paused until you reset." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は保存済みのデータを変更していません。すべてのホストがそれぞれの herdr フィールドに従い、リセットするまで編集は停止しています。"
+            "value" : "Heeler は保存済みのデータを変更していません。すべてのホストがそれぞれの Herdr フィールドに従い、リセットするまで編集は停止しています。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 保留了已保存的数据而未做改动。所有主机暂跟随各自的 herdr 字段，重置前暂停编辑。"
+            "value" : "Heeler 保留了已保存的数据而未做改动。所有主机暂跟随各自的 Herdr 字段，重置前暂停编辑。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 未動已儲存的資料。每台主機都會沿用其 herdr 欄位，在你重設前暫停編輯。"
+            "value" : "Heeler 未動已儲存的資料。每台主機都會沿用其 Herdr 欄位，在你重設前暫停編輯。"
           }
         }
       }
@@ -32499,6 +32508,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heeler 的欄位"
+          }
+        }
+      }
+    },
+    "Herdr %@ · protocol %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr %1$@ · protocol %2$lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %1$@ · プロトコル %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %@ · 协议 %lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %@ · 通訊協定 %lld"
+          }
+        }
+      }
+    },
+    "Herdr %@ · protocol %lld — newer than this app was built against, so features added after protocol %lld may be unavailable." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr %1$@ · protocol %2$lld — newer than this app was built against, so features added after protocol %3$lld may be unavailable."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %1$@ · プロトコル %2$lld — このアプリのビルド対象より新しいため、プロトコル %3$lld より後に追加された機能は利用できない場合があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %@ · 协议 %lld — 比此 App 构建时针对的版本更新，因此在协议 %lld 之后新增的功能可能不可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr %@ · 通訊協定 %lld — 比此 App 所對應的版本更新，因此通訊協定 %lld 之後新增的功能可能無法使用。"
           }
         }
       }
@@ -33251,6 +33316,72 @@
         }
       }
     },
+    "Herdr Install Guide" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr インストールガイド"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 安装指南"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 安裝指南"
+          }
+        }
+      }
+    },
+    "Herdr Launcher" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr ランチャー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 启动器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 啟動器"
+          }
+        }
+      }
+    },
+    "Herdr Socket" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr ソケット"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 套接字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Socket"
+          }
+        }
+      }
+    },
     "Herdr TUI" : {
       "localizations" : {
         "ja" : {
@@ -33296,24 +33427,1111 @@
         }
       }
     },
-    "Herdr's agent hooks report to the pane this names, not to the Terminal they run in." : {
+    "Herdr answered but rejected the check: %@ (%@)" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr answered but rejected the check: %1$@ (%2$@)"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr のエージェントフックは、これが名指すペインに報告します。実行中のターミナルではありません。"
+            "value" : "Herdr は応答しましたが、チェックを拒否しました: %1$@（%2$@）"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr 的 Agent 钩子会向此变量指定的窗格报告，而非其所在的终端。"
+            "value" : "Herdr 已响应，但拒绝了检查：%@（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 有回應，但拒絕了這項檢查：%@（%@）"
+          }
+        }
+      }
+    },
+    "Herdr could not download the plugin. Check that the Host can reach github.com." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインをダウンロードできませんでした。ホストが github.com に到達できるか確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法下载插件。请确认主机能够访问 github.com。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法下載外掛。請確認主機能連到 github.com。"
+          }
+        }
+      }
+    },
+    "Herdr could not install the plugin." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインをインストールできませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法安装插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法安裝外掛。"
+          }
+        }
+      }
+    },
+    "Herdr could not read the plugin's manifest, so its version may be out of date. Check the linked checkout." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。リンクされたチェックアウトを確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法读取插件清单，因此插件版本可能已过旧。请检查所链接的检出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法讀取外掛的 manifest，因此其版本可能已過時。請檢查所連結的資料夾。"
+          }
+        }
+      }
+    },
+    "Herdr could not read the plugin's manifest, so its version may be out of date. Reinstall it." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。再インストールしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法读取插件清单，因此插件版本可能已过旧。请重新安装插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法讀取外掛的 manifest，因此其版本可能已過時。請重新安裝。"
+          }
+        }
+      }
+    },
+    "Herdr could not remove the old copy of the plugin." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインの古いコピーを削除できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除插件的旧副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除外掛的舊版副本。"
+          }
+        }
+      }
+    },
+    "Herdr could not turn the plugin on." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプラグインをオンにできませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法开启插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法啟用外掛。"
+          }
+        }
+      }
+    },
+    "Herdr couldn't create the terminal: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はターミナルを作成できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法创建终端：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法建立終端機：%@"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes %@ and any uncommitted changes in it, so check its Changes first." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェックアウトされたサブモジュールがあるため、Herdr はこのワークツリーを削除できませんでした。強制的に削除すると %@ とその中の未コミットの変更がすべて消えるため、先に変更を確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树，因为其中包含已检出的子模块。强制移除会删除 %@ 及其所有未提交的更改，因此请先查看其“更改”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹，因為它含有已檢出的子模組。強制移除會刪除 %@ 以及其中所有未提交的變更，請先查看它的「變更」。"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes %@ and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes %1$@ and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェックアウトされたサブモジュールがあるため、Herdr はこのワークツリーを削除できませんでした。強制的に削除すると %1$@ とその中の未コミットの変更がすべて消えるため、先に変更を確認してください。強制するには、ホストで次を実行してください: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树，因为其中包含已检出的子模块。强制移除会删除 %@ 及其所有未提交的更改，因此请先查看其“更改”。如需强制移除，请在主机上运行：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹，因為它含有已檢出的子模組。強制移除會刪除 %@ 以及其中所有未提交的變更，請先查看它的「變更」。若要強制移除，請在主機上執行：%@"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更済みまたは未追跡のファイルがあるため、Herdr はこのワークツリーを削除できませんでした。ホストでそれらの変更をコミットまたは破棄してから、再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树，因为其中包含已修改或未跟踪的文件。请在主机上提交或放弃这些更改，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹，因為它含有已修改或未追蹤的檔案。請在主機上提交或捨棄這些變更，然後重試。"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree because the workspace is no longer on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はワークスペースがもうホスト上にないためワークツリーを削除できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树，因为该工作区已不在主机上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹，因為該工作區已不在主機上。"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree because the workspace is not a linked worktree." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はワークスペースがリンクされたワークツリーではないため削除できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树，因为该工作区不是关联工作树。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹，因為該工作區不是連結的工作樹。"
+          }
+        }
+      }
+    },
+    "Herdr couldn't remove this worktree: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのワークツリーを削除できませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 无法移除此工作树：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 無法移除此工作樹：%@"
+          }
+        }
+      }
+    },
+    "Herdr default fields (plugin reported a problem)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr の既定フィールド（プラグインが問題を報告しました）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 默认字段（插件报告了问题）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 預設欄位（外掛回報了問題）"
+          }
+        }
+      }
+    },
+    "Herdr did not report where the Heeler plugin is installed. Update Herdr on this Host to read Usage." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr が Heeler プラグインのインストール先を報告しませんでした。使用量を読み取るには、このホストの Herdr を更新してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 未报告 Heeler 插件的安装位置。请更新此主机上的 Herdr 以读取用量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 未回報 Heeler 外掛的安裝位置。請更新此主機上的 Herdr 以讀取用量。"
+          }
+        }
+      }
+    },
+    "Herdr exited with status %d" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はステータス %d で終了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 已退出，状态码为 %d"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 以狀態 %d 結束"
+          }
+        }
+      }
+    },
+    "Herdr fields" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr フィールド"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 字段"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 欄位"
+          }
+        }
+      }
+    },
+    "Herdr fields unavailable" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr フィールドを利用できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 字段不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 欄位無法使用"
+          }
+        }
+      }
+    },
+    "Herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントの Claude Code セッション ID を報告していません。チャットは確認を続けます。エージェントのターミナルで続行できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未报告此 Agent 的 Claude Code 会话 ID。对话会继续检查，你也可以在 Agent 终端中继续操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未回報這個 Agent 的 Claude Code 工作階段 ID。對話會持續檢查，你也可以先在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "Herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントの Grok Build セッション ID を報告していません。Grok Build は、/new や /clear の後も含めセッション開始時に報告します。チャットは確認を続けます。エージェントのターミナルで続行できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未报告此 Agent 的 Grok Build 会话 ID。Grok Build 会在会话开始时（包括执行 /new 或 /clear 后）报告会话 ID。对话会继续检查，你也可以在 Agent 终端中继续操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未回報這個 Agent 的 Grok Build 工作階段 ID。Grok Build 會在工作階段開始時回報，包括執行 /new 或 /clear 之後。對話會持續檢查，你也可以先在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "Herdr hasn't reported a Pi conversation for this Agent yet. Pi reports it once it has started, after you answer whether to trust the project folder. If this lasts, check the Pi integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントの Pi 会話をまだ報告していません。Pi は、プロジェクトフォルダを信頼するか答えた後、起動すると報告します。続く場合は、ホスト上の Pi 統合を確認してください。チャットは確認を続け、エージェントのターミナルで続行できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未报告此 Agent 的 Pi 对话。在你回答是否信任项目文件夹并完成启动后，Pi 就会报告对话。如果一直停留在此状态，请检查主机上的 Pi 集成。对话会继续检查，你也可以在 Agent 终端中继续操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未回報這個 Agent 的 Pi 對話。Pi 會在啟動後、你回答是否信任專案資料夾之後才回報。若一直如此，請檢查主機上的 Pi 整合。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "Herdr hasn't reported an Oh My Pi conversation for this Agent yet. Oh My Pi reports it once it has started. If this lasts, check the OMP integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントの Oh My Pi 会話をまだ報告していません。Oh My Pi は起動すると報告します。続く場合は、ホスト上の OMP 統合を確認してください。チャットは確認を続け、エージェントのターミナルで続行できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未报告此 Agent 的 Oh My Pi 对话。Oh My Pi 会在启动完成后报告对话。如果一直停留在此状态，请检查主机上的 OMP 集成。对话会继续检查，你也可以在 Agent 终端中继续操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未回報這個 Agent 的 Oh My Pi 對話。Oh My Pi 會在啟動後回報。若一直如此，請檢查主機上的 OMP 整合。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "Herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントの OpenCode の会話をまだ報告していません。OpenCode は会話が開くと報告するので、ターミナルで最初のメッセージを送るか、そこでセッションを開いてください。チャットは確認を続けます。エージェントのターミナルで続けることもできます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未报告此 Agent 的 OpenCode 对话。OpenCode 会在对话打开后报告：请在终端中发送第一条消息，或在终端中打开一个会话。对话会继续检查，你也可以在 Agent 终端中继续操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 尚未回報這個 Agent 的 OpenCode 對話。OpenCode 會在開啟對話後回報：請在終端機中送出第一則訊息，或在那裡開啟一個工作階段。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
+          }
+        }
+      }
+    },
+    "Herdr installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr インストール済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 已安裝"
+          }
+        }
+      }
+    },
+    "Herdr installed plugin %@, the newest published, but this app expects %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr installed plugin %1$@, the newest published, but this app expects %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は公開版で最新のプラグイン %@ をインストールしましたが、このアプリは %@ を想定しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 已安装最新发布的插件 %@，但此 App 需要 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 安裝了外掛 %@（已發布的最新版本），但此 App 預期的是 %@。"
+          }
+        }
+      }
+    },
+    "Herdr is not on this Host's SSH PATH" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr がこのホストの SSH PATH にありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 不在此主机的 SSH PATH 中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 不在此主機的 SSH PATH 中"
+          }
+        }
+      }
+    },
+    "Herdr is not running on this Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのホストで動作していません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 未在此主机上运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 未在此主機上執行"
+          }
+        }
+      }
+    },
+    "Herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントのセッションを id なしで名前付けています。名前で会話を再開した後に起こります。チャットはどのトランスクリプトが自分のものか特定できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 为此 Agent 报告的会话名称没有 ID（按名称恢复对话后会出现这种情况）。对话无法确定哪个会话记录属于它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 為這個 Agent 的工作階段命名時沒有附上 ID，這種情況會在依名稱繼續對話後發生。對話檢視無法判斷哪份對話記錄屬於它。"
+          }
+        }
+      }
+    },
+    "Herdr now reports another %@ conversation for this Agent. Chat is switching to it; check it, then send again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はこのエージェントについて別の %@ の会話を報告しています。チャットはそちらに切り替えています。確認してから再度送信してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 现为此 Agent 报告了另一个 %@ 对话。对话视图正在切换过去；请确认后重新发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 現在回報這個 Agent 有另一段 %@ 對話。對話檢視正在切換到該對話；請確認後再重新傳送。"
+          }
+        }
+      }
+    },
+    "Herdr on the Host is newer than its running server. Restart the Herdr server, then try again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上の Herdr は実行中のサーバーより新しいバージョンです。Herdr サーバーを再起動してから、再試行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 Herdr 版本比正在运行的服务器更新。请重启 Herdr 服务器，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 Herdr 比其正在執行的伺服器更新。請重新啟動 Herdr 伺服器，然後再試一次。"
+          }
+        }
+      }
+    },
+    "Herdr refuses the session name \"%@\". Its names use letters, digits, \".\", \"_\" and \"-\", up to %lld bytes." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr refuses the session name \"%1$@\". Its names use letters, digits, \".\", \"_\" and \"-\", up to %2$lld bytes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はセッション名「%@」を拒否します。セッション名に使えるのは英字、数字、「.」「_」「-」で、最大 %lld バイトです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了会话名称“%@”。会话名称只能使用字母、数字、“.”、“_”和“-”，且最多 %lld 字节。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕工作階段名稱「%@」。名稱可使用字母、數字、「.」、「_」和「-」，最長 %lld 位元組。"
+          }
+        }
+      }
+    },
+    "Herdr rejected the Console sync: %@. Retrying…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はコンソールの同期を拒否しました: %@。再試行中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了控制台同步：%@。正在重试…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了主控台同步：%@。正在重試…"
+          }
+        }
+      }
+    },
+    "Herdr rejected the close: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は閉じる操作を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了关闭操作：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了關閉：%@"
+          }
+        }
+      }
+    },
+    "Herdr rejected the command: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はコマンドを拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了该命令：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了指令：%@"
+          }
+        }
+      }
+    },
+    "Herdr rejected the command: %@. Update Herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はコマンドを拒否しました: %@。Muse を使うには、このホストの Herdr を v0.9.0 以降に更新するか、サポートされている別のエージェントを選んでください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了该命令：%@。若要使用 Muse，请将此主机上的 Herdr 更新至 v0.9.0 或更高版本，或选择其他受支持的 Agent。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了指令：%@。若要支援 Muse，請將此主機上的 Herdr 更新到 v0.9.0 或更新版本，或選擇其他支援的 Agent。"
+          }
+        }
+      }
+    },
+    "Herdr rejected the message: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はメッセージを拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了该消息：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了訊息：%@"
+          }
+        }
+      }
+    },
+    "Herdr rejected the move: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は移動を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了移动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了移動：%@"
+          }
+        }
+      }
+    },
+    "Herdr rejected the rename: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は名前の変更を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了重命名：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了重新命名：%@"
+          }
+        }
+      }
+    },
+    "Herdr rejected the request" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はリクエストを拒否しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒绝了请求"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 拒絕了請求"
+          }
+        }
+      }
+    },
+    "Herdr reports a session Chat doesn't read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は、チャットが読み取らないセッションを報告しています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 报告的会话不受对话支持。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 回報了對話不讀取的工作階段。"
+          }
+        }
+      }
+    },
+    "Herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's." : {},
+    "Herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は OpenCode のセッション ID でないセッション名を報告しているため、チャットはどの会話がこのエージェントのものか特定できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 报告的会话名称不是 OpenCode 会话 ID，因此对话无法确定哪个对话属于此 Agent。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 回報的工作階段名稱不是 OpenCode 的工作階段 ID，因此對話檢視無法判斷哪段對話屬於這個 Agent。"
+          }
+        }
+      }
+    },
+    "Herdr reports a subagent's session, which Chat doesn't show. Open the main conversation in the terminal." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はサブエージェントのセッションを報告しています。チャットはこれを表示しません。ターミナルでメインの会話を開いてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 报告的是子 Agent 的会话，对话不显示此类会话。请在终端中打开主对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 回報的是子 Agent 的工作階段，對話檢視不會顯示。請在終端機中開啟主要對話。"
+          }
+        }
+      }
+    },
+    "Herdr returned an invalid response" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr は不正な応答を返しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 返回了无效响应"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 傳回了無效的回應"
+          }
+        }
+      }
+    },
+    "Herdr row" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr の行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 列"
+          }
+        }
+      }
+    },
+    "Herdr server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr サーバー実行中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 服务运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 伺服器執行中"
+          }
+        }
+      }
+    },
+    "Herdr speaks protocol %lld; this app needs at least %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Herdr speaks protocol %1$lld; this app needs at least %2$lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr はプロトコル %lld で通信しており、このアプリは少なくとも %lld が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 使用协议版本 %lld；本 App 至少需要版本 %lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 使用通訊協定 %lld；此 App 至少需要 %lld"
+          }
+        }
+      }
+    },
+    "Herdr's agent hooks report to the pane this names, not to the Terminal they run in." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr のエージェントフックは、これが名指すペインに報告します。実行中のターミナルではありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 的 Agent 钩子会向此变量指定的窗格报告，而非其所在的终端。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Herdr 的 Agent hook 會回報給這裡指定的窗格，而不是它們所執行的終端機。"
+          }
+        }
+      }
+    },
+    "Herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, not in this row; add status to show it as text." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr のステータステキストです。Heeler はステータスを status_badge フィールドまたはステータスリングで表示し、この行では表示しません。テキストで表示するには status を追加してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 的状态文本。Heeler 通过 status_badge 字段或状态环显示状态，不在本行中显示；如需以文本显示状态，请添加 status 字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 的狀態文字。Heeler 以 status_badge 欄位或狀態環顯示狀態，不會顯示在這一列；加入 status 即可以文字顯示。"
           }
         }
       }
@@ -35085,24 +36303,24 @@
         }
       }
     },
-    "Incompatible herdr protocol" : {
+    "Incompatible Herdr protocol" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "互換性のない herdr プロトコル"
+            "value" : "互換性のない Herdr プロトコル"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr 协议不兼容"
+            "value" : "Herdr 协议不兼容"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr 協定不相容"
+            "value" : "Herdr 協定不相容"
           }
         }
       }
@@ -35374,6 +36592,28 @@
     "Install Droid Hook…" : {},
     "Install Heeler’s Droid hook, then restart or resume Droid in this terminal so Chat can follow its conversation." : {},
     "Install Heeler’s plugin on the Host to read the thread open in this Amp terminal." : {},
+    "Install Herdr" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr をインストール"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安装 Herdr"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安裝 Herdr"
+          }
+        }
+      }
+    },
     "Install Herdr Core on the Host, then check again." : {
       "localizations" : {
         "ja" : {
@@ -35485,28 +36725,6 @@
         }
       }
     },
-    "Install herdr" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr をインストール"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装 herdr"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安裝 herdr"
-          }
-        }
-      }
-    },
     "Install on This Host" : {
       "localizations" : {
         "zh-Hans" : {
@@ -35539,24 +36757,24 @@
         }
       }
     },
-    "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields." : {
+    "Install the Heeler plugin for notifications, Live Activity updates, and Herdr's sidebar fields." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通知、ライブアクティビティの更新、herdr のサイドバーフィールドのために Heeler プラグインをインストールしてください。"
+            "value" : "通知、ライブアクティビティの更新、Herdr のサイドバーフィールドのために Heeler プラグインをインストールしてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "安装 Heeler 插件以支持通知、实时活动更新以及 herdr 侧边栏字段。"
+            "value" : "安装 Heeler 插件以支持通知、实时活动更新以及 Herdr 侧边栏字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "安裝 Heeler 外掛以使用通知、即時動態更新與 herdr 的側邊欄欄位。"
+            "value" : "安裝 Heeler 外掛以使用通知、即時動態更新與 Herdr 的側邊欄欄位。"
           }
         }
       }
@@ -40086,47 +41304,46 @@
       }
     },
     "Native Chat" : {},
-    "Native Windows connections require herdr 0.9.3 or newer with remote-api-bridge" : {
-      "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
+    "Native Windows connections require Herdr 0.9.3 or newer with remote-api-bridge" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ネイティブ Windows への接続には、remote-api-bridge を備えた herdr 0.9.3 以降が必要です"
+            "value" : "ネイティブ Windows への接続には、remote-api-bridge を備えた Herdr 0.9.3 以降が必要です"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原生 Windows 连接需要支持 remote-api-bridge 的 herdr 0.9.3 或更高版本"
+            "value" : "原生 Windows 连接需要支持 remote-api-bridge 的 Herdr 0.9.3 或更高版本"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原生 Windows 連線需要 herdr 0.9.3 以上版本並搭配 remote-api-bridge"
+            "value" : "原生 Windows 連線需要 Herdr 0.9.3 以上版本並搭配 remote-api-bridge"
           }
         }
       }
     },
-    "Native Windows needs herdr 0.9.3 or newer and OpenSSH Server." : {
+    "Native Windows needs Herdr 0.9.3 or newer and OpenSSH Server." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ネイティブ Windows には herdr 0.9.3 以降と OpenSSH サーバーが必要です。"
+            "value" : "ネイティブ Windows には Herdr 0.9.3 以降と OpenSSH サーバーが必要です。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原生 Windows 需要 herdr 0.9.3 或更高版本以及 OpenSSH Server。"
+            "value" : "原生 Windows 需要 Herdr 0.9.3 或更高版本以及 OpenSSH Server。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原生 Windows 需要 herdr 0.9.3 以上版本與 OpenSSH Server。"
+            "value" : "原生 Windows 需要 Herdr 0.9.3 以上版本與 OpenSSH Server。"
           }
         }
       }
@@ -41193,6 +42410,72 @@
         }
       }
     },
+    "No Herdr fields snapshot" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr フィールドのスナップショットがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无 Herdr 字段快照"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有 Herdr 欄位快照"
+          }
+        }
+      }
+    },
+    "No Herdr socket at %@. Install and start Herdr on the Host, or fix the session name." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に Herdr ソケットがありません。ホストに Herdr をインストールして起動するか、セッション名を修正してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 未找到 Herdr 套接字。请在主机上安装并启动 Herdr，或修正会话名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 沒有 Herdr socket。請在主機上安裝並啟動 Herdr，或修正工作階段名稱。"
+          }
+        }
+      }
+    },
+    "No Herdr socket at %@. Start the Herdr instance configured for this Host and verify its socket path, then run the checks again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ に Herdr ソケットがありません。このホスト用に設定された Herdr インスタンスを起動し、そのソケットパスを確認してから、再確認を実行してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 未找到 Herdr 套接字。请启动为此主机配置的 Herdr 实例并核实其套接字路径，然后重新运行检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 沒有 Herdr socket。請啟動為此主機設定的 Herdr 執行個體並確認其 socket 路徑，然後重新執行檢查。"
+          }
+        }
+      }
+    },
     "No Host Can Run gh" : {
       "localizations" : {
         "ja" : {
@@ -42161,72 +43444,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有欄位"
-          }
-        }
-      }
-    },
-    "No herdr fields snapshot" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr フィールドのスナップショットがありません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无 herdr 字段快照"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有 herdr 欄位快照"
-          }
-        }
-      }
-    },
-    "No herdr socket at %@. Install and start herdr on the Host, or fix the session name." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ に herdr ソケットがありません。ホストに herdr をインストールして起動するか、セッション名を修正してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 %@ 未找到 herdr 套接字。请在主机上安装并启动 herdr，或修正会话名称。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 沒有 herdr socket。請在主機上安裝並啟動 herdr，或修正工作階段名稱。"
-          }
-        }
-      }
-    },
-    "No herdr socket at %@. Start the herdr instance configured for this Host and verify its socket path, then run the checks again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ に herdr ソケットがありません。このホスト用に設定された herdr インスタンスを起動し、そのソケットパスを確認してから、再確認を実行してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 %@ 未找到 herdr 套接字。请启动为此主机配置的 herdr 实例并核实其套接字路径，然后重新运行检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 沒有 herdr socket。請啟動為此主機設定的 herdr 執行個體並確認其 socket 路徑，然後重新執行檢查。"
           }
         }
       }
@@ -44535,24 +45752,30 @@
         }
       }
     },
-    "Notifications from your other herdr sessions on this Host may reach this device until the plugin is %@ or newer; this Host has %@." : {
+    "Notifications from your other Herdr sessions on this Host may reach this device until the plugin is %@ or newer; this Host has %@." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Notifications from your other Herdr sessions on this Host may reach this device until the plugin is %1$@ or newer; this Host has %2$@."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プラグインが %@ 以降になるまで、このホスト上の他の herdr セッションからの通知がこのデバイスに届く可能性があります。このホストには %@ が導入されています。"
+            "value" : "プラグインが %@ 以降になるまで、このホスト上の他の Herdr セッションからの通知がこのデバイスに届く可能性があります。このホストには %@ が導入されています。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在插件升级到 %@ 或更高版本之前，此主机上其他 herdr 会话的通知可能会发送到此设备；此主机当前版本为 %@。"
+            "value" : "在插件升级到 %@ 或更高版本之前，此主机上其他 Herdr 会话的通知可能会发送到此设备；此主机当前版本为 %@。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在外掛更新到 %@ 以上版本之前，此主機上你其他 herdr 工作階段的通知可能也會傳到這部裝置；此主機目前是 %@。"
+            "value" : "在外掛更新到 %@ 以上版本之前，此主機上你其他 Herdr 工作階段的通知可能也會傳到這部裝置；此主機目前是 %@。"
           }
         }
       }
@@ -44982,24 +46205,24 @@
         }
       }
     },
-    "On a machine that runs Herdr Core or Tmux without herdr, run this one instead." : {
+    "On a machine that runs Herdr Core or Tmux without Herdr, run this one instead." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr がなく Herdr Core または Tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
+            "value" : "Herdr がなく Herdr Core または Tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "机器上没有 herdr、只运行 Herdr Core 或 Tmux 时，改为运行这条命令。"
+            "value" : "机器上没有 Herdr、只运行 Herdr Core 或 Tmux 时，改为运行这条命令。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "機器上沒有 herdr、只執行 Herdr Core 或 Tmux 時，請改為執行這個指令。"
+            "value" : "機器上沒有 Herdr、只執行 Herdr Core 或 Tmux 時，請改為執行這個指令。"
           }
         }
       }
@@ -46202,48 +47425,46 @@
         }
       }
     },
-    "OpenCode stopped with an error: %@ herdr holds Chat's messages while it reports Blocked, so continue in the terminal." : {
-      "comment" : "Blocked note; %@ is OpenCode's error, which already ends with its own sentence punctuation",
+    "OpenCode stopped with an error: %@ Herdr holds Chat's messages while it reports Blocked, so continue in the terminal." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode はエラーで停止しました: %@ herdr は対応待ちを報告している間チャットのメッセージを保留するため、ターミナルで続けてください。"
+            "value" : "OpenCode はエラーで停止しました: %@ Herdr は対応待ちを報告している間チャットのメッセージを保留するため、ターミナルで続けてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 因错误停止：%@ 在其报告待处理期间，herdr 会暂存对话发出的消息，请在终端中继续。"
+            "value" : "OpenCode 因错误停止：%@ 在其报告待处理期间，Herdr 会暂存对话发出的消息，请在终端中继续。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 因錯誤而停止：%@ herdr 在回報「待處理」期間會保留對話的訊息，請改在終端機中繼續。"
+            "value" : "OpenCode 因錯誤而停止：%@ Herdr 在回報「待處理」期間會保留對話的訊息，請改在終端機中繼續。"
           }
         }
       }
     },
-    "OpenCode stopped with an error: %@. herdr holds Chat's messages while it reports Blocked, so continue in the terminal." : {
-      "comment" : "Blocked note; %@ is OpenCode's error without closing punctuation",
+    "OpenCode stopped with an error: %@. Herdr holds Chat's messages while it reports Blocked, so continue in the terminal." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode はエラーで停止しました: %@。herdr は対応待ちを報告している間チャットのメッセージを保留するため、ターミナルで続けてください。"
+            "value" : "OpenCode はエラーで停止しました: %@。Herdr は対応待ちを報告している間チャットのメッセージを保留するため、ターミナルで続けてください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 因错误停止：%@。在其报告待处理期间，herdr 会暂存对话发出的消息，请在终端中继续。"
+            "value" : "OpenCode 因错误停止：%@。在其报告待处理期间，Herdr 会暂存对话发出的消息，请在终端中继续。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "OpenCode 因錯誤而停止：%@。herdr 在回報「待處理」期間會保留對話的訊息，請改在終端機中繼續。"
+            "value" : "OpenCode 因錯誤而停止：%@。Herdr 在回報「待處理」期間會保留對話的訊息，請改在終端機中繼續。"
           }
         }
       }
@@ -49599,24 +50820,24 @@
         }
       }
     },
-    "Plugin field. Values come from herdr plugins and display as plain text." : {
+    "Plugin field. Values come from Herdr plugins and display as plain text." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プラグインフィールドです。値は herdr プラグイン由来で、プレーンテキストとして表示されます。"
+            "value" : "プラグインフィールドです。値は Herdr プラグイン由来で、プレーンテキストとして表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "插件字段。值来自 herdr 插件，并以纯文本显示。"
+            "value" : "插件字段。值来自 Herdr 插件，并以纯文本显示。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "外掛欄位。值來自 herdr 外掛，並以純文字顯示。"
+            "value" : "外掛欄位。值來自 Herdr 外掛，並以純文字顯示。"
           }
         }
       }
@@ -50926,24 +52147,24 @@
         }
       }
     },
-    "Put herdr's install directory on the account's non-interactive SSH PATH." : {
+    "Put Herdr's install directory on the account's non-interactive SSH PATH." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr のインストールディレクトリを、このアカウントの非対話型 SSH PATH に追加してください。"
+            "value" : "Herdr のインストールディレクトリを、このアカウントの非対話型 SSH PATH に追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请将 herdr 的安装目录添加到该账户的非交互式 SSH PATH 中。"
+            "value" : "请将 Herdr 的安装目录添加到该账户的非交互式 SSH PATH 中。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請將 herdr 的安裝目錄加入該帳號的非互動式 SSH PATH。"
+            "value" : "請將 Herdr 的安裝目錄加入該帳號的非互動式 SSH PATH。"
           }
         }
       }
@@ -51954,6 +53175,28 @@
         }
       }
     },
+    "Reading Herdr fields…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr フィールドを読み取り中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取 Herdr 字段…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在讀取 Herdr 欄位…"
+          }
+        }
+      }
+    },
     "Reading OpenCode's conversations needs sqlite3 or python3 on the Host. Install one, then tap Check Again." : {
       "localizations" : {
         "ja" : {
@@ -52038,28 +53281,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在從主機讀取…"
-          }
-        }
-      }
-    },
-    "Reading herdr fields…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr フィールドを読み取り中…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在读取 herdr 字段…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在讀取 herdr 欄位…"
           }
         }
       }
@@ -53921,24 +55142,24 @@
         }
       }
     },
-    "Replace rows with herdr's fields?" : {
+    "Replace rows with Herdr's fields?" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行を herdr のフィールドに置き換えますか？"
+            "value" : "行を Herdr のフィールドに置き換えますか？"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用 herdr 的字段替换各行？"
+            "value" : "用 Herdr 的字段替换各行？"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要用 herdr 的欄位取代各列嗎？"
+            "value" : "要用 Herdr 的欄位取代各列嗎？"
           }
         }
       }
@@ -55483,47 +56704,46 @@
         }
       }
     },
-    "Row 1 and Row 2 are replaced with this Host's herdr fields and saved right away. Row 3 and every row's right side stay as they are." : {
+    "Row 1 and Row 2 are replaced with this Host's Herdr fields and saved right away. Row 3 and every row's right side stay as they are." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行 1 と行 2 はこのホストの herdr フィールドに置き換えられ、すぐ保存されます。行 3 と各行の右側はそのまま残ります。"
+            "value" : "行 1 と行 2 はこのホストの Herdr フィールドに置き換えられ、すぐ保存されます。行 3 と各行の右側はそのまま残ります。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 行和第 2 行将替换为此主机的 herdr 字段并立即保存。第 3 行以及各行右侧保持不变。"
+            "value" : "第 1 行和第 2 行将替换为此主机的 Herdr 字段并立即保存。第 3 行以及各行右侧保持不变。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 列和第 2 列會換成此主機的 herdr 欄位並立即儲存。第 3 列以及每一列的右側維持原樣。"
+            "value" : "第 1 列和第 2 列會換成此主機的 Herdr 欄位並立即儲存。第 3 列以及每一列的右側維持原樣。"
           }
         }
       }
     },
-    "Row 1 and Row 2 start from herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
-      "comment" : "Agent List Fields footer when the Host has the herdr plugin",
+    "Row 1 and Row 2 start from Herdr's sidebar fields; Sync from plugin refills them. Row 3 is Heeler's own row. Any row can use Herdr and Heeler fields. Fields on a row's right side end its line, and Sync from plugin keeps them. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行 1 と行 2 は herdr のサイドバーフィールドから始まり、「プラグインから同期」で再設定できます。行 3 は Heeler 自身の行です。どの行も herdr と Heeler のフィールドを使えます。行の右側のフィールドはその行の末尾に置かれ、「プラグインから同期」でも保持されます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+            "value" : "行 1 と行 2 は Herdr のサイドバーフィールドから始まり、「プラグインから同期」で再設定できます。行 3 は Heeler 自身の行です。どの行も Herdr と Heeler のフィールドを使えます。行の右側のフィールドはその行の末尾に置かれ、「プラグインから同期」でも保持されます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 行和第 2 行初始使用 herdr 的侧边栏字段，“从插件同步”会重新填充它们。第 3 行是 Heeler 的自有行。任意行均可使用 herdr 字段和 Heeler 字段。行右侧的字段显示在行尾，“从插件同步”会保留它们。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+            "value" : "第 1 行和第 2 行初始使用 Herdr 的侧边栏字段，“从插件同步”会重新填充它们。第 3 行是 Heeler 的自有行。任意行均可使用 Herdr 字段和 Heeler 字段。行右侧的字段显示在行尾，“从插件同步”会保留它们。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 列和第 2 列以 herdr 的側邊欄欄位為起點；「從外掛同步」會重新填入。第 3 列是 Heeler 自己的列。任何一列都可以使用 herdr 和 Heeler 的欄位。列右側的欄位會結束該行，「從外掛同步」會保留它們。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+            "value" : "第 1 列和第 2 列以 Herdr 的側邊欄欄位為起點；「從外掛同步」會重新填入。第 3 列是 Heeler 自己的列。任何一列都可以使用 Herdr 和 Heeler 的欄位。列右側的欄位會結束該行，「從外掛同步」會保留它們。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
           }
         }
       }
@@ -57823,24 +59043,24 @@
         }
       }
     },
-    "Set Up herdr on Windows" : {
+    "Set Up Herdr on Windows" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows で herdr をセットアップ"
+            "value" : "Windows で Herdr をセットアップ"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Windows 上配置 herdr"
+            "value" : "在 Windows 上配置 Herdr"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Windows 上設定 herdr"
+            "value" : "在 Windows 上設定 Herdr"
           }
         }
       }
@@ -60976,6 +62196,28 @@
         }
       }
     },
+    "Start the Herdr instance configured for this Host and verify its socket path." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホスト用に設定された Herdr インスタンスを起動し、そのソケットパスを確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请启动为此主机配置的 Herdr 实例，并核对其套接字路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請啟動為此主機設定的 Herdr 實例，並確認其 socket 路徑。"
+          }
+        }
+      }
+    },
     "Start the core on that machine in your desktop session, in a PowerShell window not run as administrator. Heeler keeps checking." : {
       "localizations" : {
         "ja" : {
@@ -61038,28 +62280,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請在主機上啟動 core，然後再檢查一次。"
-          }
-        }
-      }
-    },
-    "Start the herdr instance configured for this Host and verify its socket path." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホスト用に設定された herdr インスタンスを起動し、そのソケットパスを確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请启动为此主机配置的 herdr 实例，并核对其套接字路径。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請啟動為此主機設定的 herdr 實例，並確認其 socket 路徑。"
           }
         }
       }
@@ -62767,24 +63987,30 @@
         }
       }
     },
-    "Sync from plugin and herdr's sidebar fields need plugin %@ or newer; this Host has %@." : {
+    "Sync from plugin and Herdr's sidebar fields need plugin %@ or newer; this Host has %@." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sync from plugin and Herdr's sidebar fields need plugin %1$@ or newer; this Host has %2$@."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「プラグインから同期」と herdr のサイドバーフィールドにはプラグイン %@ 以降が必要です。このホストには %@ が導入されています。"
+            "value" : "「プラグインから同期」と Herdr のサイドバーフィールドにはプラグイン %@ 以降が必要です。このホストには %@ が導入されています。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“从插件同步”和 herdr 侧边栏字段需要插件 %@ 或更高版本；此主机当前版本为 %@。"
+            "value" : "“从插件同步”和 Herdr 侧边栏字段需要插件 %@ 或更高版本；此主机当前版本为 %@。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "從外掛同步與 herdr 側邊欄欄位需要外掛 %@ 或更新版本；此主機的版本為 %@。"
+            "value" : "從外掛同步與 Herdr 側邊欄欄位需要外掛 %@ 或更新版本；此主機的版本為 %@。"
           }
         }
       }
@@ -65285,24 +66511,24 @@
         }
       }
     },
-    "The Heeler plugin couldn't read this Host's herdr sidebar settings, so herdr's default fields were used. Update the plugin, or run herdr config check." : {
+    "The Heeler plugin couldn't read this Host's Herdr sidebar settings, so Herdr's default fields were used. Update the plugin, or run herdr config check." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler プラグインはこのホストの herdr サイドバー設定を読み取れなかったため、herdr の既定のフィールドが使用されました。プラグインを更新するか、herdr config check を実行してください。"
+            "value" : "Heeler プラグインはこのホストの Herdr サイドバー設定を読み取れなかったため、Herdr の既定のフィールドが使用されました。プラグインを更新するか、herdr config check を実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 插件无法读取此主机的 herdr 侧边栏设置，因此使用了 herdr 的默认字段。请更新插件，或运行 herdr config check。"
+            "value" : "Heeler 插件无法读取此主机的 Herdr 侧边栏设置，因此使用了 Herdr 的默认字段。请更新插件，或运行 herdr config check。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 外掛無法讀取此主機的 herdr 側邊欄設定，因此使用了 herdr 的預設欄位。請更新外掛，或執行 herdr config check。"
+            "value" : "Heeler 外掛無法讀取此主機的 Herdr 側邊欄設定，因此使用了 Herdr 的預設欄位。請更新外掛，或執行 herdr config check。"
           }
         }
       }
@@ -65391,6 +66617,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此主機上的 Heeler 外掛無法回報用量。請重試，或更新外掛。"
+          }
+        }
+      }
+    },
+    "The Herdr CLI was not found on the Host's non-interactive SSH PATH." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr CLI がホストの非対話型 SSH PATH に見つかりませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主机的非交互式 SSH PATH 中未找到 Herdr CLI。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主機的非互動式 SSH PATH 中找不到 Herdr CLI。"
           }
         }
       }
@@ -65523,6 +66771,122 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Herdr Core socket 路徑過長"
+          }
+        }
+      }
+    },
+    "The Herdr launcher at %@ could not run. Check that this launcher exists, is executable, and can start Herdr. Pair the Host again if its path changed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Herdr ランチャーを実行できませんでした。このランチャーが存在し、実行可能で、Herdr を起動できるか確認してください。パスが変わった場合はホストの再ペアリングが必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法运行位于 %@ 的 Herdr 启动器。请确认该启动器存在、可执行且能启动 Herdr。如果其路径已更改，请重新配对该主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位於 %@ 的 Herdr 啟動器無法執行。請確認此啟動器存在、可執行，且能啟動 Herdr。若其路徑已變更，請重新配對主機。"
+          }
+        }
+      }
+    },
+    "The Herdr launcher at %@ did not answer like Herdr. (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Herdr launcher at %1$@ did not answer like Herdr. (%2$@)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ の Herdr ランチャーは Herdr として応答しませんでした。（%2$@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位于 %@ 的 Herdr 启动器未返回有效的 Herdr 响应。（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位於 %@ 的 Herdr 啟動器沒有像 Herdr 那樣回應。（%@）"
+          }
+        }
+      }
+    },
+    "The Herdr launcher could not run" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr ランチャーを実行できませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法运行 Herdr 启动器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 啟動器無法執行"
+          }
+        }
+      }
+    },
+    "The Herdr session name is invalid." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr のセッション名が無効です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 会话名称无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr 工作階段名稱無效。"
+          }
+        }
+      }
+    },
+    "The Herdr socket was not found" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr ソケットが見つかりません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未找到 Herdr 套接字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到 Herdr socket"
           }
         }
       }
@@ -66065,25 +67429,24 @@
         }
       }
     },
-    "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in herdr instead." : {
-      "comment" : "Pairing failure",
+    "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in Herdr instead." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストがデバイス鍵を受け入れなかったため、まだ承認されていません。ホストにこのデバイスの authorized_keys 行を追加するか、代わりに herdr でペアリングコードを生成してください。"
+            "value" : "ホストがデバイス鍵を受け入れなかったため、まだ承認されていません。ホストにこのデバイスの authorized_keys 行を追加するか、代わりに Herdr でペアリングコードを生成してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主机未接受设备密钥，说明此设备尚未在主机上获得授权。请在主机上添加此设备的 authorized_keys 行，或改在 herdr 中生成配对码。"
+            "value" : "主机未接受设备密钥，说明此设备尚未在主机上获得授权。请在主机上添加此设备的 authorized_keys 行，或改在 Herdr 中生成配对码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主機不接受裝置金鑰，因此尚未在那裡取得授權。請在主機上加入此裝置的 authorized_keys 行，或改在 herdr 中產生配對碼。"
+            "value" : "主機不接受裝置金鑰，因此尚未在那裡取得授權。請在主機上加入此裝置的 authorized_keys 行，或改在 Herdr 中產生配對碼。"
           }
         }
       }
@@ -67380,24 +68743,30 @@
         }
       }
     },
-    "The Host speaks herdr protocol %lld; this app needs at least %lld. %@" : {
+    "The Host speaks Herdr protocol %lld; this app needs at least %lld. %@" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Host speaks Herdr protocol %1$lld; this app needs at least %2$lld. %3$@"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストは herdr プロトコル %1$lld で通信しており、このアプリは少なくとも %2$lld を必要とします。%3$@"
+            "value" : "ホストは Herdr プロトコル %1$lld で通信しており、このアプリは少なくとも %2$lld を必要とします。%3$@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主机使用的是 herdr 协议 %lld，而此 App 至少需要版本 %lld。%@"
+            "value" : "主机使用的是 Herdr 协议 %lld，而此 App 至少需要版本 %lld。%@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主機使用 herdr 協定 %lld；此 App 至少需要 %lld。%@"
+            "value" : "主機使用 Herdr 協定 %lld；此 App 至少需要 %lld。%@"
           }
         }
       }
@@ -67755,24 +69124,24 @@
         }
       }
     },
-    "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again." : {
+    "The Host's shell didn't accept a launch command this long within 10 seconds. On a Mac, Herdr accepts at most 1,024 bytes until the shell's line editor starts, and some shells, such as dash, never start one. Shorten the arguments and try again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストのシェルは、この長さの起動コマンドを 10 秒以内に受け付けませんでした。Mac では、herdr はシェルの行エディタが起動するまで最大 1,024 バイトしか受け付けず、dash のようなシェルは行エディタが起動しません。引数を短くして再試行してください。"
+            "value" : "ホストのシェルは、この長さの起動コマンドを 10 秒以内に受け付けませんでした。Mac では、Herdr はシェルの行エディタが起動するまで最大 1,024 バイトしか受け付けず、dash のようなシェルは行エディタが起動しません。引数を短くして再試行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主机的 shell 在 10 秒内未能接受如此长的启动命令。在 Mac 上，在 shell 的行编辑器启动前 herdr 最多只能接受 1,024 字节，而 dash 等部分 shell 不会启动行编辑器。请缩短参数后重试。"
+            "value" : "主机的 shell 在 10 秒内未能接受如此长的启动命令。在 Mac 上，在 shell 的行编辑器启动前 Herdr 最多只能接受 1,024 字节，而 dash 等部分 shell 不会启动行编辑器。请缩短参数后重试。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主機的 Shell 在 10 秒內沒有接受這麼長的啟動指令。在 Mac 上，Shell 的行編輯器啟動前，herdr 最多接受 1,024 位元組，而 dash 等部分 Shell 永遠不會啟動行編輯器。請縮短引數後再試一次。"
+            "value" : "主機的 Shell 在 10 秒內沒有接受這麼長的啟動指令。在 Mac 上，Shell 的行編輯器啟動前，Herdr 最多接受 1,024 位元組，而 dash 等部分 Shell 永遠不會啟動行編輯器。請縮短引數後再試一次。"
           }
         }
       }
@@ -68467,6 +69836,50 @@
         }
       }
     },
+    "The Windows Herdr API bridge closed before a reply. Start the selected Herdr session on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows の Herdr API ブリッジが応答前に閉じました。ホストで選択した Herdr セッションを開始してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Herdr API 桥接在收到响应前已关闭。请在主机上启动所选的 Herdr 会话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Herdr API 橋接在回覆前已關閉。請在主機上啟動所選的 Herdr 工作階段。"
+          }
+        }
+      }
+    },
+    "The Windows Herdr command exited before starting its stream" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows の Herdr コマンドがストリームを開始する前に終了しました"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows 上的 Herdr 命令在启动数据流前已退出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Windows Herdr 指令在啟動其串流前就結束了"
+          }
+        }
+      }
+    },
     "The Windows Host command did not start" : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -68486,52 +69899,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Windows 主機指令未啟動"
-          }
-        }
-      }
-    },
-    "The Windows herdr API bridge closed before a reply. Start the selected herdr session on the Host." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows の herdr API ブリッジが応答前に閉じました。ホストで選択した herdr セッションを開始してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows herdr API 桥接在收到响应前已关闭。请在主机上启动所选的 herdr 会话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows herdr API 橋接在回覆前已關閉。請在主機上啟動所選的 herdr 工作階段。"
-          }
-        }
-      }
-    },
-    "The Windows herdr command exited before starting its stream" : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows の herdr コマンドがストリームを開始する前に終了しました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows 上的 herdr 命令在启动数据流前已退出"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windows herdr 指令在啟動其串流前就結束了"
           }
         }
       }
@@ -69925,140 +71292,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "產生的身分格式不正確"
-          }
-        }
-      }
-    },
-    "The herdr CLI was not found on the Host's non-interactive SSH PATH." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr CLI がホストの非対話型 SSH PATH に見つかりませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在主机的非交互式 SSH PATH 中未找到 herdr CLI。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在主機的非互動式 SSH PATH 中找不到 herdr CLI。"
-          }
-        }
-      }
-    },
-    "The herdr launcher at %@ could not run. Check that this launcher exists, is executable, and can start herdr. Pair the Host again if its path changed." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の herdr ランチャーを実行できませんでした。このランチャーが存在し、実行可能で、herdr を起動できるか確認してください。パスが変わった場合はホストの再ペアリングが必要です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法运行位于 %@ 的 herdr 启动器。请确认该启动器存在、可执行且能启动 herdr。如果其路径已更改，请重新配对该主机。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位於 %@ 的 herdr 啟動器無法執行。請確認此啟動器存在、可執行，且能啟動 herdr。若其路徑已變更，請重新配對主機。"
-          }
-        }
-      }
-    },
-    "The herdr launcher at %@ did not answer like herdr. (%@)" : {
-      "comment" : "Preflight hint; launcher path, then the parse failure detail",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ の herdr ランチャーは herdr として応答しませんでした。（%2$@）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位于 %@ 的 herdr 启动器未返回有效的 herdr 响应。（%@）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位於 %@ 的 herdr 啟動器沒有像 herdr 那樣回應。（%@）"
-          }
-        }
-      }
-    },
-    "The herdr launcher could not run" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr ランチャーを実行できませんでした"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法运行 herdr 启动器"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 啟動器無法執行"
-          }
-        }
-      }
-    },
-    "The herdr session name is invalid." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr のセッション名が無効です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 会话名称无效。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 工作階段名稱無效。"
-          }
-        }
-      }
-    },
-    "The herdr socket was not found" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr ソケットが見つかりません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未找到 herdr 套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "找不到 herdr socket"
           }
         }
       }
@@ -72354,25 +73587,24 @@
         }
       }
     },
-    "The server's reply did not parse as herdr protocol. (%@)" : {
-      "comment" : "Preflight hint",
+    "The server's reply did not parse as Herdr protocol. (%@)" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サーバーの応答を herdr プロトコルとして解析できませんでした。（%@）"
+            "value" : "サーバーの応答を Herdr プロトコルとして解析できませんでした。（%@）"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法将服务器响应解析为 herdr 协议。（%@）"
+            "value" : "无法将服务器响应解析为 Herdr 协议。（%@）"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "伺服器的回覆無法解析為 herdr 協定。（%@）"
+            "value" : "伺服器的回覆無法解析為 Herdr 協定。（%@）"
           }
         }
       }
@@ -73293,24 +74525,24 @@
         }
       }
     },
-    "The unreadable saved fields are deleted. Every Host returns to its herdr fields and can be edited again." : {
+    "The unreadable saved fields are deleted. Every Host returns to its Herdr fields and can be edited again." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "読めなくなった保存フィールドは削除されました。すべてのホストが herdr のフィールドに戻り、再編集できます。"
+            "value" : "読めなくなった保存フィールドは削除されました。すべてのホストが Herdr のフィールドに戻り、再編集できます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取的已保存字段将被删除。所有主机将恢复为其 herdr 字段，并可重新编辑。"
+            "value" : "无法读取的已保存字段将被删除。所有主机将恢复为其 Herdr 字段，并可重新编辑。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已刪除無法讀取的已儲存欄位。每個主機都會恢復為其 herdr 欄位，並可再次編輯。"
+            "value" : "已刪除無法讀取的已儲存欄位。每個主機都會恢復為其 Herdr 欄位，並可再次編輯。"
           }
         }
       }
@@ -76207,24 +77439,24 @@
         }
       }
     },
-    "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too." : {
+    "This row starts from Herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この行は herdr のサイドバーフィールドから始まり、「プラグインから同期」で再設定されます。Heeler のフィールドもここで使えます。"
+            "value" : "この行は Herdr のサイドバーフィールドから始まり、「プラグインから同期」で再設定されます。Heeler のフィールドもここで使えます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此行初始使用 herdr 的侧边栏字段，“从插件同步”会重新填充它。此处同样可以使用 Heeler 字段。"
+            "value" : "此行初始使用 Herdr 的侧边栏字段，“从插件同步”会重新填充它。此处同样可以使用 Heeler 字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此列以 herdr 側邊欄的欄位為起點，「從外掛同步」會重新填入。這裡也歡迎加入 Heeler 欄位。"
+            "value" : "此列以 Herdr 側邊欄的欄位為起點，「從外掛同步」會重新填入。這裡也歡迎加入 Heeler 欄位。"
           }
         }
       }
@@ -78712,6 +79944,28 @@
         }
       }
     },
+    "Update Herdr on the Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの Herdr を更新してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新主机上的 Herdr。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新主機上的 Herdr。"
+          }
+        }
+      }
+    },
     "Update Plugin" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
@@ -78825,28 +80079,6 @@
         }
       }
     },
-    "Update herdr on the Host." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストの herdr を更新してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请更新主机上的 herdr。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請更新主機上的 herdr。"
-          }
-        }
-      }
-    },
     "Update on This Host" : {
       "localizations" : {
         "zh-Hans" : {
@@ -78903,6 +80135,28 @@
         }
       }
     },
+    "Update the Herdr instance configured for this Host." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホスト用に設定された Herdr インスタンスを更新してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新为此主机配置的 Herdr 实例。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新此主機所設定的 Herdr 實例。"
+          }
+        }
+      }
+    },
     "Update the Host Helper" : {
       "localizations" : {
         "ja" : {
@@ -78943,28 +80197,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新跳板主機的憑證或授權金鑰。"
-          }
-        }
-      }
-    },
-    "Update the herdr instance configured for this Host." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホスト用に設定された herdr インスタンスを更新してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请更新为此主机配置的 herdr 实例。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請更新此主機所設定的 herdr 實例。"
           }
         }
       }
@@ -80069,24 +81301,24 @@
         }
       }
     },
-    "Use any Agent on this computer once, or restart herdr, then refresh Usage." : {
+    "Use any Agent on this computer once, or restart Herdr, then refresh Usage." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このコンピューターでいずれかのエージェントを一度使用するか、herdr を再起動してから、使用量を更新してください。"
+            "value" : "このコンピューターでいずれかのエージェントを一度使用するか、Herdr を再起動してから、使用量を更新してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先在这台电脑上使用任意 Agent 一次，或重启 herdr，然后刷新用量。"
+            "value" : "请先在这台电脑上使用任意 Agent 一次，或重启 Herdr，然后刷新用量。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請在這台電腦上使用任一 Agent 一次，或重新啟動 herdr，然後重新整理用量。"
+            "value" : "請在這台電腦上使用任一 Agent 一次，或重新啟動 Herdr，然後重新整理用量。"
           }
         }
       }
@@ -84106,1152 +85338,6 @@
         }
       }
     },
-    "herdr %@ · protocol %lld" : {
-      "comment" : "Preflight footer; herdr version and protocol",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %1$@ · プロトコル %2$lld"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %@ · 协议 %lld"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %@ · 通訊協定 %lld"
-          }
-        }
-      }
-    },
-    "herdr %@ · protocol %lld — newer than this app was built against, so features added after protocol %lld may be unavailable." : {
-      "comment" : "Preflight footer; herdr version, server protocol, the protocol this app was generated against",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %1$@ · プロトコル %2$lld — このアプリのビルド対象より新しいため、プロトコル %3$lld より後に追加された機能は利用できない場合があります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %@ · 协议 %lld — 比此 App 构建时针对的版本更新，因此在协议 %lld 之后新增的功能可能不可用。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr %@ · 通訊協定 %lld — 比此 App 所對應的版本更新，因此通訊協定 %lld 之後新增的功能可能無法使用。"
-          }
-        }
-      }
-    },
-    "herdr Install Guide" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr インストールガイド"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 安装指南"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 安裝指南"
-          }
-        }
-      }
-    },
-    "herdr Launcher" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr ランチャー"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 启动器"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 啟動器"
-          }
-        }
-      }
-    },
-    "herdr Socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr ソケット"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr Socket"
-          }
-        }
-      }
-    },
-    "herdr answered but rejected the check: %@ (%@)" : {
-      "comment" : "Preflight hint; herdr's message, then its error code",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は応答しましたが、チェックを拒否しました: %1$@（%2$@）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 已响应，但拒绝了检查：%@（%@）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 有回應，但拒絕了這項檢查：%@（%@）"
-          }
-        }
-      }
-    },
-    "herdr could not download the plugin. Check that the Host can reach github.com." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインをダウンロードできませんでした。ホストが github.com に到達できるか確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法下载插件。请确认主机能够访问 github.com。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法下載外掛。請確認主機能連到 github.com。"
-          }
-        }
-      }
-    },
-    "herdr could not install the plugin." : {
-      "comment" : "Plugin action failure",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインをインストールできませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法安装插件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法安裝外掛。"
-          }
-        }
-      }
-    },
-    "herdr could not read the plugin's manifest, so its version may be out of date. Check the linked checkout." : {
-      "comment" : "Plugin notice",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。リンクされたチェックアウトを確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法读取插件清单，因此插件版本可能已过旧。请检查所链接的检出。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法讀取外掛的 manifest，因此其版本可能已過時。請檢查所連結的資料夾。"
-          }
-        }
-      }
-    },
-    "herdr could not read the plugin's manifest, so its version may be out of date. Reinstall it." : {
-      "comment" : "Plugin notice",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインのマニフェストを読み取れなかったため、バージョンが古い可能性があります。再インストールしてください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法读取插件清单，因此插件版本可能已过旧。请重新安装插件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法讀取外掛的 manifest，因此其版本可能已過時。請重新安裝。"
-          }
-        }
-      }
-    },
-    "herdr could not remove the old copy of the plugin." : {
-      "comment" : "Plugin action failure",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインの古いコピーを削除できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除插件的旧副本。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除外掛的舊版副本。"
-          }
-        }
-      }
-    },
-    "herdr could not turn the plugin on." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプラグインをオンにできませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法开启插件。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法啟用外掛。"
-          }
-        }
-      }
-    },
-    "herdr couldn't create the terminal: %@" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はターミナルを作成できませんでした: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法创建终端：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法建立終端機：%@"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes %@ and any uncommitted changes in it, so check its Changes first." : {
-      "comment" : "%@ is the checkout path",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "チェックアウトされたサブモジュールがあるため、herdr はこのワークツリーを削除できませんでした。強制的に削除すると %@ とその中の未コミットの変更がすべて消えるため、先に変更を確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树，因为其中包含已检出的子模块。强制移除会删除 %@ 及其所有未提交的更改，因此请先查看其“更改”。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹，因為它含有已檢出的子模組。強制移除會刪除 %@ 以及其中所有未提交的變更，請先查看它的「變更」。"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes %@ and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: %@" : {
-      "comment" : "First %@ is the checkout path, second the herdr command",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "チェックアウトされたサブモジュールがあるため、herdr はこのワークツリーを削除できませんでした。強制的に削除すると %1$@ とその中の未コミットの変更がすべて消えるため、先に変更を確認してください。強制するには、ホストで次を実行してください: %2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树，因为其中包含已检出的子模块。强制移除会删除 %@ 及其所有未提交的更改，因此请先查看其“更改”。如需强制移除，请在主机上运行：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹，因為它含有已檢出的子模組。強制移除會刪除 %@ 以及其中所有未提交的變更，請先查看它的「變更」。若要強制移除，請在主機上執行：%@"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "変更済みまたは未追跡のファイルがあるため、herdr はこのワークツリーを削除できませんでした。ホストでそれらの変更をコミットまたは破棄してから、再試行してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树，因为其中包含已修改或未跟踪的文件。请在主机上提交或放弃这些更改，然后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹，因為它含有已修改或未追蹤的檔案。請在主機上提交或捨棄這些變更，然後重試。"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree because the workspace is no longer on the Host." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はワークスペースがもうホスト上にないためワークツリーを削除できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树，因为该工作区已不在主机上。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹，因為該工作區已不在主機上。"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree because the workspace is not a linked worktree." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はワークスペースがリンクされたワークツリーではないため削除できませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树，因为该工作区不是关联工作树。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹，因為該工作區不是連結的工作樹。"
-          }
-        }
-      }
-    },
-    "herdr couldn't remove this worktree: %@" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのワークツリーを削除できませんでした: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 无法移除此工作树：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 無法移除此工作樹：%@"
-          }
-        }
-      }
-    },
-    "herdr default fields (plugin reported a problem)" : {
-      "comment" : "Agent List Fields source caption",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr の既定フィールド（プラグインが問題を報告しました）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 默认字段（插件报告了问题）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 預設欄位（外掛回報了問題）"
-          }
-        }
-      }
-    },
-    "herdr did not report where the Heeler plugin is installed. Update herdr on this Host to read Usage." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr が Heeler プラグインのインストール先を報告しませんでした。使用量を読み取るには、このホストの herdr を更新してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 未报告 Heeler 插件的安装位置。请更新此主机上的 herdr 以读取用量。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 未回報 Heeler 外掛的安裝位置。請更新此主機上的 herdr 以讀取用量。"
-          }
-        }
-      }
-    },
-    "herdr exited with status %d" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はステータス %d で終了しました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 已退出，状态码为 %d"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 以狀態 %d 結束"
-          }
-        }
-      }
-    },
-    "herdr fields" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr フィールド"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 字段"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 欄位"
-          }
-        }
-      }
-    },
-    "herdr fields unavailable" : {
-      "comment" : "Agent List Fields source caption",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr フィールドを利用できません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 字段不可用"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 欄位無法使用"
-          }
-        }
-      }
-    },
-    "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントの Claude Code セッション ID を報告していません。チャットは確認を続けます。エージェントのターミナルで続行できます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未报告此 Agent 的 Claude Code 会话 ID。对话会继续检查，你也可以在 Agent 终端中继续操作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未回報這個 Agent 的 Claude Code 工作階段 ID。對話會持續檢查，你也可以先在 Agent 終端機中繼續。"
-          }
-        }
-      }
-    },
-    "herdr hasn't reported a Grok Build session ID for this Agent. Grok Build reports one when a session starts, including after /new or /clear. Chat keeps checking; you can continue in the Agent terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントの Grok Build セッション ID を報告していません。Grok Build は、/new や /clear の後も含めセッション開始時に報告します。チャットは確認を続けます。エージェントのターミナルで続行できます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未报告此 Agent 的 Grok Build 会话 ID。Grok Build 会在会话开始时（包括执行 /new 或 /clear 后）报告会话 ID。对话会继续检查，你也可以在 Agent 终端中继续操作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未回報這個 Agent 的 Grok Build 工作階段 ID。Grok Build 會在工作階段開始時回報，包括執行 /new 或 /clear 之後。對話會持續檢查，你也可以先在 Agent 終端機中繼續。"
-          }
-        }
-      }
-    },
-    "herdr hasn't reported a Pi conversation for this Agent yet. Pi reports it once it has started, after you answer whether to trust the project folder. If this lasts, check the Pi integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントの Pi 会話をまだ報告していません。Pi は、プロジェクトフォルダを信頼するか答えた後、起動すると報告します。続く場合は、ホスト上の Pi 統合を確認してください。チャットは確認を続け、エージェントのターミナルで続行できます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未报告此 Agent 的 Pi 对话。在你回答是否信任项目文件夹并完成启动后，Pi 就会报告对话。如果一直停留在此状态，请检查主机上的 Pi 集成。对话会继续检查，你也可以在 Agent 终端中继续操作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未回報這個 Agent 的 Pi 對話。Pi 會在啟動後、你回答是否信任專案資料夾之後才回報。若一直如此，請檢查主機上的 Pi 整合。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
-          }
-        }
-      }
-    },
-    "herdr hasn't reported an Oh My Pi conversation for this Agent yet. Oh My Pi reports it once it has started. If this lasts, check the OMP integration on the Host. Chat will keep checking, and you can continue in the Agent terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントの Oh My Pi 会話をまだ報告していません。Oh My Pi は起動すると報告します。続く場合は、ホスト上の OMP 統合を確認してください。チャットは確認を続け、エージェントのターミナルで続行できます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未报告此 Agent 的 Oh My Pi 对话。Oh My Pi 会在启动完成后报告对话。如果一直停留在此状态，请检查主机上的 OMP 集成。对话会继续检查，你也可以在 Agent 终端中继续操作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未回報這個 Agent 的 Oh My Pi 對話。Oh My Pi 會在啟動後回報。若一直如此，請檢查主機上的 OMP 整合。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
-          }
-        }
-      }
-    },
-    "herdr hasn't reported an OpenCode conversation for this Agent yet. OpenCode reports one once a conversation is open: send a first message in the terminal, or open a session there. Chat will keep checking, and you can continue in the Agent terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントの OpenCode の会話をまだ報告していません。OpenCode は会話が開くと報告するので、ターミナルで最初のメッセージを送るか、そこでセッションを開いてください。チャットは確認を続けます。エージェントのターミナルで続けることもできます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未报告此 Agent 的 OpenCode 对话。OpenCode 会在对话打开后报告：请在终端中发送第一条消息，或在终端中打开一个会话。对话会继续检查，你也可以在 Agent 终端中继续操作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 尚未回報這個 Agent 的 OpenCode 對話。OpenCode 會在開啟對話後回報：請在終端機中送出第一則訊息，或在那裡開啟一個工作階段。對話檢視會持續檢查，你也可以先在 Agent 終端機中繼續。"
-          }
-        }
-      }
-    },
-    "herdr installed" : {
-      "comment" : "Preflight check title",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr インストール済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 已安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 已安裝"
-          }
-        }
-      }
-    },
-    "herdr installed plugin %@, the newest published, but this app expects %@." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は公開版で最新のプラグイン %@ をインストールしましたが、このアプリは %@ を想定しています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 已安装最新发布的插件 %@，但此 App 需要 %@。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 安裝了外掛 %@（已發布的最新版本），但此 App 預期的是 %@。"
-          }
-        }
-      }
-    },
-    "herdr is not on this Host's SSH PATH" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr がこのホストの SSH PATH にありません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 不在此主机的 SSH PATH 中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 不在此主機的 SSH PATH 中"
-          }
-        }
-      }
-    },
-    "herdr is not running on this Host" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのホストで動作していません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 未在此主机上运行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 未在此主機上執行"
-          }
-        }
-      }
-    },
-    "herdr names this Agent's session without an id, which happens after resuming a conversation by name. Chat can't tell which transcript is its own." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントのセッションを id なしで名前付けています。名前で会話を再開した後に起こります。チャットはどのトランスクリプトが自分のものか特定できません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 为此 Agent 报告的会话名称没有 ID（按名称恢复对话后会出现这种情况）。对话无法确定哪个会话记录属于它。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 為這個 Agent 的工作階段命名時沒有附上 ID，這種情況會在依名稱繼續對話後發生。對話檢視無法判斷哪份對話記錄屬於它。"
-          }
-        }
-      }
-    },
-    "herdr now reports another %@ conversation for this Agent. Chat is switching to it; check it, then send again." : {
-      "comment" : "Composer refusal; %@ is a program name",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はこのエージェントについて別の %@ の会話を報告しています。チャットはそちらに切り替えています。確認してから再度送信してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 现为此 Agent 报告了另一个 %@ 对话。对话视图正在切换过去；请确认后重新发送。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 現在回報這個 Agent 有另一段 %@ 對話。對話檢視正在切換到該對話；請確認後再重新傳送。"
-          }
-        }
-      }
-    },
-    "herdr on the Host is newer than its running server. Restart the herdr server, then try again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホスト上の herdr は実行中のサーバーより新しいバージョンです。herdr サーバーを再起動してから、再試行してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主机上的 herdr 版本比正在运行的服务器更新。请重启 herdr 服务器，然后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主機上的 herdr 比其正在執行的伺服器更新。請重新啟動 herdr 伺服器，然後再試一次。"
-          }
-        }
-      }
-    },
-    "herdr refuses the session name \"%@\". Its names use letters, digits, \".\", \"_\" and \"-\", up to %lld bytes." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はセッション名「%@」を拒否します。セッション名に使えるのは英字、数字、「.」「_」「-」で、最大 %lld バイトです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了会话名称“%@”。会话名称只能使用字母、数字、“.”、“_”和“-”，且最多 %lld 字节。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕工作階段名稱「%@」。名稱可使用字母、數字、「.」、「_」和「-」，最長 %lld 位元組。"
-          }
-        }
-      }
-    },
-    "herdr rejected the Console sync: %@. Retrying…" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はコンソールの同期を拒否しました: %@。再試行中…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了控制台同步：%@。正在重试…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了主控台同步：%@。正在重試…"
-          }
-        }
-      }
-    },
-    "herdr rejected the close: %@" : {
-      "comment" : "Error when herdr refuses to close a tab or pane. %@ is herdr's message.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は閉じる操作を拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了关闭操作：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了關閉：%@"
-          }
-        }
-      }
-    },
-    "herdr rejected the command: %@" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はコマンドを拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了该命令：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了指令：%@"
-          }
-        }
-      }
-    },
-    "herdr rejected the command: %@. Update herdr on this Host to v0.9.0 or later for Muse support, or choose another supported Agent." : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はコマンドを拒否しました: %@。Muse を使うには、このホストの herdr を v0.9.0 以降に更新するか、サポートされている別のエージェントを選んでください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了该命令：%@。若要使用 Muse，请将此主机上的 herdr 更新至 v0.9.0 或更高版本，或选择其他受支持的 Agent。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了指令：%@。若要支援 Muse，請將此主機上的 herdr 更新到 v0.9.0 或更新版本，或選擇其他支援的 Agent。"
-          }
-        }
-      }
-    },
-    "herdr rejected the message: %@" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はメッセージを拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了该消息：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了訊息：%@"
-          }
-        }
-      }
-    },
-    "herdr rejected the move: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は移動を拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了移动：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了移動：%@"
-          }
-        }
-      }
-    },
-    "herdr rejected the rename: %@" : {
-      "comment" : "%@ is herdr's own message",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は名前の変更を拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了重命名：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了重新命名：%@"
-          }
-        }
-      }
-    },
-    "herdr rejected the request" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はリクエストを拒否しました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒绝了请求"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 拒絕了請求"
-          }
-        }
-      }
-    },
-    "herdr reports a session Chat doesn't read." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は、チャットが読み取らないセッションを報告しています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 报告的会话不受对话支持。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 回報了對話不讀取的工作階段。"
-          }
-        }
-      }
-    },
-    "herdr reports a session name that isn't an Antigravity CLI conversation id, so Chat can't tell which conversation is this Agent's." : {},
-    "herdr reports a session name that isn't an OpenCode session id, so Chat can't tell which conversation is this Agent's." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は OpenCode のセッション ID でないセッション名を報告しているため、チャットはどの会話がこのエージェントのものか特定できません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 报告的会话名称不是 OpenCode 会话 ID，因此对话无法确定哪个对话属于此 Agent。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 回報的工作階段名稱不是 OpenCode 的工作階段 ID，因此對話檢視無法判斷哪段對話屬於這個 Agent。"
-          }
-        }
-      }
-    },
-    "herdr reports a subagent's session, which Chat doesn't show. Open the main conversation in the terminal." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はサブエージェントのセッションを報告しています。チャットはこれを表示しません。ターミナルでメインの会話を開いてください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 报告的是子 Agent 的会话，对话不显示此类会话。请在终端中打开主对话。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 回報的是子 Agent 的工作階段，對話檢視不會顯示。請在終端機中開啟主要對話。"
-          }
-        }
-      }
-    },
-    "herdr returned an invalid response" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr は不正な応答を返しました"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 返回了无效响应"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 傳回了無效的回應"
-          }
-        }
-      }
-    },
-    "herdr row" : {
-      "comment" : "Agent List Fields: a row whose fields come from herdr",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr の行"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 列"
-          }
-        }
-      }
-    },
-    "herdr server running" : {
-      "comment" : "Preflight check title",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr サーバー実行中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 服务运行中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 伺服器執行中"
-          }
-        }
-      }
-    },
     "herdr session list returned an invalid session name" : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -85298,28 +85384,6 @@
         }
       }
     },
-    "herdr speaks protocol %lld; this app needs at least %lld" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr はプロトコル %lld で通信しており、このアプリは少なくとも %lld が必要です"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 使用协议版本 %lld；本 App 至少需要版本 %lld"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 使用通訊協定 %lld；此 App 至少需要 %lld"
-          }
-        }
-      }
-    },
     "herdr wake command failed: %@" : {
       "comment" : "Argument: a preview of the command's error output.",
       "localizations" : {
@@ -85339,28 +85403,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr 喚醒指令失敗：%@"
-          }
-        }
-      }
-    },
-    "herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, not in this row; add status to show it as text." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr のステータステキストです。Heeler はステータスを status_badge フィールドまたはステータスリングで表示し、この行では表示しません。テキストで表示するには status を追加してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 的状态文本。Heeler 通过 status_badge 字段或状态环显示状态，不在本行中显示；如需以文本显示状态，请添加 status 字段。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr 的狀態文字。Heeler 以 status_badge 欄位或狀態環顯示狀態，不會顯示在這一列；加入 status 即可以文字顯示。"
           }
         }
       }

@@ -610,7 +610,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .failed("herdr rejected the command: no such directory"))
+        #expect(store.state == .failed("Herdr rejected the command: no such directory"))
         let next = makeStore(
             hosts: [host],
             workspaces: { _ in [ConsoleWorkspace(id: "w1", label: "Proj")] },
@@ -911,8 +911,8 @@ struct StartAgentStoreTests {
         #expect(
             store.state
                 == .failed(
-                    "herdr rejected the command: unsupported interactive agent kind muse. "
-                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                    "Herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update Herdr on this Host to v0.9.0 or later for Muse support, "
                         + "or choose another supported Agent."))
         #expect(recorder.params.map(\.kind) == ["muse"])
     }
@@ -967,7 +967,7 @@ struct StartAgentStoreTests {
         #expect(
             first.state
                 == .failed(
-                    "herdr rejected the command: agent target pane w1:pA is not an available shell"
+                    "Herdr rejected the command: agent target pane w1:pA is not an available shell"
                 ))
 
         let capacity = StartRecorder()
@@ -979,7 +979,7 @@ struct StartAgentStoreTests {
         await second.submit()
         #expect(
             second.state
-                == .failed("herdr rejected the command: could not determine canonical input capacity"))
+                == .failed("Herdr rejected the command: could not determine canonical input capacity"))
     }
 
     @Test func submitKeepsGenericCopyForUnrelatedAgentStartErrors() async {
@@ -995,7 +995,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .failed("herdr rejected the command: no such workspace"))
+        #expect(store.state == .failed("Herdr rejected the command: no such workspace"))
     }
 
     @Test func submitKeepsGenericCopyWhenNonMuseKindIsUnsupported() async {
@@ -1015,7 +1015,7 @@ struct StartAgentStoreTests {
 
         #expect(
             store.state
-                == .failed("herdr rejected the command: unsupported interactive agent kind qwen"))
+                == .failed("Herdr rejected the command: unsupported interactive agent kind qwen"))
         #expect(recorder.params.map(\.kind) == ["qwen"])
     }
 
@@ -1046,8 +1046,8 @@ struct StartAgentStoreTests {
         #expect(
             store.state
                 == .failed(
-                    "herdr rejected the command: unsupported interactive agent kind muse. "
-                        + "Update herdr on this Host to v0.9.0 or later for Muse support, "
+                    "Herdr rejected the command: unsupported interactive agent kind muse. "
+                        + "Update Herdr on this Host to v0.9.0 or later for Muse support, "
                         + "or choose another supported Agent."))
         #expect(recorder.params.map(\.kind) == ["muse"])
     }
@@ -1499,7 +1499,7 @@ struct StartAgentStoreTests {
 
         await store.submit()
 
-        #expect(store.state == .failed("herdr rejected the command: no such workspace"))
+        #expect(store.state == .failed("Herdr rejected the command: no such workspace"))
     }
 
     @Test func submitIsANoOpWithoutAHostOrDetectedAgent() async {

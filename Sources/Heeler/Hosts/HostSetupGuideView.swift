@@ -65,7 +65,7 @@ struct HostSetupGuideView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             } footer: {
-                Text("Heeler connects over SSH to a machine that runs herdr, Tmux or Rex.")
+                Text("Heeler connects over SSH to a machine that runs Herdr, Tmux or Rex.")
             }
 
             switch platform {
@@ -98,11 +98,11 @@ struct HostSetupGuideView: View {
     private var unixSteps: some View {
         Section {
             SetupStep(
-                number: 1, title: "Install herdr",
+                number: 1, title: "Install Herdr",
                 detail: "Version 0.7.5 or newer, with Node 20 or newer."
             ) {
                 if let url = HostSetupGuide.herdrInstallURL {
-                    Link("herdr Install Guide", destination: url)
+                    Link("Herdr Install Guide", destination: url)
                         .font(.subheadline)
                 }
             }
@@ -115,7 +115,7 @@ struct HostSetupGuideView: View {
             ) {
                 CommandBlock(command: HostSetupGuide.pluginInstallCommand)
                 CommandBlock(command: HostSetupGuide.pairCommand)
-                Text("On a machine that runs Herdr Core or Tmux without herdr, run this one instead.")
+                Text("On a machine that runs Herdr Core or Tmux without Herdr, run this one instead.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -146,8 +146,8 @@ struct HostSetupGuideView: View {
     private var windowsSteps: some View {
         Section {
             SetupStep(
-                number: 1, title: "Set Up herdr on Windows",
-                detail: "Native Windows needs herdr 0.9.3 or newer and OpenSSH Server."
+                number: 1, title: "Set Up Herdr on Windows",
+                detail: "Native Windows needs Herdr 0.9.3 or newer and OpenSSH Server."
             ) {
                 if let url = HostSetupGuide.windowsGuideURL {
                     Link("Windows Setup Guide", destination: url)

@@ -137,10 +137,10 @@ struct TransportErrorPresentationTests {
     }
 
     private static let homebrewPATH =
-        "Put herdr's install directory on the account's non-interactive SSH PATH."
+        "Put Herdr's install directory on the account's non-interactive SSH PATH."
 
     private static let socketGuidance =
-        "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
+        "Herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
 
     private static let knownKey = HostKeyFingerprint(
         digest: Data(repeating: 0x11, count: 32), algorithm: "ssh-ed25519")
@@ -153,7 +153,7 @@ struct TransportErrorPresentationTests {
         let presentation = TransportError.streamLocalOpenFailed(path: "/tmp/herdr.sock")
             .presentation
         #expect(presentation.message == Self.socketGuidance)
-        #expect(presentation.summary == "herdr is not running on this Host")
+        #expect(presentation.summary == "Herdr is not running on this Host")
         #expect(presentation.detail == nil)
         #expect(
             presentation.recoverySuggestion
@@ -186,7 +186,7 @@ struct TransportErrorPresentationTests {
             ),
             (
                 .herdrBinaryNotFound,
-                "herdr is not on this Host's SSH PATH. \(Self.homebrewPATH)"
+                "Herdr is not on this Host's SSH PATH. \(Self.homebrewPATH)"
             ),
             (
                 .tcpForwardingUnavailable,
@@ -243,7 +243,7 @@ struct TransportErrorPresentationTests {
         let exited = TransportError.attachExited(
             status: 1, output: "herdr: lost connection to server: server closed connection")
         #expect(exited.isRetryable)
-        #expect(exited.presentation.summary == "herdr exited with status 1")
+        #expect(exited.presentation.summary == "Herdr exited with status 1")
         #expect(
             exited.presentation.detail
                 == "herdr: lost connection to server: server closed connection")
@@ -251,26 +251,26 @@ struct TransportErrorPresentationTests {
         // herdr's own closing period is not doubled.
         #expect(
             TransportError.attachExited(status: 3, output: "Error: no such pane.")
-                .presentation.message == "herdr exited with status 3: Error: no such pane.")
+                .presentation.message == "Herdr exited with status 3: Error: no such pane.")
         #expect(
             TransportError.attachExited(status: 1, output: nil).presentation.message
-                == "herdr exited with status 1.")
+                == "Herdr exited with status 1.")
         // Only a full stop is herdr's to drop; a question keeps its mark and
         // gets no period after it.
         #expect(
             TransportError.attachExited(status: 3, output: "Error: is the server running?")
-                .presentation.message == "herdr exited with status 3: Error: is the server running?")
+                .presentation.message == "Herdr exited with status 3: Error: is the server running?")
         // A line cut short at its ellipsis gets no period after it.
         let cut = try #require(
             AttachExitDiagnostic.line(
                 fromOutput: "herdr: \(String(repeating: "x", count: 300))\n"))
         #expect(
             TransportError.attachExited(status: 1, output: cut).presentation.message
-                == "herdr exited with status 1: \(cut)")
+                == "Herdr exited with status 1: \(cut)")
 
         let rejected = TransportError.apiRejected(
             code: "pane_not_found", message: "pane w11:p9 not found")
-        #expect(rejected.presentation.summary == "herdr rejected the request")
+        #expect(rejected.presentation.summary == "Herdr rejected the request")
         #expect(rejected.presentation.detail == "pane w11:p9 not found (pane_not_found)")
         #expect(rejected.presentation.recoverySuggestion == nil)
     }
@@ -432,12 +432,12 @@ struct TransportErrorPresentationTests {
 
     @Test func socketNotFoundIncludesThePath() {
         let presentation = TransportError.socketNotFound(path: "/tmp/herdr.sock").presentation
-        #expect(presentation.summary == "The herdr socket was not found")
+        #expect(presentation.summary == "The Herdr socket was not found")
         #expect(presentation.detail == "/tmp/herdr.sock")
         #expect(presentation.recoverySuggestion == "Check this Host's session.")
         #expect(
             presentation.message
-                == "The herdr socket was not found: /tmp/herdr.sock. Check this Host's session.")
+                == "The Herdr socket was not found: /tmp/herdr.sock. Check this Host's session.")
     }
 
     /// An endpoint Host has no session to fix (ADR 0023). Every other error,
@@ -446,8 +446,8 @@ struct TransportErrorPresentationTests {
         let missing = TransportError.socketNotFound(path: "/tmp/herdr/herdr.sock")
         #expect(
             missing.presentation(usesHerdrEndpoint: true).message
-                == "The herdr socket was not found: /tmp/herdr/herdr.sock. "
-                + "Start the herdr instance configured for this Host and verify its socket path.")
+                == "The Herdr socket was not found: /tmp/herdr/herdr.sock. "
+                + "Start the Herdr instance configured for this Host and verify its socket path.")
         #expect(missing.presentation(usesHerdrEndpoint: false) == missing.presentation)
         let mismatch = TransportError.protocolVersionMismatch(server: 16, supported: 17)
         #expect(mismatch.presentation(usesHerdrEndpoint: true) == mismatch.presentation)
@@ -459,7 +459,7 @@ struct TransportErrorPresentationTests {
         #expect(!failure.isRetryable)
         #expect(!TransportError.jumpHostFailed(failure).isRetryable)
         let presentation = failure.presentation
-        #expect(presentation.summary == "The herdr launcher could not run")
+        #expect(presentation.summary == "The Herdr launcher could not run")
         #expect(presentation.detail == "/Users/ada/Library/Application Support/Example/bin/herdr")
         #expect(
             presentation.recoverySuggestion
@@ -467,22 +467,22 @@ struct TransportErrorPresentationTests {
                 + "Pair the Host again if its path changed.")
         #expect(
             presentation.message
-                == "The herdr launcher could not run: "
+                == "The Herdr launcher could not run: "
                 + "/Users/ada/Library/Application Support/Example/bin/herdr. "
-                + "Check that this launcher exists, is executable, and can start herdr. "
+                + "Check that this launcher exists, is executable, and can start Herdr. "
                 + "Pair the Host again if its path changed.")
     }
 
     @Test func protocolVersionMismatchNamesTheUpdate() {
         let presentation = TransportError.protocolVersionMismatch(server: 18, supported: 19)
             .presentation
-        #expect(presentation.summary == "Incompatible herdr protocol")
-        #expect(presentation.detail == "herdr speaks protocol 18; this app needs at least 19")
-        #expect(presentation.recoverySuggestion == "Update herdr on the Host.")
+        #expect(presentation.summary == "Incompatible Herdr protocol")
+        #expect(presentation.detail == "Herdr speaks protocol 18; this app needs at least 19")
+        #expect(presentation.recoverySuggestion == "Update Herdr on the Host.")
         #expect(
             presentation.message
-                == "Incompatible herdr protocol: herdr speaks protocol 18; this app needs at least 19. "
-                + "Update herdr on the Host.")
+                == "Incompatible Herdr protocol: Herdr speaks protocol 18; this app needs at least 19. "
+                + "Update Herdr on the Host.")
     }
 
     @Test func homeDirectoryAndMalformedResponsePreserveDetail() {
@@ -496,12 +496,12 @@ struct TransportErrorPresentationTests {
                 == "The remote home directory could not be resolved: echo $HOME failed.")
 
         let malformed = TransportError.malformedResponse("{not-json}").presentation
-        #expect(malformed.summary == "herdr returned an invalid response")
+        #expect(malformed.summary == "Herdr returned an invalid response")
         #expect(malformed.detail == "{not-json}")
         #expect(malformed.recoverySuggestion == "Check its version.")
         #expect(
             malformed.message
-                == "herdr returned an invalid response: {not-json}. Check its version.")
+                == "Herdr returned an invalid response: {not-json}. Check its version.")
     }
 
     // MARK: Composed views
@@ -545,7 +545,7 @@ struct TransportErrorPresentationTests {
                 == "Connection dropped: reset.")
         #expect(
             TransportError.apiRejected(code: "pane_not_found", message: "gone").presentation.message
-                == "herdr rejected the request: gone (pane_not_found).")
+                == "Herdr rejected the request: gone (pane_not_found).")
     }
 
     /// A detail that is its own sentence keeps its one period.
