@@ -80,7 +80,7 @@ When the core belongs to the Herdr desktop app, Heeler follows its spaces and ta
 
 On macOS and Linux, when Grok Build shows **Unknown**, tap **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`. Revert it with **Undo** or under **Harness Edits** on the Server's page.
 
-On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Agent's Composer **More** menu to rename that space in both apps.
+On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Agent's Composer **More** menu to rename that space in both apps, or **Move to Workspace** to move a Terminal between desktop spaces or into a new desktop space. You can also **Rename Agent** to set a management alias in Heeler and **Copy Pane ID** from a row or **More** menu.
 
 ## Starting things
 
@@ -88,7 +88,7 @@ On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Ag
 - **New Terminal:** Opens a Terminal in the shell the core runs, adding a tab in a desktop space.
 - **New Workspace:** Choose **New Workspace** in the **Workspace** menu. On macOS and Linux while the desktop app runs, **Workspace name (optional)** names the space.
 - **Templates:** Roles in `~/.config/herdr-core/templates` or `$XDG_CONFIG_HOME/herdr-core/templates` appear under **Templates** in **New Agent** and run their command directly.
-- **Worktrees:** On macOS and Linux, turn on **Start in a new worktree** in **New Agent** and enter a **Branch** to check out `~/.herdr/worktrees/<repository>/<branch>`. To remove it, tap **More > Worktree Details > Remove Worktree**. Heeler ends every Terminal of that Workspace first, then removes the checkout.
+- **Worktrees:** On macOS and Linux, turn on **Start in a new worktree** in **New Agent** (leaving **Branch** empty generates a `worktree/` branch, and **Base (optional)** picks a starting ref off `HEAD` by default) to check out `~/.herdr/worktrees/<repository>/<branch>`. To remove it, tap **More > Worktree Details > Remove Worktree**. Heeler ends every Terminal of that Workspace first, then removes the checkout.
 
 > [!NOTE]
 > If herdr-core inherited variables such as `CLAUDECODE` or `TMUX`, the Server's page shows **Core Environment** naming each variable and its effect. Restart the core from a clean terminal to clear them.
@@ -138,7 +138,7 @@ The Host Helper is a small background service Heeler installs on a macOS or Linu
 
 | | Without the Helper | With the Helper |
 | --- | --- | --- |
-| Connecting, terminals, and Chat for Claude Code, Codex, Grok Build, and Antigravity CLI | Works | Works |
+| Connecting, terminals, and Chat for Claude Code, Codex, Grok Build, Antigravity CLI, Devin CLI, Droid, Amp, and OpenCode | Works | Works |
 | **Agent Notifications**, in-app banners included | None | **Blocked**, **Error**, and **Done**, also with Heeler closed |
 | **Live Activity** | None | Keeps updating with Heeler closed |
 | **Usage** | None | Token Usage and Usage Limits |
@@ -202,8 +202,7 @@ Add a Windows machine over OpenSSH:
 
 ## Known limits
 
-- **No Agent rename:** Agents cannot be renamed on a herdr-core Host. Workspaces rename only via a running Herdr desktop app on macOS and Linux.
-- **OpenCode Chat is off:** OpenCode Agents offer the terminal only.
+- **Workspace rename and Move to Workspace:** Renaming a Workspace and moving a Terminal between Workspaces require a running Herdr desktop app on macOS and Linux; derived folder Workspaces cannot be renamed or used as move destinations.
 - **Starting a new conversation with `/new`:** After `/new` in Codex, use the terminal until you exit and run `codex resume --no-daemon`. In Pi without the Host Helper, `/new` is noticed only after a Chat message fails to appear in the old conversation.
 - **Federated Terminals:** Omitted. Add the other machine as its own Host.
 - **Wrapper scripts:** A script that runs an Agent as its child stays in **Terminals**. Start the Agent with `exec`, as in `exec claude "$@"`, to list it in **Agents**.

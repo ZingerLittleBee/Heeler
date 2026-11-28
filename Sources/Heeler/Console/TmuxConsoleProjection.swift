@@ -88,6 +88,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var launchSessions: [String: String] = [:]
     private(set) var pickRemoval: Task<Void, Never>?
     private var chatTypings: [String: TmuxChatTyping] = [:]
+    private var titleRenameTokens: [String: String] = [:]
     /// The Panes New Agent just opened, each watched until its program shows
     /// running, tmux closes the Pane, or New Agent stops waiting.
     private var launchWatches: [String: Task<Void, Never>] = [:]
@@ -371,6 +372,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             pickLabelsBetweenSnapshots = [:]
             launchSessions = [:]
             chatTypings = [:]
+            titleRenameTokens = [:]
             inventory = nil
             endLaunchWatches()
         }
@@ -392,6 +394,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         agentsByPane = [:]
         statusExplanations = [:]
         leakedEnvironmentNames = []
+        titleRenameTokens = [:]
     }
 
     /// Each snapshot is the whole inventory, so nothing is carried over. Its
@@ -1291,6 +1294,94 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     func processInfo(paneID: String) async throws -> PaneProcessInfo { throw unavailable }
     func promptAgent(_ params: AgentPromptParams) async throws -> Agent { throw unavailable }
 
+    func titleRenameSessionToken(paneID: String) -> String? {
+        titleRenameTokens[paneID]
+    }
+
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent {
+        guard !isAwaitingSnapshot, let activeServer = server else {
+            throw TransportError.tmuxServerGone
+        }
+        async let foregroundRead = readPaneForeground(paneID)
+        async let titleRead = readPaneTitle(paneID, on: activeServer)
+        let foreground = try await foregroundRead
+        let paneTitle = try await titleRead
+        guard server?.instance == activeServer.instance else {
+            throw TransportError.tmuxServerGone
+        }
+        let sample: TmuxPaneForeground.Sample
+        switch foreground {
+        case .live(let live):
+            sample = live
+        case .serverNotRunning:
+            throw TransportError.tmuxServerGone
+        case .paneGone, .dead:
+            throw TransportError.tmuxPaneGone
+        }
+        guard sample.instance == activeServer.instance,
+            let kind = TmuxAgentRule.agentKind(in: sample.pane),
+            let foregroundPID = sample.foregroundPID
+        else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent is no longer running in this Pane."),
+                confirmedFailure: true)
+        }
+        let programStatus = TmuxProgramStatus(option: sample.pane.status)
+        var turnState = memory.tmuxTurnStates(for: host.id)[paneID] ?? TmuxTurnState()
+        turnState.noteSample(programStatus, kind: kind, isShown: shownAgents.contains(paneID))
+        let liveStatus = turnState.agentStatus
+        let listed = agentsByPane[paneID]?.agent
+        let workspaceID = listed?.workspaceID ?? sample.pane.sessionID
+        let tabID = listed?.tabID ?? sample.pane.windowID
+        let terminalTitle = paneTitle.isEmpty ? nil : paneTitle
+        let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
+        titleRenameTokens[paneID] =
+            "tmux:\(sample.instance.id):\(foregroundPID):\(kind):\(sample.pane.agentSession):\(sample.pane.chatPick)"
+        return Agent(
+            terminalID: sample.pane.paneID,
+            kind: kind,
+            title: stripped ?? "",
+            status: liveStatus,
+            workspaceID: workspaceID,
+            tabID: tabID,
+            paneID: sample.pane.paneID,
+            cwd: sample.pane.path,
+            revision: 0,
+            name: sample.pane.namedProgram == kind ? sample.pane.managementName : nil,
+            terminalTitle: terminalTitle,
+            terminalTitleStripped: stripped,
+            foregroundCwd: sample.pane.path.isEmpty ? nil : sample.pane.path)
+    }
+
+    func titleRenamePrompt(_ text: String, paneID: String) async throws {
+        let corePin = TerminalCorePin(joined: inventoryCore)
+        let sender = TmuxComposerSend(
+            paneID: paneID,
+            projection: { [weak self] in self },
+            corePin: corePin,
+            clock: sendClock)
+        let outcome = await sender.send(text, route: .chat, attach: nil)
+        if let error = AgentTitleRenameError.fromCheckedSend(outcome) {
+            throw error
+        }
+    }
+
+    private func readPaneTitle(_ paneID: String, on activeServer: TmuxServerStatus) async throws -> String {
+        let command = TmuxLaunch.checked(
+            target: paneID,
+            instance: activeServer.instance,
+            condition: "#{&&:#{==:#{pane_id},\(paneID)},#{==:#{pane_dead},0}}",
+            commands: [["display-message", "-p", "-t", paneID, "#{q:pane_title} ."]],
+            paths: activeServer.paths)
+        let result = try await perform(command)
+        guard let decoded = TmuxQuotedField.decodeLine(result.stdout, count: 1),
+            let title = decoded.first
+        else {
+            throw TransportError.tmuxPaneGone
+        }
+        return title
+    }
+
     func readAgentScreen(_ paneID: String) async throws -> ANSIScreen {
         try await chatTyping(at: paneID).readScreen()
     }
@@ -1494,7 +1585,16 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {
-        { _ in nil }
+        let session = session
+        return { selector in
+            guard let command = AgentModelProbe.command(selector: selector) else { return nil }
+            let script = Data("LC_ALL=C \(command)\n".utf8)
+            let result = try await session.withTransport { transport in
+                try await transport.runTmuxScript(script, throughLoginShell: false)
+            }
+            guard result.exitStatus == 0 else { return nil }
+            return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+        }
     }
 
     // MARK: Process-bound Chat (ADRs 0034, 0044 and 0046)

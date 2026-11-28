@@ -785,7 +785,8 @@ actor HeelerSSHTransport: Transport {
         pluginListCommand = settings.pluginListCommand
         notificationConfigDirCommand = settings.notificationConfigDirCommand
         herdrLauncher = settings.herdrLauncher
-        readsChatFilesOnWindows = settings.serverKind == .herdrCore || settings.serverKind == .rex
+        readsChatFilesOnWindows =
+            settings.serverKind == .herdrTUI || settings.serverKind == .herdrCore || settings.serverKind == .rex
         servesRexHost = settings.serverKind == .rex
         sftpRefusal = settings.sftpRefusal ?? HostSFTPRefusal()
         channelAdmission = SSHChannelAdmission()
@@ -1043,10 +1044,22 @@ actor HeelerSSHTransport: Transport {
     /// channel. The active channel is returned once nobody has read through it
     /// for `sessionFileClientIdleTimeout`.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        let path: String
+        if readsChatFilesOnWindows, RemoteHostPath.isWindowsAbsolute(range.path) {
+            let onWindows: Bool
+            if isWindowsHost {
+                onWindows = true
+            } else {
+                onWindows = (try? await hostFileEnvironment().isWindows) == true
+            }
+            path = onWindows ? RemoteFilePath.windowsForSFTP(range.path) : range.path
+        } else {
+            path = range.path
+        }
         let (id, client) = try await acquireSessionFileClient()
         do {
             let slice = try await client.readFileRange(
-                at: range.path,
+                at: path,
                 offset: range.offset,
                 maxBytes: range.maxBytes,
                 timeout: requestTimeout)
@@ -1190,9 +1203,9 @@ actor HeelerSSHTransport: Transport {
 
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
         let timeout = requestTimeout
-        return try await withHostFileClient(path: range.path) { client in
+        return try await withHostFileClient(path: range.path) { client, path in
             let slice = try await client.readFileRange(
-                at: range.path,
+                at: path,
                 offset: range.offset,
                 maxBytes: range.maxBytes,
                 timeout: timeout)
@@ -1202,8 +1215,8 @@ actor HeelerSSHTransport: Transport {
 
     func fileStatus(atPath path: String) async throws -> RemoteFileStatus? {
         let timeout = requestTimeout
-        return try await withHostFileClient(path: path) { client in
-            try await client.fileStatus(at: path, timeout: timeout).map(RemoteFileStatus.init)
+        return try await withHostFileClient(path: path) { client, resolvedPath in
+            try await client.fileStatus(at: resolvedPath, timeout: timeout).map(RemoteFileStatus.init)
         }
     }
 
@@ -1216,8 +1229,8 @@ actor HeelerSSHTransport: Transport {
             nameContains: request.nameContains,
             maximumEntries: request.maximumEntries,
             maximumScanned: request.maximumScanned)
-        return try await withHostFileClient(path: request.directory) { client in
-            try await client.listEntries(at: request.directory, matching: query, timeout: timeout)
+        return try await withHostFileClient(path: request.directory) { client, directory in
+            try await client.listEntries(at: directory, matching: query, timeout: timeout)
                 .map(RemoteFileListing.init)
         }
     }
@@ -1228,9 +1241,9 @@ actor HeelerSSHTransport: Transport {
 
     func hostHomeDirectory() async throws -> String {
         let environment = try await hostFileEnvironment()
-        // A Rex Host's Chat reads a native Windows home over SFTP, in the form
-        // that opens there, as a core's Chat does.
-        if servesRexHost, environment.isWindows { return RemoteFilePath.windowsForSFTP(environment.home) }
+        if readsChatFilesOnWindows, environment.isWindows {
+            return RemoteFilePath.windowsForSFTP(environment.home)
+        }
         try await requirePOSIXHost(feature: String(localized: "Chat"))
         return environment.home
     }
@@ -1261,20 +1274,31 @@ actor HeelerSSHTransport: Transport {
     /// reader finishes. The idle release reclaims a healthy channel left open.
     private func withHostFileClient<Value: Sendable>(
         path: String,
-        _ operation: @escaping @Sendable (SSHSFTPClient) async throws -> Value
+        _ operation: @escaping @Sendable (SSHSFTPClient, String) async throws -> Value
     ) async throws -> Value {
-        guard RemoteFilePath.isAcceptable(path) else {
+        if !RemoteFilePath.isAcceptable(path) {
+            guard readsChatFilesOnWindows, RemoteHostPath.isWindowsAbsolute(path) else {
+                throw TransportError.invalidDirectoryPath(path: path)
+            }
+        }
+        let environment = try await hostFileEnvironment()
+        try await requireChatFileHost()
+        let resolvedPath =
+            (readsChatFilesOnWindows && environment.isWindows)
+            ? RemoteFilePath.windowsForSFTP(path)
+            : path
+        guard RemoteFilePath.isAcceptable(resolvedPath) else {
             throw TransportError.invalidDirectoryPath(path: path)
         }
-        _ = try await hostFileEnvironment()
-        try await requireChatFileHost()
         if sftpRefusal.stands {
             throw TransportError.hostFeatureUnavailable(feature: String(localized: "Chat needs SFTP on the Host"))
         }
         let acquiredClientID = AcquiredSessionFileClientID()
         do {
             return try await AsyncDeadline.run(for: requestTimeout) {
-                try await self.runOnSessionFileClient(recordingIDInto: acquiredClientID, operation)
+                try await self.runOnSessionFileClient(recordingIDInto: acquiredClientID) { client in
+                    try await operation(client, resolvedPath)
+                }
             }
         } catch {
             let (mapped, retiresChannel) = await mapHostFileError(error)
@@ -1799,7 +1823,8 @@ actor HeelerSSHTransport: Transport {
         _ contents: Data,
         at path: String,
         configDirectory: String?,
-        operationID: UUID
+        operationID: UUID,
+        enforcesPermissions: Bool = true
     ) async throws {
         let sftp: SSHSFTPClient
         do {
@@ -1813,7 +1838,7 @@ actor HeelerSSHTransport: Transport {
 
         do {
             try Task.checkCancellation()
-            if let configDirectory {
+            if enforcesPermissions, let configDirectory {
                 try await enforceNotificationPermissions(
                     0o700,
                     at: configDirectory,
@@ -1828,10 +1853,12 @@ actor HeelerSSHTransport: Transport {
                 permissions: 0o600,
                 timeout: requestTimeout)
             do {
-                try await enforceNotificationPermissions(
-                    0o600,
-                    at: currentTemporaryPath,
-                    over: sftp)
+                if enforcesPermissions {
+                    try await enforceNotificationPermissions(
+                        0o600,
+                        at: currentTemporaryPath,
+                        over: sftp)
+                }
                 if !contents.isEmpty {
                     try await file.write(contents, timeout: requestTimeout)
                 }
@@ -1846,7 +1873,7 @@ actor HeelerSSHTransport: Transport {
                 timeout: requestTimeout)
             guard
                 temporaryAttributes.size == UInt64(contents.count),
-                temporaryAttributes.permissions == 0o600
+                !enforcesPermissions || temporaryAttributes.permissions == 0o600
             else {
                 throw NotificationRegistrationError.writeFailed(
                     detail: String(localized: "The private temporary file failed verification."))
@@ -2481,7 +2508,7 @@ actor HeelerSSHTransport: Transport {
         // alone, in the account's own temp folder (ADR 0056's update of
         // 2026-11-25): Rex has no counterpart of herdr-core's `terminal.put`,
         // and the POSIX parent command cannot run there.
-        if servesRexHost {
+        if servesRexHost || isWindowsHost {
             let isWindows = try? await hostFileEnvironment().isWindows
             if isWindowsHost || isWindows == true {
                 return try await stageOnWindows(source, progress: progress)
@@ -3436,12 +3463,12 @@ actor HeelerSSHTransport: Transport {
     func prepareDroidChatHook(_ action: DroidChatHook.Action) async throws -> String {
         let timeout = requestTimeout
         return try await DroidChatHook.place(on: self, action: action) { folder in
-            try await self.withHostFileClient(path: folder) { client in
-                if try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory { return }
+            try await self.withHostFileClient(path: folder) { client, resolvedFolder in
+                if try await client.fileStatus(at: resolvedFolder, timeout: timeout)?.kind == .directory { return }
                 do {
-                    try await client.createDirectory(at: folder, permissions: 0o700, timeout: timeout)
+                    try await client.createDirectory(at: resolvedFolder, permissions: 0o700, timeout: timeout)
                 } catch {
-                    guard try await client.fileStatus(at: folder, timeout: timeout)?.kind == .directory else { throw error }
+                    guard try await client.fileStatus(at: resolvedFolder, timeout: timeout)?.kind == .directory else { throw error }
                 }
             }
         }
@@ -4527,7 +4554,7 @@ extension HeelerSSHTransport: HostHelperHost {
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
         // A Usage read searches for nothing, and a screen is waiting on it.
         switch script.step {
-        case .usageQuery, .tmuxUsageQuery:
+        case .usageQuery, .tmuxUsageQuery, .rexUsageQuery:
             return try await runBoundedScript(
                 Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
@@ -4554,6 +4581,13 @@ extension HeelerSSHTransport: HostHelperHost {
     }
 
     func replaceHostHelperFile(_ contents: Data, at path: String, privateDirectory: String?) async throws {
+        try await replaceHostFile(
+            contents, at: path, privateDirectory: privateDirectory, enforcesPermissions: true)
+    }
+
+    private func replaceHostFile(
+        _ contents: Data, at path: String, privateDirectory: String?, enforcesPermissions: Bool
+    ) async throws {
         try await withNotificationFileRequestDeadline {
             guard await self.notificationConnectionIsAvailable() else {
                 throw NotificationRegistrationError.writeFailed(
@@ -4562,7 +4596,8 @@ extension HeelerSSHTransport: HostHelperHost {
             let operationID = UUID()
             try await self.channelAdmission.withChannel(.ordinarySession) {
                 try await self.performNotificationFileReplace(
-                    contents, at: path, configDirectory: privateDirectory, operationID: operationID)
+                    contents, at: path, configDirectory: privateDirectory, operationID: operationID,
+                    enforcesPermissions: enforcesPermissions)
             }
         }
     }
@@ -4741,10 +4776,24 @@ extension HeelerSSHTransport: RexHostConnection, RexHostProjects {
 
     func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents {
         let nonce = HostProcessReader.makeNonce()
-        let script = HerdrCoreShellLaunch.discoveryScript(
-            shell: nil, executables: SupportedAgentKind.allCases.map(\.executable),
-            versionOf: SupportedAgentKind.opencode.executable, nonce: nonce)
-        let result = try await runAgentDiscovery(script)
+        let executables = SupportedAgentKind.allCases.map(\.executable)
+        let versioned = SupportedAgentKind.opencode.executable
+        let onWindows: Bool
+        if isWindowsHost {
+            onWindows = true
+        } else {
+            onWindows = (try? await hostPlatform()) == .nativeWindows
+        }
+        let result: GitExecResult
+        if onWindows {
+            let command = HerdrCoreShellLaunch.windowsDiscoveryCommand(
+                executables: executables, versionOf: versioned, nonce: nonce)
+            result = try await runWindowsCommand(command, for: .agentDiscovery)
+        } else {
+            let script = HerdrCoreShellLaunch.discoveryScript(
+                shell: nil, executables: executables, versionOf: versioned, nonce: nonce)
+            result = try await runAgentDiscovery(script)
+        }
         guard result.exitStatus == 0,
             let found = try? HerdrCoreLaunch.installedAgents(stdout: result.stdout, nonce: nonce)
         else {
@@ -4808,16 +4857,24 @@ extension HeelerSSHTransport: RexHostConnection, RexHostProjects {
     /// an Agent's own directory is the program's to make. The file goes as a
     /// Host Helper's copy of it does, a 0600 temporary file renamed into place.
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
-        guard RemoteFilePath.isAcceptable(folder), folder.hasSuffix("/\(HostHelperScript.extensionFolderName)") else {
+        let normalizedFolder = RemoteFilePath.windowsForSFTP(folder)
+        guard RemoteFilePath.isAcceptable(normalizedFolder),
+            normalizedFolder.hasSuffix("/\(HostHelperScript.extensionFolderName)")
+        else {
+            throw TransportError.invalidDirectoryPath(path: folder)
+        }
+        let environment = try await hostFileEnvironment()
+        if !environment.isWindows && normalizedFolder != folder {
             throw TransportError.invalidDirectoryPath(path: folder)
         }
         let timeout = requestTimeout
-        try await withHostFileClient(path: folder) { client in
-            guard try await client.fileStatus(at: folder, timeout: timeout) == nil else { return }
-            try await client.createDirectory(at: folder, permissions: 0o755, timeout: timeout)
+        try await withHostFileClient(path: normalizedFolder) { client, resolvedFolder in
+            guard try await client.fileStatus(at: resolvedFolder, timeout: timeout) == nil else { return }
+            try await client.createDirectory(at: resolvedFolder, permissions: 0o755, timeout: timeout)
         }
-        try await replaceHostHelperFile(
-            contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
+        try await replaceHostFile(
+            contents, at: RemoteFilePath.join(normalizedFolder, HostHelperScript.extensionFileName),
+            privateDirectory: nil, enforcesPermissions: !environment.isWindows)
     }
 
     func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {

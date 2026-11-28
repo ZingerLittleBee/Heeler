@@ -176,8 +176,8 @@ extension ServerKind {
     /// never reads, lists or updates anything for it (ADR 0049).
     var usesHostHelper: Bool {
         switch self {
-        case .herdrCore, .tmux: true
-        case .herdrTUI, .rex, .unconfirmed: false
+        case .herdrCore, .tmux, .rex: true
+        case .herdrTUI, .unconfirmed: false
         }
     }
 }

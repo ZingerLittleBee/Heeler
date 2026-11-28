@@ -55,9 +55,11 @@ struct HostHelperScript: Sendable, Equatable {
         case tmuxUsageQuery(
             timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
             agyLimits: Bool = true, socket: String, storedPaths: String? = nil)
-        /// Updates `tmux/<socket>/paths.json` when `tmux` moved on a Host that
-        /// already holds the Helper or placed `paths.json` for Claude Code's hooks.
         case refreshTmuxPaths(socket: String, storedPaths: String)
+        case rexUsageQuery(
+            timeZone: String, claudeLimits: Bool, codexLimits: Bool = true,
+            agyLimits: Bool = true, socketPath: String? = nil)
+        case refreshRexSocket(socketPath: String)
     }
 
     /// What an install record names, for `tidyInterruptedInstall`.
@@ -226,6 +228,34 @@ struct HostHelperScript: Sendable, Equatable {
             ] + writeStoredTmuxPaths(storedPaths, nonce: nonce, failCommand: "exit 1") + [
                 "fi",
             ]
+        case .rexUsageQuery(let timeZone, let claudeLimits, let codexLimits, let agyLimits, let socketPath):
+            var prepare = [
+                "  [ -f \"$__h_app/rex/follower.js\" ] || { printf 'helper-outdated\\n'; return 0; }",
+                "  mkdir -p -- \"$__h_target\" || return 1",
+            ]
+            if let socketPath, !socketPath.isEmpty, let stored = storedRexSocketText(path: socketPath) {
+                prepare += writeStoredRexSocket(stored, nonce: nonce, failCommand: nil)
+            }
+            lines = usageQuery(
+                timeZone: timeZone, claudeLimits: claudeLimits, codexLimits: codexLimits,
+                agyLimits: agyLimits, folder: "rex", flag: "--rex",
+                name: nil, prepare: prepare, nonce: nonce)
+        case .refreshRexSocket(let socketPath):
+            if let stored = storedRexSocketText(path: socketPath) {
+                lines = [
+                    "LC_ALL=C; export LC_ALL",
+                    "umask 077",
+                    dataHome,
+                    "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
+                    "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
+                    "__h_target=\"$__h_dir\"/rex",
+                    "if [ -f \"$__h_app/main.js\" ]; then",
+                ] + writeStoredRexSocket(stored, nonce: nonce, failCommand: "exit 1") + [
+                    "fi",
+                ]
+            } else {
+                lines = [":"]
+            }
         }
         return (["printf '%s begin\\n' \(quote(nonce))"] + lines
             + ["__h_status=$?", "printf '%s end\\n' \(quote(nonce))", "exit \"$__h_status\""])
@@ -272,14 +302,62 @@ struct HostHelperScript: Sendable, Equatable {
         ]
     }
 
+    static func storedRexSocket(_ socket: RexSocket) -> Data? {
+        guard !socket.isWindowsPipe else { return nil }
+        return storedRexSocketText(path: socket.path).map { Data(($0 + "\n").utf8) }
+    }
+
+    private static func storedRexSocketText(path: String) -> String? {
+        guard !RexSocket.isWindowsPipeAddress(path), RemoteShellPath.isQuotableAbsolute(path), !path.hasSuffix("/")
+        else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(["socket": path]) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func writeStoredRexSocket(
+        _ storedSocket: String, nonce: String, failCommand: String?
+    ) -> [String] {
+        let want = storedSocket.trimmingCharacters(in: .newlines)
+        guard let failCommand else {
+            return [
+                "  if mkdir -p -- \"$__h_target\" 2>/dev/null; then",
+                "    __h_sock=\"$__h_target/socket.json\"",
+                "    __h_want=\(quote(want))",
+                "    if [ ! -f \"$__h_sock\" ] || [ \"$(cat \"$__h_sock\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+                "      __h_tmp=\"$__h_sock\(temporarySuffix)\(nonce)\"",
+                "      (printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_sock\" ] && mv -f -- \"$__h_tmp\" \"$__h_sock\") 2>/dev/null || rm -f -- \"$__h_tmp\" 2>/dev/null || :",
+                "    fi",
+                "  fi",
+            ]
+        }
+        return [
+            "  mkdir -p -- \"$__h_target\" || \(failCommand)",
+            "  __h_sock=\"$__h_target/socket.json\"",
+            "  __h_want=\(quote(want))",
+            "  if [ ! -f \"$__h_sock\" ] || [ \"$(cat \"$__h_sock\" 2>/dev/null)\" != \"$__h_want\" ]; then",
+            "    __h_tmp=\"$__h_sock\(temporarySuffix)\(nonce)\"",
+            "    if printf '%s\\n' \"$__h_want\" > \"$__h_tmp\" && [ ! -d \"$__h_sock\" ] && mv -f -- \"$__h_tmp\" \"$__h_sock\"; then :; else rm -f -- \"$__h_tmp\"; \(failCommand); fi",
+            "  fi",
+        ]
+    }
+
     private static func usageQuery(
         timeZone: String, claudeLimits: Bool, codexLimits: Bool, agyLimits: Bool,
-        folder: String, flag: String, name: String,
+        folder: String, flag: String, name: String?,
         prepare: [String], nonce: String
     ) -> [String] {
         let missing = "printf '%s\\n' '{\"version\":1,\"runtime\":\"missing\"}'"
         let flags = claudeLimits ? " --claude-limits" : ""
-        let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) \(flag) \(quote(name))\(flags)"
+        let targetFlag = name.map { "\(flag) \(quote($0))" } ?? flag
+        let query = "\"$__h_app/usage-query.js\" --tz \(quote(timeZone)) \(targetFlag)\(flags)"
+        let targetLine =
+            if let name {
+                "__h_target=\"$__h_dir\"/\(folder)/\(quote(name))"
+            } else {
+                "__h_target=\"$__h_dir\"/\(folder)"
+            }
         var setupExtra: [String] = []
         let runRecorded: [String]
         let runService: [String]
@@ -287,7 +365,6 @@ struct HostHelperScript: Sendable, Equatable {
             runRecorded = ["  \"$__h_node\" \(query)"]
             runService = ["      \"$__h_service_node\" \(query)"]
         } else {
-            // Helpers older than 0.5.8 lack `--no-agy-limits`; older than 0.5.9 lack `--no-codex-limits`.
             setupExtra.append("  __h_extra=''")
             if !codexLimits {
                 setupExtra.append(
@@ -310,7 +387,7 @@ struct HostHelperScript: Sendable, Equatable {
             dataHome,
             "__h_dir=\"$__h_data\"/\(quote(helperDirectorySuffix))",
             "__h_app=\"$__h_dir\"/\(quote(appFolderName))",
-            "__h_target=\"$__h_dir\"/\(folder)/\(quote(name))",
+            targetLine,
             nodeGoneFunction,
             "__h_usage() {",
             "  [ -f \"$__h_app/main.js\" ] || { printf 'helper-absent\\n'; return 0; }",

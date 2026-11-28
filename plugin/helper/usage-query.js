@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 import { normalizeSessionName } from "./core/session-name.js";
 import { usageReport } from "./shared/usage/query.js";
 import { normalizeTmuxSocketName } from "./tmux/socket-name.js";
-import { sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./usage/layout.js";
+import { rexRuntimeDirectory, sessionRuntimeDirectory, tmuxRuntimeDirectory } from "./usage/layout.js";
 
 try {
   const { values } = parseArgs({
@@ -16,6 +16,7 @@ try {
       tz: { type: "string" },
       session: { type: "string" },
       tmux: { type: "string" },
+      rex: { type: "boolean", default: false },
       "claude-limits": { type: "boolean", default: false },
       "no-codex-limits": { type: "boolean", default: false },
       "no-agy-limits": { type: "boolean", default: false },
@@ -25,7 +26,10 @@ try {
   // This file is in the Helper directory's `app` folder.
   const directory = fileURLToPath(new URL("..", import.meta.url));
   let runtimeDirectory;
-  if (values.tmux !== undefined) {
+  if (values.rex) {
+    if (values.tmux !== undefined || values.session !== undefined) throw new Error("ambiguous runtime target");
+    runtimeDirectory = rexRuntimeDirectory(directory);
+  } else if (values.tmux !== undefined) {
     if (values.session !== undefined) throw new Error("ambiguous runtime target");
     const socket = normalizeTmuxSocketName(values.tmux);
     if (socket === null) throw new Error("invalid tmux socket");

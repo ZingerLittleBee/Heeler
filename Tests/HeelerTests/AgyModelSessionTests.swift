@@ -91,6 +91,25 @@ struct AgyModelSessionTests {
         ])
     }
 
+    @Test("agy models parses non-TTY single-tab TSV output")
+    func parsesNonTTYTabSeparatedModelsOutput() throws {
+        let tsv = """
+            gemini-4-neon-high\tGemini 4 Neon (High)
+            gemini-4-neon-medium\tGemini 4 Neon (Medium)
+            gemini-4-neon-low\tGemini 4 Neon (Low)
+            gemini-pro-orchestrator-neon\tOrchestrator (Neon)
+            """
+        let choices = AgyModelCatalog.parse(Data(tsv.utf8))
+        #expect(choices.map(\.id) == ["gemini-4-neon", "gemini-pro-orchestrator-neon"])
+        let neon = try #require(choices.first { $0.id == "gemini-4-neon" })
+        #expect(neon.title == "Gemini 4 Neon")
+        #expect(neon.efforts == ["low", "medium", "high"])
+        #expect(neon.defaultSlug == "gemini-4-neon-high")
+        let orchestrator = try #require(choices.first { $0.id == "gemini-pro-orchestrator-neon" })
+        #expect(orchestrator.title == "Orchestrator (Neon)")
+        #expect(orchestrator.efforts.isEmpty)
+    }
+
     @Test("Transcript USER_SETTINGS_CHANGE records model and effort outside USER_REQUEST only")
     func transcriptReadsModelSelection() throws {
         let recorded = try AgyTranscriptReducerTests.fixture("core-turns.jsonl", steps: 0...3)

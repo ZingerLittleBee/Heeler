@@ -25,10 +25,23 @@ enum HerdrCoreShellLaunch {
     /// argv entry, so nothing in one ever reaches the shell's command string.
     /// PowerShell does not replace itself, so there the agent is its child, each
     /// word a literal in `-Command`, and the Terminal ends when it exits.
-    static func argv(shell: String, program: [String]) -> [String] {
+    static func argv(
+        shell: String, program: [String], cwd: String? = nil, environment: [String: String] = [:]
+    ) -> [String] {
         if shell == windowsShell {
+            var statements: [String] = []
+            if let cwd {
+                statements.append("Set-Location -LiteralPath \(PowerShellCommand.literal(cwd)) -ErrorAction Stop")
+            }
+            for key in environment.keys.sorted() where UsageAccountFile.isVariable(key) {
+                if let value = environment[key] {
+                    statements.append("$env:\(key) = \(PowerShellCommand.literal(value))")
+                }
+            }
             let words = program.map(PowerShellCommand.literal).joined(separator: " ")
-            return [shell, "-Command", "& \(words); exit $LASTEXITCODE"]
+            statements.append("& \(words)")
+            statements.append("exit $LASTEXITCODE")
+            return [shell, "-Command", statements.joined(separator: "; ")]
         }
         return isFish(shell)
             ? [shell, "-ic", "exec $argv[2..]", "fish"] + program

@@ -86,7 +86,7 @@ struct RexHostUpdatesTests {
     }
 
     @Test func aRexServerIsServedByNoHelper() {
-        #expect(!ServerKind.rex.usesHostHelper)
+        #expect(ServerKind.rex.usesHostHelper)
     }
 
     @Test func rexBesideOtherServersIsNeverReadListedOrUpdated() async throws {
@@ -114,7 +114,7 @@ struct RexHostUpdatesTests {
         #expect(!snapshot.items.contains { $0.record == rex.id })
         #expect(snapshot.items.allSatisfy { $0.state == .updateAvailable })
         // The Helper serves tmux alone on this Host.
-        #expect(snapshot.item(.helper(machine.id))?.item.scope == "tmux")
+        #expect(snapshot.item(.helper(machine.id))?.item.scope == "Tmux, Rex")
         #expect(snapshot.badge == .count(2))
         #expect(snapshot.tag(for: machine.id) == .updates(2))
         #expect(snapshot.card == .available(updates: 2, hosts: 1, components: [.plugin, .helper]))
@@ -135,21 +135,24 @@ struct RexHostUpdatesTests {
         await store.hostsDidConnect([rex.id])
         await store.refresh()
         store.notePlugin(Self.olderPlugin, for: rex.id)
+
+        let snapshot = store.snapshot
+        #expect(snapshot.groups.map(\.id) == [machine.id])
+        #expect(snapshot.items.map(\.id) == [.helper(machine.id)])
+        #expect(snapshot.item(.helper(machine.id))?.item.scope == "Rex")
+        #expect(snapshot.card == .available(updates: 1, hosts: 1, components: [.helper]))
+        #expect(snapshot.badge == .count(1))
+        #expect(snapshot.tag(for: machine.id) == .updates(1))
+        #expect(snapshot.primaryAction == .updateAll)
+        #expect(snapshot.run == .idle)
+
         store.updateAll()
         store.updateAll(on: machine.id)
         await settle(store)
 
         #expect(await calls.pluginReads.isEmpty)
-        #expect(await calls.helperReads.isEmpty)
+        #expect(await calls.helperReads == [rex.id, rex.id])
         #expect(await calls.pluginUpdates.isEmpty)
-        #expect(await calls.helperUpdates.isEmpty)
-        let snapshot = store.snapshot
-        #expect(snapshot.groups.isEmpty)
-        #expect(snapshot.group(machine.id) == nil)
-        #expect(snapshot.card == nil)
-        #expect(snapshot.badge == nil)
-        #expect(snapshot.tag(for: machine.id) == nil)
-        #expect(snapshot.primaryAction == nil)
-        #expect(snapshot.run == .idle)
+        #expect(await calls.helperUpdates == [rex.id])
     }
 }

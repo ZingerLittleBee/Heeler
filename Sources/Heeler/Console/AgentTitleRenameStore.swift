@@ -19,7 +19,7 @@ enum AgentTitleNaming {
 
     static func title(of agent: Agent, program: ChatProgram) -> String {
         var title = agent.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let directory = (agent.foregroundCwd ?? agent.cwd).split(separator: "/").last.map(String.init) ?? ""
+        let directory = (agent.foregroundCwd ?? agent.cwd).split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
         switch program {
         case .claude, .agy, .droid, .devin, .amp: break
         case .codex:
@@ -79,6 +79,7 @@ struct PendingAgentTitleRename: Codable, Equatable, Sendable {
     let program: ChatProgram
     var session: AgentSessionInfo?
     let title: String
+    var sessionToken: String? = nil
 
     var agentID: ConsoleAgent.ID {
         ConsoleAgent.ID(hostID: hostID, paneID: paneID)
@@ -241,12 +242,37 @@ struct AgentTitleRenameIO {
     var acquire: () -> Bool = { true }
     var release: () -> Void = {}
     var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    var sessionToken: (() -> String?)? = nil
+    var expectedSessionToken: String? = nil
+    var queueWhenIdleWithToken: ((Agent, String, String?) -> Void)? = nil
 }
 
 struct AgentTitleRenameError: LocalizedError {
     let message: String
     var confirmedFailure = false
     var errorDescription: String? { message }
+
+    static func fromCheckedSend(_ outcome: CheckedSendOutcome) -> AgentTitleRenameError? {
+        switch outcome {
+        case .submitted:
+            return nil
+        case .refused(let refusal):
+            let confirmed: Bool
+            switch refusal {
+            case .notSubmitted:
+                confirmed = false
+            default:
+                confirmed = true
+            }
+            return AgentTitleRenameError(message: refusal.message, confirmedFailure: confirmed)
+        case .failed(let message):
+            return AgentTitleRenameError(message: message, confirmedFailure: true)
+        case .outcomeUnknown:
+            return AgentTitleRenameError(
+                message: String(localized: "The Host did not confirm whether the rename command was sent."),
+                confirmedFailure: false)
+        }
+    }
 }
 
 @MainActor
@@ -261,6 +287,7 @@ final class AgentTitleRenameStore: Identifiable {
     struct DeferredSaveConfirmation: Equatable {
         let agent: Agent
         let title: String
+        var sessionToken: String? = nil
     }
 
     let program: ChatProgram
@@ -328,7 +355,11 @@ final class AgentTitleRenameStore: Identifiable {
             io.setSuppressBusyNotice(true)
         }
         deferredSaveConfirmation = nil
-        io.queueWhenIdle?(pending.agent, pending.title)
+        if let queueWithToken = io.queueWhenIdleWithToken {
+            queueWithToken(pending.agent, pending.title, pending.sessionToken)
+        } else {
+            io.queueWhenIdle?(pending.agent, pending.title)
+        }
         state = .renamed
     }
 
@@ -345,7 +376,7 @@ final class AgentTitleRenameStore: Identifiable {
         dispatched = false
         defer { io.release() }
         do {
-            let initial = try await checkedAgent()
+            let (initial, initialToken) = try await checkedAgent(expectedToken: io.expectedSessionToken)
             let target = input.trimmingCharacters(in: .whitespacesAndNewlines)
             var resultTarget: String? = generating ? nil : target
             if !generating, AgentTitleNaming.matches(initial, program: program, title: target) {
@@ -355,12 +386,17 @@ final class AgentTitleRenameStore: Identifiable {
             }
             let agentIsRunning =
                 initial.status == .working || initial.status == .blocked || io.isBusyInConsole()
-            if !generating, agentIsRunning, let queueWhenIdle = io.queueWhenIdle {
+            if !generating, agentIsRunning, io.queueWhenIdleWithToken != nil || io.queueWhenIdle != nil {
                 if io.shouldSuppressBusyNotice() {
-                    queueWhenIdle(initial, target)
+                    if let queueWithToken = io.queueWhenIdleWithToken {
+                        queueWithToken(initial, target, initialToken)
+                    } else {
+                        io.queueWhenIdle?(initial, target)
+                    }
                     state = .renamed
                 } else {
-                    deferredSaveConfirmation = DeferredSaveConfirmation(agent: initial, title: target)
+                    deferredSaveConfirmation = DeferredSaveConfirmation(
+                        agent: initial, title: target, sessionToken: initialToken)
                     state = .editing
                 }
                 return
@@ -368,15 +404,20 @@ final class AgentTitleRenameStore: Identifiable {
             guard (initial.status == .idle || initial.status == .done) && !io.isBusyInConsole() else {
                 throw failure(String(localized: "Wait until the Agent is idle before renaming."))
             }
-            guard initial.agentSession != nil else {
+            let pinnedToken: String?
+            if initial.agentSession != nil {
+                pinnedToken = nil
+            } else if let initialToken, !initialToken.isEmpty {
+                pinnedToken = initialToken
+            } else {
                 throw failure(String(localized: "The Agent hasn't reported its conversation. Open Chat and check its session before renaming."))
             }
-            let screen = try await readyScreen(session: initial.agentSession)
+            let screen = try await readyScreen(session: initial.agentSession, token: pinnedToken)
             if program == .opencode {
-                try await renameOpenCode(target, initial: initial)
+                try await renameOpenCode(target, initial: initial, token: pinnedToken)
             } else {
                 let command = program == .pi ? "/name" : "/rename"
-                _ = try await checkedAgent(session: initial.agentSession, idle: true)
+                _ = try await checkedAgent(session: initial.agentSession, expectedToken: pinnedToken, idle: true)
                 guard InputBoxStateDetector.detect(try await io.screen(), program: program).isSendable else {
                     throw failure(String(localized: "The Agent's input changed. Nothing was sent."))
                 }
@@ -386,9 +427,9 @@ final class AgentTitleRenameStore: Identifiable {
                 try await io.prompt(generating ? command : command + " " + target)
             }
             if generating, program == .codex {
-                resultTarget = try await confirmCodexSuggestion(initial: initial)
+                resultTarget = try await confirmCodexSuggestion(initial: initial, token: pinnedToken)
             }
-            try await awaitResult(initial: initial, target: resultTarget, before: screen)
+            try await awaitResult(initial: initial, token: pinnedToken, target: resultTarget, before: screen)
             await io.refresh()
             state = .renamed
         } catch {
@@ -402,7 +443,7 @@ final class AgentTitleRenameStore: Identifiable {
         }
     }
 
-    private func readyScreen(session: AgentSessionInfo?) async throws -> ANSIScreen {
+    private func readyScreen(session: AgentSessionInfo?, token: String?) async throws -> ANSIScreen {
         var screen = try await io.screen()
         if InputBoxStateDetector.detect(screen, program: program).isSendable {
             return screen
@@ -410,7 +451,7 @@ final class AgentTitleRenameStore: Identifiable {
         if io.waitForSendableScreen {
             for _ in 0..<6 {
                 try await io.sleep(.milliseconds(250))
-                _ = try await checkedAgent(session: session, idle: true)
+                _ = try await checkedAgent(session: session, expectedToken: token, idle: true)
                 screen = try await io.screen()
                 if InputBoxStateDetector.detect(screen, program: program).isSendable {
                     return screen
@@ -420,24 +461,28 @@ final class AgentTitleRenameStore: Identifiable {
         throw failure(String(localized: "The Agent's input is not empty or ready. Finish the draft or dialog in Terminal first."))
     }
 
-    private func checkedAgent(session: AgentSessionInfo? = nil, idle: Bool = false) async throws -> Agent {
+    private func checkedAgent(
+        session: AgentSessionInfo? = nil, expectedToken: String? = nil, idle: Bool = false
+    ) async throws -> (agent: Agent, token: String?) {
         try Task.checkCancellation()
         let fresh = try await io.agent()
+        let token = fresh.agentSession == nil ? io.sessionToken?() : nil
         guard fresh.terminalID == expected.terminalID, fresh.paneID == expected.paneID,
             fresh.kind == expected.kind, fresh.workspaceID == expected.workspaceID,
             fresh.tabID == expected.tabID,
             expected.agentSession == nil || fresh.agentSession == expected.agentSession,
-            session == nil || fresh.agentSession == session else {
+            session == nil || fresh.agentSession == session,
+            expectedToken == nil || token == expectedToken else {
             throw failure(String(localized: "The Agent or conversation changed. Reopen Rename for the current conversation."))
         }
         if idle, (fresh.status != .idle && fresh.status != .done) || io.isBusyInConsole() {
             throw failure(String(localized: "The Agent is no longer idle."))
         }
-        return fresh
+        return (fresh, token)
     }
 
-    private func renameOpenCode(_ title: String, initial: Agent) async throws {
-        _ = try await checkedAgent(session: initial.agentSession, idle: true)
+    private func renameOpenCode(_ title: String, initial: Agent, token: String?) async throws {
+        _ = try await checkedAgent(session: initial.agentSession, expectedToken: token, idle: true)
         io.onWillDispatch()
         io.clearQueued?()
         dispatched = true
@@ -445,7 +490,7 @@ final class AgentTitleRenameStore: Identifiable {
         var dialog: ANSIScreen?
         for _ in 0..<10 {
             try await io.sleep(.milliseconds(200))
-            _ = try await checkedAgent(session: initial.agentSession)
+            _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
             let read = try await io.screen()
             if Self.openCodeField(read) != nil { dialog = read; break }
         }
@@ -453,32 +498,32 @@ final class AgentTitleRenameStore: Identifiable {
             AgentTitleNaming.matches(initial, program: .opencode, title: field) else {
             throw failure(String(localized: "OpenCode did not show the expected Rename session dialog."))
         }
-        _ = try await checkedAgent(session: initial.agentSession)
+        _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
         guard Self.openCodeField(try await io.screen()) == field else {
             throw failure(String(localized: "OpenCode's rename dialog changed."))
         }
         try await io.keys(["ctrl+e", "ctrl+u"])
         try await io.sleep(.milliseconds(150))
-        _ = try await checkedAgent(session: initial.agentSession)
+        _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
         guard Self.openCodeField(try await io.screen()) == "" else {
             throw failure(String(localized: "OpenCode's title field could not be cleared."))
         }
         try await io.paste(title)
         try await io.sleep(.milliseconds(150))
-        _ = try await checkedAgent(session: initial.agentSession)
+        _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
         guard Self.openCodeField(try await io.screen()) == title else {
             throw failure(String(localized: "OpenCode did not receive the complete title."))
         }
         try await io.keys(["enter"])
     }
 
-    private func confirmCodexSuggestion(initial: Agent) async throws -> String {
+    private func confirmCodexSuggestion(initial: Agent, token: String?) async throws -> String {
         for _ in 0..<60 {
             try await io.sleep(.milliseconds(500))
-            _ = try await checkedAgent(session: initial.agentSession)
+            _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
             let screen = try await io.screen()
             guard let suggestion = Self.codexSuggestion(screen) else { continue }
-            _ = try await checkedAgent(session: initial.agentSession)
+            _ = try await checkedAgent(session: initial.agentSession, expectedToken: token)
             guard Self.codexSuggestion(try await io.screen()) == suggestion else {
                 throw failure(String(localized: "Codex's title suggestion changed before confirmation."))
             }
@@ -488,11 +533,11 @@ final class AgentTitleRenameStore: Identifiable {
         throw failure(String(localized: "Codex did not produce a title suggestion in time."))
     }
 
-    private func awaitResult(initial: Agent, target: String?, before: ANSIScreen) async throws {
+    private func awaitResult(initial: Agent, token: String?, target: String?, before: ANSIScreen) async throws {
         let oldText = before.rows.map(\.text).joined(separator: "\n")
         for _ in 0..<60 {
             try await io.sleep(.milliseconds(500))
-            let fresh = try await checkedAgent(session: initial.agentSession)
+            let (fresh, _) = try await checkedAgent(session: initial.agentSession, expectedToken: token)
             if let target {
                 if AgentTitleNaming.matches(fresh, program: program, title: target) { return }
             } else if fresh.title != initial.title,

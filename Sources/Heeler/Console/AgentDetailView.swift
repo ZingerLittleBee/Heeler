@@ -209,25 +209,27 @@ struct AgentDetailView: View {
     /// Any Agent with a directory SFTP can list, on a Host not known to be
     /// a native Windows machine.
     private var offersFiles: Bool {
-        console.hostPlatforms[agent.hostID] != .nativeWindows
-            && console.capabilities(for: agent.hostID).offersFiles(directory: agent.directory)
+        let capabilities = console.capabilities(for: agent.hostID)
+        guard capabilities.offersWindowsFiles || console.hostPlatforms[agent.hostID] != .nativeWindows else {
+            return false
+        }
+        return capabilities.offersFiles(directory: agent.directory)
     }
 
-    /// Whether a port preview's picture has a message to go in: a Host that
-    /// takes attachments, and the Composer rather than Direct Input, which
-    /// has no place that shows one.
     private var sendsPreviewScreenshots: Bool {
         console.capabilities(for: agent.hostID).uploads
             && !(inputMode.isDirect && effectiveSurface == .terminal)
     }
 
-    /// Files open in the Agent's directory, reading over the Host's live
-    /// connection as Chat does.
     private func showFiles() {
         guard files == nil, let directory = agent.directory else { return }
+        let normalized =
+            console.capabilities(for: agent.hostID).offersWindowsFiles
+            ? RemoteFilePath.windowsForSFTP(directory)
+            : directory
         files = HostFilesBrowser(
             files: console.chatHostFiles(for: agent.hostID), hostID: agent.hostID,
-            openedBy: agent.agent.terminalID, cache: console.hostFileCache, agentDirectory: directory,
+            openedBy: agent.agent.terminalID, cache: console.hostFileCache, agentDirectory: normalized,
             isHostConnected: console.hostStatuses[agent.hostID] == .connected)
     }
 

@@ -28,10 +28,11 @@ struct RexConsoleTests {
     @Test(arguments: [HostPlatform?.none, .posix, .nativeWindows], Self.kernels)
     func aRexHostOffersWhatItsAgentsNeedAndNothingElse(platform: HostPlatform?, kernel: String?) {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
+        let hasKnownKernel = isPOSIX || kernel == HerdrCoreLocator.windowsKernel
         let programs: Set<ChatProgram> =
             switch kernel {
             case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin, .opencode, .amp]
-            case HerdrCoreLocator.windowsKernel: [.claude]
+            case HerdrCoreLocator.windowsKernel: [.claude, .grok, .pi, .omp]
             default: []
             }
         let opensChat = !programs.isEmpty
@@ -40,7 +41,7 @@ struct RexConsoleTests {
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore, rexAcceptsCommand: true)
 
             #expect(offers.requiresBoundAntigravity == isPOSIX)
-            #expect(offers.startsAgents == isPOSIX)
+            #expect(offers.startsAgents == hasKnownKernel)
             #expect(offers.startsTerminals)
             #expect(offers.startsIn("/home/dev/app"))
             #expect(offers.startsIn(#"C:\Users\dev\app"#))
@@ -48,14 +49,14 @@ struct RexConsoleTests {
             #expect(
                 offers.newTerminalRequest(workspaceID: "session:studio", cwd: "/home/dev")
                     == ShellTerminalCreationRequest(workspaceID: "session:studio", cwd: "/home/dev"))
-            #expect(offers.renameAgent == isPOSIX)
-            #expect(!offers.renamesConversationTitles)
-            #expect(offers.renamesWorkspaces == isPOSIX)
+            #expect(offers.renameAgent == hasKnownKernel)
+            #expect(offers.renamesConversationTitles == isPOSIX)
+            #expect(offers.renamesWorkspaces == hasKnownKernel)
             #expect(offers.namesNewWorkspaces)
-            #expect(!offers.worktrees)
+            #expect(offers.worktrees == isPOSIX)
             #expect(offers.createsWorktrees == isPOSIX)
             #expect(offers.uploads == opensChat)
-            #expect(offers.tabNames == isPOSIX)
+            #expect(offers.tabNames == hasKnownKernel)
             #expect(!offers.closeTab)
             #expect(!offers.syncLayoutFromPlugin)
             #expect(!offers.takeOver)
@@ -124,14 +125,12 @@ struct RexConsoleTests {
             capabilities: HostCapabilities(
                 serverKind: .herdrCore, platform: .posix, coreKernel: HerdrCoreLocator.linuxKernel),
             workspaceID: "w1", removesSavedChat: false)
-        #expect(core.newAgent && core.attachments && !core.renameAgent && core.close)
+        #expect(core.newAgent && core.attachments && core.renameAgent && core.close)
     }
 
-    /// The Notifications, Live Activities and Usage surfaces each pick their
-    /// Hosts by kind, and none of them picks a Rex Host, though it lists
-    /// Agents (ADR 0054): a banner and a Live Activity fail closed for it.
     @Test func noIntegrationTreatsARexHostAsItsOwn() {
-        #expect(!ServerKind.rex.hasHostIntegrations)
+        let rex = self.rex
+        #expect(ServerKind.rex.hasHostIntegrations)
         #expect(PreflightCheck.cases(for: .rex) == [.connection, .herdrInstalled, .serverRunning, .protocolCompatible])
         #expect(PreflightCheck.herdrInstalled.title(for: .rex) == "Rex installed")
         #expect(PreflightCheck.serverRunning.title(for: .rex) == "Rex server running")
@@ -142,21 +141,10 @@ struct RexConsoleTests {
             ceremony: NotificationRegistrationCeremony(
                 keys: NotificationKeyStore(secrets: InMemorySecretStore())))
         notifications.setHosts([rex])
-        #expect(notifications.hosts.isEmpty)
+        #expect(notifications.hosts == [rex])
         #expect(notifications.confirmedTriggers(for: rex.id) == nil)
-        #expect(!HostStore(volatileHosts: [rex]).supportsLiveActivities(for: rex.id))
-
-        // Usage and Accounts then have no Host, and say why instead of asking
-        // for one; a Host with nothing on, or any other kind on, keeps asking.
-        let tmux = Host(
-            name: "tmux", address: "tmux.example", username: "dev", serverKind: .tmux, sessionName: "default")
-        let held = Host(name: "Held", address: "held.example", username: "dev", serverKind: .unconfirmed)
-        #expect(HostStore(volatileHosts: [rex]).integratedHosts.isEmpty)
-        #expect(HostStore(volatileHosts: [rex]).hasOnlyRexServersOn)
-        #expect(HostStore(volatileHosts: [rex, held]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: [rex, tmux]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: [held]).hasOnlyRexServersOn)
-        #expect(!HostStore(volatileHosts: []).hasOnlyRexServersOn)
+        #expect(HostStore(volatileHosts: [rex]).supportsLiveActivities(for: rex.id))
+        #expect(HostStore(volatileHosts: [rex]).integratedHosts == [rex])
     }
 
     /// What the Console dialed, in order.
@@ -695,8 +683,8 @@ struct RexConsoleTests {
 
         try await Task.sleep(for: .milliseconds(50))
         #expect(banners.banner == nil)
-        #expect(markedHosts.all.isEmpty)
-        #expect(first.coreSeenMarks(on: rex.id) == nil)
+        #expect(markedHosts.all.contains(rex.id.uuidString))
+        #expect(first.coreSeenMarks(on: rex.id)?.core == "instance-0001")
         #expect(Set(await servers[0].requests.map(\.method)).isSubset(of: Self.inventoryMethods))
 
         // A turn finishes unseen, then the app goes, sweeping nothing, and
@@ -923,7 +911,7 @@ struct RexConsoleTests {
         #expect(console.rowChanges.store(for: agent) == nil)
         console.rowChanges.rowDisappeared(agent.id)
 
-        #expect(console.hostPlatforms[rex.id] == nil)
+        #expect(console.hostPlatforms[rex.id] == .posix)
         #expect(console.chatProgram(for: agent) == .codex)
         #expect(await host.log == logged)
         #expect(!logged.contains("probe"))
@@ -953,7 +941,7 @@ struct RexConsoleTests {
         }
         let agent = try #require(console.agents.first)
 
-        #expect(console.capabilities(for: windows.id).chatPrograms == [.claude])
+        #expect(console.capabilities(for: windows.id).chatPrograms == [.claude, .grok, .pi, .omp])
         #expect(console.capabilities(for: windows.id).uploads)
         #expect(console.chatProgram(for: agent) == chat)
     }

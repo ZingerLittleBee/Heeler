@@ -345,6 +345,27 @@ enum HerdrCoreOrganization {
         return parts.last.map(String.init) ?? String(folder)
     }
 
+    static let agentNameLabel = "heeler.agent-name"
+
+    static func ownerPID(of record: HerdrCoreTerminalRecord) -> Int? {
+        record.foreground?.pid ?? record.pid
+    }
+
+    static func agentNameLabelValue(pid: Int, kind: String, name: String) -> String {
+        "\(pid):\(kind):\(name)"
+    }
+
+    static func agentName(of record: HerdrCoreTerminalRecord, kind: String) -> String? {
+        guard let raw = record.labels[agentNameLabel], !raw.isEmpty,
+            let livePID = ownerPID(of: record)
+        else { return nil }
+        let parts = raw.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3, Int(parts[0]) == livePID, parts[1] == kind else { return nil }
+        let name = String(parts[2])
+        guard !name.isEmpty, AgentName.validationError(name) == nil else { return nil }
+        return name
+    }
+
     /// An Agent with no title yet reads as its program, so its first row says
     /// something before the program sets one. Its directory is where its program
     /// runs, as on herdr TUI, not where its Terminal started: the core never
@@ -360,7 +381,9 @@ enum HerdrCoreOrganization {
             agentStatus: agent.status, focused: false, paneID: record.address, revision: 0, tabID: tabID,
             terminalID: record.address, workspaceID: workspaceID, agent: agent.kind,
             cwd: liveDirectory(of: record),
-            foregroundCwd: record.foreground?.cwd, name: record.name, terminalTitle: terminalTitle,
+            foregroundCwd: record.foreground?.cwd,
+            name: agentName(of: record, kind: agent.kind) ?? record.name,
+            terminalTitle: terminalTitle,
             terminalTitleStripped: stripped ?? AgentNotificationIdentity.kindLabel(agent.kind),
             tokens: record.labels)
     }

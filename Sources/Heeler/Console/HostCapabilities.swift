@@ -72,7 +72,11 @@ struct HostCapabilities: Equatable, Sendable {
     /// Whether an Agent in this directory offers Files: a path SFTP can
     /// list. A native Windows machine's directories wait for a test there.
     func offersFiles(directory: String?) -> Bool {
-        guard let directory, !isNativeWindowsCore else { return false }
+        guard let directory else { return false }
+        if offersWindowsFiles {
+            return RemoteFilePath.isAcceptable(RemoteFilePath.windowsForSFTP(directory))
+        }
+        guard !isNativeWindowsTUI else { return false }
         return RemoteFilePath.isAcceptable(directory)
     }
 
@@ -109,6 +113,8 @@ struct HostCapabilities: Equatable, Sendable {
     /// A Host whose directories, as it reports them, may be a native Windows
     /// machine's: a Rex Host's, on whichever system its server runs.
     var startsInWindowsDirectories = false
+    var offersWindowsFiles = false
+    var isNativeWindowsTUI = false
 
     /// Whether a Terminal here can start in this directory.
     func startsIn(_ directory: String) -> Bool {
@@ -155,13 +161,20 @@ extension HostCapabilities {
                 default: nil
                 }
             let posix = coreKernel == HerdrCoreLocator.macOSKernel || coreKernel == HerdrCoreLocator.linuxKernel
+            let hasKnownKernel = rexChatPrograms != nil
+            let canCloseTab = (rexAPIRevision ?? 0) >= RexControlProtocol.undoableCloseMinimumRevision
+            let canMovePanes = (rexAPIRevision ?? 0) >= RexControlProtocol.transferWindowMinimumRevision
             self.init(
-                startsAgents: posix && rexAcceptsCommand, startsTerminals: true, renameAgent: posix, renamesWorkspaces: posix,
-                worktrees: false, uploads: rexChatPrograms != nil, composerSend: true, chat: rexChatPrograms != nil,
-                tabNames: posix, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
+                startsAgents: hasKnownKernel && rexAcceptsCommand, startsTerminals: true, renameAgent: hasKnownKernel, renamesWorkspaces: hasKnownKernel,
+                worktrees: posix, uploads: hasKnownKernel, composerSend: true, chat: hasKnownKernel,
+                tabNames: hasKnownKernel, closeTab: canCloseTab, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
+                movesPanes: canMovePanes,
                 startsInWindowsDirectories: true)
+            renamesExistingTabs = hasKnownKernel
+            renamesConversationTitles = posix
+            offersWindowsFiles = coreKernel == HerdrCoreLocator.windowsKernel
             if posix {
                 offersAmpPlugin = true
                 requiresBoundAntigravity = true
@@ -169,9 +182,7 @@ extension HostCapabilities {
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix
             if !startsAgents {
-                if coreKernel == HerdrCoreLocator.windowsKernel {
-                    rexAgentLaunchUnavailable = String(localized: "On Windows Rex Hosts, start the Agent in Terminal.")
-                } else if posix && rexAPIRevision != nil {
+                if hasKnownKernel && rexAPIRevision != nil {
                     rexAgentLaunchUnavailable = String(localized: "This Rex server has not confirmed support for launching commands. You can start the Agent in Terminal.")
                 } else {
                     rexAgentLaunchUnavailable = String(localized: "Connect to the Rex server so Heeler can check whether it can start Agents.")
@@ -180,11 +191,6 @@ extension HostCapabilities {
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
-        // A tmux Host starts Agents and Terminals, renames a Workspace, closes
-        // a Pane or a Tab, opens a Worktree, stages images and files over SFTP,
-        // runs POSIX Host scripts for Changes, Skills, and harness edits, and
-        // offers Composer Send, Stop, and Chat for confirmed POSIX programs once
-        // a probe has named Linux or macOS. Its viewers may type concurrently.
         guard serverKind != .tmux else {
             let tmuxChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
@@ -200,11 +206,16 @@ extension HostCapabilities {
                 hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
             renamesExistingTabs = true
+            renamesConversationTitles = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
         let offered = serverKind == .herdrTUI
-        let coreOnPosix = serverKind == .herdrCore && platform == .posix
+        let tuiOnWindows = offered && platform == .nativeWindows
+        let coreOnWindows =
+            serverKind == .herdrCore
+            && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
+        let coreOnPosix = serverKind == .herdrCore && platform == .posix && !coreOnWindows
         let coreChatPrograms: Set<ChatProgram>? =
             switch coreKernel {
             case HerdrCoreLocator.linuxKernel where coreOnPosix: coreLinuxChatPrograms
@@ -212,16 +223,13 @@ extension HostCapabilities {
             default: nil
             }
         let coreChat = coreChatPrograms != nil
-        let coreOnWindows =
-            serverKind == .herdrCore
-            && (platform == .nativeWindows || coreKernel == HerdrCoreLocator.windowsKernel)
         let windowsChatPrograms = coreOnWindows ? coreWindowsChatPrograms.intersection(Self.windowsCoreChatCandidates) : []
         let coreStillUnknown =
             serverKind == .herdrCore && isLocatingCore && platform == nil && coreKernel == nil
         let starts = !coreStillUnknown
         self.init(
             startsAgents: starts, startsTerminals: starts,
-            renameAgent: offered, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
+            renameAgent: offered || serverKind == .herdrCore, renamesWorkspaces: offered, worktrees: offered || coreOnPosix,
             uploads: offered || coreOnPosix || coreOnWindows,
             composerSend: offered || coreOnPosix || coreOnWindows,
             chat: offered || coreChat || !windowsChatPrograms.isEmpty,
@@ -229,14 +237,21 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
+            chatPrograms: coreChatPrograms
+                ?? (coreOnWindows
+                    ? windowsChatPrograms
+                    : (tuiOnWindows ? AgentChatAvailability.nativeWindowsFilePrograms : nil)),
             isNativeWindowsCore: coreOnWindows,
             offersAmpPlugin: (offered && platform == .posix) || (coreOnPosix && coreChatPrograms?.contains(.amp) == true),
-            hostScripts: !coreOnWindows,
-            copiesPaneID: offered,
-            movesPanes: offered)
+            hostScripts: !coreOnWindows && !tuiOnWindows,
+            rowsReadChanges: !tuiOnWindows,
+            copiesPaneID: offered || serverKind == .herdrCore,
+            movesPanes: offered || serverKind == .herdrCore,
+            startsInWindowsDirectories: tuiOnWindows)
+        offersWindowsFiles = coreOnWindows
+        isNativeWindowsTUI = tuiOnWindows
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
-        renamesConversationTitles = offered
+        renamesConversationTitles = offered || serverKind == .herdrCore
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -266,13 +281,7 @@ extension HostCapabilities {
     /// process start in the local account registry (rex-chat-parity.md).
     static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp]
 
-    /// The programs a Rex Host's Chat opens for on native Windows, read as a
-    /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound
-    /// from its own process and registry entry, which the owner's check
-    /// confirmed against Rex 0.1.0-preview.23 on Windows 11 (2026-11-25).
-    /// Codex reads open files, which nothing reads on Windows, and Pi and Oh
-    /// My Pi wait for a check of Heeler's extension in a Rex terminal there.
-    static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude]
+    static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity
@@ -287,7 +296,9 @@ extension Host {
     /// For a directory the Host reported, which says its own platform: a core
     /// or Rex Host's is a Windows path only on native Windows.
     func reportedDirectoryStartsTerminals(_ directory: String) -> Bool {
-        RemoteHostPath.isStartDirectory(directory, allowingWindows: serverKind == .herdrCore || serverKind == .rex)
+        RemoteHostPath.isStartDirectory(
+            directory,
+            allowingWindows: serverKind == .herdrCore || serverKind == .rex || serverKind == .herdrTUI)
     }
 }
 

@@ -460,18 +460,30 @@ struct AgentTerminalView: View {
     /// trip. An Agent with no session file on the Host clears the strip and
     /// stops, so nothing polls for a figure that cannot arrive.
     private struct SessionUsageFollowKey: Equatable {
+        let agentID: ConsoleAgent.ID
+        let kind: String
         let path: String?
         let isActive: Bool
+        let isConnected: Bool
     }
 
     private var sessionUsageFollowKey: SessionUsageFollowKey {
         SessionUsageFollowKey(
+            agentID: agent.id,
+            kind: agent.agent.kind,
             path: agent.sessionFilePath,
-            isActive: agent.agent.status == .working || agent.agent.status == .blocked)
+            isActive: agent.agent.status == .working || agent.agent.status == .blocked,
+            isConnected: console.hostStatuses[agent.hostID] == .connected)
     }
 
     private func followSessionUsage() async {
-        guard let path = agent.sessionFilePath else {
+        let path: String?
+        if let direct = agent.sessionFilePath {
+            path = direct
+        } else {
+            path = await console.resolveOMPSessionFilePath(for: agent)
+        }
+        guard !Task.isCancelled, let path else {
             sessionUsage.clear()
             return
         }

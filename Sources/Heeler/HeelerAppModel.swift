@@ -145,7 +145,7 @@ final class HeelerAppModel {
         let bannerStore = AgentNotificationBannerStore(
             presentedAgent: { [weak sceneDirectory] in sceneDirectory?.keyScenePresentedAgent },
             triggers: { [weak notificationPreferences] in
-                notificationPreferences?.rexBannerTriggers(for: $0) ?? notificationPreferences?.confirmedTriggers(for: $0)
+                notificationPreferences?.confirmedTriggers(for: $0) ?? notificationPreferences?.rexBannerTriggers(for: $0)
             },
             rexRecipient: { [weak console] in console?.rexBannerRecipient(for: $0) },
             verifyRexRecipient: { [weak console] id, captured in
@@ -187,11 +187,8 @@ final class HeelerAppModel {
             },
             registrationGate: { [weak hostStore, weak notificationPreferences] id in
                 switch hostStore?.hosts.first(where: { $0.id == id })?.serverKind {
-                case .herdrCore, .tmux:
+                case .herdrCore, .tmux, .rex:
                     return notificationPreferences?.liveActivityGate(forCoreHost: id) ?? .unknown
-                // A Rex Host registers nothing (ADR 0049).
-                case .rex:
-                    return .closed
                 case .herdrTUI, .unconfirmed, nil:
                     return .open
                 }

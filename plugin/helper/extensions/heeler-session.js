@@ -35,7 +35,7 @@ const REX_SESSION_FOLDER = "heeler-session";
 /** A folder nothing tidied for long is still looked through only this far. */
 const REX_SWEEP_LIMIT = 256;
 /** Programs known to report done, so their idle ends no turn (tmux-heeler-status-v1.json). */
-export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build"]);
+export const DONE_REPORTERS = new Set(["claude-code", "codex", "pi", "omp", "grok-build", "droid", "antigravity"]);
 
 /** The start time in a Linux `/proc/<pid>/stat`, in clock ticks since boot. */
 export function startTimeFromStat(stat) {
@@ -326,7 +326,8 @@ function storedTmux(env, socket) {
     const file = join(data, "heeler", "host-helper", "tmux", basename(socket), "paths.json");
     const { executable, socket: stored } = JSON.parse(readFileSync(file, "utf8"));
     if (typeof executable !== "string" || !isAbsolute(executable) || typeof stored !== "string") return null;
-    return realpathSync(stored) === realpathSync(socket) ? executable : null;
+    const resolveSocketPath = (p) => join(realpathSync(dirname(p)), basename(p));
+    return resolveSocketPath(stored) === resolveSocketPath(socket) ? executable : null;
   } catch {
     return null;
   }
@@ -404,15 +405,17 @@ function writeToPane(target, change, notWritten = () => {}) {
 /** Inside a tmux Pane: the status, whatever Pi's release, and the session (ADR 0046). */
 async function reportToTmux(program, target) {
   const app = (await piVersion()) ? "pi" : "omp";
-  reportStatus(
-    program,
-    (state, message) =>
-      writeToPane(target, (status) => {
-        const next = continueHeelerStatus(status, { state, app, msg: statusMessage(message) });
-        return next === status ? [] : [[TMUX_STATUS_OPTION, next]];
-      }),
-    { sessionChanges: true },
-  );
+  if (app === "pi") {
+    reportStatus(
+      program,
+      (state, message) =>
+        writeToPane(target, (status) => {
+          const next = continueHeelerStatus(status, { state, app, msg: statusMessage(message) });
+          return next === status ? [] : [[TMUX_STATUS_OPTION, next]];
+        }),
+      { sessionChanges: true },
+    );
+  }
 
   let reported;
   const reportSession = (_event, context) => {

@@ -161,15 +161,17 @@ struct TmuxWorktreesTests {
         let tmux = ScriptedTmuxHost()
         let store = try await connected(tmux)
         defer { store.setHosts([]) }
-        let message = try #require(GitBranchName.validationError(""))
-        let before = store.workspacesByHost[host.id]?.map(\.id)
 
-        await #expect(throws: HerdrCoreWorktreeError.invalidBranch(message)) {
-            try await start(store, branch: "")
-        }
+        _ = try await start(store, branch: "")
 
-        #expect(store.workspacesByHost[host.id]?.map(\.id) == before)
-        #expect(await tmux.gitCommands.isEmpty)
+        let added = try #require(await tmux.gitCommands.last { $0.arguments.dropFirst().first == "add" })
+        #expect(added.arguments.count == 6)
+        #expect(added.arguments[0] == "worktree")
+        #expect(added.arguments[1] == "add")
+        #expect(added.arguments[2] == "-b")
+        #expect(added.arguments[3].hasPrefix("worktree/"))
+        #expect(added.arguments[4] == checkout(branch: added.arguments[3]))
+        #expect(added.arguments[5] == "HEAD")
     }
 
     @Test func aBranchWithNoFolderNameStopsBeforeGit() async throws {
@@ -448,13 +450,12 @@ struct TmuxWorktreesTests {
         await form.discoverAgents()
 
         #expect(form.offersWorktree)
-        #expect(form.worktreeNeedsBranch)
         form.startsInNewWorktree = true
         #expect(!form.worktreeBranch.isEmpty)
         #expect(!form.worktreeBranch.contains("/"))
         #expect(form.canSubmit)
         form.worktreeBranch = ""
-        #expect(!form.canSubmit)
+        #expect(form.canSubmit)
         form.worktreeBranch = branch
         #expect(form.canSubmit)
     }

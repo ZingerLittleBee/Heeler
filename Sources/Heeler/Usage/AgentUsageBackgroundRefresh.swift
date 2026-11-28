@@ -100,8 +100,7 @@ struct AgentUsageBackgroundRefresh {
                                 }
                             return Answer(
                                 state: filtered,
-                                isConnected: (record.serverKind != .herdrCore && record.serverKind != .tmux)
-                                    || !filtered.couldNotReachHost,
+                                isConnected: !record.serverKind.usesHostHelper || !filtered.couldNotReachHost,
                                 readAt: .now)
                         }
                         return (host.id, index, answer)
@@ -200,6 +199,18 @@ extension AgentUsageBackgroundRefresh {
                     try? await transport.close()
                     return state
                 }
+                if host.serverKind == .rex {
+                    let transport = try await connector.connectCore(settings: settings)
+                    let helper = transport.hostHelperHost
+                    let state = await readWithRereads(sleep: sleep) {
+                        try await AgentUsageStore.reading(
+                            overHelper: helper, rexSocket: host.rexSocket, timeZone: timeZone,
+                            claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits
+                        ).state
+                    }
+                    try? await transport.close()
+                    return state
+                }
                 let transport = try await connector.connect(settings: settings)
                 let state = await readWithRereads(sleep: sleep) {
                     try await AgentUsageStore.read(
@@ -240,7 +251,7 @@ extension AgentUsageBackgroundRefresh {
     private static func wantsAnotherRead(_ state: AgentUsageStore.State) -> Bool {
         switch state {
         case .available(let report): report.refreshing == true
-        case .hostHelper(.waitingForCore), .hostHelper(.waitingForTmux): true
+        case .hostHelper(.waitingForCore), .hostHelper(.waitingForTmux), .hostHelper(.waitingForRex): true
         default: false
         }
     }

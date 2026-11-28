@@ -18,6 +18,8 @@ const PIPE_PROGRAMS = new Set([
   // emits no OSC 7501 reports, writing no status, and the app explains the 2.1
   // floor.
   "opencode",
+  "omp",
+  "agy",
 ]);
 const PIPE_OPTION = "@heeler-pipe";
 const PIPED_OPTION = "@heeler-piped";

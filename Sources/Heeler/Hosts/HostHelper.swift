@@ -5,11 +5,12 @@ enum HostHelperCompatibility {
     /// `plugin/helper/version.json` when this app was built. The shared
     /// `plugin/test-vectors/host-helper-version-v1.json` pins both sides, so a
     /// Helper release must update this constant too.
-    static let bundled = PluginVersion(0, 5, 13)
+    static let bundled = PluginVersion(0, 5, 14)
     /// The first Helper that sends Agent Notifications.
     static let firstWithNotifications = PluginVersion(0, 4, 0)
     /// The first Helper that drives a Live Activity through the Push Relay.
     static let firstWithLiveActivities = PluginVersion(0, 5, 0)
+    static let firstWithRex = PluginVersion(0, 5, 14)
 }
 
 /// `plugin/helper/manifest.json`: the version and every other file's SHA-256,
@@ -390,7 +391,11 @@ struct HostHelperReading: Sendable, Equatable {
     }
 
     var notificationStanding: HostHelperNotificationStanding {
-        HostHelperNotificationStanding(self)
+        notificationStanding(for: .herdrCore)
+    }
+
+    func notificationStanding(for serverKind: ServerKind) -> HostHelperNotificationStanding {
+        HostHelperNotificationStanding(self, serverKind: serverKind)
     }
 }
 
@@ -405,20 +410,28 @@ struct HostHelperNotificationStanding: Sendable, Equatable {
     /// Whether it keeps a Live Activity current once the app has suspended.
     let drivesLiveActivity: Bool
 
-    init(_ reading: HostHelperReading) {
+    init(_ reading: HostHelperReading, serverKind: ServerKind = .herdrCore) {
         let status = reading.status
         let presentation = reading.presentation
         let action = String(localized: "See this Host's page in Hosts.")
         let asRequirement = String(localized: "Host Helper: \(presentation.value). \(presentation.detail) \(action)")
         var installedVersion: PluginVersion?
         if case .intact(let version) = reading.integrity { installedVersion = version }
-        if let installedVersion, installedVersion < HostHelperCompatibility.firstWithNotifications {
+        let minimumNotifications =
+            serverKind == .rex
+            ? HostHelperCompatibility.firstWithRex
+            : HostHelperCompatibility.firstWithNotifications
+        if let installedVersion, installedVersion < minimumNotifications {
             canRegister = false
             requirement = String(localized: "Host Helper: \(presentation.value). Notifications need a newer Host Helper. \(action)")
             drivesLiveActivity = false
             return
         }
-        let lacksLiveActivity = installedVersion.map { $0 < HostHelperCompatibility.firstWithLiveActivities } ?? false
+        let minimumLiveActivity =
+            serverKind == .rex
+            ? HostHelperCompatibility.firstWithRex
+            : HostHelperCompatibility.firstWithLiveActivities
+        let lacksLiveActivity = installedVersion.map { $0 < minimumLiveActivity } ?? false
         switch status {
         case .installed, .newer:
             canRegister = true

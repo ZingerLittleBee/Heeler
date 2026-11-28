@@ -372,9 +372,13 @@ enum TmuxLaunch {
         let start = HerdrCoreLaunch.agentStart(
             kind: kind, arguments: arguments, environment: request.environment,
             openCodeVersion: server.openCodeVersion)
+        var environment = start.environment
+        if kind == .antigravity, environment["AGY_CLI_OSC7501"] == nil {
+            environment["AGY_CLI_OSC7501"] = "on"
+        }
         return (
             HerdrCoreShellLaunch.argv(shell: server.shell, program: start.program),
-            start.environment,
+            environment,
             start.sessionHint)
     }
 

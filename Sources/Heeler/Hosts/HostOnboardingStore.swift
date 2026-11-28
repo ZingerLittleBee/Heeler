@@ -105,6 +105,9 @@ final class HostOnboardingStore {
     /// Set from the user's request until they answer it.
     private(set) var coreStartConfirmation: CoreStartConfirmation?
     private(set) var coreStart: CoreStartState = .idle
+    private var notRunningTmux: TmuxHostFacts?
+    private(set) var tmuxStartConfirmation: TmuxStartConfirmation?
+    private(set) var tmuxStart: TmuxStartState = .idle
 
     /// A herdr-core Host's Host Helper, read with its checks.
     private(set) var hostHelper: HostHelperStore?
@@ -176,7 +179,7 @@ final class HostOnboardingStore {
     /// `coreReportedRunning` is true only straight after a Start, when the core
     /// has just said it runs, which a refused channel then cannot contradict.
     func runChecks(coreReportedRunning: Bool = false) async {
-        guard phase != .running, pluginAction != .running, coreStart != .running else { return }
+        guard phase != .running, pluginAction != .running, coreStart != .running, tmuxStart != .running else { return }
         cancelHostHelperConfirmation()
         phase = .running
         pluginAction = .idle
@@ -191,7 +194,10 @@ final class HostOnboardingStore {
         notRunningCore = nil
         coreStartConfirmation = nil
         coreStart = .idle
-        if host.serverKind == .herdrCore || host.serverKind == .tmux {
+        notRunningTmux = nil
+        tmuxStartConfirmation = nil
+        tmuxStart = .idle
+        if host.serverKind.usesHostHelper {
             let hostHelper = hostHelper ?? makeHostHelper()
             hostHelper.checkStarted()
             self.hostHelper = hostHelper
@@ -424,6 +430,12 @@ final class HostOnboardingStore {
                 outcome = .failure(error)
             }
             let resolved = await transport.resolvedPaths()
+            let facts: TmuxHostFacts?
+            if case .failure(TransportError.tmuxServerNotRunning) = outcome {
+                facts = await transport.hostFacts()
+            } else {
+                facts = nil
+            }
             guard !Task.isCancelled else {
                 try? await transport.close()
                 return
@@ -437,6 +449,7 @@ final class HostOnboardingStore {
                 tmuxStatus = status
                 report = .allPassed
             case .failure(let error):
+                notRunningTmux = facts
                 report = failureReport(error)
             }
             guard let confirmation = await hostHelper?.beginRefresh(over: transport), !Task.isCancelled else {
@@ -454,10 +467,6 @@ final class HostOnboardingStore {
         }
     }
 
-    /// A Rex Host's checks reach its server's socket and say hello, then close
-    /// with a close frame, which changes nothing on the server (ADR 0049). A
-    /// Host that stores no socket has it looked up again, and the catalog keeps
-    /// what was found. They never run `rex` or start a server.
     private func performRexChecks(settings: SSHTransportSettings) async {
         pluginStatus = .unsupportedServerKind
         do {
@@ -466,13 +475,50 @@ final class HostOnboardingStore {
                 host.rexSocket = found
                 noteRexSocket(host.id, found)
             }
+            if !Task.isCancelled {
+                report = .allPassed
+            }
+            if let helperConnection = transport.hostHelperConnection, !Task.isCancelled {
+                if let confirmation = await hostHelper?.beginRefresh(over: helperConnection), !Task.isCancelled {
+                    hostHelperConfirmation = Task {
+                        await confirmation()
+                        await transport.close()
+                    }
+                    return
+                }
+            }
             await transport.close()
-            guard !Task.isCancelled else { return }
-            report = .allPassed
         } catch {
             guard !Task.isCancelled else { return }
             captureHostKeyReplacement(error)
             report = failureReport(error)
+            if Self.isRexServerOnlyFailure(error),
+                let coreTransport = try? await connector.connectCore(settings: settings)
+            {
+                guard !Task.isCancelled else {
+                    try? await coreTransport.close()
+                    return
+                }
+                if let confirmation = await hostHelper?.beginRefresh(over: coreTransport), !Task.isCancelled {
+                    hostHelperConfirmation = Task {
+                        await confirmation()
+                        try? await coreTransport.close()
+                    }
+                    return
+                }
+                try? await coreTransport.close()
+            }
+        }
+    }
+
+    private static func isRexServerOnlyFailure(_ error: any Error) -> Bool {
+        switch error {
+        case TransportError.rexNotInstalled, TransportError.rexServerNotRunning,
+            TransportError.rexForwardingRefused, TransportError.rexSocketUnreachable,
+            TransportError.rexAccountRefused, TransportError.rexUnsupportedRevision:
+            true
+        default:
+            false
         }
     }
 
@@ -508,6 +554,7 @@ final class HostOnboardingStore {
                 return try await connector.connectCore(settings: settings)
             },
             tmuxPaths: { [weak self] in self?.host.tmuxPaths ?? initialHost.tmuxPaths },
+            rexSocket: { [weak self] in self?.host.rexSocket ?? initialHost.rexSocket },
             healthGap: hostHelperHealthGap,
             undoEdits: { [harnessEdits, hostID = initialHost.id] services in
                 try await harnessEdits?.undoEditsGoingWithTheHelper(on: hostID, over: services)
@@ -520,6 +567,110 @@ final class HostOnboardingStore {
     var isWaitingForTmuxServer: Bool {
         guard host.serverKind == .tmux, case .failed? = report?[.serverRunning] else { return false }
         return true
+    }
+
+    var tmuxStartOffer: TmuxStartOffer? {
+        guard phase == .finished, isWaitingForTmuxServer else { return nil }
+        if notRunningTmux?.kernel == HerdrCoreLocator.linuxKernel,
+            (notRunningTmux?.paths ?? host.tmuxPaths) != nil
+        {
+            return .start
+        }
+        return .instructions(command: TmuxStartOffer.manualCommand(socketName: host.tmuxSocketName))
+    }
+
+    func requestTmuxStart() {
+        guard tmuxStartOffer == .start, tmuxStart != .running else { return }
+        tmuxStartConfirmation = TmuxStartConfirmation(socket: host.tmuxSocketName)
+    }
+
+    func cancelTmuxStart() {
+        tmuxStartConfirmation = nil
+    }
+
+    func confirmTmuxStart() async {
+        guard let confirmation = tmuxStartConfirmation else { return }
+        tmuxStartConfirmation = nil
+        guard phase != .running, coreStart != .running, tmuxStart != .running, pluginAction != .running else { return }
+        tmuxStart = .running
+        let result = await performTmuxStart()
+        switch result {
+        case .failed(let message):
+            tmuxStart = .failed(message: message)
+        case .started, .alreadyRunning:
+            tmuxStart = .idle
+            await runChecks()
+            tmuxStart =
+                result == .started
+                ? .started(socket: confirmation.socket)
+                : .alreadyRunning(socket: confirmation.socket)
+        }
+    }
+
+    private func performTmuxStart() async -> CoreStartResult {
+        let resolved: SSHCredentials
+        do {
+            resolved = try credentials.credentials(for: host)
+        } catch {
+            return .failed(
+                message: String(
+                    localized: "tmux did not start: Could not load this Host's credentials. (\(String(describing: error)))"))
+        }
+        let policy = HostKeyPolicy(knownHosts: knownHosts) { _ in false }
+        let settings = SSHTransportSettings(
+            host: host, credentials: resolved, hostKeyPolicy: policy, overlays: overlays)
+        let transport: any TmuxTransport
+        do {
+            transport = try await connector.connectTmux(settings: settings)
+        } catch {
+            return .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+        }
+        let result: CoreStartResult
+        do {
+            _ = try await transport.status()
+            result = .alreadyRunning
+        } catch TransportError.tmuxServerNotRunning {
+            let facts = await transport.hostFacts()
+            if let resolvedPaths = await transport.resolvedPaths(), resolvedPaths != host.tmuxPaths {
+                host.tmuxPaths = resolvedPaths
+                noteTmuxPaths(host.id, resolvedPaths)
+            }
+            guard let paths = facts.paths ?? host.tmuxPaths else {
+                try? await transport.close()
+                return .failed(message: String(localized: "tmux did not start: Could not locate tmux on this Host."))
+            }
+            let home = (try? await transport.hostServices.hostHomeDirectory()).flatMap { $0.isEmpty ? nil : $0 } ?? "/"
+            let server = TmuxLaunch.Server(
+                paths: paths,
+                shell: facts.shell ?? "",
+                kernel: facts.kernel,
+                running: false,
+                openCodeVersion: nil)
+            do {
+                let command = try TmuxLaunch.shellSession(
+                    NewWorkspaceSpec(directory: home, label: nil), tab: nil, on: server)
+                let output = try await transport.runTmuxScript(
+                    command.script, throughLoginShell: command.throughLoginShell)
+                if output.exitStatus == 0 {
+                    result = .started
+                } else {
+                    let detail = String(decoding: output.stderr, as: UTF8.self)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    result = detail.isEmpty
+                        ? .failed(message: String(localized: "tmux did not start."))
+                        : .failed(message: String(localized: "tmux did not start: \(detail)"))
+                }
+            } catch TransportError.timedOut {
+                result = .failed(
+                    message: String(localized: "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether tmux came up."))
+            } catch {
+                result = .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+            }
+        } catch {
+            result = .failed(message: String(localized: "tmux did not start: \(Self.reason(error))"))
+        }
+        try? await transport.close()
+        return result
     }
 
     /// What this Host offers once its checks read not running: Start on Linux,

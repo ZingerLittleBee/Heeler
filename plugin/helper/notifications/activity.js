@@ -22,6 +22,8 @@ import { deliverLiveActivity } from "../shared/delivery/activity-seal.js";
 import { liveActivityPreferences, pruneLiveActivityTokens, readLiveActivityDevices, registeredSessions } from "../shared/delivery/registrations.js";
 import { readNotificationConfig } from "../shared/notification-config.js";
 import { notificationKeyId } from "../shared/notification-envelope.js";
+import { REX_SESSION } from "../rex/socket.js";
+import { RexTurnState, foldRexPane, rexDecisionSignature, rexKindLabel } from "../rex/turn-state.js";
 import { normalizeTmuxSocketName } from "../tmux/socket-name.js";
 import {
   TmuxTurnState,
@@ -470,6 +472,93 @@ export function tmuxLiveActivityListener({ directory, log = () => {}, hostName =
     }),
     followerStopped: guarded(({ socket }) => {
       updater.noteEnded(socket);
+    }),
+  };
+}
+
+function rexSnapshotView(inventory, turns, marks) {
+  const workspaceLabels = new Map();
+  const tabs = new Map();
+  const panes = new Map();
+  const agents = [];
+
+  for (const [paneID, pane] of inventory) {
+    if (!workspaceLabels.has(pane.sessionID)) {
+      workspaceLabels.set(pane.sessionID, pane.sessionLabel ?? "");
+    }
+    if (pane.windowID && !tabs.has(pane.windowID)) {
+      tabs.set(pane.windowID, {
+        workspace_id: pane.sessionID,
+        label: pane.windowLabel ?? "",
+        position: pane.windowPosition ?? 1,
+        count: pane.windowCount ?? 1,
+      });
+    }
+    panes.set(paneID, {
+      workspace_id: pane.sessionID,
+      tab_id: pane.windowID ?? `${pane.sessionID}/detached`,
+      label: pane.blockLabel ?? pane.program ?? null,
+    });
+    if (!pane.agentKind) continue;
+    const turnState = turns.get(paneID);
+    const status = turnState?.agentStatus ?? "unknown";
+    const done = status === "idle" && turnState?.isDoneFor(marks.get(paneID) ?? null) === true;
+    const title = typeof pane.title === "string" ? pane.title : "";
+    agents.push({
+      pane_id: paneID,
+      agent_status: done ? "done" : status,
+      agent: pane.agentKind,
+      display_agent: pane.blockLabel ?? null,
+      terminal_title: title || null,
+      terminal_title_stripped: strippedSidebarTitle(title) ?? rexKindLabel(pane.agentKind),
+      workspace_id: pane.sessionID,
+      tab_id: pane.windowID ?? `${pane.sessionID}/detached`,
+      cwd: pane.cwd ?? null,
+      backend: "rex",
+      tokens: {},
+    });
+  }
+
+  return { agents, workspaceLabels, tabs, panes, blockedCounts: null };
+}
+
+export function rexLiveActivityListener({ directory, log = () => {}, hostName = shortHostName() }) {
+  const say = (_key, line) => log(`rex: ${line}`);
+  const updater = createActivityUpdater({
+    directory,
+    say,
+    hostName,
+    memoryPath: () => join(directory, "rex", "activity.json"),
+    registrationSession: () => REX_SESSION,
+    isRegistered: () => registeredSessions(directory).includes(REX_SESSION),
+    TurnModel: RexTurnState,
+    foldItem: foldRexPane,
+    signatureOf: rexDecisionSignature,
+    buildSnapshotView: rexSnapshotView,
+  });
+
+  const guarded = (body) => (report) => {
+    try {
+      body(report);
+    } catch (error) {
+      say(REX_SESSION, `could not follow for Live Activities: ${error.message}`);
+    }
+  };
+
+  return {
+    connected: guarded(({ instanceId, inventory }) => {
+      updater.noteConnected(REX_SESSION, instanceId, inventory);
+    }),
+    updated: guarded(({ instanceId, inventory }) => {
+      const memory = updater.sessionNamed(REX_SESSION);
+      if (memory.core !== instanceId) {
+        updater.noteConnected(REX_SESSION, instanceId, inventory);
+        return;
+      }
+      updater.foldSnapshot(REX_SESSION, memory, inventory, { alwaysSchedule: false });
+    }),
+    ended: guarded(() => {
+      updater.noteEnded(REX_SESSION);
     }),
   };
 }

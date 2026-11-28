@@ -141,7 +141,7 @@ struct HostOnboardingView: View {
             }
             HerdrCoreStartSection(store: store)
             if let coreEnvironmentNotice {
-                HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice)
+                HerdrCoreEnvironmentSection(notice: coreEnvironmentNotice, serverKind: store.host.serverKind)
             }
             if let harnessEdits {
                 HarnessConfigEditsSection(console: harnessEdits, hostID: store.host.id)
@@ -231,7 +231,8 @@ struct HostOnboardingView: View {
         .onChange(of: HostOnboardingCoreFollow.reading(connectionStatus)) { _, reading in
             let action = HostOnboardingCoreFollow.action(
                 afterConsoleReads: reading, serverKind: store.host.serverKind, phase: store.phase,
-                coreStart: store.coreStart, reportPassed: store.report == .allPassed,
+                coreStart: store.tmuxStart == .running ? .running : store.coreStart,
+                reportPassed: store.report == .allPassed,
                 offersStart: store.coreStartOffer != nil || store.isWaitingForTmuxServer)
             if action == .runChecks { Task { await store.runChecks() } }
         }
@@ -425,7 +426,7 @@ struct HostOnboardingView: View {
                     Button("Run Checks Again") {
                         Task { await store.runChecks() }
                     }
-                    .disabled(store.pluginAction == .running || store.coreStart == .running)
+                    .disabled(store.pluginAction == .running || store.coreStart == .running || store.tmuxStart == .running)
                 }
             }
             .font(.subheadline)

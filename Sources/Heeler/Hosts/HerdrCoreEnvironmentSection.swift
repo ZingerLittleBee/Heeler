@@ -11,6 +11,11 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
     }
 
     static let fix = String(localized: "Restarting the core from your own terminal fixes this. Heeler does not restart it.")
+    static let tmuxFix = String(localized: "Clear these variables with tmux set-environment -gu or restart the tmux server from your own terminal. Heeler does not restart it.")
+
+    static func fix(for serverKind: ServerKind) -> String {
+        serverKind == .tmux ? tmuxFix : fix
+    }
 
     /// In the order ADR 0034 lists them, a `HERDR_*` run sorted by name.
     let variables: [Variable]
@@ -70,6 +75,7 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
 /// Below a core Host's checks, while its core carries leaked variables.
 struct HerdrCoreEnvironmentSection: View {
     let notice: HerdrCoreEnvironmentNotice
+    var serverKind: ServerKind = .herdrCore
 
     var body: some View {
         Section {
@@ -87,9 +93,9 @@ struct HerdrCoreEnvironmentSection: View {
                 }
             }
         } header: {
-            Text("Core Environment")
+            Text(serverKind == .tmux ? String(localized: "tmux Environment") : String(localized: "Core Environment"))
         } footer: {
-            Text(HerdrCoreEnvironmentNotice.fix)
+            Text(HerdrCoreEnvironmentNotice.fix(for: serverKind))
                 .accessibilityIdentifier("hosts.detail.coreEnvironment.fix")
         }
     }

@@ -365,6 +365,14 @@ actor ScriptedHelperHost: HostHelperHost {
             ]
         case .refreshTmuxPaths(let socket, let storedPaths):
             refreshTmuxPaths(socket: socket, storedPaths: storedPaths)
+        case .rexUsageQuery(_, _, _, _, let socketPath):
+            lines = [
+                "__HEELER_USAGE_BEGIN_\(script.nonce)",
+                rexUsageBody(socketPath: socketPath),
+                "__HEELER_USAGE_END_\(script.nonce):0",
+            ]
+        case .refreshRexSocket(let socketPath):
+            refreshRexSocket(socketPath: socketPath)
         }
         if let afterBootout, isStoppedByBootout(script.step) {
             self.afterBootout = nil
@@ -429,6 +437,42 @@ actor ScriptedHelperHost: HostHelperHost {
         folders["\(directory)/tmux/\(socket)"] = 0o700
         let normalized = storedPaths.trimmingCharacters(in: .newlines) + "\n"
         files["\(directory)/tmux/\(socket)/paths.json"] = File(contents: Data(normalized.utf8), mode: 0o600)
+    }
+
+    private func rexUsageBody(socketPath: String?) -> String {
+        let directory = helperDirectory
+        guard files["\(directory)/app/main.js"] != nil else { return "helper-absent" }
+        guard files["\(directory)/app/usage-query.js"] != nil,
+            files["\(directory)/app/rex/follower.js"] != nil
+        else { return "helper-outdated" }
+        folders[directory] = 0o700
+        folders["\(directory)/rex"] = 0o700
+        if let socketPath, !socketPath.isEmpty {
+            storeRexSocket(socketPath)
+        }
+        let missing = #"{"version":1,"runtime":"missing"}"#
+        if recordNodeGone, files["\(directory)/rex/runtime-node"] != nil {
+            return serviceNodeGone ? "helper-node-gone" : missing
+        }
+        guard files["\(directory)/rex/runtime-node"] != nil, let report = usageAnswers["rex"]
+        else { return missing }
+        return String(decoding: report, as: UTF8.self)
+    }
+
+    private func refreshRexSocket(socketPath: String) {
+        let directory = helperDirectory
+        guard files["\(directory)/app/main.js"] != nil else { return }
+        storeRexSocket(socketPath)
+    }
+
+    private func storeRexSocket(_ socketPath: String) {
+        guard let socket = RexSocket(path: socketPath),
+            let contents = HostHelperScript.storedRexSocket(socket)
+        else { return }
+        let directory = helperDirectory
+        folders[directory] = 0o700
+        folders["\(directory)/rex"] = 0o700
+        files["\(directory)/rex/socket.json"] = File(contents: contents, mode: 0o600)
     }
 
     /// As the real script does, but with no clock: `installWritesAreRecent` stands
@@ -652,6 +696,8 @@ actor ScriptedHelperHost: HostHelperHost {
         case .usageQuery(_, _, _, _, let session): "usageQuery \(session)"
         case .tmuxUsageQuery(_, _, _, _, let socket, _): "tmuxUsageQuery \(socket)"
         case .refreshTmuxPaths(let socket, _): "refreshTmuxPaths \(socket)"
+        case .rexUsageQuery: "rexUsageQuery"
+        case .refreshRexSocket: "refreshRexSocket"
         }
     }
 }

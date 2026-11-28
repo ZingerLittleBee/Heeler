@@ -156,7 +156,7 @@ struct StartAgentView: View {
                             .disabled(!store.canStartInNewWorktree)
                         if store.startsInNewWorktree {
                             let branchTitle: LocalizedStringKey =
-                                store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
+                                store.followsGitHubItem ? "Branch" : "Branch (optional)"
                             HStack(spacing: 10) {
                                 WorktreeRefField(title: branchTitle, text: $store.worktreeBranch)
                                     .accessibilityIdentifier("startAgent.worktreeBranch")
@@ -195,7 +195,7 @@ struct StartAgentView: View {
                                 .accessibilityIdentifier("startAgent.regenerateBranch")
                             }
                             // Following an item, the item decides the base.
-                            if !store.worktreeNeedsBranch && !store.followsGitHubItem {
+                            if !store.followsGitHubItem {
                                 WorktreeRefField(title: "Base (optional)", text: $store.worktreeBase)
                             }
                             if let message = store.worktreeBranchErrorMessage {
@@ -210,10 +210,6 @@ struct StartAgentView: View {
                         } else if store.launchTarget == .newWorkspace {
                             if !store.canStartInNewWorktree {
                                 Text("Browse to a directory in a git repository to start in a new worktree of it.")
-                            } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
-                                Text(
-                                    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD."
-                                )
                             } else if store.startsInNewWorktree {
                                 Text(
                                     "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD."
@@ -221,10 +217,6 @@ struct StartAgentView: View {
                             } else {
                                 Text("Run the agent in a clean checkout of the directory's repository instead of the directory itself.")
                             }
-                        } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
-                            Text(
-                                "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
-                            )
                         } else if store.startsInNewWorktree {
                             Text(
                                 "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD."

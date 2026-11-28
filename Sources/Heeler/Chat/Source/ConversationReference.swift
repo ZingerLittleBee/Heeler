@@ -71,10 +71,11 @@ struct ConversationReference: Hashable, Sendable {
         else { return .unsupported }
         let naming = program.sessionNaming
         if naming.acceptsTranscriptPath, session.kind == .path {
-            guard RemoteFilePath.isAcceptable(session.value), session.value.hasSuffix(".jsonl") else {
+            let path = RemoteFilePath.windowsForSFTP(session.value)
+            guard RemoteFilePath.isAcceptable(path), path.hasSuffix(".jsonl") else {
                 return .unidentified
             }
-            return .bound(ConversationReference(program: program, sessionID: session.value))
+            return .bound(ConversationReference(program: program, sessionID: path))
         }
         guard session.kind == .id else { return .unsupported }
         guard let sessionID = naming.sessionID(session.value) else { return .unidentified }

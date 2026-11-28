@@ -42,16 +42,16 @@ final class HostHelperStore {
 
     @ObservationIgnored private let connect: @Sendable () async throws -> any HostHelperConnection
     @ObservationIgnored private let tmuxPaths: @MainActor @Sendable () -> TmuxPaths?
+    @ObservationIgnored private let rexSocket: @MainActor @Sendable () -> RexSocket?
     @ObservationIgnored private let bundle: @Sendable () throws -> HostHelperBundle
     @ObservationIgnored private let nonce: @Sendable () -> String
     @ObservationIgnored private let healthGap: @Sendable () async throws -> Void
-    /// Undoes what goes with the Helper over the removal's own connection, and says
-    /// what it had to leave.
     @ObservationIgnored private let undoEdits: @MainActor @Sendable (any HostServices) async throws -> String?
 
     init(
         connect: @escaping @Sendable () async throws -> any HostHelperConnection,
         tmuxPaths: @escaping @MainActor @Sendable () -> TmuxPaths? = { nil },
+        rexSocket: @escaping @MainActor @Sendable () -> RexSocket? = { nil },
         bundle: @escaping @Sendable () throws -> HostHelperBundle = { try HostHelperBundle.load() },
         nonce: @escaping @Sendable () -> String = { UUID().uuidString },
         healthGap: @escaping @Sendable () async throws -> Void = {
@@ -61,6 +61,7 @@ final class HostHelperStore {
     ) {
         self.connect = connect
         self.tmuxPaths = tmuxPaths
+        self.rexSocket = rexSocket
         self.bundle = bundle
         self.nonce = nonce
         self.healthGap = healthGap
@@ -184,22 +185,24 @@ final class HostHelperStore {
             return
         }
         let readPaths = tmuxPaths
+        let readSocket = rexSocket
         await perform(.install) { installer, reading, bundle, _ in
             let paths = await readPaths()
-            _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
+            let socket = await readSocket()
+            _ = try await installer.install(
+                over: reading, bundle: try bundle(), tmuxPaths: paths, rexSocket: socket)
         }
     }
 
-    /// Updates a Helper that is already in place, with no sheet listing the
-    /// files first (ADR 0048): Update All's, and the Repair it offers after an
-    /// update that left the Helper damaged. It writes only where the Host, read
-    /// again now, still offers that: a first install is never made from here.
     func updateInstalled(repairing: Bool = false) async {
         let readPaths = tmuxPaths
+        let readSocket = rexSocket
         await perform(.install) { installer, reading, bundle, _ in
             guard reading.installAction == .update || (repairing && reading.installAction == .repair) else { return }
             let paths = await readPaths()
-            _ = try await installer.install(over: reading, bundle: try bundle(), tmuxPaths: paths)
+            let socket = await readSocket()
+            _ = try await installer.install(
+                over: reading, bundle: try bundle(), tmuxPaths: paths, rexSocket: socket)
         }
     }
 
@@ -251,11 +254,15 @@ final class HostHelperStore {
     }
 
     private func syncTmuxPathsIfInstalled(_ reading: HostHelperReading, with installer: HostHelperInstaller) async {
-        guard running == nil, reading.hasInstalledHelper, let paths = tmuxPaths() else { return }
-        try? await installer.writeTmuxPaths(paths, over: reading)
+        guard running == nil, reading.hasInstalledHelper else { return }
+        if let paths = tmuxPaths() {
+            try? await installer.writeTmuxPaths(paths, over: reading)
+        }
+        if let socket = rexSocket(), !socket.isWindowsPipe {
+            try? await installer.writeRexSocket(socket, over: reading)
+        }
     }
 
-    /// Whether a read that began at this count may still say how the Host is.
     private func answers(_ began: Int) -> Bool {
         !Task.isCancelled && began == actionsDone
     }
@@ -266,7 +273,8 @@ final class HostHelperStore {
         planFailure = nil
         guard read.installAction != nil else { return }
         do {
-            plan = try HostHelperInstallPlan(reading: read, bundle: try bundle(), tmuxPaths: tmuxPaths())
+            plan = try HostHelperInstallPlan(
+                reading: read, bundle: try bundle(), tmuxPaths: tmuxPaths(), rexSocket: rexSocket())
         } catch {
             planFailure = Self.message(for: error)
         }

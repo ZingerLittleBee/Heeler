@@ -483,7 +483,11 @@ struct AgentTitleRenameTests {
         }
 
         func store(
-            hostID: Host.ID = UUID(), pendingStore: PendingAgentTitleRenameStore? = nil
+            hostID: Host.ID = UUID(),
+            pendingStore: PendingAgentTitleRenameStore? = nil,
+            sessionToken: (() -> String?)? = nil,
+            expectedSessionToken: String? = nil,
+            queueWhenIdleWithToken: ((Agent, String, String?) -> Void)? = nil
         ) -> AgentTitleRenameStore {
             let id = ConsoleAgent.ID(hostID: hostID, paneID: "w1:p1")
             var seeded = agent()
@@ -548,8 +552,79 @@ struct AgentTitleRenameTests {
                 setSuppressBusyNotice: { pendingStore?.suppressBusyNotice = $0 },
                 acquire: { if self.held { return false }; self.held = true; return true },
                 release: { self.held = false },
-                sleep: { _ in }))
+                sleep: { _ in },
+                sessionToken: sessionToken,
+                expectedSessionToken: expectedSessionToken,
+                queueWhenIdleWithToken: queueWhenIdleWithToken))
         }
+    }
+
+    @Test func processBoundRenameSucceedsWithSessionTokenAndRejectsMismatchedExpectedToken() async throws {
+        let rig = try Rig(.claude)
+        rig.session = nil
+        var liveToken: String? = "core:c1:42:claude::"
+        let store = rig.store(sessionToken: { liveToken })
+        store.input = "Process Bound Title"
+        await store.save()
+        #expect(store.state == .renamed)
+        #expect(rig.commands == ["/rename Process Bound Title"])
+        #expect(rig.refreshes == 1)
+
+        liveToken = "core:c1:99:claude::"
+        let staleFlush = rig.store(
+            sessionToken: { liveToken },
+            expectedSessionToken: "core:c1:42:claude::")
+        staleFlush.input = "Stale Deferred Title"
+        await staleFlush.save()
+        #expect(rig.commands == ["/rename Process Bound Title"])
+        #expect(!staleFlush.outcomeUncertain)
+        if case .failed = staleFlush.state {} else { Issue.record("expected token mismatch failure") }
+    }
+
+    @Test func processBoundBusyRenameDefersViaQueueWhenIdleWithToken() async throws {
+        let rig = try Rig(.claude)
+        rig.session = nil
+        rig.status = .working
+        var queued: [(paneID: String, title: String, token: String?)] = []
+        let store = rig.store(
+            sessionToken: { "core:c1:42:claude::" },
+            queueWhenIdleWithToken: { liveAgent, title, token in
+                queued.append((liveAgent.paneID, title, token))
+            })
+        store.input = "  Deferred Process Title  "
+        await store.save()
+        #expect(rig.commands.isEmpty)
+        #expect(store.state == .editing)
+        #expect(store.deferredSaveConfirmation?.title == "Deferred Process Title")
+        #expect(store.deferredSaveConfirmation?.sessionToken == "core:c1:42:claude::")
+        #expect(queued.isEmpty)
+
+        store.confirmDeferredSave(suppressNextTime: false)
+        #expect(store.state == .renamed)
+        #expect(queued.count == 1)
+        #expect(queued.first?.paneID == "w1:p1")
+        #expect(queued.first?.title == "Deferred Process Title")
+        #expect(queued.first?.token == "core:c1:42:claude::")
+    }
+
+    @Test func windowsPathSeparatorsAreStrippedFromProgramTitles() {
+        let codex = Agent(
+            terminalID: "t1", kind: "codex", title: "Fix build | heeler-win", status: .idle,
+            workspaceID: "w1", tabID: "tab1", paneID: "p1", cwd: #"C:\Users\dev\work\heeler-win"#,
+            revision: 1)
+        #expect(AgentTitleNaming.title(of: codex, program: .codex) == "Fix build")
+
+        let codexForeground = Agent(
+            terminalID: "t2", kind: "codex", title: "Subtask | repo-sub", status: .idle,
+            workspaceID: "w1", tabID: "tab1", paneID: "p2", cwd: #"C:\Users\dev\other"#,
+            revision: 1, foregroundCwd: #"C:\Users\dev\work\repo-sub\"#)
+        #expect(AgentTitleNaming.title(of: codexForeground, program: .codex) == "Subtask")
+
+        let pi = Agent(
+            terminalID: "t3", kind: "pi", title: "π - Fix build - heeler-win", status: .idle,
+            workspaceID: "w1", tabID: "tab1", paneID: "p3", cwd: #"C:\Users\dev\work\heeler-win"#,
+            revision: 1)
+        #expect(AgentTitleNaming.title(of: pi, program: .pi) == "Fix build")
     }
 }
 

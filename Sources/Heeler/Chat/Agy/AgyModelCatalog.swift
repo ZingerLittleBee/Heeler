@@ -123,7 +123,7 @@ enum AgyModelCatalog {
             let trimmedCR = rawLine.replacing(/\r+$/, with: "")
             let afterCR = trimmedCR.split(separator: "\r", omittingEmptySubsequences: false).last ?? trimmedCR[...]
             let clean = String(afterCR).replacing(/\x1B\[[0-9;]*[A-Za-z]/, with: "")
-            guard let match = clean.wholeMatch(of: /^\s*([A-Za-z0-9._:\/+-]+)\s{2,}(.+\S)\s*$/) else {
+            guard let match = clean.wholeMatch(of: /^\s*([A-Za-z0-9._:\/+-]+)(?:\s*\t\s*|\s{2,})(.+\S)\s*$/) else {
                 continue
             }
             let slug = String(match.1)

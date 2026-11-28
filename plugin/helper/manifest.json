@@ -1,9 +1,9 @@
 {
-  "version": "0.5.13",
+  "version": "0.5.14",
   "files": [
     {
       "path": "core/agent-rule.js",
-      "sha256": "41232b4e1133277a970327017bedc0d6c099aa63bcb18cc2e95158f23553f28e"
+      "sha256": "dac032f5d79b7b68d10d1411b14363a61664fa7339db7c2a5f7acf97ebcd9485"
     },
     {
       "path": "core/client.js",
@@ -11,7 +11,7 @@
     },
     {
       "path": "core/follower.js",
-      "sha256": "d5bfcb628dbc8d04557d26ca1e2a3488475c7cde620839179a3fa233ecba4050"
+      "sha256": "902aa77e02a9a890ddff3ab6df90e3a53c3e6102fc9d456ac4b502cb40e0c6eb"
     },
     {
       "path": "core/frames.js",
@@ -35,7 +35,7 @@
     },
     {
       "path": "core/turn-state.js",
-      "sha256": "ba9e9ce839a9d3a9be338c5153b3c2a57e9381dd8afead5b88a3240dd4f6fc99"
+      "sha256": "c9a039af0e352658b395ad2e5668f4287eeb066c8b68c190724cfebdd2a17ced"
     },
     {
       "path": "extensions/extension-folders.js",
@@ -43,7 +43,7 @@
     },
     {
       "path": "extensions/heeler-session.js",
-      "sha256": "2a8899e73ba2d332dd3a51cc34125804966749834be7bd662ca213a34f36d1c3"
+      "sha256": "fdc549da3372b1c8aa5db9ddc3a77f9195dc908fd3a42bb0414f51a7974af476"
     },
     {
       "path": "extensions/opencode/index.js",
@@ -59,15 +59,15 @@
     },
     {
       "path": "main.js",
-      "sha256": "934c4637cc3d49b771642824d0097ff282e6b38252be03599026267ad0c1d9a0"
+      "sha256": "7b0c9f143900c1ce4c530dcbad4e7be2796b44edcd86c7796573f18ab65b199a"
     },
     {
       "path": "notifications/activity.js",
-      "sha256": "aefd9a4c905ffe5dfa1055bfe3bb3def90ee85ad3ea76ca2a245547a8d76a9e5"
+      "sha256": "0a89f18e7b285d39716fdc74a18e47ac499bc68dc36c37e89b07332d56c27e7a"
     },
     {
       "path": "notifications/notifier.js",
-      "sha256": "c2d26cfbc084b3052abb03e64d8657b189551cb6d0a4f57b88d5cafef9471558"
+      "sha256": "3667d0e51fdf8dd520fe15590897d1ef0f829836e3c225c0c22c7ac70bc6c36f"
     },
     {
       "path": "notifications/seen-marks.js",
@@ -76,6 +76,26 @@
     {
       "path": "package.json",
       "sha256": "1ddf832cd627a5c8a58aaee4a2788a2b3a9f23d86d6c3183d56d1c34f7955930"
+    },
+    {
+      "path": "rex/client.js",
+      "sha256": "657b833a21b67aac386047bd74f627fe464cb3c101b26cc60599ee64e19fb1ff"
+    },
+    {
+      "path": "rex/follower.js",
+      "sha256": "eaa91678308074dddc1368ac95b72d583402e70bf80e71d9f8d60d0e16a1ad55"
+    },
+    {
+      "path": "rex/socket.js",
+      "sha256": "8538de9e40e4abc03066b45772cb76a22a3e7868fd5be47428d0206b94083ac4"
+    },
+    {
+      "path": "rex/turn-state.js",
+      "sha256": "766c4605e390414f1acb80383fd44d02744852a328b0c263e50496fa6fdc1f0d"
+    },
+    {
+      "path": "rex/websocket.js",
+      "sha256": "53c2d2a4c1e416b7d6d63140d7cddb84ccb5930561940d10d5c08ad7bd1ca9b1"
     },
     {
       "path": "shared/activity-envelope.js",
@@ -231,7 +251,7 @@
     },
     {
       "path": "tmux/pipe-reader.js",
-      "sha256": "345747041f0c781267daca46b665d3bcca488b3fa482a34c89098aa71e85315d"
+      "sha256": "e80a3ac3793c9ae4480c3fb5a9f5860d37edae810c7c33e7d1169221c8d94e9b"
     },
     {
       "path": "tmux/quoted-format.js",
@@ -243,7 +263,7 @@
     },
     {
       "path": "tmux/status.js",
-      "sha256": "633471ce3cd863a6eb7cbbf81209754f93c572bac3439cd7888a6e74ba310779"
+      "sha256": "87549b7a7ab3f2845720a09586e470d6c13c6095d327899a863a6a56b8a0194c"
     },
     {
       "path": "tmux/transcript-watcher.js",
@@ -255,7 +275,7 @@
     },
     {
       "path": "usage-query.js",
-      "sha256": "0fac00a13221c5fb9a288b22eb69007c0cef53b65cdc2f0a6916e59ebceb2957"
+      "sha256": "412679156afb1fd3fb7715ea76915b94e09f08839198b735e690777624e76257"
     },
     {
       "path": "usage-worker.js",
@@ -267,11 +287,11 @@
     },
     {
       "path": "usage/layout.js",
-      "sha256": "e4cb042f6ea293545606b79e2a42404fc704e55e4daa5cd7a298125f3399e60e"
+      "sha256": "911c0625d08348c6ec063197ff09e2f005567a6e316ca80c64cd807b89e6e730"
     },
     {
       "path": "usage/recorder.js",
-      "sha256": "31cb09c6ae6e32203567155276500027c4a8d16e7d0468c4890b8a8857dbe161"
+      "sha256": "fabf1f6c9820e2e0903a030a1dccf4773382f0c9979c36b28ac4aa8a303336be"
     },
     {
       "path": "usage/tmux-environment.js",
@@ -279,7 +299,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "12484abe2cbe1f23464649037e50fa004d49be4a619efd1bdddbbc8f1edb799f"
+      "sha256": "8631f8bace4bcb82390105f07d56f2902d8264e934573a9b30e7d5dbd467becc"
     }
   ]
 }

@@ -62,6 +62,10 @@ protocol RexTransport: Sendable {
     /// POSIX project operations provided by the SSH account. A socket-only connection has none.
     nonisolated var projects: (any RexHostProjects)? { get }
 
+    nonisolated var hostServices: (any HostServices)? { get }
+
+    nonisolated var hostHelperHost: (any HostHelperHost)? { get }
+
     /// New Terminal's home directory and Browse Directory, on this same SSH
     /// connection, and nothing else of it.
     nonisolated var browsing: any RexHostBrowsing { get }
@@ -78,6 +82,13 @@ protocol RexTransport: Sendable {
 extension RexTransport {
     nonisolated var amp: (any AmpChatHost)? { nil }
     nonisolated var projects: (any RexHostProjects)? { nil }
+    nonisolated var hostServices: (any HostServices)? { nil }
+    nonisolated var hostHelperHost: (any HostHelperHost)? { nil }
+
+    nonisolated var hostHelperConnection: (any HostHelperConnection)? {
+        guard let hostServices, let hostHelperHost else { return nil }
+        return RexHostHelperConnection(transport: self, hostServices: hostServices, hostHelperHost: hostHelperHost)
+    }
 
     func abandon() async {
         await close()
@@ -86,6 +97,16 @@ extension RexTransport {
     /// Replaces the control link, resuming its client.
     func reconnectControl() async throws -> RexControlLink {
         try await reconnectControl(resuming: true)
+    }
+}
+
+struct RexHostHelperConnection: HostHelperConnection {
+    let transport: any RexTransport
+    let hostServices: any HostServices
+    let hostHelperHost: any HostHelperHost
+
+    func close() async throws {
+        await transport.close()
     }
 }
 
@@ -181,6 +202,13 @@ extension RexHostExtensionPlacing {
 /// The SSH operations behind project reads, Agent discovery and Worktree creation.
 protocol RexHostProjects: HostProjectReading, HostWorktreeAccess {
     func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice]
+}
+
+extension RexHostProjects {
+    func listAgyModels() async throws -> [AgyModelCatalog.Choice] {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Antigravity models"))
+    }
 }
 
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
@@ -190,6 +218,8 @@ protocol RexHostConnection:
     RexHostBrowsing, AmpChatHost
 {
     nonisolated var projects: (any RexHostProjects)? { get }
+    nonisolated var hostServices: (any HostServices)? { get }
+    nonisolated var hostHelperHost: (any HostHelperHost)? { get }
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -218,6 +248,8 @@ protocol RexHostConnection:
 
 extension RexHostConnection {
     nonisolated var projects: (any RexHostProjects)? { nil }
+    nonisolated var hostServices: (any HostServices)? { self as? any HostServices }
+    nonisolated var hostHelperHost: (any HostHelperHost)? { self as? any HostHelperHost }
 
     func abandon() async {
         try? await close()
@@ -349,6 +381,10 @@ actor RexSSHTransport: RexTransport {
 
     /// And its home directory and directory listings, for the same reason.
     nonisolated var projects: (any RexHostProjects)? { connection.projects }
+
+    nonisolated var hostServices: (any HostServices)? { connection.hostServices }
+
+    nonisolated var hostHelperHost: (any HostHelperHost)? { connection.hostHelperHost }
 
     nonisolated var browsing: any RexHostBrowsing { RexBrowsingOnly(connection: connection) }
 

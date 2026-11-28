@@ -199,6 +199,8 @@ final class NotificationPreferencesStore {
         var b = rhs
         a.tmuxPaths = nil
         b.tmuxPaths = nil
+        a.rexSocket = nil
+        b.rexSocket = nil
         return a == b
     }
 
@@ -258,7 +260,7 @@ final class NotificationPreferencesStore {
         await write(for: host, from: settings, registers: enabled) { ceremony, token, files in
             if enabled {
                 // The Helper may have gone since this screen last read it.
-                if let standing = try await files.readHostHelper()?.notificationStanding, !standing.canRegister {
+                if let standing = try await files.readHostHelper()?.notificationStanding(for: host.serverKind), !standing.canRegister {
                     throw HostHelperRequirementError(message: standing.requirement ?? "")
                 }
                 let notify = NotificationTriggerPreferences()
@@ -372,14 +374,14 @@ final class NotificationPreferencesStore {
         operations[host.id] = operation
         if states[host.id] != .loading {
             settingsDuringReRead[host.id] =
-                (host.serverKind == .herdrCore || host.serverKind == .tmux)
+                host.serverKind.usesHostHelper
                 ? confirmedSettings(for: host.id) : nil
             settledBeforeReRead[host.id] = states[host.id]
         }
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }
         do {
-            let read = try await readRegistration(for: host.id)
+            let read = try await readRegistration(for: host)
             guard isCurrent(operation, for: host) else { return }
             var file = try NotificationRegistrationFile.decode(read.registration)
             helperRequirements[host.id] = read.standing?.requirement
@@ -413,15 +415,15 @@ final class NotificationPreferencesStore {
     /// The Host's registration file, and on a core Host what its Helper stands
     /// as, over one connection. A Host with nothing of the Helper's has no
     /// directory to read a file from.
-    private func readRegistration(for hostID: Host.ID) async throws -> RegistrationRead {
-        try await transports.withNotificationFiles(for: hostID) { files in
+    private func readRegistration(for host: Host) async throws -> RegistrationRead {
+        try await transports.withNotificationFiles(for: host.id) { files in
             guard let reading = try await files.readHostHelper() else {
                 return RegistrationRead(
                     registration: try await files.readNotificationRegistration(), standing: nil, helper: nil)
             }
             return RegistrationRead(
                 registration: reading.offersRemoval ? try await files.readNotificationRegistration() : nil,
-                standing: reading.notificationStanding, helper: reading.presentation)
+                standing: reading.notificationStanding(for: host.serverKind), helper: reading.presentation)
         }
     }
 
@@ -524,7 +526,7 @@ final class NotificationPreferencesStore {
     /// Each core or tmux Host's gate, for whoever follows them changing.
     var coreLiveActivityGates: [Host.ID: LiveActivityGate] {
         var gates: [Host.ID: LiveActivityGate] = [:]
-        for host in hosts where host.serverKind == .herdrCore || host.serverKind == .tmux {
+        for host in hosts where host.serverKind.usesHostHelper {
             gates[host.id] = liveActivityGate(forCoreHost: host.id)
         }
         return gates
@@ -567,7 +569,7 @@ final class NotificationPreferencesStore {
         core: String, marks: [String: HerdrCoreTurnState.Mark], for hostID: Host.ID
     ) {
         guard hosts.contains(where: {
-            $0.id == hostID && ($0.serverKind == .herdrCore || $0.serverKind == .tmux)
+            $0.id == hostID && $0.serverKind.usesHostHelper
         }) else { return }
         pendingSeenMarks[hostID] = PendingSeenMarks(core: core, marks: marks)
         writeSeenMarks(for: hostID)

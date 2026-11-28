@@ -714,13 +714,6 @@ final class StartAgentStore {
         return Self.nonEmptyTrimmed(newWorkspaceDirectory)
     }
 
-    /// A herdr-core Host, and a tmux Host, have no generated branch: Heeler makes
-    /// the Worktree on the branch the user names, from the Workspace's HEAD
-    /// (ADR 0032, ADR 0045).
-    var worktreeNeedsBranch: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
-    }
-
     /// Whether the form asks for Workspace and tab names. Its Agent name is
     /// independent of them.
     var offersWorkspaceAndTabNames: Bool {
@@ -842,13 +835,7 @@ final class StartAgentStore {
             && nameErrorMessage == nil
             && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
-            && !isMissingNeededBranch
             && state != .starting
-    }
-
-    private var isMissingNeededBranch: Bool {
-        offersWorktree && startsInNewWorktree && worktreeNeedsBranch
-            && Self.nonEmptyTrimmed(worktreeBranch) == nil
     }
 
     /// A Template goes through no shell, so it stays open when discovery failed.
@@ -939,7 +926,6 @@ final class StartAgentStore {
             let hostID = discoveryHostID,
             let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
-            !isMissingNeededBranch,
             nameErrorMessage == nil
         else { return }
         let preset = selectedPreset
@@ -1040,6 +1026,16 @@ final class StartAgentStore {
                 return
             }
         }
+        if case .newWorktree(let spec) = destination,
+            spec.branch == nil,
+            selectedHost?.serverKind != .herdrTUI
+        {
+            destination = .newWorktree(
+                WorktreeSpec(
+                    branch: "worktree/" + generateWorktreeBranch(),
+                    base: spec.base,
+                    sourceDirectory: spec.sourceDirectory))
+        }
         let workspaceID: String?
         switch destination {
         case .newWorkspace:
@@ -1127,11 +1123,10 @@ final class StartAgentStore {
         case .existingWorkspace:
             guard selectedWorkspaceID != nil else { return nil }
             if offersWorktree && startsInNewWorktree {
-                // Following an item, `submit()` fetches the base.
                 return .newWorktree(
                     WorktreeSpec(
                         branch: Self.nonEmptyTrimmed(worktreeBranch),
-                        base: worktreeNeedsBranch || followsGitHubItem ? nil : Self.nonEmptyTrimmed(worktreeBase)))
+                        base: followsGitHubItem ? nil : Self.nonEmptyTrimmed(worktreeBase)))
             }
             return .existingWorkspace
         case .newWorkspace:
@@ -1140,7 +1135,10 @@ final class StartAgentStore {
             }
             if offersWorktree && startsInNewWorktree, let source = worktreeSourceDirectory {
                 return .newWorktree(
-                    WorktreeSpec(branch: Self.nonEmptyTrimmed(worktreeBranch), sourceDirectory: source))
+                    WorktreeSpec(
+                        branch: Self.nonEmptyTrimmed(worktreeBranch),
+                        base: followsGitHubItem ? nil : Self.nonEmptyTrimmed(worktreeBase),
+                        sourceDirectory: source))
             }
             return .newWorkspace(
                 NewWorkspaceSpec(

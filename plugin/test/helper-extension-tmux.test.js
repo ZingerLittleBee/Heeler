@@ -183,7 +183,7 @@ suite("the extension in a tmux Pane", { skip }, () => {
     if (process.platform !== "win32") assert.ok(session.start, "the process start is in the session");
   });
 
-  test("Oh My Pi writes its error, then idle and its next session on a switch", async () => {
+  test("Oh My Pi writes its session without writing @heeler-status", async () => {
     const { pane } = await run({
       program: "omp",
       steps: [
@@ -192,14 +192,11 @@ suite("the extension in a tmux Pane", { skip }, () => {
         ended("error", "rate limit\nretry later"),
       ],
     });
-    assert.equal(
-      option(pane, "@heeler-status"),
-      `state=error:app=omp:msg=${Buffer.from("rate limit").toString("base64")}:turn=1:blocked=0`,
-    );
+    assert.equal(option(pane, "@heeler-status"), "");
     assert.equal(JSON.parse(option(pane, "@heeler-session")).session, "session-1");
   });
 
-  test("a new session reads idle at the same count and names the new session", async () => {
+  test("a new session in Oh My Pi names the new session without writing @heeler-status", async () => {
     const { pane } = await run({
       program: "omp",
       steps: [
@@ -209,7 +206,7 @@ suite("the extension in a tmux Pane", { skip }, () => {
         { event: "session_switch", session: { sessionId: "session-2", sessionFile: "/s/session-2.jsonl" } },
       ],
     });
-    assert.equal(option(pane, "@heeler-status"), "state=idle:app=omp:turn=1:blocked=0");
+    assert.equal(option(pane, "@heeler-status"), "");
     assert.equal(JSON.parse(option(pane, "@heeler-session")).session, "session-2");
   });
 

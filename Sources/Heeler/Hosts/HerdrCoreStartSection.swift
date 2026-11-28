@@ -77,6 +77,23 @@ struct HerdrCoreStartSection: View {
                 }
             }
         }
+        if store.tmuxStartOffer != nil || store.tmuxStart.note != nil {
+            Section {
+                switch store.tmuxStartOffer {
+                case .start:
+                    tmuxStartButton
+                case .instructions(let command):
+                    tmuxInstructions(command)
+                case nil:
+                    EmptyView()
+                }
+            } footer: {
+                if let note = store.tmuxStart.note {
+                    Text(note)
+                        .accessibilityIdentifier("hosts.detail.tmuxStart.note")
+                }
+            }
+        }
     }
 
     private var startButton: some View {
@@ -105,6 +122,32 @@ struct HerdrCoreStartSection: View {
         }
     }
 
+    private var tmuxStartButton: some View {
+        Button {
+            store.requestTmuxStart()
+        } label: {
+            HStack {
+                Text(store.tmuxStart == .running ? String(localized: "Starting tmux…") : String(localized: "Start tmux"))
+                if store.tmuxStart == .running {
+                    Spacer()
+                    ProgressView()
+                }
+            }
+        }
+        .disabled(store.tmuxStart == .running)
+        .accessibilityIdentifier("hosts.detail.tmuxStart")
+        .alert(
+            "Start tmux?",
+            isPresented: tmuxConfirmationPresented,
+            presenting: store.tmuxStartConfirmation
+        ) { _ in
+            Button("Start") { Task { await store.confirmTmuxStart() } }
+            Button("Cancel", role: .cancel) { store.cancelTmuxStart() }
+        } message: { confirmation in
+            Text(confirmation.message)
+        }
+    }
+
     private func instructions(_ command: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let explanation = store.coreStartOffer?.explanation {
@@ -119,10 +162,84 @@ struct HerdrCoreStartSection: View {
         }
     }
 
-    /// The buttons answer it, so a dismissal cannot run anything.
+    private func tmuxInstructions(_ command: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let explanation = store.tmuxStartOffer?.explanation {
+                Text(explanation)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Text(command)
+                .font(.callout.monospaced())
+                .textSelection(.enabled)
+                .accessibilityIdentifier("hosts.detail.tmuxStart.command")
+        }
+    }
+
     private var confirmationPresented: Binding<Bool> {
         Binding(
             get: { store.coreStartConfirmation != nil },
             set: { _ in })
+    }
+
+    private var tmuxConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { store.tmuxStartConfirmation != nil },
+            set: { _ in })
+    }
+}
+
+enum TmuxStartOffer: Equatable, Sendable {
+    case start
+    case instructions(command: String)
+
+    static func manualCommand(socketName: String) -> String {
+        let normalized = TmuxSocketName.normalized(socketName)
+        return normalized == TmuxSocketName.defaultName ? "tmux" : "tmux -L \(normalized)"
+    }
+
+    var explanation: String? {
+        switch self {
+        case .start:
+            nil
+        case .instructions:
+            String(localized: "A tmux server started over SSH would run outside the desktop login session, so Heeler does not start one here. In a terminal on that machine, run:")
+        }
+    }
+}
+
+struct TmuxStartConfirmation: Equatable, Sendable {
+    let socket: String
+
+    var message: String {
+        if socket == TmuxSocketName.defaultName {
+            return String(localized: "This starts a tmux server on the default socket through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
+        }
+        return String(localized: "This starts a tmux server on socket \"\(socket)\" through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal.")
+    }
+}
+
+enum TmuxStartState: Equatable, Sendable {
+    case idle
+    case running
+    case started(socket: String)
+    case alreadyRunning(socket: String)
+    case failed(message: String)
+
+    var note: String? {
+        switch self {
+        case .idle, .running:
+            nil
+        case .started(let socket):
+            socket == TmuxSocketName.defaultName
+                ? String(localized: "Started tmux with the environment of your own terminal.")
+                : String(localized: "Started tmux on socket \"\(socket)\" with the environment of your own terminal.")
+        case .alreadyRunning(let socket):
+            socket == TmuxSocketName.defaultName
+                ? String(localized: "tmux was already running, so Start changed nothing.")
+                : String(localized: "tmux was already running on socket \"\(socket)\", so Start changed nothing.")
+        case .failed(let message):
+            message
+        }
     }
 }

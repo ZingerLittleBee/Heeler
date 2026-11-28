@@ -23,7 +23,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
     ]
 
     /// Programs whose reports on tmux the Host Helper reads through `pipe-pane` (ADR 0046).
-    private static let pipePanePrograms: Set<String> = ["codex", "grok", "opencode"]
+    private static let pipePanePrograms: Set<String> = ["codex", "grok", "opencode", "omp", "agy"]
 
     /// Nil unless the record holds an Agent reading Unknown.
     init?(record: HerdrCoreTerminalRecord) {
@@ -84,7 +84,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
                 hasHelperPipe
                 ? String(localized: "Grok Build hasn't reported a status.")
                 : String(localized: "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper.")
-        case "codex", "opencode":
+        case "codex", "opencode", "omp", "agy":
             if let release = noted?.release {
                 text =
                     hasHelperPipe
@@ -100,7 +100,7 @@ struct HerdrCoreStatusExplanation: Equatable, Sendable {
         case "claude":
             text = String(
                 localized: "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks.")
-        case "pi", "omp":
+        case "pi":
             text = String(
                 localized: "\(program) hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
         default:

@@ -169,6 +169,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
     case updateHostHelper
     case waitingForCore
     case waitingForTmux
+    case waitingForRex
     case repairHostHelper
     case hostHelperNotOnWindows
     case noAgentActivity
@@ -180,7 +181,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
 
     private static let known: [Self] = [
         .notConnected, .notReadYet, .usageOff, .needsPlugin, .unsupportedPlatform, .needsHostHelper,
-        .updateHostHelper, .waitingForCore, .waitingForTmux, .repairHostHelper, .hostHelperNotOnWindows,
+        .updateHostHelper, .waitingForCore, .waitingForTmux, .waitingForRex, .repairHostHelper, .hostHelperNotOnWindows,
         .noAgentActivity, .updateRequired, .readFailed,
     ]
 
@@ -203,6 +204,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
         case .updateHostHelper: String(localized: "Update the Host Helper")
         case .waitingForCore: String(localized: "Waiting for the core")
         case .waitingForTmux: String(localized: "Waiting for tmux")
+        case .waitingForRex: String(localized: "Waiting for Rex")
         case .repairHostHelper: String(localized: "Repair the Host Helper")
         case .hostHelperNotOnWindows: String(localized: "Comes with the Host Helper, not available yet")
         case .noAgentActivity: String(localized: "No Agent activity yet")
@@ -224,6 +226,7 @@ enum AgentUsageExclusion: Equatable, Sendable {
         case .updateHostHelper: "updateHostHelper"
         case .waitingForCore: "waitingForCore"
         case .waitingForTmux: "waitingForTmux"
+        case .waitingForRex: "waitingForRex"
         case .repairHostHelper: "repairHostHelper"
         case .hostHelperNotOnWindows: "hostHelperNotOnWindows"
         case .noAgentActivity: "noAgentActivity"

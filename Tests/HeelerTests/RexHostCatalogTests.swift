@@ -21,7 +21,7 @@ struct RexHostModelTests {
 
     @Test func rexIsConfirmedWithoutHostIntegrations() {
         #expect(ServerKind.rex.isConfirmed)
-        #expect(!ServerKind.rex.hasHostIntegrations)
+        #expect(ServerKind.rex.hasHostIntegrations)
         #expect(ServerKind.rex.displayName == "Rex")
         #expect(ServerKind.rex.rawValue == "rex")
     }
@@ -437,8 +437,8 @@ struct RexHostCatalogTests {
         let store = HostStore(volatileHosts: [rex, tmux, unconfirmedHost()])
 
         #expect(store.consoleHosts == [rex, tmux])
-        #expect(store.integratedHosts == [tmux])
-        #expect(!store.supportsLiveActivities(for: rex.id))
+        #expect(store.integratedHosts == [rex, tmux])
+        #expect(store.supportsLiveActivities(for: rex.id))
         // Agent List Fields is kept on this device, so it lays out a Rex
         // Host's rows beside the others, `backend` among its fields.
         #expect(store.rowLayoutHosts == [rex, tmux])

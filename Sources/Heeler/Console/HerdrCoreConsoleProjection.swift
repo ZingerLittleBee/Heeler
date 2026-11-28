@@ -123,6 +123,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     private let isNativeWindows: @MainActor () -> Bool
     private let stopClock: BlockedCardClock
     private var chatTypings: [String: HerdrCoreChatTyping] = [:]
+    private var titleRenameTokens: [String: String] = [:]
     /// What the last `herdr-app status` on this link said.
     private var isDesktopAppRunning = false
     private var desktopAppCheck: Task<Void, Never>?
@@ -340,6 +341,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         desktopAppCheck?.cancel()
         desktopAppCheck = nil
         isDesktopAppRunning = false
+        titleRenameTokens = [:]
     }
 
     private func replaceInventory(with snapshot: HerdrCoreSnapshot) {
@@ -474,6 +476,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
             pins.removePin(hostID: host.id, paneID: terminal)
             records.removeAll { $0.address == terminal }
             chatTypings[terminal] = nil
+            titleRenameTokens[terminal] = nil
             sidebarRevision &+= 1
             notifyProgramWatches(of: terminal, .ended)
         case .missed(let snapshot):
@@ -963,7 +966,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 workspaceID: HerdrCoreOrganization.workspaceID(
                     of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
                 tabID: "tab-\(record.address)", paneID: record.address, cwd: record.cwd, revision: 0,
-                name: record.name)
+                name: HerdrCoreOrganization.agentName(of: record, kind: kind) ?? record.name)
     }
 
     private func startShell(
@@ -1146,7 +1149,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         } else {
             source = try await placement(workspaceID: workspaceID, directory: nil).cwd
         }
-        let created = try await git.create(branch: worktree.branch ?? "", from: source, startPoint: worktree.base)
+        let branch = worktree.branch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = worktree.base?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let created = try await git.create(
+            branch: branch.flatMap { $0.isEmpty ? nil : $0 } ?? HerdrCoreWorktrees.fallbackBranchName(),
+            from: source,
+            startPoint: base.flatMap { $0.isEmpty ? nil : $0 })
         // Before the first row shows, so it already reads as the Worktree it is.
         checkouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
@@ -1282,8 +1290,41 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func focusAgent(_ paneID: String) async throws {}
 
     func renameAgent(_ paneID: String, name: String?) async throws {
-        throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "Rename Agent on a herdr-core Host"))
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.flatMap { $0.isEmpty ? nil : $0 }
+        if let normalized, let error = AgentName.validationError(normalized) {
+            throw TransportError.malformedResponse(error)
+        }
+        guard hasInventory, departedAgentsByPane[paneID] == nil else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let core = inventoryCore
+        let expectedKind = agentsByPane[paneID]?.agent.kind
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        let record: HerdrCoreTerminalRecord
+        do {
+            record = try await transport.terminalRecord(paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard let agent = HerdrCoreAgentRule.agent(in: record),
+            expectedKind == nil || expectedKind == agent.kind,
+            let ownerPID = HerdrCoreOrganization.ownerPID(of: record)
+        else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let labelValue = normalized.map {
+            HerdrCoreOrganization.agentNameLabelValue(pid: ownerPID, kind: agent.kind, name: $0)
+        } ?? ""
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object([HerdrCoreOrganization.agentNameLabel: .string(labelValue)]),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
+        if !hasEnded, inventoryCore == core, let foreground = record.foreground {
+            update(paneID) { $0.noteForeground(foreground) }
+        }
+        setLabel(HerdrCoreOrganization.agentNameLabel, to: labelValue.isEmpty ? nil : labelValue, at: paneID, on: core)
     }
 
     /// One `do`, whatever comes of it. A failure asks whether the app still runs,
@@ -1304,9 +1345,141 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         }
     }
 
+    var movableWorkspaceIDs: Set<String>? {
+        Set(workspaces.map(\.id).filter { HerdrCoreOrganization.desktopSpace(ofWorkspace: $0) != nil })
+    }
+
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        guard !isAwaitingSnapshot, hasInventory else {
+            throw TransportError.sshUnreachable(detail: String(localized: "The Host is not connected."))
+        }
+        guard let record = terminalRecord(at: paneID), !record.hasFinished else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let currentSpace = record.labels["herdr.space"].flatMap { $0.isEmpty ? nil : $0 }
+        let targetSpace: String
+        switch destination {
+        case .workspace(let workspaceID):
+            guard let space = HerdrCoreOrganization.desktopSpace(ofWorkspace: workspaceID) else {
+                throw TransportError.malformedResponse(
+                    String(localized: "Move into a desktop Workspace or a New Workspace. Directory Workspaces follow a Terminal's launch folder."))
+            }
+            guard space != currentSpace, workspaces.contains(where: { $0.id == workspaceID }) else {
+                throw TransportError.malformedResponse(String(localized: "The destination Workspace has changed."))
+            }
+            targetSpace = space
+        case .newWorkspace:
+            targetSpace = HerdrCoreLaunch.Placement.newDesktopSpaceID()
+        }
+        let targetTab = "tb" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let core = inventoryCore
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        let fresh: HerdrCoreTerminalRecord
+        do {
+            fresh = try await transport.terminalRecord(paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard !fresh.hasFinished, inventoryCore == core else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object([
+                "herdr.space": .string(targetSpace),
+                "herdr.tab": .string(targetTab),
+            ]),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
+        if !hasEnded, var labels = terminalLabels(at: paneID, on: core) {
+            labels["herdr.space"] = targetSpace
+            labels["herdr.tab"] = targetTab
+            apply(.labels(terminal: paneID, labels))
+        }
+        return paneID
+    }
+
     func agentInfo(paneID: String) async throws -> Agent {
         throw TransportError.hostFeatureUnavailable(
             feature: String(localized: "Agents on a herdr-core Host"))
+    }
+
+    func titleRenameSessionToken(paneID: String) -> String? {
+        titleRenameTokens[paneID]
+    }
+
+    func titleRenameAgentInfo(paneID: String) async throws -> Agent {
+        guard hasInventory, departedAgentsByPane[paneID] == nil, let core = inventoryCore else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let record: HerdrCoreTerminalRecord
+        do {
+            record = try await readTerminalRecord(at: paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard inventoryCore == core, !record.hasFinished, !record.isRestarting,
+            var coreAgent = HerdrCoreAgentRule.agent(in: record)
+        else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent is no longer running in this Terminal."),
+                confirmedFailure: true)
+        }
+        guard let foreground = record.foreground, let pid = foreground.pid else {
+            throw AgentTitleRenameError(
+                message: String(localized: "The Agent process could not be identified."),
+                confirmedFailure: true)
+        }
+        if isNativeWindows(), !HerdrCoreAgentRule.windowsTerminalEndsWithItsProgram(foreground) {
+            throw AgentTitleRenameError(
+                message: String(localized: "This terminal's PowerShell stays open after the Agent exits, so Heeler cannot rename it safely."),
+                confirmedFailure: true)
+        }
+        if doneTerminals.contains(record.address) {
+            coreAgent = coreAgent.markedDone
+        }
+        let sessionLabel = record.labels[HerdrCoreSessionHint.sessionLabel] ?? ""
+        let pickLabel = record.labels[HerdrCoreSessionHint.pickLabel] ?? ""
+        titleRenameTokens[paneID] = "core:\(core):\(pid):\(coreAgent.kind):\(sessionLabel):\(pickLabel)"
+        let terminalTitle = record.title.isEmpty ? nil : record.title
+        let stripped = terminalTitle.map(TerminalTitleGlyphs.strip).flatMap { $0.isEmpty ? nil : $0 }
+        let workspaceID =
+            agentsByPane[paneID]?.agent.workspaceID
+            ?? HerdrCoreOrganization.workspaceID(
+                of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id))
+        let tabID =
+            agentsByPane[paneID]?.agent.tabID
+            ?? terminalsByPane[paneID]?.tabID
+            ?? "tab-\(record.address)"
+        let cwd = foreground.cwd.isEmpty ? record.cwd : foreground.cwd
+        return Agent(
+            terminalID: record.address,
+            kind: coreAgent.kind,
+            title: stripped ?? "",
+            status: coreAgent.status,
+            workspaceID: workspaceID,
+            tabID: tabID,
+            paneID: record.address,
+            cwd: cwd,
+            revision: 0,
+            name: HerdrCoreOrganization.agentName(of: record, kind: coreAgent.kind) ?? record.name,
+            terminalTitle: terminalTitle,
+            terminalTitleStripped: stripped,
+            foregroundCwd: foreground.cwd.isEmpty ? nil : foreground.cwd)
+    }
+
+    func titleRenamePrompt(_ text: String, paneID: String) async throws {
+        let corePin = TerminalCorePin(joined: inventoryCore)
+        let sender = HerdrCoreComposerSend(
+            address: paneID,
+            projection: { [weak self] in self },
+            corePin: corePin,
+            clock: chatTypingClock,
+            isOnWindows: isNativeWindows)
+        let outcome = await sender.send(text, route: .chat, attach: nil)
+        if let error = AgentTitleRenameError.fromCheckedSend(outcome) {
+            throw error
+        }
     }
 
     func processInfo(paneID: String) async throws -> PaneProcessInfo {
@@ -1677,12 +1850,32 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func sessionFileReader() -> SessionFileReader {
         let session = session
         return { range in
-            try await session.withTransport { $0.hostServices }.readFileSlice(range)
+            let normalized = RemoteFileRange(
+                path: RemoteFilePath.windowsForSFTP(range.path),
+                offset: range.offset,
+                maxBytes: range.maxBytes)
+            return try await session.withTransport { $0.hostServices }.readFileSlice(normalized)
         }
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {
-        { _ in nil }
+        let session = session
+        return { [weak self] selector in
+            guard AgentModelProbe.isValidSelector(selector) else { return nil }
+            let windows = await MainActor.run {
+                self?.kernel == HerdrCoreLocator.windowsKernel || self?.isNativeWindows() == true
+            }
+            guard !windows else { return nil }
+            let script = Data(
+                "LC_ALL=C\nexport LC_ALL\n\(HerdrHostPath.pathExport)\nexec omp models ls \(selector) --json\n"
+                    .utf8)
+            let result = try await session.withTransport { transport -> GitExecResult? in
+                guard try await transport.hostServices.hostPlatform() == .posix else { return nil }
+                return try await transport.runAgentDiscovery(.posixScript(script))
+            }
+            guard let result, result.exitStatus == 0 else { return nil }
+            return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+        }
     }
 
     // MARK: Chat
@@ -1870,8 +2063,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func setPickLabel(_ value: String?, at paneID: String, on core: String?) {
+        setLabel(HerdrCoreSessionHint.pickLabel, to: value, at: paneID, on: core)
+    }
+
+    private func setLabel(_ key: String, to value: String?, at paneID: String, on core: String?) {
         guard !hasEnded, var labels = terminalLabels(at: paneID, on: core) else { return }
-        labels[HerdrCoreSessionHint.pickLabel] = value
+        labels[key] = value
         apply(.labels(terminal: paneID, labels))
     }
 
@@ -1934,13 +2131,26 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let session = session
         return ChatHostFiles(
             status: { path in
-                try await session.withTransport { $0.hostServices }.fileStatus(atPath: path)
+                try await session.withTransport { $0.hostServices }
+                    .fileStatus(atPath: RemoteFilePath.windowsForSFTP(path))
             },
             list: { request in
-                try await session.withTransport { $0.hostServices }.listFiles(request)
+                let normalized = RemoteFileListingRequest(
+                    directory: RemoteFilePath.windowsForSFTP(request.directory),
+                    kinds: request.kinds,
+                    namePrefix: request.namePrefix,
+                    nameSuffixes: request.nameSuffixes,
+                    nameContains: request.nameContains,
+                    maximumEntries: request.maximumEntries,
+                    maximumScanned: request.maximumScanned)
+                return try await session.withTransport { $0.hostServices }.listFiles(normalized)
             },
             read: { range in
-                try await session.withTransport { $0.hostServices }.readHostFileRange(range)
+                let normalized = RemoteFileRange(
+                    path: RemoteFilePath.windowsForSFTP(range.path),
+                    offset: range.offset,
+                    maxBytes: range.maxBytes)
+                return try await session.withTransport { $0.hostServices }.readHostFileRange(normalized)
             },
             // Chat reads over SFTP, in the form that opens.
             home: {
@@ -1963,7 +2173,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
-        try await session.withTransport { $0.hostServices }.listDirectories(at: path)
+        try await session.withTransport { $0.hostServices }
+            .listDirectories(at: RemoteFilePath.windowsForSFTP(path))
     }
 
     func withHostServices<Value: Sendable>(

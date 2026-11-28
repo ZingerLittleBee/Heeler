@@ -37,8 +37,12 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     /// The tmux Host's stored paths, written into the Helper directory so its
     /// follower and extensions find the server.
     let tmuxPaths: TmuxPaths?
+    let rexSocket: RexSocket?
 
-    init(reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil) throws {
+    init(
+        reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil
+    ) throws {
         if case .newer(let version) = reading.integrity {
             throw HostHelperError.newerInstalled(version: version)
         }
@@ -56,6 +60,7 @@ struct HostHelperInstallPlan: Sendable, Equatable {
         self.layout = layout
         self.nodePath = nodePath
         self.tmuxPaths = tmuxPaths
+        self.rexSocket = rexSocket.flatMap { $0.isWindowsPipe ? nil : $0 }
         self.extensionFolders = extensionFolders.map(\.path)
         helperFiles = reading.replacesHelper
             ? (bundle.manifest.files.map(\.path) + [HostHelperScript.manifestFileName]) : []
@@ -67,34 +72,36 @@ struct HostHelperInstallPlan: Sendable, Equatable {
     private let home: String
     private let dataHome: String
 
-    /// Where the stored tmux paths go in the Helper directory, nil on other Hosts.
     var tmuxPathsFile: String? {
         guard let tmuxPaths, !dataHome.isEmpty else { return nil }
         return TmuxClaudeCodeHooks.storedPathsFile(dataHome: dataHome, paths: tmuxPaths)
     }
 
-    /// Heeler's extension in each folder Pi and Oh My Pi load extensions from.
+    var rexSocketFile: String? {
+        guard let rexSocket, !rexSocket.isWindowsPipe, !dataHome.isEmpty else { return nil }
+        return "\(layout.directory)/rex/socket.json"
+    }
+
     var extensionFiles: [String] {
         extensionFolders.map { "\($0)/\(HostHelperScript.extensionFileName)" }
     }
 
-    /// Files written outside the Helper directory, which the record lists.
     var outsideFiles: [String] { layout.serviceFiles + extensionFiles }
 
-    /// Every folder the install needs, parents first.
     var folderChain: [String] {
-        let extra = tmuxPathsFile.map { [($0 as NSString).deletingLastPathComponent] } ?? []
+        var extra: [String] = []
+        if let tmuxPathsFile { extra.append((tmuxPathsFile as NSString).deletingLastPathComponent) }
+        if let rexSocketFile { extra.append((rexSocketFile as NSString).deletingLastPathComponent) }
         return layout.folderChain(reaching: extensionFolders + extra)
     }
 
-    /// Every file the install leaves on the Host.
     var files: [String] { locations.flatMap(\.paths).sorted() }
 
-    /// The same files by where they go, as the sheet lists them.
     var locations: [HostHelperFileLocation] {
         let log = layout.manager == .launchd ? [layout.log] : []
         let tmux = tmuxPathsFile.map { [$0] } ?? []
-        let helper = helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log + tmux
+        let rex = rexSocketFile.map { [$0] } ?? []
+        let helper = helperFiles.map { "\(layout.app)/\($0)" } + [layout.record] + log + tmux + rex
         let all = [
             HostHelperFileLocation(kind: .helper, paths: helper, home: home),
             HostHelperFileLocation(kind: .service(layout.manager), paths: layout.serviceFiles, home: home),
@@ -213,9 +220,11 @@ struct HostHelperInstaller: Sendable {
     /// Puts a Helper in place if the Host needs one, then sets up its service
     /// with the Node.js the Host has now, and returns what the Host then reads.
     func install(
-        over reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil
+        over reading: HostHelperReading, bundle: HostHelperBundle, tmuxPaths: TmuxPaths? = nil,
+        rexSocket: RexSocket? = nil
     ) async throws -> HostHelperReading {
-        let plan = try HostHelperInstallPlan(reading: reading, bundle: bundle, tmuxPaths: tmuxPaths)
+        let plan = try HostHelperInstallPlan(
+            reading: reading, bundle: bundle, tmuxPaths: tmuxPaths, rexSocket: rexSocket)
         let layout = plan.layout
         guard let extensionText = bundle.files[HostHelperScript.extensionPath] else {
             throw HostHelperError.bundleUnavailable
@@ -260,6 +269,14 @@ struct HostHelperInstaller: Sendable {
                 TmuxClaudeCodeHooks.storedPaths(tmuxPaths), to: tmuxPathsFile, in: folder,
                 step: String(localized: "Writing the stored tmux paths"))
         }
+        if let rexSocket = plan.rexSocket, let rexSocketFile = plan.rexSocketFile,
+            let contents = HostHelperScript.storedRexSocket(rexSocket)
+        {
+            let folder = (rexSocketFile as NSString).deletingLastPathComponent
+            try await write(
+                contents, to: rexSocketFile, in: folder,
+                step: String(localized: "Writing the stored Rex socket path"))
+        }
         for file in plan.extensionFiles {
             try await write(extensionText, to: file, in: nil, step: String(localized: "Placing the Pi and Oh My Pi extensions"))
         }
@@ -293,6 +310,20 @@ struct HostHelperInstaller: Sendable {
         try await write(
             TmuxClaudeCodeHooks.storedPaths(paths), to: file, in: folder,
             step: String(localized: "Writing the stored tmux paths"))
+    }
+
+    func writeRexSocket(_ socket: RexSocket, over reading: HostHelperReading) async throws {
+        guard reading.hasInstalledHelper, !socket.isWindowsPipe, let layout = reading.layout,
+            let contents = HostHelperScript.storedRexSocket(socket)
+        else { return }
+        let folder = "\(layout.directory)/rex"
+        let file = "\(folder)/socket.json"
+        _ = try await check(
+            .makeFolders(layout.folderChain(reaching: [folder]), privateFolder: layout.directory),
+            step: String(localized: "Creating the folders"))
+        try await write(
+            contents, to: file, in: folder,
+            step: String(localized: "Writing the stored Rex socket path"))
     }
 
     /// Stops the service, deletes the recorded files and then the created folders

@@ -3,6 +3,10 @@ import Foundation
 /// Where a core Host's Worktree goes and what git is asked, as the Herdr desktop
 /// app's worktree mod does it, so both clients share one checkout (ADR 0032).
 enum HerdrCoreWorktrees {
+    static func fallbackBranchName() -> String {
+        "worktree/\(UUID().uuidString.prefix(8).lowercased())"
+    }
+
     /// The folder name of a branch: each run of characters other than ASCII
     /// letters, digits, `.`, `_` and `-` is one `-`, and `-` at either end goes.
     static func slug(_ branch: String) -> String {
@@ -174,12 +178,15 @@ struct HerdrCoreWorktreeGit: Sendable {
     /// One `git worktree add`, in the checkout it starts from so a new branch
     /// begins at that checkout's HEAD, or at `startPoint` when one is named.
     func create(branch: String, from directory: String, startPoint: String? = nil) async throws -> Created {
-        if let problem = GitBranchName.validationError(branch) {
+        let trimmedBranch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedBranch = trimmedBranch.isEmpty ? HerdrCoreWorktrees.fallbackBranchName() : trimmedBranch
+        if let problem = GitBranchName.validationError(resolvedBranch) {
             throw HerdrCoreWorktreeError.invalidBranch(problem)
         }
-        // Never an option to git.
-        if let startPoint, startPoint.isEmpty || startPoint.hasPrefix("-") {
-            throw HerdrCoreWorktreeError.addRefused(String(localized: "\"\(startPoint)\" is not a commit to start from."))
+        let trimmedStartPoint = startPoint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedStartPoint = trimmedStartPoint.flatMap { $0.isEmpty ? nil : $0 }
+        if let resolvedStartPoint, resolvedStartPoint.hasPrefix("-") {
+            throw HerdrCoreWorktreeError.addRefused(String(localized: "\"\(resolvedStartPoint)\" is not a commit to start from."))
         }
         let answers = try await gate.run { try await services.checkouts(for: [directory]) }
         guard let checkout = answers[directory], let mainCheckout = checkout.mainCheckout else {
@@ -188,11 +195,11 @@ struct HerdrCoreWorktreeGit: Sendable {
         let home = try await services.hostHomeDirectory()
         guard
             let path = HerdrCoreWorktrees.checkoutPath(
-                home: home, mainCheckout: mainCheckout, branch: branch, root: checkoutRoot)
-        else { throw HerdrCoreWorktreeError.noFolderName(branch: branch) }
+                home: home, mainCheckout: mainCheckout, branch: resolvedBranch, root: checkoutRoot)
+        else { throw HerdrCoreWorktreeError.noFolderName(branch: resolvedBranch) }
 
         let lookup = try await read(
-            HerdrCoreWorktrees.branchExistsArguments(branch: branch), in: mainCheckout)
+            HerdrCoreWorktrees.branchExistsArguments(branch: resolvedBranch), in: mainCheckout)
         guard lookup.status <= 1 else {
             throw HerdrCoreWorktreeError.addRefused(
                 lookup.message ?? String(localized: "git exited with status \(lookup.status)."))
@@ -202,8 +209,8 @@ struct HerdrCoreWorktreeGit: Sendable {
             result = try await run(
                 GitCommand(
                     arguments: HerdrCoreWorktrees.addArguments(
-                        path: path, branch: branch, branchExists: lookup.status == 0,
-                        startPoint: startPoint ?? "HEAD"),
+                        path: path, branch: resolvedBranch, branchExists: lookup.status == 0,
+                        startPoint: resolvedStartPoint ?? "HEAD"),
                     directory: checkout.root, isMutation: true))
         } catch {
             throw HerdrCoreWorktreeError.addUnconfirmed(path: path)

@@ -4,7 +4,7 @@
   "provisionalReason": "Built from the versioned compatibility observations and ADR 0033's cases; recordings of real harnesses on hc-lab may add cases.",
   "coreVersion": "0.1.13",
   "coreCommit": "88fe4e752debdc6ff6689eaa153d7f95819835a4",
-  "doneReporters": ["claude", "codex", "pi", "omp", "grok"],
+  "doneReporters": ["claude", "codex", "pi", "omp", "grok", "droid", "agy"],
   "cases": [
     {
       "name": "Claude Code working to done ends a turn, and working again takes Done away",

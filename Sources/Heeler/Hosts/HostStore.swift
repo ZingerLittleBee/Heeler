@@ -551,19 +551,10 @@ final class HostStore {
         consoleHosts
     }
 
-    /// Whether Rex Servers are all that is on: Hosts lists them, and Usage and
-    /// Settings' Agents & Accounts have no Host to read (ADR 0049).
-    var hasOnlyRexServersOn: Bool {
-        integratedHosts.isEmpty && hosts.contains { $0.serverKind == .rex }
-    }
-
-    /// A Host waiting for its Server Kind stays out of Live Activities, and so
-    /// does a Rex Host, whose Agents notify nothing (ADR 0054). Whether a herdr-core or tmux
-    /// Host may show one is its registration's call, see `LiveActivityGate`.
     func supportsLiveActivities(for id: Host.ID) -> Bool {
         switch hosts.first(where: { $0.id == id })?.serverKind {
-        case .herdrTUI, .herdrCore, .tmux: true
-        case .rex, .unconfirmed, nil: false
+        case .herdrTUI, .herdrCore, .tmux, .rex: true
+        case .unconfirmed, nil: false
         }
     }
 

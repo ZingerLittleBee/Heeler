@@ -223,7 +223,7 @@ struct HerdrCoreWindowsConsoleTests {
     /// the programs that passed there, its name field and Rename off, and what later
     /// tickets turn on stays hidden.
     private func expectWindowsOffers(_ offers: HostCapabilities, sourceLocation: SourceLocation = #_sourceLocation) {
-        #expect(!offers.renameAgent, sourceLocation: sourceLocation)
+        #expect(offers.renameAgent, sourceLocation: sourceLocation)
         #expect(!offers.renameWorkspace(id: "space-s1"), sourceLocation: sourceLocation)
         #expect(!offers.worktrees, sourceLocation: sourceLocation)
         #expect(offers.startsAgents, sourceLocation: sourceLocation)
@@ -250,8 +250,8 @@ struct HerdrCoreWindowsConsoleTests {
         #expect(HostCapabilities(serverKind: .herdrCore).hostScripts)
         // A native Windows Herdr TUI Host keeps what it had.
         let windowsTUI = HostCapabilities(serverKind: .herdrTUI, platform: .nativeWindows)
-        #expect(windowsTUI.hostScripts)
-        #expect(windowsTUI.offersChanges(directory: #"C:\work"#))
+        #expect(!windowsTUI.hostScripts)
+        #expect(!windowsTUI.offersChanges(directory: #"C:\work"#))
     }
 
     /// The edit reads the Agent's environment and writes a POSIX path, which Windows refuses.

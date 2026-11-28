@@ -30,8 +30,8 @@ final class ConsoleChatCache {
     @ObservationIgnored private var pendingUpdates: [Host.ID: [Update]] = [:]
 
     private enum Update {
-        case snapshot([ConsoleAgent], conversationTitles: [ConsoleAgent.ID: String])
-        case confirmation(Agent, ConsoleAgent, conversationTitle: String?)
+        case snapshot([ConsoleAgent], conversationTitles: [ConsoleAgent.ID: String], coreScope: String?)
+        case confirmation(Agent, ConsoleAgent, conversationTitle: String?, coreScope: String?)
         case removal(paneID: String)
         case branch(CheckoutHead.Branch, checkoutPath: String)
         case sidebarSnapshot(AgentRowLayoutSnapshot?)
@@ -46,6 +46,7 @@ final class ConsoleChatCache {
         let current: AgentSessionInfo?
         let fresh: Agent
         let conversationTitle: String?
+        let coreScope: String?
     }
 
     init(cache: any ChatTranscriptCache, writeDebounce: Duration = .seconds(2)) {
@@ -133,10 +134,10 @@ final class ConsoleChatCache {
     private func applyPendingUpdates(on host: Host) {
         for update in pendingUpdates.removeValue(forKey: host.id) ?? [] {
             switch update {
-            case .snapshot(let agents, let titles):
-                observe(agents, conversationTitles: titles, on: host)
-            case .confirmation(let fresh, let snapshot, let title):
-                confirm(fresh, for: snapshot, conversationTitle: title, on: host)
+            case .snapshot(let agents, let titles, let coreScope):
+                observe(agents, conversationTitles: titles, coreScope: coreScope, on: host)
+            case .confirmation(let fresh, let snapshot, let title, let coreScope):
+                confirm(fresh, for: snapshot, conversationTitle: title, coreScope: coreScope, on: host)
             case .removal(let paneID):
                 remove(paneID: paneID, on: host)
             case .branch(let branch, let path):
@@ -147,17 +148,16 @@ final class ConsoleChatCache {
         }
     }
 
-    /// A completed live snapshot supersedes the saved directory, including an
-    /// empty one. An unchanged older session field must not undo agent.get.
     func observe(
         _ agents: [ConsoleAgent],
         conversationTitles: [ConsoleAgent.ID: String] = [:],
+        coreScope: String? = nil,
         on host: Host
     ) {
         guard hosts[host.id] == host else { return }
         if loads[host.id] != nil {
             pendingUpdates[host.id, default: []].append(
-                .snapshot(agents, conversationTitles: conversationTitles))
+                .snapshot(agents, conversationTitles: conversationTitles, coreScope: coreScope))
             return
         }
         let ids = Set(agents.map(\.id))
@@ -167,23 +167,28 @@ final class ConsoleChatCache {
             var entry: ChatCachedAgent
             if let known = confirmed[agent.id], known.snapshot == agent.agent.agentSession,
                 known.terminalID == agent.agent.terminalID, known.workspaceID == agent.agent.workspaceID,
-                known.tabID == agent.agent.tabID, known.kind == agent.agent.kind {
+                known.tabID == agent.agent.tabID, known.kind == agent.agent.kind,
+                Self.coreScope(known.coreScope, matches: coreScope) {
                 if known.current != agent.agent.agentSession {
-                    // Preserve the newer session's own titles rather than carrying
-                    // the superseded snapshot's conversation title onto it.
                     var source = agent
                     source.agent = known.fresh
-                    entry = ChatCachedAgent(source, conversationTitle: known.conversationTitle)
+                    entry = ChatCachedAgent(
+                        source, conversationTitle: known.conversationTitle,
+                        coreScope: known.coreScope ?? coreScope)
                 } else {
-                    entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
+                    entry = ChatCachedAgent(
+                        agent, conversationTitle: conversationTitles[agent.id],
+                        coreScope: known.coreScope ?? coreScope)
                     entry.agentSession = known.current
                 }
             } else {
                 confirmed[agent.id] = nil
-                entry = ChatCachedAgent(agent, conversationTitle: conversationTitles[agent.id])
+                entry = ChatCachedAgent(
+                    agent, conversationTitle: conversationTitles[agent.id], coreScope: coreScope)
             }
-            if entry.agentSession == nil {
-                entry.agentSession = savedBinding(for: agent, on: host)
+            if entry.agentSession == nil, let saved = savedBinding(for: agent, on: host, coreScope: coreScope) {
+                entry.agentSession = saved.session
+                entry.coreScope = saved.coreScope ?? entry.coreScope
             }
             guard entry.isValid(for: host) else { return nil }
             return entry
@@ -192,28 +197,28 @@ final class ConsoleChatCache {
         replace(next, structure: structure, sidebarSnapshot: sidebarSnapshots[host.id], on: host)
     }
 
-    /// Persist the exact binding that Chat actually queried, which can be
-    /// newer than the Console snapshot's session field.
     func confirm(
-        _ fresh: Agent, for snapshot: ConsoleAgent, conversationTitle: String? = nil, on host: Host
+        _ fresh: Agent, for snapshot: ConsoleAgent, conversationTitle: String? = nil,
+        coreScope: String? = nil, on host: Host
     ) {
         guard hosts[host.id] == host, fresh.paneID == snapshot.agent.paneID,
             fresh.terminalID == snapshot.agent.terminalID, fresh.workspaceID == snapshot.agent.workspaceID,
             fresh.tabID == snapshot.agent.tabID, fresh.kind == snapshot.agent.kind else { return }
         if loads[host.id] != nil {
             pendingUpdates[host.id, default: []].append(
-                .confirmation(fresh, snapshot, conversationTitle: conversationTitle))
+                .confirmation(fresh, snapshot, conversationTitle: conversationTitle, coreScope: coreScope))
             return
         }
         confirmed[snapshot.id] = ConfirmedSession(
             terminalID: fresh.terminalID, workspaceID: fresh.workspaceID, tabID: fresh.tabID, kind: fresh.kind,
             snapshot: snapshot.agent.agentSession, current: fresh.agentSession,
-            fresh: fresh, conversationTitle: conversationTitle)
+            fresh: fresh, conversationTitle: conversationTitle, coreScope: coreScope)
         var source = snapshot
         source.agent = fresh
-        var entry = ChatCachedAgent(source, conversationTitle: conversationTitle)
-        if fresh.agentSession == nil {
-            entry.agentSession = savedBinding(for: source, on: host)
+        var entry = ChatCachedAgent(source, conversationTitle: conversationTitle, coreScope: coreScope)
+        if fresh.agentSession == nil, let saved = savedBinding(for: source, on: host, coreScope: coreScope) {
+            entry.agentSession = saved.session
+            entry.coreScope = saved.coreScope ?? entry.coreScope
         }
         var next = (records[host.id] ?? []).filter { $0.paneID != fresh.paneID }
         if entry.isValid(for: host), AgentChatAvailability.mayOfferChat(for: fresh) {
@@ -279,10 +284,15 @@ final class ConsoleChatCache {
             remaining, structure: structures[host.id] ?? [],
             sidebarSnapshot: sidebarSnapshots[host.id], on: host)
         guard case .bound(let reference) = ConversationReference.resolve(removed.agentSession),
-            !remaining.contains(where: { ConversationReference.resolve($0.agentSession) == .bound(reference) })
+            !remaining.contains(where: {
+                ConversationReference.resolve($0.agentSession) == .bound(reference)
+                    && $0.coreScope == removed.coreScope
+            })
         else { return }
         flushPendingDirectoryWrite(for: host.id)
-        let key = ChatCacheKey(hostID: host.id, socketLocation: host.socketLocation, reference: reference)
+        let key = ChatCacheKey(
+            hostID: host.id, socketLocation: host.socketLocation, reference: reference,
+            coreScope: removed.coreScope)
         writes[host.id] = Task { [previous = writes[host.id], cache] in
             await previous?.value
             await cache.remove(key)
@@ -315,20 +325,26 @@ final class ConsoleChatCache {
         }?.conversationTitle
     }
 
-    /// Local-only binding lookup for a live Agent that has not reported its
-    /// session yet. Await the initial disk read and its queued live updates,
-    /// then require the complete pane identity on the unchanged Host.
-    func cachedSession(for agent: Agent, on host: Host) async -> AgentSessionInfo? {
+    func cachedSession(for agent: Agent, on host: Host, coreScope: String? = nil) async -> AgentSessionInfo? {
         await loads[host.id]?.value
         guard !Task.isCancelled, hosts[host.id] == host else { return nil }
         return records[host.id]?.first {
             $0.hostID == host.id && $0.paneID == agent.paneID && $0.terminalID == agent.terminalID
                 && $0.workspaceID == agent.workspaceID && $0.tabID == agent.tabID && $0.kind == agent.kind
+                && Self.coreScope($0.coreScope, matches: coreScope)
                 && $0.isValid(for: host)
         }?.agentSession
     }
 
-    /// Test and lifecycle boundary: no queued disk work remains.
+    func cachedCoreScope(for agent: Agent, on host: Host) -> String? {
+        guard hosts[host.id] == host else { return nil }
+        return records[host.id]?.first {
+            $0.hostID == host.id && $0.paneID == agent.paneID && $0.terminalID == agent.terminalID
+                && $0.workspaceID == agent.workspaceID && $0.tabID == agent.tabID && $0.kind == agent.kind
+                && $0.isValid(for: host)
+        }?.coreScope
+    }
+
     func settled() async {
         for task in Array(loads.values) { await task.value }
         for id in Array(pendingDirectoryContents.keys) {
@@ -337,12 +353,22 @@ final class ConsoleChatCache {
         for task in Array(writes.values) { await task.value }
     }
 
-    private func savedBinding(for agent: ConsoleAgent, on host: Host) -> AgentSessionInfo? {
-        records[host.id]?.first {
+    private func savedBinding(
+        for agent: ConsoleAgent, on host: Host, coreScope: String?
+    ) -> (session: AgentSessionInfo, coreScope: String?)? {
+        guard let record = records[host.id]?.first(where: {
             $0.paneID == agent.agent.paneID && $0.terminalID == agent.agent.terminalID
                 && $0.workspaceID == agent.agent.workspaceID && $0.tabID == agent.agent.tabID
                 && $0.kind == agent.agent.kind
-        }?.agentSession
+                && Self.coreScope($0.coreScope, matches: coreScope)
+        }), let session = record.agentSession else { return nil }
+        return (session, record.coreScope)
+    }
+
+    private static func coreScope(_ entryScope: String?, matches liveScope: String?) -> Bool {
+        guard let liveScope else { return true }
+        guard let entryScope else { return false }
+        return entryScope == liveScope || entryScope.hasPrefix(liveScope + "/")
     }
 
     private func flushPendingDirectoryWrite(for id: Host.ID) {

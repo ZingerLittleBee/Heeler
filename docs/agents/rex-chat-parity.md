@@ -1,6 +1,6 @@
 # Rex Chat parity
 
-The [daily acceptance matrix](rex-daily-acceptance.md) records the current application SHA and each verified control for all ten programs. The tables below retain the delivered Herdr TUI behavior and earlier Rex runs. Grok gained native Chat and OpenCode gained explicit history selection on macOS and Linux during this work. Amp uses a user-installed plugin for read-only history on those two Hosts. On Linux, Antigravity can read and send plain text after its foreground acquires the official conversation lock.
+The [daily acceptance matrix](rex-daily-acceptance.md) records the historical acceptance SHA and verified controls. Currently, POSIX Rex Hosts (macOS and Linux) offer native read-write Chat for all ten harnesses: Claude Code, Codex, Grok Build, Pi, Oh My Pi, Antigravity CLI (including image/file attachments and model/effort selection once bound), Factory Droid, Devin CLI, OpenCode (with plugin-assisted binding and read-write Send), and Amp (with the user-installed read-write Amp plugin). Native Windows Rex Hosts offer native Chat for Claude Code, Grok Build, Pi, and Oh My Pi. The tables below retain the delivered Herdr TUI behavior and earlier Rex acceptance runs.
 
 On baseline commit
 `10148154331e5496afaef9b5b450d514fd1d7d8e`, Rex offers native Chat for Claude Code,
