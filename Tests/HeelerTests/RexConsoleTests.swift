@@ -30,8 +30,7 @@ struct RexConsoleTests {
         let isPOSIX = kernel == HerdrCoreLocator.linuxKernel || kernel == HerdrCoreLocator.macOSKernel
         let programs: Set<ChatProgram> =
             switch kernel {
-            case HerdrCoreLocator.linuxKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin]
-            case HerdrCoreLocator.macOSKernel: [.claude, .codex, .grok, .pi, .omp, .droid, .devin]
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.agy, .claude, .codex, .grok, .pi, .omp, .droid, .devin]
             case HerdrCoreLocator.windowsKernel: [.claude]
             default: []
             }
@@ -40,7 +39,7 @@ struct RexConsoleTests {
             let offers = HostCapabilities(
                 serverKind: .rex, platform: platform, coreKernel: kernel, isLocatingCore: isLocatingCore, rexAcceptsCommand: true)
 
-            #expect(offers.requiresBoundAntigravity == (kernel == HerdrCoreLocator.linuxKernel))
+            #expect(offers.requiresBoundAntigravity == isPOSIX)
             #expect(offers.startsAgents == isPOSIX)
             #expect(offers.startsTerminals)
             #expect(offers.startsIn("/home/dev/app"))
