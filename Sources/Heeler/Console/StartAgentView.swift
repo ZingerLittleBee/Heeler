@@ -208,13 +208,15 @@ struct StartAgentView: View {
                         if let note = store.gitHubWorktreeNote {
                             Text(note)
                         } else if store.launchTarget == .newWorkspace {
-                            if !store.makesWorktreesFromDirectories {
-                                Text("On this Host, a new worktree starts from an existing Workspace. Choose one above.")
-                            } else if !store.canStartInNewWorktree {
+                            if !store.canStartInNewWorktree {
                                 Text("Browse to a directory in a git repository to start in a new worktree of it.")
-                            } else if store.startsInNewWorktree {
+                            } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                                 Text(
                                     "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD."
+                                )
+                            } else if store.startsInNewWorktree {
+                                Text(
+                                    "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD."
                                 )
                             } else {
                                 Text("Run the agent in a clean checkout of the directory's repository instead of the directory itself.")

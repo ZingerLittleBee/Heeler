@@ -6669,6 +6669,7 @@
       }
     },
     "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD." : {},
+    "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD." : {},
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {
         "ja" : {
@@ -7384,7 +7385,6 @@
         }
       }
     },
-    "A worktree of a directory" : {},
     "API Key" : {
       "localizations" : {
         "ja" : {
@@ -44348,7 +44348,6 @@
         }
       }
     },
-    "On this Host, a new worktree starts from an existing Workspace. Choose one above." : {},
     "On this branch" : {
       "localizations" : {
         "ja" : {

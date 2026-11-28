@@ -9,7 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
-- Start an Agent in a new worktree of a browsed directory's repository from **New Agent** on Rex, tmux and herdr-core Hosts, without first picking an existing Workspace in that repository. On a Herdr TUI Host, the worktree option explains that it starts from an existing Workspace. (PR #881)
+- Start an Agent in a new worktree of a browsed directory's repository from **New Agent** on Herdr TUI, tmux, Rex, and macOS or Linux herdr-core Hosts, without first picking an existing Workspace in that repository. (PR #881)
 - Show each Rex Workspace's directory, with the home folder as `~`, under its session name in the Workspace menu of **New Agent** and **New Terminal**, shortened in the middle when it is long, and under the selected Workspace. (PR #881)
 - Read and send messages from **Chat** for **Amp** and **OpenCode** on macOS and Linux across herdr-core, tmux, and Rex Hosts, refresh outdated OpenCode plugin files from Chat when the plugin is already configured, and attach images and files from Chat in Antigravity CLI on macOS and Linux Rex Hosts. [Chat guide](docs/guides/chat.md), [Rex guide](docs/guides/rex.md#chat) (PR #879)
 - Read Antigravity CLI history and send plain text from Chat on a macOS Rex Host after the first message in Terminal. [Rex guide](docs/guides/rex.md#chat) (PR #877)

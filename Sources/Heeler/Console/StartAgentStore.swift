@@ -709,12 +709,8 @@ final class StartAgentStore {
         }
     }
 
-    var makesWorktreesFromDirectories: Bool {
-        selectedHost.map { capabilities($0).createsWorktreesFromDirectories } == true
-    }
-
     private var worktreeSourceDirectory: String? {
-        guard launchTarget == .newWorkspace, makesWorktreesFromDirectories else { return nil }
+        guard launchTarget == .newWorkspace else { return nil }
         return Self.nonEmptyTrimmed(newWorkspaceDirectory)
     }
 

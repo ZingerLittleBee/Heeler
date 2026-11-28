@@ -1454,17 +1454,15 @@ actor HeelerSSHTransport: Transport {
         _ launch: AgentLaunchRequest,
         worktree: WorktreeSpec
     ) async throws -> Agent {
-        guard worktree.sourceDirectory == nil else {
-            throw TransportError.hostFeatureUnavailable(feature: String(localized: "A worktree of a directory"))
-        }
         let created = try await request(
             method: "worktree.create",
             params: WorktreeCreateParams(
                 base: worktree.base,
                 branch: worktree.branch,
+                cwd: worktree.sourceDirectory,
                 focus: false,
                 label: worktree.branch,
-                workspaceID: launch.workspaceID),
+                workspaceID: worktree.sourceDirectory == nil ? launch.workspaceID : nil),
             decoding: WorktreeCreatedResponse.self)
         do {
             let agent: Agent
