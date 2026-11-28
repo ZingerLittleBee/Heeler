@@ -609,6 +609,25 @@ Claude Code 2.1.332 Agents running in Rex terminals there.
   `TMUX` or `TMUX_PANE`: 8,083 bytes for a four-digit pid, 8,115 for a
   ten-digit one.
 
+### The Host Helper's Usage environment
+
+Rex 0.1.0-preview.25, macOS 27.0, 2026-11-28, on the owner's Mac with the Rex
+app running and Host Helper 0.5.14.
+
+- **The server's environment.** The app starts `rex server run` with launchd
+  as its parent, and its `PATH` is `/usr/bin:/bin:/usr/sbin:/sbin`. Recorded
+  as the Usage environment, it found no Claude Code, Codex or agy installed
+  through mise, so every limits read answered `programMissing`.
+- **An agent's environment.** A Claude Code the server started in a terminal
+  carried the login shell's `PATH`, 47 entries including mise's. A shell
+  terminal's foreground was `/usr/bin/login`, whose environment `ps` does not
+  show.
+- **What the Helper keeps.** From Host Helper 0.5.15 the Helper reads terminals
+  running a known agent first, then the server, then other terminals. It
+  keeps the first environment whose `PATH` finds Claude Code, Codex or agy,
+  and until one does, it keeps the first readable one and tries each newly
+  seen process once.
+
 ### Pi and Oh My Pi in a Rex terminal
 
 Rex 0.1.0-preview.14, API revision 12, macOS 27.0, 2026-11-18, from the iOS

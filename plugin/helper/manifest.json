@@ -1,5 +1,5 @@
 {
-  "version": "0.5.14",
+  "version": "0.5.15",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -299,7 +299,7 @@
     },
     {
       "path": "usage/recorder.js",
-      "sha256": "fabf1f6c9820e2e0903a030a1dccf4773382f0c9979c36b28ac4aa8a303336be"
+      "sha256": "962c4896800b37de8579f2cc9eca2946b3cf61b8d37de565eb88a40a23cbeae9"
     },
     {
       "path": "usage/tmux-environment.js",
@@ -307,7 +307,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "8631f8bace4bcb82390105f07d56f2902d8264e934573a9b30e7d5dbd467becc"
+      "sha256": "c8a1c0348d8b5485799ed7ee8e5e738e85a23eeb0fad73cc7e6664bf0577d207"
     }
   ]
 }
