@@ -388,7 +388,12 @@ final class RexConsoleProjection: ConsoleHostProjection {
             })
         pins.retainPins(hostID: host.id, paneIDs: Set(terminalsByPane.keys))
         chatTypings = chatTypings.filter { terminalsByPane[$0.key] != nil }
-        workspaces = builder.workspaceRows()
+        let directories = Dictionary(
+            inventory.sessions.compactMap { session in
+                session.launchDirectory.map { (session.id, RemoteHostPath.abbreviatingHome($0, home: session.home)) }
+            }
+        ) { first, _ in first }
+        workspaces = builder.workspaceRows(launchDirectory: { directories[$0] })
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
     }
@@ -868,10 +873,16 @@ final class RexConsoleProjection: ConsoleHostProjection {
     }
 
     func startAgentInNewWorktree(_ request: AgentLaunchRequest, worktree: WorktreeSpec) async throws -> Agent {
-        guard acceptsAgentCommand, let workspace = request.workspaceID,
-            inventory?.sessions.contains(where: { $0.id == workspace }) == true
-        else { throw Self.unavailable }
-        let source = launchDirectory(ofWorkspace: workspace, asked: request.cwd ?? "")
+        guard acceptsAgentCommand else { throw Self.unavailable }
+        let source: String
+        if let directory = worktree.sourceDirectory {
+            source = directory
+        } else {
+            guard let workspace = request.workspaceID,
+                inventory?.sessions.contains(where: { $0.id == workspace }) == true
+            else { throw Self.unavailable }
+            source = launchDirectory(ofWorkspace: workspace, asked: request.cwd ?? "")
+        }
         guard RemoteFilePath.isAcceptable(source) else { throw HerdrCoreWorktreeError.notInGitRepository }
         let (server, projects) = try await projectConnection()
         let git = HerdrCoreWorktreeGit(services: projects, gate: gitGate, checkoutRoot: ".heeler")
@@ -1365,6 +1376,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// New Terminal starts in the account's home directory and browses with
     /// these, on the connection the server's links use.
+    var knownHomeDirectory: String? { inventory?.sessions.lazy.compactMap(\.home).first }
+
     func remoteHomeDirectory() async throws -> String {
         try await session.withConnection { $0.transport.browsing }.remoteHomeDirectory()
     }

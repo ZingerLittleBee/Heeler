@@ -248,12 +248,17 @@ struct ConsoleWorkspace: Identifiable, Hashable, Sendable {
     /// The snapshot's checkout path, when the workspace reported git
     /// metadata: the one directory the Workspace itself vouches for.
     let checkoutPath: String?
+    let launchDirectory: String?
 
-    init(id: String, label: String, order: Int = Int.max, checkoutPath: String? = nil) {
+    init(
+        id: String, label: String, order: Int = Int.max, checkoutPath: String? = nil,
+        launchDirectory: String? = nil
+    ) {
         self.id = id
         self.label = label
         self.order = order
         self.checkoutPath = checkoutPath
+        self.launchDirectory = launchDirectory
     }
 }
 

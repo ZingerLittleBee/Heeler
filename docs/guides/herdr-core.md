@@ -86,7 +86,7 @@ On macOS and Linux while the desktop app runs, tap **Rename Workspace** in an Ag
 
 - **New Agent:** Tap **New Agent**, choose a Workspace, and pick an Agent from your login shell's `PATH` or a **Preset** from **Settings > Agents & Accounts**. Heeler passes a session flag where supported and starts Codex with `--no-daemon`, unless your arguments set a session.
 - **New Terminal:** Opens a Terminal in the shell the core runs, adding a tab in a desktop space.
-- **New Workspace:** Choose **New Workspace** or **Browse Directory…**. On macOS and Linux while the desktop app runs, **Workspace name (optional)** names the space.
+- **New Workspace:** Choose **New Workspace** in the **Workspace** menu. On macOS and Linux while the desktop app runs, **Workspace name (optional)** names the space.
 - **Templates:** Roles in `~/.config/herdr-core/templates` or `$XDG_CONFIG_HOME/herdr-core/templates` appear under **Templates** in **New Agent** and run their command directly.
 - **Worktrees:** On macOS and Linux, turn on **Start in a new worktree** in **New Agent** and enter a **Branch** to check out `~/.herdr/worktrees/<repository>/<branch>`. To remove it, tap **More > Worktree Details > Remove Worktree**. Heeler ends every Terminal of that Workspace first, then removes the checkout.
 

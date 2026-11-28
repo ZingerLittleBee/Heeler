@@ -846,6 +846,10 @@ final class ConsoleStore {
 
     /// The projection behind every Host-scoped RPC; an unconnected Host
     /// fails loudly instead of silently dropping the action.
+    func knownHomeDirectory(on hostID: Host.ID) -> String? {
+        (projections[hostID] as? RexConsoleProjection)?.knownHomeDirectory
+    }
+
     func rexBannerRecipient(for id: ConsoleAgent.ID) -> RexBannerRecipient? {
         (projections[id.hostID] as? RexConsoleProjection)?.bannerRecipient(for: id.paneID)
     }
