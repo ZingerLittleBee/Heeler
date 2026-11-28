@@ -297,16 +297,20 @@ struct ConsoleStoreTests {
         defer { store.setHosts([]) }
         store.setHosts([tui, core])
 
-        #expect(store.capabilities(for: tui.id) == HostCapabilities(
+        var expectedTUI = HostCapabilities(
             startsAgents: true, startsTerminals: true, renameAgent: true, renamesWorkspaces: true, worktrees: true, uploads: true,
             composerSend: true, chat: true, tabNames: true, closeTab: true,
-            syncLayoutFromPlugin: true, copiesPaneID: true, movesPanes: true))
+            syncLayoutFromPlugin: true, copiesPaneID: true, movesPanes: true)
+        expectedTUI.renamesConversationTitles = true
+        #expect(store.capabilities(for: tui.id) == expectedTUI)
         #expect(store.capabilities(for: tui.id).renameWorkspace(id: "w1"))
-        // Nothing is known of this core Host's platform before its first attempt.
-        #expect(store.capabilities(for: core.id) == HostCapabilities(
-            startsAgents: false, startsTerminals: false, renameAgent: false, renamesWorkspaces: false, worktrees: false, uploads: false,
+        var expectedCore = HostCapabilities(
+            startsAgents: false, startsTerminals: false, renameAgent: true, renamesWorkspaces: false, worktrees: false, uploads: false,
             composerSend: false, chat: false, tabNames: false, closeTab: true,
-            syncLayoutFromPlugin: false, takeOver: false, composerStop: false))
+            syncLayoutFromPlugin: false, takeOver: false, composerStop: false,
+            copiesPaneID: true, movesPanes: true)
+        expectedCore.renamesConversationTitles = true
+        #expect(store.capabilities(for: core.id) == expectedCore)
         #expect(!store.capabilities(for: core.id).renameWorkspace(id: "w1"))
     }
 
