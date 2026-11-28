@@ -4550,7 +4550,7 @@ extension HeelerSSHTransport: HostHelperHost {
     func runHostHelperScript(_ script: HostHelperScript) async throws -> GitExecResult {
         // A Usage read searches for nothing, and a screen is waiting on it.
         switch script.step {
-        case .usageQuery, .tmuxUsageQuery:
+        case .usageQuery, .tmuxUsageQuery, .rexUsageQuery:
             return try await runBoundedScript(
                 Data(script.text.utf8), feature: String(localized: "Usage"), deadline: .seconds(10), remoteSeconds: 8,
                 timeoutMarkerPrefix: "__HEELER_USAGE_TIMEOUT_", timedOut: .hostFileTimedOut)
