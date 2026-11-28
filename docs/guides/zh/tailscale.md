@@ -230,7 +230,7 @@ rm -rf "$HOME/.local/share/heeler-tailscale"
 | **Choose from Tailnet…** 里找不到 Mac | 确认两端登录的是同一个 tailnet 且均已获批，或直接在 **Address** 中手动输入 Mac 的 Tailscale IP。 |
 | SSH 连接超时 | 确认 Mac 未休眠且在线，并检查访问规则是否允许访问 22 端口。 |
 | SSH 登录失败 | 请使用 Mac 系统的密钥或账户密码，不要填 Tailscale 账号密码。 |
-| SSH 正常但 herdr 检查失败 | 按[准备 Host](overlay-networks.md#准备-host)重新检查 herdr 状态。 |
+| SSH 正常但 Herdr 检查失败 | 按[准备 Host](overlay-networks.md#准备-host)重新检查 Herdr 状态。 |
 | 显示 **Not signed in** 或 **Signed out** | 在网络列表行上轻点 **Sign In**，或点进该网络后轻点 **Sign In with Browser**。 |
 | 免 VPN 模式：终端 B 无法连接 Tailscale，或显示了另一台机器 | 确保终端 A 仍在运行，或检查 LaunchAgent，并使用教程中指定的 socket 路径。 |
 | 免 VPN 模式：Mac 在线但 SSH 超时 | 确认在 Mac 上运行 `nc -vz 127.0.0.1 22` 成功，且访问规则允许 Heeler 访问该 Mac 的 `tcp:22`。 |

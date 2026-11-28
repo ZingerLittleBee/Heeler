@@ -125,7 +125,7 @@ struct RenameStoreTests {
         #expect(
             store.state
                 == .failed(
-                    "herdr rejected the rename: agent name must start with a lowercase letter"))
+                    "Herdr rejected the rename: agent name must start with a lowercase letter"))
     }
 
     @Test func disconnectedHostMapsToAFriendlyMessage() async {

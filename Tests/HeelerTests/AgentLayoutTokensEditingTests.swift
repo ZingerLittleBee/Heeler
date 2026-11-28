@@ -252,10 +252,10 @@ struct AgentLayoutTokensEditingTests {
         #expect(!AgentRowToken.herdrBuiltins.contains(.stateIcon))
         #expect(
             AgentLayoutTokensEditing.navigationSubtitle(hostName: "Studio Mac", rowIndex: 0)
-                == "Studio Mac · herdr row")
+                == "Studio Mac · Herdr row")
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", rowIndex: 2) == "Heeler row")
         #expect(AgentLayoutTokensEditing.navigationSubtitle(hostName: "", rowIndex: 3).isEmpty)
-        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0).contains("herdr"))
+        #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0).contains("Herdr"))
         #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 0).contains("Heeler fields are welcome"))
         #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 2).contains("Heeler's row"))
         #expect(AgentLayoutTokensEditing.addFieldFooter(rowIndex: 3).isEmpty)

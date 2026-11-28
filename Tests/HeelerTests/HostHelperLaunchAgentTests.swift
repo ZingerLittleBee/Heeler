@@ -842,7 +842,7 @@ struct HostHelperKeychainWordingTests {
         let message = AgentUsageLimitsView.unavailableMessage(program.usageLimits, program: "claude")
         #expect(message == "Claude Code’s Usage Limits need your own login on this Mac. "
             + "The Host Helper and SSH cannot reach its login keychain.")
-        #expect(!message.contains("herdr"))
+        #expect(!message.contains("Herdr"))
         let account = try #require(program.accounts?.first?.usageLimits)
         #expect(AgentUsageLimitsView.unavailableMessage(account, program: "claude") == message)
     }
@@ -856,8 +856,8 @@ struct HostHelperKeychainWordingTests {
     @Test func aHerdrTuiHostKeepsItsWords() throws {
         let report = try AgentUsageProbe.parse(stdout: try helperAnswer(), nonce: "n")
         let program = try #require(report.programs?.first)
-        #expect(AgentUsageLimitsView.unavailableMessage(program.usageLimits, program: "claude").contains("Start herdr"))
+        #expect(AgentUsageLimitsView.unavailableMessage(program.usageLimits, program: "claude").contains("Start Herdr"))
         let account = try #require(program.accounts?.first?.usageLimits)
-        #expect(AgentUsageLimitsView.unavailableMessage(account, program: "claude").contains("Start herdr"))
+        #expect(AgentUsageLimitsView.unavailableMessage(account, program: "claude").contains("Start Herdr"))
     }
 }

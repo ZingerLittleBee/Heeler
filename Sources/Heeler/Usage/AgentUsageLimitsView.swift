@@ -256,7 +256,7 @@ struct AgentUsageLimitsView: View {
         case "singleSignIn":
             return String(localized: "\(programName) signs in once per Host; Usage Limits are shown on the Default Account.")
         case "keychainUnavailable":
-            return String(localized: "\(programName) could not use this Mac’s keychain. Start herdr from a terminal on the Mac, then refresh.")
+            return String(localized: "\(programName) could not use this Mac’s keychain. Start Herdr from a terminal on the Mac, then refresh.")
         case AgentUsageReport.Program.UsageLimits.keychainNeedsUserLogin:
             return String(localized: "\(programName)’s Usage Limits need your own login on this Mac. The Host Helper and SSH cannot reach its login keychain.")
         default: return String(localized: "Usage Limits could not be read. Try refreshing.")

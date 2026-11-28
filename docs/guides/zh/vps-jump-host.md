@@ -2,7 +2,7 @@
 
 # VPS Jump Host 与反向隧道部署参考
 
-当运行 herdr 的 Mac 位于 NAT 之后且没有固定公网地址时，推荐使用本指南介绍的方案从 Heeler 建立连接：以一台公网 VPS 作为受限的 SSH Jump Host（跳板机），由 Mac 主动向 VPS 发起反向 SSH 隧道，并将转发端口仅绑定在 VPS 的本地回环接口（Loopback）上。
+当运行 Herdr 的 Mac 位于 NAT 之后且没有固定公网地址时，推荐使用本指南介绍的方案从 Heeler 建立连接：以一台公网 VPS 作为受限的 SSH Jump Host（跳板机），由 Mac 主动向 VPS 发起反向 SSH 隧道，并将转发端口仅绑定在 VPS 的本地回环接口（Loopback）上。
 
 注意，这不是公网端口映射，绝不能将 Mac 的 SSH 端口直接暴露为 VPS 的公网监听端口。
 
@@ -43,7 +43,7 @@ VPS 127.0.0.1:2222 -> reverse SSH channel -> Mac 127.0.0.1:22
 1. Heeler 使用自己的 Device Key 向 VPS Jump Host 完成认证。
 2. Jump Host 仅打开到 `127.0.0.1:2222` 的转发通道。
 3. Heeler 通过该转发字节流与 Mac 进行第二次 SSH 握手。
-4. 通过 Mac 认证后，应用经由 `direct-streamlocal` 通道访问 herdr 的 Unix 套接字，并通过 SSH PTY 打开 Attach 终端。
+4. 通过 Mac 认证后，应用经由 `direct-streamlocal` 通道访问 Herdr 的 Unix 套接字，并通过 SSH PTY 打开 Attach 终端。
 
 虽然外层 SSH 连接与 Mac 到 VPS 的隧道都在 VPS 上终结，但隧道内承载的载荷是另一条端到端加密的 SSH 连接。只要应用正确校验了 Mac 的主机密钥，VPS 最多只能看到连接元数据或中断连接，无法被动窃听 iOS 与 Mac 之间的内层会话内容。
 
@@ -103,7 +103,7 @@ Heeler 会分别独立校验 Jump Host 和 Host 的主机密钥。在应用内�
 - 具备 VPS 的管理员 SSH 或控制台访问权限。
 - 已为目标 Mac 账户开启 macOS“远程登录”。
 - 在任何一端禁用密码认证前，已测试通过公钥登录路径。
-- Mac 上已安装 herdr，且 SSH 服务允许 `stream-local` 转发（详见传输层架构文档）。
+- Mac 上已安装 Herdr，且 SSH 服务允许 `stream-local` 转发（详见传输层架构文档）。
 
 下文示例使用以下参数：
 
@@ -156,7 +156,7 @@ ssh-keygen -lf ~/.ssh/work-vps-tunnel.pub
 no-agent-forwarding,no-X11-forwarding,no-user-rc DEVICE_PUBLIC_KEY
 ```
 
-请勿添加 `no-port-forwarding`，因为 OpenSSH 会将其同时作用于 Heeler 连接 herdr API 套接字所用的 `direct-streamlocal` 通道。
+请勿添加 `no-port-forwarding`，因为 OpenSSH 会将其同时作用于 Heeler 连接 Herdr API 套接字所用的 `direct-streamlocal` 通道。
 
 将该行追加到 `~/.ssh/authorized_keys`，并确保权限正确：
 

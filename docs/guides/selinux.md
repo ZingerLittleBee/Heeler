@@ -1,19 +1,19 @@
 # SELinux on a Fedora or RHEL Host
 
 On Fedora, RHEL, CentOS Stream, AlmaLinux, and Rocky Linux, SELinux can block SSH
-from opening herdr's socket. Heeler then reports that it cannot open the socket
-even though herdr is running. This guide shows how to confirm the denial and
+from opening Herdr's socket. Heeler then reports that it cannot open the socket
+even though Herdr is running. This guide shows how to confirm the denial and
 allow it.
 
 ## Symptom
 
-The connection checks fail at **herdr server running** with:
+The connection checks fail at **Herdr server running** with:
 
-> Could not open the herdr socket at /home/&lt;user&gt;/.config/herdr/herdr.sock.
-> Start herdr on the Host, or enable SSH stream-local forwarding and run the
+> Could not open the Herdr socket at /home/&lt;user&gt;/.config/herdr/herdr.sock.
+> Start Herdr on the Host, or enable SSH stream-local forwarding and run the
 > checks again.
 
-The hint names two causes that are not the problem here: herdr is running, and
+The hint names two causes that are not the problem here: Herdr is running, and
 the OpenSSH default already allows stream-local forwarding.
 
 ## Confirm it is SELinux
@@ -50,8 +50,8 @@ your own log name it, and see [Allow it](#allow-it).
 
 ## Why this happens
 
-Heeler does not run a shell command to reach herdr. It asks SSH for a
-**direct-streamlocal** channel, so `sshd` itself calls `connect()` on herdr's
+Heeler does not run a shell command to reach Herdr. It asks SSH for a
+**direct-streamlocal** channel, so `sshd` itself calls `connect()` on Herdr's
 socket: `~/.config/herdr/herdr.sock` for the default session, or
 `~/.config/herdr/sessions/<name>/herdr.sock` for a named one.
 
@@ -131,9 +131,9 @@ affected.
 ## Scope
 
 - The rule covers `config_home_t`, the label SELinux gives to `~/.config`. A
-  herdr socket moved somewhere else would need its own label and rule.
+  Herdr socket moved somewhere else would need its own label and rule.
 - macOS Hosts, and Linux Hosts without SELinux (Debian, Ubuntu with AppArmor,
   or Fedora with SELinux disabled), need no change. `getenforce` printing
   `Disabled` or `Permissive` means this guide does not apply.
-- The module survives reboots and herdr updates. Reinstall it after a
+- The module survives reboots and Herdr updates. Reinstall it after a
   distribution upgrade only if the denial returns.

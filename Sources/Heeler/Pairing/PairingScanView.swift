@@ -239,8 +239,8 @@ private struct PairingCeremonyView: View {
                 // A version 2 code names a launcher the app will run on the
                 // Host; show it, and the socket, while pairing.
                 if let endpoint = code.endpoint {
-                    LabeledContent("herdr Socket", value: endpoint.socketPath)
-                    LabeledContent("herdr Launcher", value: endpoint.executablePath)
+                    LabeledContent("Herdr Socket", value: endpoint.socketPath)
+                    LabeledContent("Herdr Launcher", value: endpoint.executablePath)
                 }
             }
 

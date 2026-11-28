@@ -33,7 +33,7 @@ struct ConsoleDetailPresentationTests {
         initialDelay: .milliseconds(10), multiplier: 2, maxDelay: .milliseconds(50))
 
     private static let socketGuidance =
-        "herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
+        "Herdr is not running on this Host. If it is running, check SSH stream-local forwarding."
 
     private static let paneGoneMessage =
         "The Agent in this pane has exited, or the pane was closed. It shows here again if an Agent starts in the pane."
@@ -209,7 +209,7 @@ struct ConsoleDetailPresentationTests {
         #expect(presentation.systemImage == "rectangle.on.rectangle.slash")
         #expect(presentation.message == Self.paneGoneMessage)
         // A healthy Host must not be described as a Host problem.
-        #expect(!presentation.message.contains("herdr"))
+        #expect(!presentation.message.contains("Herdr"))
     }
 
     /// A resumed Host publishes `.connected` before its replacement snapshot

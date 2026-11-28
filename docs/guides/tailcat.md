@@ -1,12 +1,12 @@
 # Connect Heeler through tailcat
 
-Use this guide to reach the Mac that runs herdr through [tailcat](https://github.com/tailscale/tailcat): a tunnel to one machine, with no account and no network to manage. The Mac runs `tailcat serve` and prints an address; Heeler connects with that address, so the phone needs no other app or VPN.
+Use this guide to reach the Mac that runs Herdr through [tailcat](https://github.com/tailscale/tailcat): a tunnel to one machine, with no account and no network to manage. The Mac runs `tailcat serve` and prints an address; Heeler connects with that address, so the phone needs no other app or VPN.
 
 You need a Heeler version that offers **tailcat** in **Settings > Overlay Networks > Add Network**.
 
 ## Before you start
 
-- On the Mac, finish [Prepare the Host](overlay-networks.md#prepare-the-host): Remote Login, herdr, a sign-in method, and the Mac's SSH fingerprint.
+- On the Mac, finish [Prepare the Host](overlay-networks.md#prepare-the-host): Remote Login, Herdr, a sign-in method, and the Mac's SSH fingerprint.
 - You need [Homebrew](https://brew.sh/) on the Mac, or another way to [install tailcat](https://github.com/tailscale/tailcat/blob/main/INSTALL.md).
 - Keep the Mac awake during setup.
 
@@ -33,7 +33,7 @@ Use your Mac's SSH port if it is not `22`. The command prints the address again 
 # 🐈 Server listening with saved key "default": tc…
 ```
 
-The tunnel exists only while this command runs, so leave it in a terminal that stays open, such as a herdr pane. Copy the whole address.
+The tunnel exists only while this command runs, so leave it in a terminal that stays open, such as a Herdr pane. Copy the whole address.
 
 **It worked if** the line says `saved key "default"`. If it says `new address`, step 1 did not save a key.
 

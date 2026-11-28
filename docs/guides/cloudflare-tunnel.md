@@ -3,7 +3,7 @@
 Cloudflare Tunnel connects the Mac to Cloudflare with an outbound-only
 connection, so your router opens no port. A Cloudflare client app on the phone
 then carries Heeler's SSH session over that connection. The Mac still runs
-Remote Login and herdr, and the Host is set up exactly as in the other guides.
+Remote Login and Herdr, and the Host is set up exactly as in the other guides.
 
 This is a different route from [Overlay Networks](overlay-networks.md): you add
 nothing under **Settings > Overlay Networks**, and Heeler gains no new network.
@@ -26,7 +26,7 @@ system VPN and keep working next to it.
 - A Cloudflare account with Zero Trust set up, giving you a team name. The
   personal free plan is usually enough; the dashboard says if a feature needs
   another plan.
-- The Mac with [Remote Login and herdr prepared](overlay-networks.md#prepare-the-host),
+- The Mac with [Remote Login and Herdr prepared](overlay-networks.md#prepare-the-host),
   and its private address, such as `192.168.1.10`. That address is what Heeler
   will connect to.
 - A current Heeler with Host Routes, and the phone or iPad you will connect from.
@@ -100,7 +100,7 @@ narrow it when it isn't, as the last troubleshooting row describes.
 ## 4. Add the Mac as a Host
 
 Follow [Prepare the Host](overlay-networks.md#prepare-the-host) for the Mac's
-user, sign-in method, and herdr session, then add the Host with these values:
+user, sign-in method, and Herdr session, then add the Host with these values:
 
 1. Open **Hosts** and tap **+**. Fill in the address from step 2. Under **More
    Options**, **Network** stays **Direct**, the port `22`, and **Jump Host**
@@ -141,7 +141,7 @@ connects first. See [multiple routes](host-routes.md).
 | Settings were changed, nothing changed on the phone | Wait ten minutes, then disconnect and reconnect the VPN app. |
 | **Can't Connect** with a timeout, on a phone that is on the Mac's own LAN | iOS may have denied local network access to Heeler. Check **Settings > Privacy & Security > Local Network** on the phone. |
 | SSH login fails | Check the username, Remote Login access, and the key or password. |
-| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account, or the Server that is on is not the session herdr runs. |
+| SSH works, Herdr checks fail | Read the failing check. Usually Herdr isn't installed for this account, or the Server that is on is not the session Herdr runs. |
 | Another device on the LAN can reach services it shouldn't | A CIDR route exposes every address inside it, and by default every enrolled device may use it. Narrow the route to the Mac's `/32`, and add Gateway network policies under **Traffic policies** to allow only the destinations you want. |
 
 ## Appendix: use a VPS instead of a VPN app

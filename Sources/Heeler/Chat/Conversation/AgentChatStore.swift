@@ -2481,7 +2481,7 @@ final class AgentChatStore {
         let name = program.chatName
         if followed != shown {
             return String(
-                localized: "herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again.")
+                localized: "Herdr now reports another \(name) conversation for this Agent. Chat is switching to it; check it, then send again.")
         }
         if program == .droid {
             guard fresh.kind == program.rawValue, let shown,

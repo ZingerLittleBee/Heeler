@@ -2,7 +2,7 @@
 
 # 通过 VPS 配置远程访问
 
-当运行 herdr 的 Mac 位于 NAT 之后、Heeler 无法直接连接时，请按本指南配置反向隧道访问。
+当运行 Herdr 的 Mac 位于 NAT 之后、Heeler 无法直接连接时，请按本指南配置反向隧道访问。
 
 配置完成后的连接路径如下：
 
@@ -19,7 +19,7 @@ VPS 仅对外暴露常规的 SSH 服务端口；`2222` 端口始终绑定在 VPS
 你需要：
 
 - 一台安装了 Heeler 的 iPhone；
-- 一台安装了 herdr 的 Mac；
+- 一台安装了 Herdr 的 Mac；
 - 一台处于维护周期内的 Debian 或 Ubuntu VPS，并具备管理员权限；
 - VPS 的公网 IP 地址；
 - VPS 的 SSH 服务端口（通常为 `22`）；
@@ -141,7 +141,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 这些选项保留了 Heeler 所需的 PTY、命令执行与 SFTP 能力，同时禁用了 Agent 转发与 X11 转发。
 
-注意不要在此处添加 `no-port-forwarding`。OpenSSH 会将该限制同时作用于 TCP 转发和 Unix 域套接字转发（stream-local），而 Heeler 需要通过 `direct-streamlocal` 通道连接 herdr API 套接字（ADR 0011）。如果加上该选项，即使 SSH 认证成功，预检也会在连接 herdr 套接字时失败。况且该密钥本就可在 Mac 上执行命令，禁用端口转发并不能带来额外防护。
+注意不要在此处添加 `no-port-forwarding`。OpenSSH 会将该限制同时作用于 TCP 转发和 Unix 域套接字转发（stream-local），而 Heeler 需要通过 `direct-streamlocal` 通道连接 Herdr API 套接字（ADR 0011）。如果加上该选项，即使 SSH 认证成功，预检也会在连接 Herdr 套接字时失败。况且该密钥本就可在 Mac 上执行命令，禁用端口转发并不能带来额外防护。
 
 检查点：
 
@@ -540,7 +540,7 @@ Heeler 会先后分两次独立询问主机密钥确认：
 
 - Jump Host 认证成功；
 - Mac 认证成功；
-- herdr 套接字可达；
+- Herdr 套接字可达；
 - 协议版本兼容。
 
 最后通过 Attach 打开一个 Agent，完成功能验收。
@@ -623,7 +623,7 @@ PubkeyAuthentication yes
 | Mac 提示输入密码 | VPS -> Mac | Mac 上未添加该 Device Key，或填错了 Mac 用户名 |
 | Mac 主机密钥发生变化 | 内层 SSH 信任 | 先在 Mac 本机核对主机密钥指纹，再决定是否接受 |
 | VPS 主机密钥发生变化 | 外层 SSH 信任 | 先通过云厂商控制台核对指纹，再决定是否接受 |
-| 应用能连上 Mac 但连不上 herdr | Mac 应用层 | 检查 herdr 运行状态、套接字路径以及 `AllowStreamLocalForwarding` |
+| 应用能连上 Mac 但连不上 Herdr | Mac 应用层 | 检查 Herdr 运行状态、套接字路径以及 `AllowStreamLocalForwarding` |
 
 ## 自动化配置更多桌面客户端
 

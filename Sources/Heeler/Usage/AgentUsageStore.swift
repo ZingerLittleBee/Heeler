@@ -399,7 +399,7 @@ final class AgentUsageStore {
             state = report.runtime == "missing" ? .runtimeMissing : .available(report)
         } else {
             state = .requirement(String(localized:
-                "herdr did not report where the Heeler plugin is installed. Update herdr on this Host to read Usage."))
+                "Herdr did not report where the Heeler plugin is installed. Update Herdr on this Host to read Usage."))
         }
         return Reading(state: state, pluginVersion: version)
     }

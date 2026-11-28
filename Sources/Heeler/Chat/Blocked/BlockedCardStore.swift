@@ -1605,9 +1605,9 @@ final class BlockedCardStore {
             // period, in the note's language, ends it.
             return Self.endsSentence(latestFailure)
                 ? String(
-                    localized: "OpenCode stopped with an error: \(latestFailure) herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
+                    localized: "OpenCode stopped with an error: \(latestFailure) Herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
                 : String(
-                    localized: "OpenCode stopped with an error: \(latestFailure). herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
+                    localized: "OpenCode stopped with an error: \(latestFailure). Herdr holds Chat's messages while it reports Blocked, so continue in the terminal.")
         }
         return String(localized: "OpenCode reports Blocked, but its screen shows no question. This usually means the model request failed. Check the terminal.")
     }

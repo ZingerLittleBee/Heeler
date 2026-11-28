@@ -2,13 +2,13 @@
 
 Use your coding Agent in Heeler's native Chat on iPhone or iPad. Read conversations and reply over SSH while your Agents keep running on the Host.
 
-You need a Host running herdr, [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, or Amp). Droid and local Devin CLI Chat support all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
+You need a Host running Herdr, [Herdr Core](herdr-core.md#chat), [Tmux](tmux.md#chat), or [Rex](rex.md#chat) (see its supported programs), and a supported coding Agent running there (Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, or Amp). Droid and local Devin CLI Chat support all four backends on macOS and Linux. The available controls depend on the foreground evidence each backend provides.
 
 ## Set up the Host
 
 **Run on: Mac or Linux**
 
-Chat needs herdr's integration for each program you use. Check them:
+Chat needs Herdr's integration for each program you use. Check them:
 
 ```sh
 herdr integration status
@@ -28,9 +28,9 @@ Start Codex with `--no-daemon`, and continue a conversation with `codex --no-dae
 codex --no-daemon
 ```
 
-Codex's shared background server can't tell herdr which terminal a conversation is in, so Chat could keep waiting or show another Agent's conversation. Turning off `daemon_auto_start` in Codex's settings isn't enough.
+Codex's shared background server can't tell Herdr which terminal a conversation is in, so Chat could keep waiting or show another Agent's conversation. Turning off `daemon_auto_start` in Codex's settings isn't enough.
 
-Until Codex fixes this, add an alias to your shell's startup file (such as `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`). It also covers Agents that herdr brings back after a restart:
+Until Codex fixes this, add an alias to your shell's startup file (such as `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`). It also covers Agents that Herdr brings back after a restart:
 
 ```sh
 alias codex='codex --no-daemon'
@@ -40,7 +40,7 @@ With the alias, run plain `codex` and `codex resume`: Codex refuses `--no-daemon
 
 For Antigravity CLI on a macOS or Linux Rex Host, open **Terminal** for the first message. **Chat** becomes available when Heeler can match the foreground to its official conversation. Use Chat for history, messages, and attachments. Open the same Agent’s Terminal for approval dialogs, commands and Stop.
 
-On macOS and Linux, Amp Chat reads and sends messages in the thread selected in that terminal through Heeler’s Amp plugin on Herdr TUI, herdr-core, tmux, and Rex Hosts. Use the terminal for attachments, commands, and approvals. See [Amp setup on Rex](rex.md#chat).
+On macOS and Linux, Amp Chat reads and sends messages in the thread selected in that terminal through Heeler’s Amp plugin on Herdr TUI, Herdr Core, Tmux, and Rex Hosts. Use the terminal for attachments, commands, and approvals. See [Amp setup on Rex](rex.md#chat).
 
 ## Open Chat
 
@@ -69,7 +69,7 @@ Type in **Message Agent** and tap **Send**. Chat types the message into the Agen
 - **While the Agent works**, Claude Code, Codex, Pi, and Grok Build take your message right away. Oh My Pi, OpenCode, and Antigravity CLI need the turn to finish first.
 - **Stop.** While the Agent works and your message is empty, **Send** becomes **Stop**. Tap it to interrupt the turn.
 - **Commands.** Type `/` to pick `/compact` or one of the Agent's skills. Other commands, such as `/model`, go in the terminal.
-- **Images and files.** On Herdr TUI, herdr-core, tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
+- **Images and files.** On Herdr TUI, Herdr Core, Tmux and Rex Hosts, tap **+**, then **Add Image**, **Paste Image** or **Add File**. Paste Image takes the image on your clipboard, as does pasting one into the message. Heeler uploads it to the Host and adds its path to your message.
 
 ### Devin CLI
 
@@ -86,13 +86,13 @@ The [Devin acceptance matrix](../agents/devin-chat-validation.md) records the in
 
 ### Droid
 
-On macOS and Linux, **New Agent** on herdr-core, tmux and Rex supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid on herdr-core, tmux, or Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses its built-in Droid integration. If the terminal is ready and the UUID is missing, run `herdr integration status` on that Host and check the Droid entry. Heeler also checks Factory’s foreground process and session lifecycle on the Host. With herdr 0.9.5 the reported ID can survive a desktop session switch. If the foreground UUID cannot be verified, open that Agent’s terminal. Enabling a hook in settings takes effect when Droid starts or resumes.
+On macOS and Linux, **New Agent** on Herdr Core, Tmux and Rex supplies a hook through Droid’s process-only `--settings`. If you supply your own `--settings`, Heeler keeps it. For a manually started Droid on Herdr Core, Tmux, or Rex, choose **Install Droid Hook…** in Chat, then restart or resume Droid in its terminal. Installing requires Python 3 on the Host. Heeler adds its handlers to `~/.factory/settings.json` alongside existing hooks. The installation sheet also offers **Remove Hook from Droid Settings**. Herdr TUI uses its built-in Droid integration. If the terminal is ready and the UUID is missing, run `herdr integration status` on that Host and check the Droid entry. Heeler also checks Factory’s foreground process and session lifecycle on the Host. With Herdr 0.9.5 the reported ID can survive a desktop session switch. If the foreground UUID cannot be verified, open that Agent’s terminal. Enabling a hook in settings takes effect when Droid starts or resumes.
 
 Droid Chat shows the foreground session UUID above its timeline. When a running session asks to change directories, declining the folder keeps the current session open. A verified folder trust card shows the Host, full directory, and both of Droid’s choices before there is a session. On a Rex block whose status is Unknown, finish trust in that block’s terminal. Factory sign-in also happens in the terminal.
 
 Review the command, file changes, permission scope, or proposal in the card before choosing a response. A shortened command is verified against Droid’s approval details before the key goes to the terminal. Chat shows the complete patch for a single literal file passed to `git apply`, including quoted filenames with spaces. Open the Agent’s terminal for compound patch commands, multiple operands, or an unreadable patch. Chat rereads the displayed file before answering. A two-question AskUser form has a review step. A single question submits when selected. AskUser answers and Spec feedback have separate fields. If the desktop already answered, wait for the next card. An unrecognized request or an unreadable patch has a terminal entry.
 
-Send while Droid’s message box is empty. After waiting for the terminal writer, Chat checks the displayed session and its input again. On herdr-core, tmux, and Rex it also checks its pasted text before Enter. A desktop draft, a menu, Bash mode, a running turn, or a different foreground session holds Send. Return to the original UUID to recover its draft. A lost acknowledgement stays in the timeline for reconciliation. **Stop** rechecks the displayed session, its active transcript turn and Droid’s interrupt prompt before sending Esc. Use the terminal for steering, queue editing, selectors, side chats and Mission Control.
+Send while Droid’s message box is empty. After waiting for the terminal writer, Chat checks the displayed session and its input again. On Herdr Core, Tmux, and Rex it also checks its pasted text before Enter. A desktop draft, a menu, Bash mode, a running turn, or a different foreground session holds Send. Return to the original UUID to recover its draft. A lost acknowledgement stays in the timeline for reconciliation. **Stop** rechecks the displayed session, its active transcript turn and Droid’s interrupt prompt before sending Esc. Use the terminal for steering, queue editing, selectors, side chats and Mission Control.
 
 Open the task bar for background commands and sub-Droids. A parent reply can arrive while a task is running. A recorded completion carries its own output. A running command with a verified PID and complete command line can be inspected and stopped from its details. When a narrow terminal also clips the command in the details, Chat returns to the previous screen and offers the terminal. When Droid has supplied only its last report, Chat shows that report. An interactive `/fork` leaves the original conversation open. Resume the copy in the terminal to switch Chat to its UUID.
 
@@ -123,4 +123,4 @@ Answer in the terminal when Codex asks "Implement this plan?", or to type your o
 
 Heeler keeps recent conversations on your device, so you can still read them when the Host can't be reached. Their Agents stay in **Agents** with a **Saved** badge. Tool output and sending come back once the Host connects.
 
-Last checked on 2026-10-25 against herdr 0.9.5.
+Last checked on 2026-10-25 against Herdr 0.9.5.

@@ -1217,7 +1217,7 @@ final class HostConsoleProjection: ConsoleHostProjection {
         case TransportError.timedOut:
             String(localized: "The Host did not answer while syncing. Retrying…")
         case let apiError as HerdrAPIError:
-            String(localized: "herdr rejected the Console sync: \(apiError.message). Retrying…")
+            String(localized: "Herdr rejected the Console sync: \(apiError.message). Retrying…")
         default:
             String(localized: "Could not sync this Host. Retrying…")
         }

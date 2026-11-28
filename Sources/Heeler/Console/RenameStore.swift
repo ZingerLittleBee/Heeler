@@ -146,7 +146,7 @@ final class RenameStore {
             refused.reason.map { String(localized: "The desktop app refused the rename: \($0)") }
                 ?? String(localized: "The desktop app could not be reached.")
         case let apiError as HerdrAPIError:
-            String(localized: "herdr rejected the rename: \(apiError.message)")
+            String(localized: "Herdr rejected the rename: \(apiError.message)")
         default:
             String(localized: "The rename failed: \(String(describing: error))")
         }

@@ -1,7 +1,7 @@
 <!-- Translated from docs/guides/rex.md at 03606d07 -->
 # 连接 Rex
 
-通过 SSH 将 Heeler 连接到 Mac、Linux 或 Windows Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[herdr-core](herdr-core.md) 和 [tmux](tmux.md) 并列。
+通过 SSH 将 Heeler 连接到 Mac、Linux 或 Windows Host 上已在运行的 Rex 服务端，在 Rex 继续运行这些终端的同时，在 iPhone 或 iPad 上打开它们。Host 上的 Rex 服务端在 Heeler 中是该 Host 的一个 Server，与 Herdr TUI、[Herdr Core](herdr-core.md) 和 [Tmux](tmux.md) 并列。
 
 > [!NOTE]
 > Heeler 支持 macOS、Linux 和 Windows 上的 Rex API revision 12 到 19（基于 Rex 0.1.0-preview.14 开发，并在 0.1.0-preview.23 上核对过），可以打开 Rex 中已有的终端和 Agent，并能新建 Shell：请参阅[尚未支持的功能](#尚未支持的功能)与[已知限制](#已知限制)。
@@ -37,7 +37,7 @@ Heeler 会通过你的登录 shell 在不启动任何服务的情况下查看一
 | --- | --- |
 | **Rex** 显示 **Running** | 保持勾选 **Rex**，然后轻点 **Add Host with 1 Server**。 |
 | **Rex** 显示 **Not running** | Rex 已安装但没有运行，因此 **Rex** 默认不勾选。勾选 **Rex**，等你启动 Rex 后它就会连接。也可以先不勾选它添加 Host，然后启动 Rex，打开该 Host，轻点 **Scan Again**，再开启 **Rex**。 |
-| 同时检测到 Rex 与 Herdr TUI、herdr-core 或 tmux | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
+| 同时检测到 Rex 与 Herdr TUI、Herdr Core 或 Tmux | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
 | 没有 **Rex** | Rex 没有安装。仍然添加该 Host，安装并启动 Rex，打开该 Host，轻点 **Scan Again**，然后开启 **Rex**。 |
 
 每个 Server 在 Host 页面上都有一个开关。**Rex** 开启后，轻点它可打开它自己的页面，其中有它的检查项。连接属于 Host，显示在 **Routes** 下。**Add by Name…** 不提供 Rex：一个 Host 唯一的 Rex Server 没有需要输入的名称，而且只要装了 Rex，Heeler 就会列出它。
@@ -150,7 +150,7 @@ Pi 和 Oh My Pi 通过 Heeler 的扩展告诉 Chat 自己正处于哪个对话�
 **成功的标志：** Agent 启动几秒后，Chat 自行显示它的对话。
 
 - **仍然显示 Can't Tell the Conversation：** 如果提示说该 Agent 尚未加载扩展，说明它是在你添加扩展之前启动的，或者启动时带了 `--no-extensions`。请在启用扩展的情况下重新启动它。
-- **扩展做了什么：** Pi 和 Oh My Pi 会为 Host 上的每个会话加载它。在 Rex 终端中，它会在扩展文件夹旁的 `heeler-session` 文件夹里为每个正在运行的 Agent 保留一个记录对话的小文件，并在 Agent 退出时删除。在 Rex、tmux 和 herdr-core 之外，它什么也不做。
+- **扩展做了什么：** Pi 和 Oh My Pi 会为 Host 上的每个会话加载它。在 Rex 终端中，它会在扩展文件夹旁的 `heeler-session` 文件夹里为每个正在运行的 Agent 保留一个记录对话的小文件，并在 Agent 退出时删除。在 Rex、Tmux 和 Herdr Core 之外，它什么也不做。
 - **移除扩展：** 从扩展文件夹中删除 `heeler-session.js`，并删除它旁边的 `heeler-session` 文件夹。
 
 ## 尚未支持的功能

@@ -96,7 +96,7 @@ final class MovePaneStore {
                     "The Host did not answer in time. The move may still have happened, so check the list before trying again."
             )
         case let apiError as HerdrAPIError:
-            String(localized: "herdr rejected the move: \(apiError.message)")
+            String(localized: "Herdr rejected the move: \(apiError.message)")
         default:
             TransportError.herdrCoreLinkMessage(for: error)
                 ?? String(localized: "The move failed: \(String(describing: error))")

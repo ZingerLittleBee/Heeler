@@ -37,7 +37,7 @@ export const steps = [
     label: 'Usage',
     lead: 'See the limit',
     dim: 'before you hit it.',
-    body: 'Claude Code, Codex, and Antigravity CLI Usage Limits with reset times, 30-day tokens, and estimated API cost on macOS and Linux Hosts (herdr, herdr-core, tmux), plus Home and Lock Screen widgets.',
+    body: 'Claude Code, Codex, and Antigravity CLI Usage Limits with reset times, 30-day tokens, and estimated API cost on macOS and Linux Hosts (Herdr, Herdr Core, Tmux), plus Home and Lock Screen widgets.',
   },
 ] as const;
 
@@ -54,15 +54,15 @@ export const backends = [
   {
     name: 'Herdr desktop',
     body: 'Follows your spaces and tabs.',
-    runs: 'herdr-core on macOS, Linux, Windows',
-    guide: { label: 'herdr-core guide', slug: 'herdr-core' },
+    runs: 'Herdr Core on macOS, Linux, Windows',
+    guide: { label: 'Herdr Core guide', slug: 'herdr-core' },
     windows: true,
   },
   {
-    name: 'tmux',
+    name: 'Tmux',
     body: 'Sessions, windows and panes, alongside your desktop terminal.',
     runs: '3.3 or newer on macOS and Linux',
-    guide: { label: 'tmux guide', slug: 'tmux' },
+    guide: { label: 'Tmux guide', slug: 'tmux' },
     windows: false,
   },
   {
@@ -93,11 +93,11 @@ export const pairCommands = ['herdr plugin install ZingerLittleBee/Heeler --ref 
 export const faq = [
   {
     q: 'What do I need on the machine?',
-    a: 'SSH turned on, plus one of: herdr 0.7.5 or newer, the Herdr desktop app or herdr-core, tmux 3.3 or newer, or a running Rex server.',
+    a: 'SSH turned on, plus one of: Herdr 0.7.5 or newer, the Herdr desktop app or Herdr Core, Tmux 3.3 or newer, or a running Rex server.',
   },
   {
-    q: 'Do I have to switch to herdr?',
-    a: 'No. If you live in tmux, Heeler connects to your running tmux server.',
+    q: 'Do I have to switch to Herdr?',
+    a: 'No. If you live in Tmux, Heeler connects to your running Tmux server.',
   },
   {
     q: 'Does my code go through your servers?',
@@ -112,7 +112,7 @@ export const faq = [
     a: 'Yes, with Magic Keyboard shortcuts, multiple windows, and drag and drop. <a href="/ipad">See the iPad screenshots</a>.',
   },
   {
-    q: 'Is Heeler an official Claude Code, Codex, or herdr app?',
-    a: 'No. Heeler is independent and open source. It is not affiliated with Anthropic, OpenAI, or the herdr project.',
+    q: 'Is Heeler an official Claude Code, Codex, or Herdr app?',
+    a: 'No. Heeler is independent and open source. It is not affiliated with Anthropic, OpenAI, or the Herdr project.',
   },
 ];

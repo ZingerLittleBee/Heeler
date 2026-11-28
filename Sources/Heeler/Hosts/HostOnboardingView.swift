@@ -300,8 +300,8 @@ struct HostOnboardingView: View {
                 // newer than this build is usable, just not fully known.
                 Text(
                     info.exceedsGeneratedProtocol
-                        ? String(localized: "herdr \(info.version) · protocol \(info.protocolVersion) — newer than this app was built against, so features added after protocol \(HeelerSSHTransport.generatedProtocolVersion) may be unavailable.")
-                        : String(localized: "herdr \(info.version) · protocol \(info.protocolVersion)"))
+                        ? String(localized: "Herdr \(info.version) · protocol \(info.protocolVersion) — newer than this app was built against, so features added after protocol \(HeelerSSHTransport.generatedProtocolVersion) may be unavailable.")
+                        : String(localized: "Herdr \(info.version) · protocol \(info.protocolVersion)"))
             } else if store.serverKindSummary != store.host.serverKind.displayName {
                 // A core's or tmux's version, once the checks have read it.
                 Text(store.serverKindSummary)
@@ -377,8 +377,8 @@ struct HostOnboardingView: View {
     @ViewBuilder
     private var herdrEndpointRows: some View {
         if let herdrEndpoint = store.host.herdrEndpoint {
-            LabeledContent("herdr Socket", value: herdrEndpoint.socketPath)
-            LabeledContent("herdr Launcher", value: herdrEndpoint.executablePath)
+            LabeledContent("Herdr Socket", value: herdrEndpoint.socketPath)
+            LabeledContent("Herdr Launcher", value: herdrEndpoint.executablePath)
         }
     }
 

@@ -2,16 +2,16 @@
 
 Set up OpenSSH and native Herdr TUI on Windows 11 for live Agents and
 terminals in Heeler (without Chat or Pairing), including automatic startup of
-SSH and herdr.
+SSH and Herdr.
 
 > [!NOTE]
-> For native Chat on Windows (Claude Code, Grok Build, Pi, and Oh My Pi), finish [step 1](#1-enable-ssh) for OpenSSH and then follow [Native Windows in Connect herdr-core](herdr-core.md#native-windows). For Windows Rex support (with Claude Code Chat), see [Connect Rex](rex.md).
+> For native Chat on Windows (Claude Code, Grok Build, Pi, and Oh My Pi), finish [step 1](#1-enable-ssh) for OpenSSH and then follow [Native Windows in Connect Herdr Core](herdr-core.md#native-windows). For Windows Rex support (with Claude Code Chat), see [Connect Rex](rex.md).
 
 ## Before you start
 
-- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.13 or newer on your iPhone or iPad, and native herdr 0.9.3 or newer.
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.13 or newer on your iPhone or iPad, and native Herdr 0.9.3 or newer.
 - Windows 11 with administrator access.
-- Use the same Windows account for SSH login, herdr, coding agents, and the startup task.
+- Use the same Windows account for SSH login, Herdr, coding agents, and the startup task.
 - The examples use the named session `heeler-win-test`; replace it consistently if you choose another name.
 
 ## 1. Enable SSH
@@ -70,10 +70,10 @@ scope. For a VPN or Jump Host outside the local subnet, allow its trusted
 source addresses instead. See
 [Microsoft's firewall rule reference](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule).
 
-## 2. Install and start native herdr
+## 2. Install and start native Herdr
 
 Open a normal PowerShell window as the account you will use for SSH. Install
-herdr with its official Windows installer:
+Herdr with its official Windows installer:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://herdr.dev/install.ps1 | iex"
@@ -86,8 +86,8 @@ herdr --version
 herdr remote-api-bridge --check
 ```
 
-Expect herdr 0.9.3 or newer and the bridge marker `herdr-api-bridge-v1`.
-See [herdr's native Windows guide](https://herdr.dev/docs/windows-beta/).
+Expect Herdr 0.9.3 or newer and the bridge marker `herdr-api-bridge-v1`.
+See [Herdr's native Windows guide](https://herdr.dev/docs/windows-beta/).
 
 Start the named session once in a normal native Windows terminal, not one
 opened as Administrator:
@@ -98,7 +98,7 @@ herdr --session heeler-win-test
 
 This initializes a Workspace and shell pane. Start your configured coding
 agent inside that session from its project directory. You can detach the
-herdr client and reconnect later; the session remains running.
+Herdr client and reconnect later; the session remains running.
 
 In another PowerShell window, confirm the session is running:
 
@@ -123,7 +123,7 @@ In Heeler, open **Hosts**, tap **+**, and fill in the first step:
 | Field | Value |
 | --- | --- |
 | Address | The Windows address reachable from your phone |
-| User | The Windows account running herdr |
+| User | The Windows account running Herdr |
 | Port (in More Options) | `22`, unless you configured a different SSH port |
 | Authentication | `Password` |
 | Password | The Windows account password, rather than its Windows Hello PIN |
@@ -150,7 +150,7 @@ Device Key and RSA Key authentication require manual public-key
 registration. See the [key setup steps in the Windows test checklist](native-windows-testing.md#4-test-device-key-authentication)
 and [Microsoft's key-management guide](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
 
-## 4. Start herdr automatically at boot
+## 4. Start Herdr automatically at boot
 
 Use Task Scheduler to run the headless server under the same Windows
 account as SSH. Its command is:
@@ -160,7 +160,7 @@ herdr --session heeler-win-test server
 ```
 
 The `server` command is intended for supervised or service-style setups.
-See [herdr's CLI reference](https://herdr.dev/docs/cli-reference/#server).
+See [Herdr's CLI reference](https://herdr.dev/docs/cli-reference/#server).
 
 Find a full executable path and the account's home directory in a normal
 PowerShell window:
@@ -175,7 +175,7 @@ $env:USERPROFILE
 ```
 
 Use the stable path if it exists. Otherwise, use the path returned by
-`Get-Command` and update the task after upgrading herdr. Copy the paths
+`Get-Command` and update the task after upgrading Herdr. Copy the paths
 printed above into Task Scheduler, rather than the PowerShell expressions.
 
 Open **Task Scheduler as Administrator**, select **Create Task**, and use:
@@ -198,17 +198,17 @@ configuration directory. Microsoft documents the
 [task login types](https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype)
 and the [default 72-hour execution limit](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings-executiontimelimit).
 
-From herdr 0.9.4, an elevated server, one started with highest privileges or
+From Herdr 0.9.4, an elevated server, one started with highest privileges or
 from a terminal opened as Administrator, accepts only administrator
 terminals. To let normal terminals in, start it with
 `--allow-unelevated-clients` or set `[server] allow_unelevated_clients = true`
-in herdr's config.
+in Herdr's config.
 
 ### Verify the saved task
 
 First check `herdr session list --json`. If `heeler-win-test` is already
 running, wait until its agents can be stopped, then stop that session before
-testing the task. herdr rejects a second server for the same session.
+testing the task. Herdr rejects a second server for the same session.
 
 In Task Scheduler, right-click **Herdr Server** and select **Run**. Confirm
 that its status is **Running**, then run these checks in PowerShell under
@@ -219,7 +219,7 @@ Get-Service sshd | Select-Object Name, Status, StartType
 herdr --session heeler-win-test status server --json
 ```
 
-Expect `sshd` to show `Running` and `Automatic`. The herdr response should
+Expect `sshd` to show `Running` and `Automatic`. The Herdr response should
 contain `running: true` and `session: "heeler-win-test"`.
 
 The task stays **Running** while serving the session. A **Last Run Result**
@@ -241,11 +241,11 @@ after a reboot.
 A native Windows Herdr TUI Host supports manual SSH connections, session
 selection, live Agents and Terminals, and directory browsing. Pairing, Chat, Usage,
 Changes, Skills, uploads, and notification registration are currently unavailable.
-Keep herdr running before connecting; Heeler does not start the Windows server
+Keep Herdr running before connecting; Heeler does not start the Windows server
 automatically.
 
-For a herdr-core Host on Windows, see
-[Native Windows in Connect herdr-core](herdr-core.md#native-windows).
+For a Herdr Core Host on Windows, see
+[Native Windows in Connect Herdr Core](herdr-core.md#native-windows).
 
 For resize, scrolling, reconnect, session isolation, and authentication
 acceptance checks, use the [Windows test checklist](native-windows-testing.md).

@@ -2,13 +2,13 @@
 
 # 通过 tailcat 连接 Heeler
 
-本指南介绍如何通过 [tailcat](https://github.com/tailscale/tailcat) 连接运行 herdr 的 Mac：它是一条只通向一台机器的隧道，不需要账号，也没有网络要管理。Mac 上运行 `tailcat serve` 并打印一个地址；Heeler 用这个地址连接，因此手机上无需安装其他应用或配置系统 VPN。
+本指南介绍如何通过 [tailcat](https://github.com/tailscale/tailcat) 连接运行 Herdr 的 Mac：它是一条只通向一台机器的隧道，不需要账号，也没有网络要管理。Mac 上运行 `tailcat serve` 并打印一个地址；Heeler 用这个地址连接，因此手机上无需安装其他应用或配置系统 VPN。
 
 你需要使用在 **Settings > Overlay Networks > Add Network** 中提供 **tailcat** 的 Heeler 版本。
 
 ## 开始之前
 
-- 在 Mac 上完成[准备 Host](overlay-networks.md#准备-host)：开启“远程登录”、启动 herdr、配置登录方式，并记下 Mac 的 SSH 指纹。
+- 在 Mac 上完成[准备 Host](overlay-networks.md#准备-host)：开启“远程登录”、启动 Herdr、配置登录方式，并记下 Mac 的 SSH 指纹。
 - Mac 上需要有 [Homebrew](https://brew.sh/)，或者用其他方式[安装 tailcat](https://github.com/tailscale/tailcat/blob/main/INSTALL.md)。
 - 配置期间请保持 Mac 处于唤醒状态。
 
@@ -35,7 +35,7 @@ tailcat serve 22
 # 🐈 Server listening with saved key "default": tc…
 ```
 
-隧道只在这条命令运行期间存在，所以请让它留在一个不会关闭的终端里，例如一个 herdr pane。复制完整的地址。
+隧道只在这条命令运行期间存在，所以请让它留在一个不会关闭的终端里，例如一个 Herdr pane。复制完整的地址。
 
 **成功的标志是** 这一行写着 `saved key "default"`。如果写的是 `new address`，说明第 1 步没有保存密钥。
 

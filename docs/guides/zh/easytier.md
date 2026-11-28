@@ -17,7 +17,7 @@ EasyTier 将 Heeler 与你的 Mac 接入同一个私有 Overlay Network，使 He
 
 ## 开始之前
 
-- 先完成[准备 Host](overlay-networks.md#准备-host)（开启“远程登录”、启动 herdr 并配置登录方式）。
+- 先完成[准备 Host](overlay-networks.md#准备-host)（开启“远程登录”、启动 Herdr 并配置登录方式）。
 - 在 **System Settings > Network** 中查看 Mac 的局域网 IP 地址。下文示例使用 `192.168.1.20`。
 - 选定一个网络名称和一个高强度密钥（该密钥不是你的 SSH 密码）。
 

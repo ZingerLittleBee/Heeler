@@ -14,7 +14,7 @@ struct ConsoleHostStatusPresentationTests {
             (.timedOut, "Connection timed out"),
             (.cancelled, "Connection cancelled"),
             (.channelFailed(detail: "reset"), "Connection dropped"),
-            (.apiRejected(code: "busy", message: "later"), "herdr rejected the request"),
+            (.apiRejected(code: "busy", message: "later"), "Herdr rejected the request"),
         ]
         for (failure, summary) in cases {
             let presentation = try #require(

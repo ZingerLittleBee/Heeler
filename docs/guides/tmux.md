@@ -1,18 +1,18 @@
-# Connect tmux
+# Connect Tmux
 
-Connect Heeler to a tmux server you already run on a Mac or Linux Host over SSH, alongside Herdr TUI and [herdr-core](herdr-core.md). Each tmux socket is a Server of its Host in Heeler, with your sessions, windows, and coding Agents in the Console and native [Chat](#chat).
+Connect Heeler to a Tmux server you already run on a Mac or Linux Host over SSH, alongside Herdr TUI and [Herdr Core](herdr-core.md). Each Tmux socket is a Server of its Host in Heeler, with your sessions, windows, and coding Agents in the Console and native [Chat](#chat).
 
 ## Before you start
 
 - [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
-- Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for tmux Hosts.
-- tmux 3.3 or newer (`tmux -V`) on your login shell's `PATH`. Ubuntu 22.04 and AlmaLinux or Rocky Linux 9 ship tmux 3.2a, so install a newer build there first.
-- A running tmux server on the Mac (`tmux` or `tmux -L <name>`). On Linux, you can start tmux ahead of time, tap **Start tmux** on the Server's page, or let **New Workspace** start it later.
+- Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. Native Windows is not supported for Tmux Hosts.
+- Tmux 3.3 or newer (`tmux -V`) on your login shell's `PATH`. Ubuntu 22.04 and AlmaLinux or Rocky Linux 9 ship Tmux 3.2a, so install a newer build there first.
+- A running Tmux server on the Mac (`tmux` or `tmux -L <name>`). On Linux, you can start Tmux ahead of time, tap **Start Tmux** on the Server's page, or let **New Workspace** start it later.
 - A way for your iPhone or iPad to reach the Host: directly on the same network, over an [overlay network](overlay-networks.md), or through a [Jump Host](vps-jump-host-setup.md). A Host can have [multiple routes](host-routes.md).
 
 ## Add a Host
 
-Heeler never starts a tmux server when connecting or checking.
+Heeler never starts a Tmux server when connecting or checking.
 
 ### 1. Connect
 
@@ -29,46 +29,46 @@ Heeler never starts a tmux server when connecting or checking.
 
 Heeler looks once through your login shell without starting anything and lists what the machine runs:
 
-<a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="300" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a>
+<a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="300" alt="New Host sheet on the Servers step listing Herdr TUI, Herdr Core, and Tmux as checked, an optional Name field, and Add Host with 3 Servers"></a>
 
 | Heeler found | What to do |
 | --- | --- |
-| One tmux server | Leave **tmux** checked and tap **Add Host with 1 Server**. |
-| More than one tmux server | Each socket is listed by name, such as **tmux · work** for `tmux -L work`. Check the ones you want. |
-| tmux alongside Herdr TUI or herdr-core | Check each one you want in Heeler. They are all Servers of this one Host. |
-| No running server | Add the Host anyway. Start tmux, open the Host, tap **Scan Again**, and turn on **tmux**. |
+| One Tmux server | Leave **Tmux** checked and tap **Add Host with 1 Server**. |
+| More than one Tmux server | Each socket is listed by name, such as **Tmux · work** for `tmux -L work`. Check the ones you want. |
+| Tmux alongside Herdr TUI or Herdr Core | Check each one you want in Heeler. They are all Servers of this one Host. |
+| No running server | Add the Host anyway. Start Tmux, open the Host, tap **Scan Again**, and turn on **Tmux**. |
 
-Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its checks and Host Helper. The connection is the Host's, under **Routes**. To turn on a socket before its server runs, tap **Add by Name…** on the Host's page, choose **tmux**, type the `-L <name>` socket name (blank for `default`), and tap **Turn On**. Custom socket file paths (`tmux -S <path>`) cannot be typed.
+Each Server has a switch on the Host's page. Tap a Server that is on to open its own page, with its checks and Host Helper. The connection is the Host's, under **Routes**. To turn on a socket before its server runs, tap **Add by Name…** on the Host's page, choose **Tmux**, type the `-L <name>` socket name (blank for `default`), and tap **Turn On**. Custom socket file paths (`tmux -S <path>`) cannot be typed.
 
 | The Host's page | Add by Name |
 | --- | --- |
-| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, herdr-core, and tmux running with their switches on, Scan Again, Add by Name…, Routes with the route in use, and Plugin & Helper"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
+| <a href="images/hosts/host-page.png"><img src="images/hosts/host-page.png" width="260" alt="Host page for Studio Mac showing Herdr TUI, Herdr Core, and Tmux running with their switches on, Scan Again, Add by Name…, Routes with the route in use, and Plugin & Helper"></a> | <a href="images/hosts/add-by-name.png"><img src="images/hosts/add-by-name.png" width="260" alt="Add by Name sheet with a Kind picker, a name field, and Turn On"></a> |
 
-**It worked if** the Host's row shows a green **tmux** tag, the Host's page lists tmux as **Running** with its version, and the Server's page shows **tmux server running** passing.
+**It worked if** the Host's row shows a green **Tmux** tag, the Host's page lists Tmux as **Running** with its version, and the Server's page shows **Tmux server running** passing.
 
-<a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, tmux, and herdr-core"></a>
+<a href="images/hosts/hosts-list.png"><img src="images/hosts/hosts-list.png" width="300" alt="Hosts tab showing Studio Mac connected with green tags for Herdr TUI, Tmux, and Herdr Core"></a>
 
 ## When it does not connect
 
-While the tmux server is stopped, Heeler rechecks on its own, or you can tap **Run Checks Again**:
+While the Tmux server is stopped, Heeler rechecks on its own, or you can tap **Run Checks Again**:
 
 | Host reads | What to do |
 | --- | --- |
-| **No tmux server running** | Start `tmux` (or `tmux -L <name>`) on the Host, or on Linux tap **Start tmux** on the Server's page or use **New Workspace** in **New Agent** or **New Terminal**. |
-| **Start tmux on the Mac first** | Shown on macOS when **New Workspace** runs with no server, because a server started over SSH would lack your Mac login session and keychain. Start `tmux` in Terminal on the Mac. |
-| **tmux is not installed** | Install tmux 3.3 or newer on your login shell's `PATH`, then tap **Run Checks Again**. |
-| **Update required** | Upgrade tmux on the Host to 3.3 or newer, then tap **Run Checks Again**. |
+| **No Tmux server running** | Start `tmux` (or `tmux -L <name>`) on the Host, or on Linux tap **Start Tmux** on the Server's page or use **New Workspace** in **New Agent** or **New Terminal**. |
+| **Start Tmux on the Mac first** | Shown on macOS when **New Workspace** runs with no server, because a server started over SSH would lack your Mac login session and keychain. Start `tmux` in Terminal on the Mac. |
+| **Tmux is not installed** | Install Tmux 3.3 or newer on your login shell's `PATH`, then tap **Run Checks Again**. |
+| **Update required** | Upgrade Tmux on the Host to 3.3 or newer, then tap **Run Checks Again**. |
 
-On Linux when no tmux server is running, tap **Start tmux** under the checks on the Server's page and confirm **Start**, or choose **New Workspace** in **New Agent** or **New Terminal** to start the server through your interactive login shell so new windows inherit your shell setup.
+On Linux when no Tmux server is running, tap **Start Tmux** under the checks on the Server's page and confirm **Start**, or choose **New Workspace** in **New Agent** or **New Terminal** to start the server through your interactive login shell so new windows inherit your shell setup.
 
 > [!NOTE]
-> The Server's page warns if variables from an agent session leaked into tmux and shows how to clear them.
+> The Server's page warns if variables from an agent session leaked into Tmux and shows how to clear them.
 
 ## The Console
 
-Heeler maps your tmux layout directly into the Console without changing your existing options or key bindings:
+Heeler maps your Tmux layout directly into the Console without changing your existing options or key bindings:
 
-- **Workspaces, Tabs, and Panes:** Each tmux session is a Workspace, each window is a Tab, and each pane is a Pane, in tmux's order. A window linked into more than one session appears once.
+- **Workspaces, Tabs, and Panes:** Each Tmux session is a Workspace, each window is a Tab, and each pane is a Pane, in Tmux's order. A window linked into more than one session appears once.
 - **Agents and Terminals:** Heeler lists recognized foreground harnesses in **Agents**, including Droid and Devin. Shells and other programs appear in **Terminals**.
 
 | Status | What it means |
@@ -78,24 +78,24 @@ Heeler maps your tmux layout directly into the Console without changing your exi
 | **Blocked** | Waiting for your answer, or running an approved tool in Claude Code. |
 | **Error** | Reported an error and sorts with **Blocked**. |
 | **Done** | Finished a turn while closed here. Opening the Agent clears **Done** on this device only. |
-| **Unknown** | No status reported yet. Tap **Unknown** to see what this program needs on tmux. |
+| **Unknown** | No status reported yet. Tap **Unknown** to see what this program needs on Tmux. |
 
 When Grok Build shows **Unknown**, tap **Unknown**, then **Turn On Grok Build's Status** and **Apply This Change** to set `program_status = "on"` in `$GROK_HOME/config.toml` or `~/.grok/config.toml`, and install the [Host Helper](#host-helper) so Heeler can read its reports. Revert the file change anytime with **Undo** or under **Harness Edits** on the Server's page.
 
 ## Starting things
 
-- **New Agent:** Tap **New Agent**, choose a Workspace (tmux session) and directory, and pick an Agent from your login shell's `PATH` or a **Preset** from **Settings > Agents & Accounts**. Heeler opens a new window in the background without switching your desktop client's active window, passes `--no-daemon` to Codex unless your arguments set a session, and passes Heeler's status hooks to Claude Code for that launch automatically.
+- **New Agent:** Tap **New Agent**, choose a Workspace (Tmux session) and directory, and pick an Agent from your login shell's `PATH` or a **Preset** from **Settings > Agents & Accounts**. Heeler opens a new window in the background without switching your desktop client's active window, passes `--no-daemon` to Codex unless your arguments set a session, and passes Heeler's status hooks to Claude Code for that launch automatically.
 - **New Terminal:** Opens a new window running your login shell in the chosen Workspace.
-- **New Workspace:** Creates a new tmux session with the name you type, or tmux's numbered default when left blank.
-- **Rename Workspace:** In an Agent's or Terminal's **More** menu, tap **Rename Workspace** to rename the tmux session.
+- **New Workspace:** Creates a new Tmux session with the name you type, or Tmux's numbered default when left blank.
+- **Rename Workspace:** In an Agent's or Terminal's **More** menu, tap **Rename Workspace** to rename the Tmux session.
 - **Move to Workspace:** Choose an existing Workspace or **New Workspace** from the Pane menu. In a split window, the selected Pane becomes a detached window in the destination. The other panes stay in the original window, including its other session links. A window containing just this Pane moves with it. If another user session also holds that single-pane window, Heeler leaves its links intact and explains the conflict.
 - **Rename Agent:** Set or clear the management name shown in the Console. Heeler associates it with the foreground Agent process. The program can continue updating its terminal title and its conversation title independently.
-- **Rename Tab:** Set the window name from the Pane menu. All links to that window show its new name. tmux turns off automatic naming for an explicitly named window. Leave **Tab Name** blank when creating a window to use the Host's naming policy.
-- **Worktrees:** Turn on **Start in a new worktree** in **New Agent** (leaving **Branch** empty generates a `worktree/` branch, and **Base (optional)** picks a starting ref off `HEAD` by default) to check out `~/.heeler/worktrees/<repository>/<branch>` in its own tmux session. To remove it, tap **More > Worktree Details > Remove Worktree**; Heeler closes that worktree session's panes first, then removes the checkout.
+- **Rename Tab:** Set the window name from the Pane menu. All links to that window show its new name. Tmux turns off automatic naming for an explicitly named window. Leave **Tab Name** blank when creating a window to use the Host's naming policy.
+- **Worktrees:** Turn on **Start in a new worktree** in **New Agent** (leaving **Branch** empty generates a `worktree/` branch, and **Base (optional)** picks a starting ref off `HEAD` by default) to check out `~/.heeler/worktrees/<repository>/<branch>` in its own Tmux session. To remove it, tap **More > Worktree Details > Remove Worktree**; Heeler closes that worktree session's panes first, then removes the checkout.
 
 ## Working with an Agent
 
-Live terminals open on the Pane itself, even when a tmux window is split across several panes, and any viewer can type without a Take Over step:
+Live terminals open on the Pane itself, even when a Tmux window is split across several panes, and any viewer can type without a Take Over step:
 
 - **Window sizing:** While you view a Pane on iPhone or iPad, Heeler sizes that window to fit your screen and stays within an open desktop terminal on the same window. Leaving the Pane hands window sizing back to your other clients, and other windows in the session are not resized.
 - **Send and Stop:** **Send** pastes your draft and presses Enter once it checks that the same Agent still leads the pane, is not **Blocked**, and accepts a paste. While **Working** or **Blocked** with an empty draft, **Send** becomes **Stop** for every supported Agent, Grok Build included.
@@ -105,36 +105,36 @@ Live terminals open on the Pane itself, even when a tmux window is split across 
 
 ### Newline keys in Direct Input
 
-Under tmux's default `extended-keys off`, tmux does not pass modified Return keys such as **Shift-Return** through as distinct keys, and Heeler withholds keys tmux has not enabled so their names are never typed as text:
+Under Tmux's default `extended-keys off`, Tmux does not pass modified Return keys such as **Shift-Return** through as distinct keys, and Heeler withholds keys Tmux has not enabled so their names are never typed as text:
 
-| Key | Behavior in tmux |
+| Key | Behavior in Tmux |
 | --- | --- |
-| **Control-J** | Inserts a new line in Claude Code, Codex, Grok Build, OpenCode, Pi, and Oh My Pi without changing tmux settings. |
+| **Control-J** | Inserts a new line in Claude Code, Codex, Grok Build, OpenCode, Pi, and Oh My Pi without changing Tmux settings. |
 | **Option-Return** | Inserts a new line in Claude Code, Codex, Grok Build, OpenCode, and Oh My Pi; submits in Pi. |
-| **Shift-Return** | Inserts a new line in Claude Code, OpenCode, Pi, and Oh My Pi on tmux 3.5 or newer when `~/.tmux.conf` sets `set -g extended-keys on`. In Codex and Grok Build, **Shift-Return** does nothing from Heeler; use **Control-J** or **Option-Return** instead. |
+| **Shift-Return** | Inserts a new line in Claude Code, OpenCode, Pi, and Oh My Pi on Tmux 3.5 or newer when `~/.tmux.conf` sets `set -g extended-keys on`. In Codex and Grok Build, **Shift-Return** does nothing from Heeler; use **Control-J** or **Option-Return** instead. |
 
-When **Send** or **Stop** in the Composer cannot finish cleanly, it keeps your draft and shows the same [recovery notices as herdr-core](herdr-core.md#working-with-an-agent).
+When **Send** or **Stop** in the Composer cannot finish cleanly, it keeps your draft and shows the same [recovery notices as Herdr Core](herdr-core.md#working-with-an-agent).
 
 ## Claude Code hooks
 
 Claude Code Agents you launch from **New Agent** report **Working**, **Blocked**, **Done**, **Error**, and their session automatically without changing `~/.claude/settings.json`.
 
-To get the same status and [Chat](#chat) session hint for Claude Code Agents you start yourself in a tmux terminal:
+To get the same status and [Chat](#chat) session hint for Claude Code Agents you start yourself in a Tmux terminal:
 
-1. Connect the Host, open it in **Hosts**, tap its **tmux** Server, and find **Claude Code Hooks**.
+1. Connect the Host, open it in **Hosts**, tap its **Tmux** Server, and find **Claude Code Hooks**.
 2. On **Default** (`~/.claude/settings.json`), or on any added [Claude Code Account](usage.md#add-claude-code-accounts), tap **Add Hooks**.
 3. Review the exact settings diff and script files Heeler will write, then tap **Apply This Change**.
 
 **It worked if** that root's row in **Claude Code Hooks** reads **On**.
 
-- The hooks work even without the [Host Helper](#host-helper), and do nothing when Claude Code runs outside tmux (including under Herdr TUI or herdr-core).
+- The hooks work even without the [Host Helper](#host-helper), and do nothing when Claude Code runs outside Tmux (including under Herdr TUI or Herdr Core).
 - In a folder you have not trusted yet, Claude Code runs no hooks until you accept its trust prompt, so the Agent reads **Unknown** until then.
 - After you approve a permission prompt in Claude Code, the Agent can stay **Blocked** while a long tool finishes; **Stop** remains available in the Composer. If you interrupt Claude Code with Esc at a desktop terminal while it waits on its model, it can stay **Working** until its next event.
 - To remove the hooks later, return to **Claude Code Hooks**, tap **Remove Hooks**, and tap **Apply This Change**.
 
 ## Chat
 
-In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and tap buttons on **Blocked** prompts without resizing your tmux window:
+In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and tap buttons on **Blocked** prompts without resizing your Tmux window:
 
 | Program | Session notes |
 | --- | --- |
@@ -149,7 +149,7 @@ In **Chat**, you can read conversations, **Send** messages, **Stop** a turn, and
 | Amp | On macOS and Linux, install Heeler's Amp plugin from Chat and reload plugins in Amp (**Ctrl+O** → **plugins › reload**). Chat reads and sends in the active thread; use the terminal for attachments, commands, and approvals. |
 | OpenCode | Opens on macOS and Linux. Binds when Heeler started it or with Heeler's OpenCode plugin (offered from Chat). Otherwise use **Choose a Conversation**. |
 
-When Chat cannot prove which conversation a Pane is showing, it displays **Can't Tell the Conversation** with **Check Again** and **Choose a Conversation**. Picking a conversation and tapping **Use This Conversation** remembers that choice for the Pane until the Agent or tmux server ends.
+When Chat cannot prove which conversation a Pane is showing, it displays **Can't Tell the Conversation** with **Check Again** and **Choose a Conversation**. Picking a conversation and tapping **Use This Conversation** remembers that choice for the Pane until the Agent or Tmux server ends.
 
 ## Host Helper
 
@@ -161,17 +161,17 @@ Everyday terminal and Chat use do not require the Host Helper. Install it on mac
 - **Pi and Oh My Pi status and Chat:** installs Heeler's extension so panes you start yourself report **Idle**, **Working**, **Done**, **Error**, and their active Chat conversation;
 - **Desktop Esc cleanup for Claude Code:** clears **Blocked** when you decline a permission prompt with Esc on the desktop.
 
-Open the Host in **Hosts**, tap its **tmux** Server, tap **Host Helper**, review **Files This Writes**, tap **Install**, and turn on the Host under **Settings > Notifications**, following the same steps and status table as [Connect herdr-core](herdr-core.md#host-helper). Removing the Host Helper leaves any [Claude Code hooks](#claude-code-hooks) you added working.
+Open the Host in **Hosts**, tap its **Tmux** Server, tap **Host Helper**, review **Files This Writes**, tap **Install**, and turn on the Host under **Settings > Notifications**, following the same steps and status table as [Connect Herdr Core](herdr-core.md#host-helper). Removing the Host Helper leaves any [Claude Code hooks](#claude-code-hooks) you added working.
 
 ## Known limits
 
-- **macOS and Linux with tmux 3.3 or newer:** Native Windows is not supported, and tmux servers are chosen by `-L` socket name rather than a custom `-S` socket path.
-- **tmux older than 3.5:** **Shift-Return** never reaches the Agent; use **Control-J** (or **Option-Return** outside Pi).
-- **Desktop terminal shrinking under `window-size largest`:** tmux sends no notice when another terminal resizes on its own, so under `window-size largest` a desktop terminal that shrinks without detaching or changing windows is re-capped on the next window or client change rather than right away, and if reading client sizes fails Heeler leaves the window size alone.
+- **macOS and Linux with Tmux 3.3 or newer:** Native Windows is not supported, and Tmux servers are chosen by `-L` socket name rather than a custom `-S` socket path.
+- **Tmux older than 3.5:** **Shift-Return** never reaches the Agent; use **Control-J** (or **Option-Return** outside Pi).
+- **Desktop terminal shrinking under `window-size largest`:** Tmux sends no notice when another terminal resizes on its own, so under `window-size largest` a desktop terminal that shrinks without detaching or changing windows is re-capped on the next window or client change rather than right away, and if reading client sizes fails Heeler leaves the window size alone.
 - **Concurrent viewers:** Open the same Pane on the desktop and in Heeler. Both can type. Templates and pane zoom are unavailable.
 - **Pi and Oh My Pi extensions:** They report **Idle**, **Working**, **Done**, and **Error**, not **Blocked**, and starting Pi via `npx` does not load the extension.
-- **Panes already redirecting output:** If you already redirect a pane's output in tmux, Heeler leaves it alone and Codex, Grok Build, OpenCode, Oh My Pi, or Antigravity CLI in that pane stays **Unknown**.
+- **Panes already redirecting output:** If you already redirect a pane's output in Tmux, Heeler leaves it alone and Codex, Grok Build, OpenCode, Oh My Pi, or Antigravity CLI in that pane stays **Unknown**.
 - **Wrapper scripts:** A script that starts an Agent as a child process stays in **Terminals**; end the script with `exec`, such as `exec claude "$@"`, so the Agent leads the pane.
-- **What has been tested so far:** tmux Hosts have been exercised against the automated SSH test fixture on macOS with tmux 3.3a and 3.7b; Linux Hosts (including starting a stopped server from **New Workspace**) and end-to-end app runs with live Agents, **Chat**, Claude Code hooks, and the Host Helper on a real machine have not been run yet.
+- **What has been tested so far:** Tmux Hosts have been exercised against the automated SSH test fixture on macOS with Tmux 3.3a and 3.7b; Linux Hosts (including starting a stopped server from **New Workspace**) and end-to-end app runs with live Agents, **Chat**, Claude Code hooks, and the Host Helper on a real machine have not been run yet.
 
-Last checked on 2026-11-12 against the test fixture on macOS with tmux 3.3a and 3.7b.
+Last checked on 2026-11-12 against the test fixture on macOS with Tmux 3.3a and 3.7b.

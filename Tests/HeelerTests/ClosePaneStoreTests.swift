@@ -67,7 +67,7 @@ struct ClosePaneStoreTests {
 
         await store.confirmClose()
 
-        #expect(store.state == .failed("herdr rejected the close: pane is busy"))
+        #expect(store.state == .failed("Herdr rejected the close: pane is busy"))
         #expect(recorder.calls == 1)
     }
 

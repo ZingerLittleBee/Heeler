@@ -389,11 +389,11 @@ struct HostConnectionDetailPresentationTests {
         let detail = try #require(
             HostConnectionDetailPresentation(
                 host: endpointHost, status: .failed(failure), standingFailure: nil))
-        #expect(detail.recoverySuggestion == "Start the herdr instance configured for this Host and verify its socket path.")
+        #expect(detail.recoverySuggestion == "Start the Herdr instance configured for this Host and verify its socket path.")
         let status = try #require(
             ConsoleHostStatusPresentation(
                 host: endpointHost, status: .failed(failure), syncError: nil))
-        #expect(status.message.hasSuffix("Start the herdr instance configured for this Host and verify its socket path."))
+        #expect(status.message.hasSuffix("Start the Herdr instance configured for this Host and verify its socket path."))
     }
 
     /// A reconnecting Host's Retry Now dials with no standing failure; the

@@ -2,13 +2,13 @@
 
 # 通过 ZeroTier 连接 Heeler
 
-本指南介绍如何通过私有 ZeroTier 网络连接运行 herdr 的 Mac。Mac 上运行 ZeroTier One 应用；Heeler 会直接加入该网络，因此手机上无需安装 ZeroTier 应用或配置系统 VPN。
+本指南介绍如何通过私有 ZeroTier 网络连接运行 Herdr 的 Mac。Mac 上运行 ZeroTier One 应用；Heeler 会直接加入该网络，因此手机上无需安装 ZeroTier 应用或配置系统 VPN。
 
 你需要使用包含 **Settings > Overlay Networks** 的 Heeler 版本。
 
 ## 开始之前
 
-- 在 Mac 上完成[准备 Host](overlay-networks.md#准备-host)：开启“远程登录”、启动 herdr、配置登录方式，并记下 Mac 的 SSH 指纹。
+- 在 Mac 上完成[准备 Host](overlay-networks.md#准备-host)：开启“远程登录”、启动 Herdr、配置登录方式，并记下 Mac 的 SSH 指纹。
 - 你需要拥有 Mac 的管理员权限，以及一个 ZeroTier Central 账号。
 - 配置期间请保持 Mac 处于唤醒状态。
 

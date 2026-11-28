@@ -780,7 +780,7 @@ struct HeelerPluginActionTests {
             step: .install, exitStatus: 101, stderr: Data("a\nb\n".utf8), stdout: Data()
         ).detail() == "a\nb")
         #expect(HeelerPluginActionFailure(error).message
-            == "herdr could not remove the old copy of the plugin.")
+            == "Herdr could not remove the old copy of the plugin.")
     }
 
     @Test func failuresNameTheirCause() {
@@ -794,12 +794,12 @@ struct HeelerPluginActionTests {
             .contains("github.com"))
         #expect(message(
             "error: client protocol 22 is newer than server protocol 21; restart the Herdr server "
-                + "before using this command.").contains("Restart the herdr server"))
-        #expect(message("error: something else") == "herdr could not install the plugin.")
+                + "before using this command.").contains("Restart the Herdr server"))
+        #expect(message("error: something else") == "Herdr could not install the plugin.")
         #expect(HeelerPluginActionFailure(TransportError.timedOut).message.contains("may still complete"))
         #expect(HeelerPluginActionFailure(HerdrAPIError(code: "plugin_not_found", message: "x"))
             == HeelerPluginActionFailure(
-                message: "herdr could not turn the plugin on.", detail: "plugin_not_found: x"))
+                message: "Herdr could not turn the plugin on.", detail: "plugin_not_found: x"))
     }
 }
 

@@ -1,18 +1,18 @@
 <!-- Translated from docs/guides/herdr-core.md at d418c957 -->
-# 连接 herdr-core
+# 连接 Herdr Core
 
-Herdr 桌面端中的 Agent 归属于 herdr-core，这是一个独立于 Herdr TUI 的服务端。在同时运行两者的机器上，它们各自是 Heeler 中同一个 Host 的一个 Server。大多数人在 Mac 上搭配 Herdr 桌面端运行 herdr-core，Heeler 也支持连接 Linux herdr-core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
+Herdr 桌面端中的 Agent 归属于 Herdr Core，这是一个独立于 Herdr TUI 的服务端。在同时运行两者的机器上，它们各自是 Heeler 中同一个 Host 的一个 Server。大多数人在 Mac 上搭配 Herdr 桌面端运行 Herdr Core，Heeler 也支持连接 Linux Herdr Core 与[原生 Windows](#native-windows) `herdr-core.exe`。在 macOS 和 Linux 上，Agent Notifications、Live Activity 和 Usage 需要 [Host Helper](#host-helper)。
 
 ## 开始之前
 
 - 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)。
 - 在 Mac 上开启“远程登录”并记录其 SSH 指纹：[准备 Host](overlay-networks.md#准备-host)。在 Linux 上运行 OpenSSH。在 Windows 上请按 [Windows 配置](windows-setup.md)操作。
-- 在 Mac 上运行 Herdr 桌面端，或在 Linux、[原生 Windows](#native-windows) 上运行 herdr-core。
+- 在 Mac 上运行 Herdr 桌面端，或在 Linux、[原生 Windows](#native-windows) 上运行 Herdr Core。
 - 让手机能够连通 Mac：处于同一局域网下直连，或通过 [Overlay Network](overlay-networks.md) 连接。一个 Host 可以配置[多条路由](host-routes.md)。
 
 ## 添加 Host
 
-Heeler 在连接或检查时绝不会启动 core。请先启动 Herdr 桌面端或 herdr-core。
+Heeler 在连接或检查时绝不会启动 core。请先启动 Herdr 桌面端或 Herdr Core。
 
 ### 1. 连接
 
@@ -29,24 +29,24 @@ Heeler 在连接或检查时绝不会启动 core。请先启动 Herdr 桌面端�
 
 Heeler 会在不启动任何服务的情况下查看一次，并列出这台机器上运行的内容：
 
-<a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="300" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、herdr-core 和 tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a>
+<a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="300" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、Herdr Core 和 Tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a>
 
 | Heeler 检测到 | 操作方法 |
 | --- | --- |
-| herdr-core | 保持勾选，然后轻点 **Add Host with 1 Server**。 |
-| herdr-core 与 Herdr TUI 或 tmux 并存 | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
-| 未检测到 herdr-core | 仍然添加该 Host。启动 core，打开该 Host，轻点 **Scan Again**，然后开启 **herdr-core**。 |
-| 以 `HC_SESSION=<name>` 启动的 core | 添加该 Host 并打开它，轻点 **Add by Name…**，选择 **herdr-core**，输入该名称并轻点 **Turn On**。 |
+| Herdr Core | 保持勾选，然后轻点 **Add Host with 1 Server**。 |
+| Herdr Core 与 Herdr TUI 或 Tmux 并存 | 勾选你想在 Heeler 中使用的每一个。它们都是这同一个 Host 的 Server。 |
+| 未检测到 Herdr Core | 仍然添加该 Host。启动 core，打开该 Host，轻点 **Scan Again**，然后开启 **Herdr Core**。 |
+| 以 `HC_SESSION=<name>` 启动的 core | 添加该 Host 并打开它，轻点 **Add by Name…**，选择 **Herdr Core**，输入该名称并轻点 **Turn On**。 |
 
 每个 Server 在 Host 页面上都有一个开关。轻点已开启的 Server 可打开它自己的页面，其中有它的检查项和 Host Helper。连接属于 Host，显示在 **Routes** 下。
 
 | 该 Host 的页面 | Add by Name |
 | --- | --- |
-| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示正在运行且开关均已开启的 Herdr TUI、herdr-core 和 tmux，以及 Scan Again、Add by Name…、标出在用路由的 Routes 和 Plugin & Helper"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
+| <a href="../images/hosts/host-page.png"><img src="../images/hosts/host-page.png" width="260" alt="Studio Mac 的 Host 页面，显示正在运行且开关均已开启的 Herdr TUI、Herdr Core 和 Tmux，以及 Scan Again、Add by Name…、标出在用路由的 Routes 和 Plugin & Helper"></a> | <a href="../images/hosts/add-by-name.png"><img src="../images/hosts/add-by-name.png" width="260" alt="Add by Name 面板，包含 Kind 选择器、名称输入框和 Turn On"></a> |
 
-**成功的标志是**该 Host 所在的行显示绿色的 **herdr-core** 标签，该 Host 的页面将 herdr-core 列为带版本号的 **Running**，且该 Server 的页面上 **herdr-core running** 检查通过。
+**成功的标志是**该 Host 所在的行显示绿色的 **Herdr Core** 标签，该 Host 的页面将 Herdr Core 列为带版本号的 **Running**，且该 Server 的页面上 **Herdr Core running** 检查通过。
 
-<a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、tmux 和 herdr-core 的绿色标签"></a>
+<a href="../images/hosts/hosts-list.png"><img src="../images/hosts/hosts-list.png" width="300" alt="Hosts 标签页显示已连接的 Studio Mac，带有 Herdr TUI、Tmux 和 Herdr Core 的绿色标签"></a>
 
 ## 无法连接时
 
@@ -54,13 +54,13 @@ Heeler 会在不启动任何服务的情况下查看一次，并列出这台机�
 
 | Host 显示 | 操作方法 |
 | --- | --- |
-| **herdr-core is not running** | 启动 Herdr 桌面端或 herdr-core。以其他名称启动的 core 是一个独立的 Server：请通过 **Add by Name…** 开启它。如果崩溃留下了套接字文件，请启动 core 或允许 stream-local 转发。 |
-| **herdr-core is not installed** | 将 herdr-core 安装到 SSH `PATH`、`~/.local/bin/herdr-core`，或使用其 Windows 安装程序安装，然后轻点 **Run Checks Again**。 |
-| **herdr-core needs an update** | 运行该 Server 的页面上显示的更新命令，然后轻点 **Run Checks Again**。 |
+| **Herdr Core is not running** | 启动 Herdr 桌面端或 Herdr Core。以其他名称启动的 core 是一个独立的 Server：请通过 **Add by Name…** 开启它。如果崩溃留下了套接字文件，请启动 core 或允许 stream-local 转发。 |
+| **Herdr Core is not installed** | 将 Herdr Core 安装到 SSH `PATH`、`~/.local/bin/herdr-core`，或使用其 Windows 安装程序安装，然后轻点 **Run Checks Again**。 |
+| **Herdr Core needs an update** | 运行该 Server 的页面上显示的更新命令，然后轻点 **Run Checks Again**。 |
 | **The SSH server refuses socket forwarding** | 在 `sshd_config` 中设置 `AllowStreamLocalForwarding yes`，重载 `sshd`，然后轻点 **Run Checks Again**。 |
-| **The herdr-core socket path is too long** | 使用更短的会话名称或套接字路径。 |
+| **The Herdr Core socket path is too long** | 使用更短的会话名称或套接字路径。 |
 
-在 Linux 上当 core 停止时，轻点检查项下方的 **Start herdr-core** 并确认 **Start**，即可通过登录 shell 启动该会话并开启 systemd linger。在 macOS 和 Windows 上，该 Server 的页面会显示需要在本机运行的命令。
+在 Linux 上当 core 停止时，轻点检查项下方的 **Start Herdr Core** 并确认 **Start**，即可通过登录 shell 启动该会话并开启 systemd linger。在 macOS 和 Windows 上，该 Server 的页面会显示需要在本机运行的命令。
 
 ## 控制台
 
@@ -92,7 +92,7 @@ Heeler 会在不启动任何服务的情况下查看一次，并列出这台机�
 - **Worktrees：** 在 macOS 和 Linux 上，在 **New Agent** 中开启 **Start in a new worktree** 并输入 **Branch**，即可检出 `~/.herdr/worktrees/<repository>/<branch>`。要移除它，轻点 **More > Worktree Details > Remove Worktree**。Heeler 会先结束该工作区的全部终端，再移除检出目录。
 
 > [!NOTE]
-> 如果 herdr-core 继承了 `CLAUDECODE` 或 `TMUX` 等环境变量，该 Server 的页面会显示 **Core Environment**，列出每个变量及其影响。请从干净的终端重启 core 以清除它们。
+> 如果 Herdr Core 继承了 `CLAUDECODE` 或 `TMUX` 等环境变量，该 Server 的页面会显示 **Core Environment**，列出每个变量及其影响。请从干净的终端重启 core 以清除它们。
 
 ## 使用 Agent
 
@@ -125,14 +125,14 @@ Heeler 会在不启动任何服务的情况下查看一次，并列出这台机�
 | Pi | 支持 macOS、Linux 和 Windows。搭配 [Host Helper](#host-helper)、在 Windows 上搭配 Heeler 的扩展，或由 Heeler 启动时绑定。否则请使用 **Choose a Conversation**。 |
 | Oh My Pi | 支持 macOS、Linux 和 Windows。搭配 [Host Helper](#host-helper)、在 Windows 上搭配 Heeler 的扩展，或在首条消息使其持有会话文件后绑定。否则请使用 **Choose a Conversation**。 |
 | Antigravity CLI | 支持 macOS 和 Linux。等待首条消息（从 Chat 或终端发送），之后跟随该会话和 `/clear`。 |
-| OpenCode | 在 herdr-core Host 上关闭。仅提供终端视图。 |
+| OpenCode | 在 Herdr Core Host 上关闭。仅提供终端视图。 |
 
 - **Can't Tell the Conversation：** 当 Chat 无法证实当前对话时，会显示 **Can't Tell the Conversation** 以及解决方法和 **Check Again**。在 macOS 和 Linux 上，轻点 **Choose a Conversation**，预览对话后轻点 **Use This Conversation**。
 - **Windows 上的 Pi 与 Oh My Pi：** 在 Chat 中轻点 **Add Heeler's Extension…**，查看 `.pi\agent\extensions`、`.omp\agent\extensions` 以及 Oh My Pi 配置文件夹，轻点 **Add to … Folders** 写入 `heeler-session.js`，然后重启该 Agent。
 
 ## Host Helper
 
-Host Helper 是 Heeler 安装在 macOS 或 Linux herdr-core Host 上的一个小型后台服务。herdr-core 无法运行插件，因此关闭 Heeler 后，Host 上没有任何程序会把 Agent 的动态告诉你的设备。Host Helper 会跟随 core，并向你的设备发送加密通知。Herdr TUI Host 由 Heeler 插件提供这些功能，不需要 Host Helper。
+Host Helper 是 Heeler 安装在 macOS 或 Linux Herdr Core Host 上的一个小型后台服务。Herdr Core 无法运行插件，因此关闭 Heeler 后，Host 上没有任何程序会把 Agent 的动态告诉你的设备。Host Helper 会跟随 core，并向你的设备发送加密通知。Herdr TUI Host 由 Heeler 插件提供这些功能，不需要 Host Helper。
 
 | | 未安装 Helper | 已安装 Helper |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ Host Helper 绝不会启动 core；没有 core 运行时，它会等待。它写
 
 ### 1. 查看将写入的文件
 
-1. 在 **Hosts** 中打开该 Host，轻点它的 **herdr-core** Server，再轻点 **Host Helper**。
+1. 在 **Hosts** 中打开该 Host，轻点它的 **Herdr Core** Server，再轻点 **Host Helper**。
 2. 在 **Files This Writes** 下依次轻点 **Helper**、**systemd Unit**（Linux）或 **LaunchAgent**（macOS）以及 **Pi & Oh My Pi**，浏览它们的文件夹：Linux 上的 `~/.local/share/heeler/host-helper` 或 macOS 上的 `~/Library/Application Support/heeler/host-helper`、服务文件，以及 Pi 和 Oh My Pi 的 `agent/extensions` 文件夹。
 
 <a href="../images/herdr-core/host-helper-sheet.png"><img src="../images/herdr-core/host-helper-sheet.png" width="300" alt="安装前的 Host Helper 面板：显示 Not Installed 和 Install 按钮，Files This Writes 下列出 Helper、LaunchAgent 和 Pi & Oh My Pi 及其文件数"></a>
@@ -200,11 +200,11 @@ macOS 可能会提示 `node` 可在后台运行，并将其列在“登录项”
 
 ## 已知限制
 
-- **不支持重命名 Agent：** 在 herdr-core Host 上无法重命名 Agent。工作区仅支持在 macOS 和 Linux 上通过正在运行的 Herdr 桌面端重命名。
+- **不支持重命名 Agent：** 在 Herdr Core Host 上无法重命名 Agent。工作区仅支持在 macOS 和 Linux 上通过正在运行的 Herdr 桌面端重命名。
 - **OpenCode Chat 已关闭：** OpenCode Agent 仅提供终端视图。
 - **使用 `/new` 开始新对话：** 在 Codex 中执行 `/new` 后，请先使用终端，直到退出并运行 `codex resume --no-daemon`。在未安装 Host Helper 的 Pi 中，只有在从 Chat 发送的消息未出现在旧对话中之后，才会察觉到 `/new`。
 - **Federated Terminals：** 不显示。请将另一台机器作为单独的 Host 添加。
 - **包装脚本：** 以子进程方式运行 Agent 的脚本会留在 **Terminals** 中。请用 `exec` 启动 Agent（例如 `exec claude "$@"`），它才会显示在 **Agents** 中。
 - **首次使用无 `~/.zshrc` 的 `zsh`：** `zsh` 会打开其配置向导，新启动的 Agent 会一直等待，直到你完成向导或创建 `~/.zshrc`。
 
-最后核对于 2026-11-06，核对依据为 herdr-core 0.1.18 与 Herdr 桌面端 0.1.13。
+最后核对于 2026-11-06，核对依据为 Herdr Core 0.1.18 与 Herdr 桌面端 0.1.13。

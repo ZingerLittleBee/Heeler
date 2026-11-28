@@ -288,7 +288,7 @@ struct AgentComposerStoreTests {
         #expect(result == .failed)
         #expect(
             store.messages.map(\.state)
-                == [.failed("herdr rejected the message: agent w15:p1 is not an active named agent")]
+                == [.failed("Herdr rejected the message: agent w15:p1 is not an active named agent")]
         )
         #expect(await transport.agentPromptParams.count > 1)
         #expect(store.messages.first?.text == "Stuck launch")
@@ -315,7 +315,7 @@ struct AgentComposerStoreTests {
         #expect(result == .failed)
         #expect(
             store.messages.map(\.state)
-                == [.failed("herdr rejected the message: agent target w15:p1 not found")])
+                == [.failed("Herdr rejected the message: agent target w15:p1 not found")])
         #expect(await transport.agentPromptParams.count == 1)
     }
 
@@ -482,7 +482,7 @@ struct AgentComposerStoreTests {
                 == .failed("The message could not be sent. Check the connection and retry.")
         )
         if case .failed(let detail) = message.state {
-            #expect(!detail.contains("herdr rejected"))
+            #expect(!detail.contains("Herdr rejected"))
         }
         #expect(
             await transport.agentPromptParams == [

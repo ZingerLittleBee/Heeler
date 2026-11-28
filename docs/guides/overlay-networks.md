@@ -1,10 +1,10 @@
 # Connect Heeler through an Overlay Network
 
-Use Tailscale, ZeroTier, EasyTier, or tailcat to reach the Mac running herdr when you can't connect to it directly, for example from cellular. These guides cover a Mac and Heeler on iPhone or iPad.
+Use Tailscale, ZeroTier, EasyTier, or tailcat to reach the Mac running Herdr when you can't connect to it directly, for example from cellular. These guides cover a Mac and Heeler on iPhone or iPad.
 
 You need a Heeler version with **Settings > Overlay Networks**.
 
-Heeler joins the network by itself, so the phone needs no Tailscale, ZeroTier, EasyTier, or tailcat app and no VPN setting. The Mac needs the provider's software, Remote Login (SSH), and herdr. You still log in to the Mac over SSH as usual.
+Heeler joins the network by itself, so the phone needs no Tailscale, ZeroTier, EasyTier, or tailcat app and no VPN setting. The Mac needs the provider's software, Remote Login (SSH), and Herdr. You still log in to the Mac over SSH as usual.
 
 ## Choose a setup
 
@@ -18,7 +18,7 @@ Prepare the Host below, then follow one provider guide. It sends you to [Connect
 | [EasyTier](easytier.md) | No account; EasyTier on the Mac from Terminal | Needs a relay you run, such as a small VPS, or a Mac reachable from the internet ([how](easytier.md#reaching-a-mac-outside-the-lan)) |
 | [tailcat](tailcat.md) | No account; `tailcat serve` on the Mac from Terminal. Reaches that one Mac | Works |
 
-If you're new to this, start with Tailscale. For a Linux or Windows machine, install the provider's client from its own documentation, then follow the same Heeler steps. Windows also needs the [Windows SSH and herdr setup](windows-setup.md).
+If you're new to this, start with Tailscale. For a Linux or Windows machine, install the provider's client from its own documentation, then follow the same Heeler steps. Windows also needs the [Windows SSH and Herdr setup](windows-setup.md).
 
 These guides all join a network from inside Heeler. If you would rather run a VPN app on the phone and open no port anywhere, [Cloudflare Tunnel](cloudflare-tunnel.md) reaches the Mac with Cloudflare's own client app. It needs a Cloudflare account, and it is not an Overlay Network under **Settings**.
 
@@ -45,11 +45,11 @@ The values shown are examples.
 
 ## Prepare the Host
 
-Do these steps on the Mac that runs herdr, signed in as the account Heeler will use.
+Do these steps on the Mac that runs Herdr, signed in as the account Heeler will use.
 
-1. Install and start [herdr](https://herdr.dev/docs/install/) and open the session you want.
+1. Install and start [Herdr](https://herdr.dev/docs/install/) and open the session you want.
 2. Turn on **System Settings > General > Sharing > Remote Login** and allow your account ([Apple's guide](https://support.apple.com/guide/mac-help/allow-a-remote-computer-to-access-your-mac-mchlp1066/mac)). Keep the Mac awake.
-3. In Terminal, note your username, check herdr, and read the Mac's SSH fingerprint so you can compare it in Heeler later:
+3. In Terminal, note your username, check Herdr, and read the Mac's SSH fingerprint so you can compare it in Heeler later:
 
    ```sh
    id -un
@@ -78,7 +78,7 @@ Come here from your provider guide once the Mac and Heeler are on the same netwo
 
 | Connect | Servers |
 | --- | --- |
-| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="260" alt="New Host sheet on the Servers step listing Herdr TUI, herdr-core, and tmux as checked, an optional Name field, and Add Host with 3 Servers"></a> |
+| <a href="images/hosts/add-host-connect.png"><img src="images/hosts/add-host-connect.png" width="260" alt="New Host sheet on the Connect step with Address, User, More Options, and the Connect button"></a> | <a href="images/hosts/add-host-servers.png"><img src="images/hosts/add-host-servers.png" width="260" alt="New Host sheet on the Servers step listing Herdr TUI, Herdr Core, and Tmux as checked, an optional Name field, and Add Host with 3 Servers"></a> |
 
 | Field | Value |
 | --- | --- |
@@ -116,7 +116,7 @@ To fill in the address under **More Options**, Tailscale offers **Choose from Ta
 | **Waiting for a network** (EasyTier Config Server) | Assign a network to Heeler's Machine ID in the EasyTier console. |
 | Network is connected, but SSH times out | Check the route's Network, address, and port. Make sure the Mac is awake and Remote Login is on. |
 | SSH login fails | Check the username, Remote Login access, and the key or password. |
-| SSH works, herdr checks fail | Read the failing check. Usually herdr isn't installed for this account, or the Server that is on is not the session herdr runs. |
+| SSH works, Herdr checks fail | Read the failing check. Usually Herdr isn't installed for this account, or the Server that is on is not the session Herdr runs. |
 | Network turns back on after you switch it off | A Host route is using it. To keep it off, change that route's **Network** or remove the Host. |
 
 Last checked on 2026-10-09 on macOS.

@@ -7,7 +7,7 @@ import { pairCommands } from './content';
 
 // One block per command; the "$ " prompt is not part of what Copy copies.
 const commands = pairCommands.map((command) => `<span><i>$ </i><b>${command.split(' ').join('</b> <b>')}</b></span>`).join('');
-const found = ['Herdr TUI', 'Herdr desktop', 'tmux'];
+const found = ['Herdr TUI', 'Herdr desktop', 'Tmux'];
 ---
 
 <section class="sec">
@@ -61,7 +61,7 @@ const found = ['Herdr TUI', 'Herdr desktop', 'tmux'];
               </div>
             </div>
             <div class="su-lk">
-              <a class="lk" href={`${links.docs}tmux`} target="_blank" rel="noopener">tmux guide <span>→</span></a>
+              <a class="lk" href={`${links.docs}tmux`} target="_blank" rel="noopener">Tmux guide <span>→</span></a>
               <a class="lk" href={`${links.docs}herdr-core`} target="_blank" rel="noopener">Herdr desktop guide <span>→</span></a>
             </div>
           </div>

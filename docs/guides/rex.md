@@ -1,6 +1,6 @@
 # Connect Rex
 
-Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
+Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [Herdr Core](herdr-core.md), and [Tmux](tmux.md).
 
 > [!NOTE]
 > Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows. Preview.25 was exercised on macOS and Linux, and preview.23 on native Windows. Open running terminals and Agents from the Console. See [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
@@ -36,7 +36,7 @@ Heeler looks once through your login shell without starting anything and lists w
 | --- | --- |
 | **Rex** reading **Running** | Leave **Rex** checked and tap **Add Host with 1 Server**. |
 | **Rex** reading **Not running** | Rex is installed but not running, so **Rex** starts unchecked. Check **Rex** to have it connect once you start Rex. Or add the Host without it, start Rex, open the Host, tap **Scan Again**, and turn on **Rex**. |
-| Rex alongside Herdr TUI, herdr-core, or tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
+| Rex alongside Herdr TUI, Herdr Core, or Tmux | Check each one you want in Heeler. They are all Servers of this one Host. |
 | No **Rex** | Rex is not installed. Add the Host anyway, install and start Rex, open the Host, tap **Scan Again**, and turn on **Rex**. |
 
 Each Server has a switch on the Host's page. Tap **Rex** while it is on to open its own page, with its checks. The connection is the Host's, under **Routes**. **Add by Name…** does not offer Rex: the Host's one Rex Server has no name to type, and Heeler lists it wherever Rex is installed.
@@ -161,7 +161,7 @@ Pi and Oh My Pi tell Chat which conversation they are in through Heeler's extens
 **It worked if** Chat shows the Agent's conversation by itself a few seconds after the Agent starts.
 
 - **Still Can't Tell the Conversation:** When the message says the Agent hasn't loaded the extension, the Agent was started before you added it, or with `--no-extensions`. Start it again with its extensions on.
-- **What the extension does:** Pi and Oh My Pi load it for every session on the Host. In a Rex terminal it keeps one small file per running Agent in a `heeler-session` folder beside the extension folder, naming the conversation, and removes it when the Agent quits. Outside Rex, tmux, and herdr-core it does nothing.
+- **What the extension does:** Pi and Oh My Pi load it for every session on the Host. In a Rex terminal it keeps one small file per running Agent in a `heeler-session` folder beside the extension folder, naming the conversation, and removes it when the Agent quits. Outside Rex, Tmux, and Herdr Core it does nothing.
 - **Removing it:** Delete `heeler-session.js` from the extension folder, and the `heeler-session` folder beside it.
 
 ## Foreground alerts

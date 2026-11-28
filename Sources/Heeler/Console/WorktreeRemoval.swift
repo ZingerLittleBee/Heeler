@@ -251,27 +251,27 @@ struct WorktreeRemovalRefusal {
                 // herdr would take this id as its own option, so no command
                 // can hand it to `--workspace`.
                 self.init(
-                    message: String(localized: "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first."),
+                    message: String(localized: "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first."),
                     offersChanges: true)
             } else {
                 let command = HerdrCommandLine.render(
                     session: sessionName, endpoint: endpoint,
                     arguments: ["worktree", "remove", "--workspace", workspaceID, "--force"])
                 self.init(
-                    message: String(localized: "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: \(command)"),
+                    message: String(localized: "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes \(checkoutPath) and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: \(command)"),
                     offersChanges: true,
                     command: command)
             }
         case Self.forceRequiredCode:
             self.init(
-                message: String(localized: "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."),
+                message: String(localized: "Herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."),
                 offersChanges: true)
         case "not_linked_worktree":
-            self.init(message: String(localized: "herdr couldn't remove this worktree because the workspace is not a linked worktree."))
+            self.init(message: String(localized: "Herdr couldn't remove this worktree because the workspace is not a linked worktree."))
         case "workspace_not_found":
-            self.init(message: String(localized: "herdr couldn't remove this worktree because the workspace is no longer on the Host."))
+            self.init(message: String(localized: "Herdr couldn't remove this worktree because the workspace is no longer on the Host."))
         default:
-            self.init(message: String(localized: "herdr couldn't remove this worktree: \(serverMessage)"))
+            self.init(message: String(localized: "Herdr couldn't remove this worktree: \(serverMessage)"))
         }
     }
 }

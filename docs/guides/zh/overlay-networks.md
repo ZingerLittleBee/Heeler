@@ -2,11 +2,11 @@
 
 # 通过 Overlay Network 连接 Heeler
 
-当无法直接连接到运行 herdr 的 Mac 时（例如在蜂窝网络下），可以使用 Tailscale、ZeroTier、EasyTier 或 tailcat 建立连接。本系列指南适用于运行 herdr 的 Mac 以及运行在 iPhone 或 iPad 上的 Heeler。
+当无法直接连接到运行 Herdr 的 Mac 时（例如在蜂窝网络下），可以使用 Tailscale、ZeroTier、EasyTier 或 tailcat 建立连接。本系列指南适用于运行 Herdr 的 Mac 以及运行在 iPhone 或 iPad 上的 Heeler。
 
 你需要使用包含 **Settings > Overlay Networks** 的 Heeler 版本。
 
-Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale、ZeroTier、EasyTier 或 tailcat 应用，也无需配置系统 VPN。Mac 上需要安装对应服务商的客户端、开启“远程登录”（SSH）并运行 herdr。连接后仍按常规方式通过 SSH 登录 Mac。
+Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale、ZeroTier、EasyTier 或 tailcat 应用，也无需配置系统 VPN。Mac 上需要安装对应服务商的客户端、开启“远程登录”（SSH）并运行 Herdr。连接后仍按常规方式通过 SSH 登录 Mac。
 
 ## 选择方案
 
@@ -20,7 +20,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | [EasyTier](easytier.md) | 无需账号；在 Mac 终端中运行 EasyTier | 需要自建中继（如小型 VPS）或具备公网入口的 Mac（[配置方法](easytier.md#在局域网外连接-mac)） |
 | [tailcat](tailcat.md) | 无需账号；在 Mac 终端中运行 `tailcat serve`。只能连接这一台 Mac | 支持 |
 
-如果你是初次配置，建议从 Tailscale 开始。对于 Linux 或 Windows 主机，请先参考对应服务商的官方文档安装客户端，再按相同的 Heeler 步骤操作。Windows 主机还需完成 [Windows SSH 与 herdr 配置](windows-setup.md)。
+如果你是初次配置，建议从 Tailscale 开始。对于 Linux 或 Windows 主机，请先参考对应服务商的官方文档安装客户端，再按相同的 Heeler 步骤操作。Windows 主机还需完成 [Windows SSH 与 Herdr 配置](windows-setup.md)。
 
 以上方式都是让 Heeler 自己加入网络。如果你更愿意在手机上运行一个 VPN 应用、并且不在任何地方开放端口，可以改用 [Cloudflare Tunnel](cloudflare-tunnel.md)：连接由 Cloudflare 的官方客户端 App 承载。它需要一个 Cloudflare 账号，也不是 **Settings** 里的 Overlay Network。
 
@@ -47,11 +47,11 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 
 ## 准备 Host
 
-请在运行 herdr 的 Mac 上，使用 Heeler 将要登录的 macOS 账户执行以下步骤。
+请在运行 Herdr 的 Mac 上，使用 Heeler 将要登录的 macOS 账户执行以下步骤。
 
-1. 安装并启动 [herdr](https://herdr.dev/docs/install/)，打开你要使用的会话。
+1. 安装并启动 [Herdr](https://herdr.dev/docs/install/)，打开你要使用的会话。
 2. 开启 **System Settings > General > Sharing > Remote Login**（系统设置 > 通用 > 共享 > 远程登录），并允许你的账户访问（参见 [Apple 官方指南](https://support.apple.com/guide/mac-help/allow-a-remote-computer-to-access-your-mac-mchlp1066/mac)）。请保持 Mac 处于唤醒状态。
-3. 在终端中查看你的用户名、确认 herdr 版本，并读取 Mac 的 SSH 指纹，以便稍后在 Heeler 中核对：
+3. 在终端中查看你的用户名、确认 Herdr 版本，并读取 Mac 的 SSH 指纹，以便稍后在 Heeler 中核对：
 
    ```sh
    id -un
@@ -80,7 +80,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 
 | Connect | Servers |
 | --- | --- |
-| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="260" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、herdr-core 和 tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a> |
+| <a href="../images/hosts/add-host-connect.png"><img src="../images/hosts/add-host-connect.png" width="260" alt="New Host 面板的 Connect 步骤，包含 Address、User、More Options 和 Connect 按钮"></a> | <a href="../images/hosts/add-host-servers.png"><img src="../images/hosts/add-host-servers.png" width="260" alt="New Host 面板的 Servers 步骤，列出已勾选的 Herdr TUI、Herdr Core 和 Tmux，可选的 Name 字段以及 Add Host with 3 Servers 按钮"></a> |
 
 | 字段 | 值 |
 | --- | --- |
@@ -118,7 +118,7 @@ Heeler 会直接加入 Overlay Network，因此手机上无需安装 Tailscale�
 | **Waiting for a network**（EasyTier Config Server） | 在 EasyTier 控制台中为 Heeler 的 Machine ID 分配网络。 |
 | 网络已连接，但 SSH 超时 | 检查路由的 Network、地址和端口；确认 Mac 未休眠且已开启“远程登录”。 |
 | SSH 登录失败 | 检查用户名、“远程登录”访问权限，以及所用的密钥或密码。 |
-| SSH 正常，但 herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 herdr，或已开启的 Server 不是 herdr 正在运行的会话。 |
+| SSH 正常，但 Herdr 检查失败 | 查看未通过的具体检查项；通常是该账户下未安装 Herdr，或已开启的 Server 不是 Herdr 正在运行的会话。 |
 | 手动关闭网络开关后又自动开启 | 有 Host 路由正在使用该网络。如需保持关闭，请修改对应路由的 **Network** 或移除该 Host。 |
 
 最后核对于 2026-10-09（macOS）。

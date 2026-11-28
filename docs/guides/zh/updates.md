@@ -1,7 +1,7 @@
 <!-- Translated from docs/guides/updates.md at 2e3f5e3d -->
 # 更新 Heeler 插件与 Host Helper
 
-新版本的 Heeler 可能带来更新的 Heeler 插件（用于 Herdr TUI Host），或更新的 Host Helper（用于 herdr-core 和 tmux Host）。可以在 Heeler 中更新；如果在 App 中更新一直失败，再手动更新。
+新版本的 Heeler 可能带来更新的 Heeler 插件（用于 Herdr TUI Host），或更新的 Host Helper（用于 Herdr Core 和 Tmux Host）。可以在 Heeler 中更新；如果在 App 中更新一直失败，再手动更新。
 
 ## 在 Heeler 中更新
 
@@ -38,7 +38,7 @@
 herdr plugin install ZingerLittleBee/Heeler --ref plugin --yes
 ```
 
-herdr 会从 GitHub 下载插件，并用 Node.js 20 或更新版本和 npm 构建，所以 Host 上两者都要有。如果 Host 使用了具名的 herdr 会话，轻点它 **Herdr TUI** Server 页面上的 **Heeler Plugin** 行，可以看到已填好该会话的命令。
+Herdr 会从 GitHub 下载插件，并用 Node.js 20 或更新版本和 npm 构建，所以 Host 上两者都要有。如果 Host 使用了具名的 Herdr 会话，轻点它 **Herdr TUI** Server 页面上的 **Heeler Plugin** 行，可以看到已填好该会话的命令。
 
 **成功的标志是**在 **Updates** 中下拉刷新，或重新打开该 Server 的页面后，**Heeler Plugin** 行显示新版本。
 
@@ -46,7 +46,7 @@ herdr 会从 GitHub 下载插件，并用 Node.js 20 或更新版本和 npm 构�
 
 Host Helper 包含在 Heeler App 里，所以没有可以在 Host 上运行的命令。请在 Server 的页面上逐台 Host 更新：
 
-1. 在 **Hosts** 中打开该 Host，轻点它的 **herdr-core** 或 **tmux** Server，再轻点 **Host Helper**。
+1. 在 **Hosts** 中打开该 Host，轻点它的 **Herdr Core** 或 **Tmux** Server，再轻点 **Host Helper**。
 2. 轻点 **Update**；如果该行显示 **Damaged**，则轻点 **Repair**。失败时面板会说明出了什么问题。
 3. 如果仍然失败，轻点 **Remove**，再轻点 **Install**。
 

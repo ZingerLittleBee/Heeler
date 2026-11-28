@@ -4,36 +4,36 @@ Fixes for the problems you are most likely to meet in [Chat](chat.md). Most othe
 
 ## There is no Show Chat
 
-On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, Amp, and Factory Droid. Amp requires Heeler 0.1.24 or newer. Install Heeler's Amp plugin from Chat and reload it in Amp. The [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) guides list the programs supported on each Host system, including native Windows for herdr-core and Rex. **Show Chat** appears after the Host connects.
+On macOS and Linux Herdr TUI Hosts, Chat opens for Claude Code, Codex, Pi, Oh My Pi, Grok Build, OpenCode, Antigravity CLI, Amp, and Factory Droid. Amp requires Heeler 0.1.24 or newer. Install Heeler's Amp plugin from Chat and reload it in Amp. The [Herdr Core](herdr-core.md#chat), [Tmux](tmux.md#chat), and [Rex](rex.md#chat) guides list the programs supported on each Host system, including native Windows for Herdr Core and Rex. **Show Chat** appears after the Host connects.
 
 ## Waiting for Conversation
 
-herdr hasn't told Heeler which conversation the Agent is in yet.
+Herdr hasn't told Heeler which conversation the Agent is in yet.
 
 1. For Codex, send a first prompt; it needs one after every start or resume. For OpenCode, open a conversation in the terminal or send a first message there. For Droid, check the Host and full directory on the folder trust card. If Chat directs you to the terminal, finish trust in that Agent’s terminal.
 2. On the Host, run `herdr integration status` and install the program's integration if it isn't `current` ([Set up the Host](chat.md#set-up-the-host)), then restart the Agent.
 3. Tap **Check Again**.
 
-For an externally started Droid on herdr-core, tmux or Rex, use **Install Droid Hook…** if Chat reports a missing hook, then resume Droid in that terminal. [Droid setup](chat.md#droid)
+For an externally started Droid on Herdr Core, Tmux or Rex, use **Install Droid Hook…** if Chat reports a missing hook, then resume Droid in that terminal. [Droid setup](chat.md#droid)
 
 If Codex still waits after you have sent prompts, it was probably started without `--no-daemon`: see the next section.
 
 ## Codex Started Without --no-daemon
 
-Codex was started without `--no-daemon` while its background server runs, so herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. If Codex says the conversation is open in another app, the background server still holds it: run `codex app-server daemon stop`, which also ends any other Codex on that server, then resume again. When a conversation already shows, a banner warns that it may be another terminal's.
+Codex was started without `--no-daemon` while its background server runs, so Herdr can't tell which terminal its conversation is in ([Set up the Host](chat.md#set-up-the-host)). Agents that Herdr brings back after a restart also start without it, unless you use the alias in [Set up the Host](chat.md#set-up-the-host). Exit Codex and run `codex --no-daemon resume` to continue the same conversation. If Codex says the conversation is open in another app, the background server still holds it: run `codex app-server daemon stop`, which also ends any other Codex on that server, then resume again. When a conversation already shows, a banner warns that it may be another terminal's.
 
-Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/issues/48500): its background server runs herdr's integration with the settings of the terminal that started the server. [openai/codex#44902](https://github.com/openai/codex/issues/44902) proposes a fix, and herdr follows it in [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649).
+Codex tracks the cause in [openai/codex#48500](https://github.com/openai/codex/issues/48500): its background server runs Herdr's integration with the settings of the terminal that started the server. [openai/codex#44902](https://github.com/openai/codex/issues/44902) proposes a fix, and Herdr follows it in [herdrdev/herdr#4649](https://github.com/herdrdev/herdr/issues/4649).
 
 ## Can't Tell the Conversation
 
-On [herdr-core](herdr-core.md#chat), [tmux](tmux.md#chat), and [Rex](rex.md#chat) Hosts, Chat identifies an Agent's conversation from what the Host shows about its running process and never guesses. Chat checks again automatically when the Agent's status changes, or whenever you tap **Check Again**. On macOS and Linux, you can also tap **Choose a Conversation** to pick the conversation yourself.
+On [Herdr Core](herdr-core.md#chat), [Tmux](tmux.md#chat), and [Rex](rex.md#chat) Hosts, Chat identifies an Agent's conversation from what the Host shows about its running process and never guesses. Chat checks again automatically when the Agent's status changes, or whenever you tap **Check Again**. On macOS and Linux, you can also tap **Choose a Conversation** to pick the conversation yourself.
 
 | Program or situation | Why Chat can't tell and what to do |
 | --- | --- |
 | **Codex** | A fresh `--no-daemon` Codex starts its conversation with the first message (sent from Chat or the terminal). If Chat still can't tell—for example after `/new`, when Codex keeps more than one thread open—exit Codex, run `codex resume --no-daemon`, and pick the conversation. If Codex started without `--no-daemon`, see [Codex Started Without --no-daemon](#codex-started-without---no-daemon). |
 | **Claude Code** | Claude Code registers its session once it reaches its prompt. Finish signing in or answer any trust or startup prompt in the terminal. |
 | **Grok Build** | Grok Build lists its active conversation while it runs. After `/new`, it lists both conversations for the same process, so restart Grok Build or use **Choose a Conversation**. |
-| **Pi and Oh My Pi** | Pi and Oh My Pi name their conversation through Heeler's extension (`heeler-session.js`). On macOS and Linux herdr-core and tmux Hosts, install the [Host Helper](herdr-core.md#host-helper) from the Host's details and restart the Agent. On [Rex](rex.md#pi-and-oh-my-pi) and [native Windows](herdr-core.md#chat) Hosts, tap **Add Heeler's Extension…** in Chat and restart the Agent. If the extension is already installed, the Agent started before it was added or with `--no-extensions`—restart it with extensions enabled. Without the extension, Oh My Pi still binds after its first message. |
+| **Pi and Oh My Pi** | Pi and Oh My Pi name their conversation through Heeler's extension (`heeler-session.js`). On macOS and Linux Herdr Core and Tmux Hosts, install the [Host Helper](herdr-core.md#host-helper) from the Host's details and restart the Agent. On [Rex](rex.md#pi-and-oh-my-pi) and [native Windows](herdr-core.md#chat) Hosts, tap **Add Heeler's Extension…** in Chat and restart the Agent. If the extension is already installed, the Agent started before it was added or with `--no-extensions`—restart it with extensions enabled. Without the extension, Oh My Pi still binds after its first message. |
 | **Antigravity CLI** | Antigravity CLI creates its conversation on its first message; Chat can send that first message only to a bare `agy` launch, so send it in the terminal otherwise. A conversation already open in another terminal is not locked by a second one, so close the other terminal first. |
 | **OpenCode** | OpenCode reports its conversation when started from **New Agent** (version 2.1 or later) or through Heeler's plugin (**Let Chat Follow OpenCode…**). |
 | **Windows process read failed** | Heeler couldn't inspect the Agent's process on the Host. Run `herdr-core` and your SSH session at the same elevation (both non-administrator), and avoid PowerShell Constrained Language Mode. |
@@ -49,7 +49,7 @@ Chat sends only while the Agent's terminal shows the same conversation. This hap
 
 ## Chat shows an earlier Codex conversation
 
-Codex tells herdr about a conversation only when you send it a prompt. After `/new` or `/resume` in the terminal, send a prompt there and Chat follows. After `/fork`, or after going back to a conversation you opened earlier, Chat can stay on the old one: exit Codex, run `codex --no-daemon resume`, pick the conversation, and send a prompt.
+Codex tells Herdr about a conversation only when you send it a prompt. After `/new` or `/resume` in the terminal, send a prompt there and Chat follows. After `/fork`, or after going back to a conversation you opened earlier, Chat can stay on the old one: exit Codex, run `codex --no-daemon resume`, pick the conversation, and send a prompt.
 
 ## The Agent's input box already has text
 
@@ -75,4 +75,4 @@ Install `sqlite3` or Python 3 on the Host, then tap **Check Again**. If Chat say
 
 **Add Image** and **Add File** upload over SFTP. Turn on SFTP in the Host's SSH server settings, then add the file again.
 
-Last checked on 2026-10-25 against herdr 0.9.5.
+Last checked on 2026-10-25 against Herdr 0.9.5.

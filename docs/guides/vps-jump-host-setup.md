@@ -1,6 +1,6 @@
 # Set Up Remote Access Through a VPS
 
-Follow this guide when the Mac running herdr is behind NAT and Heeler
+Follow this guide when the Mac running Herdr is behind NAT and Heeler
 cannot reach it directly.
 
 The resulting connection path is:
@@ -20,7 +20,7 @@ runbook, see [VPS Jump Host and Reverse-Tunnel Deployment](vps-jump-host.md).
 You need:
 
 - an iPhone with Heeler installed;
-- a Mac with herdr installed;
+- a Mac with Herdr installed;
 - administrator access to a maintained Debian or Ubuntu VPS;
 - the VPS public IP address;
 - the VPS SSH service port, normally `22`;
@@ -151,9 +151,9 @@ These options keep the PTY, exec, and SFTP features Heeler needs while
 disabling agent and X11 forwarding.
 
 Do not add `no-port-forwarding` here. OpenSSH applies it to stream-local
-forwarding as well as TCP, and Heeler reaches the herdr API socket through
+forwarding as well as TCP, and Heeler reaches the Herdr API socket through
 `direct-streamlocal` channels (ADR 0011). With that option, preflight fails at
-the herdr socket even though SSH authentication succeeds. It would add little
+the Herdr socket even though SSH authentication succeeds. It would add little
 protection anyway, because this key can already run commands on the Mac.
 
 Checkpoint:
@@ -569,7 +569,7 @@ Successful preflight must verify:
 
 - Jump Host authentication;
 - Mac authentication;
-- herdr socket reachability;
+- Herdr socket reachability;
 - protocol compatibility.
 
 Open an Agent through Attach to complete functional acceptance.
@@ -660,7 +660,7 @@ restarting Remote Login.
 | Mac asks for a password | VPS -> Mac | Device Key missing from the Mac or wrong Mac user |
 | Mac host key changed | Inner SSH trust | Verify the Mac host key locally before accepting |
 | VPS host key changed | Outer SSH trust | Verify through the provider console before accepting |
-| App reaches Mac but not herdr | Mac application layer | herdr status, socket path, and `AllowStreamLocalForwarding` |
+| App reaches Mac but not Herdr | Mac application layer | Herdr status, socket path, and `AllowStreamLocalForwarding` |
 
 ## Automate Additional Desktop Clients
 

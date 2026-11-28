@@ -450,7 +450,7 @@ struct HostStoreTests {
             try store.confirmServerKind(.herdrCore, for: host.id)
             Issue.record("\(name) should be refused")
         } catch HostStoreError.sessionNameRefused(let reason) {
-            #expect(reason.contains("herdr-core"))
+            #expect(reason.contains("Herdr Core"))
             #expect(reason.contains(name))
         }
 
@@ -467,7 +467,7 @@ struct HostStoreTests {
             try store.confirmServerKind(.herdrTUI, for: id)
             Issue.record("herdr refuses a name with a space")
         } catch HostStoreError.sessionNameRefused(let reason) {
-            #expect(reason.contains("herdr refuses"))
+            #expect(reason.contains("Herdr refuses"))
             #expect(reason.contains("desktop session"))
         }
         #expect(store.hosts.first?.serverKind == .unconfirmed)

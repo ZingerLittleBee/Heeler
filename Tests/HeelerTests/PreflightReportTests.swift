@@ -181,9 +181,9 @@ struct PreflightReportTests {
         #expect(
             report[.herdrInstalled]
                 == .failed(
-                    hint: "The herdr launcher at "
+                    hint: "The Herdr launcher at "
                         + "/Users/ada/Library/Application Support/Example/bin/herdr could not run. "
-                        + "Check that this launcher exists, is executable, and can start herdr. "
+                        + "Check that this launcher exists, is executable, and can start Herdr. "
                         + "Pair the Host again if its path changed."))
         #expect(report[.serverRunning] == .blocked)
     }
@@ -195,18 +195,18 @@ struct PreflightReportTests {
         let cases: [(TransportError, PreflightCheck, String)] = [
             (
                 .socketNotFound(path: path), .herdrInstalled,
-                "No herdr socket at \(path). Install and start herdr on the Host, "
+                "No Herdr socket at \(path). Install and start Herdr on the Host, "
                     + "or fix the session name."
             ),
             (
                 .streamLocalOpenFailed(path: path), .serverRunning,
-                "Could not open the herdr socket at \(path). Start herdr on the Host, "
+                "Could not open the Herdr socket at \(path). Start Herdr on the Host, "
                     + "or enable SSH stream-local forwarding and run the checks again."
             ),
             (
                 .protocolVersionMismatch(server: 16, supported: 17), .protocolCompatible,
-                "The Host speaks herdr protocol 16; this app needs at least 17. "
-                    + "Update herdr on the Host."
+                "The Host speaks Herdr protocol 16; this app needs at least 17. "
+                    + "Update Herdr on the Host."
             ),
         ]
         for (error, check, hint) in cases {
@@ -224,19 +224,19 @@ struct PreflightReportTests {
         let cases: [(TransportError, PreflightCheck, String)] = [
             (
                 .socketNotFound(path: path), .herdrInstalled,
-                "No herdr socket at \(path). Start the herdr instance configured for this Host "
+                "No Herdr socket at \(path). Start the Herdr instance configured for this Host "
                     + "and verify its socket path, then run the checks again."
             ),
             (
                 .streamLocalOpenFailed(path: path), .serverRunning,
-                "Could not open the herdr socket at \(path). Start the herdr instance "
+                "Could not open the Herdr socket at \(path). Start the Herdr instance "
                     + "configured for this Host, or enable SSH stream-local forwarding and run the "
                     + "checks again."
             ),
             (
                 .protocolVersionMismatch(server: 16, supported: 17), .protocolCompatible,
-                "The Host speaks herdr protocol 16; this app needs at least 17. "
-                    + "Update the herdr instance configured for this Host."
+                "The Host speaks Herdr protocol 16; this app needs at least 17. "
+                    + "Update the Herdr instance configured for this Host."
             ),
         ]
         for (error, check, hint) in cases {

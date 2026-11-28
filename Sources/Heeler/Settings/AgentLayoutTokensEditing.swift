@@ -150,7 +150,7 @@ enum AgentLayoutTokensEditing {
     /// never joins the slot's name to a separately localized word.
     static func slotRowName(_ slot: AgentRowSlot) -> String {
         switch slot {
-        case .herdr: String(localized: "herdr row")
+        case .herdr: String(localized: "Herdr row")
         case .heeler: String(localized: "Heeler row")
         }
     }
@@ -163,7 +163,7 @@ enum AgentLayoutTokensEditing {
         case (_, .trailing):
             String(localized: "These fields end the row on the right. They are Heeler's own; Sync from plugin keeps them.")
         case (.herdr?, .leading):
-            String(localized: "This row starts from herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too.")
+            String(localized: "This row starts from Herdr's sidebar fields; Sync from plugin refills it. Heeler fields are welcome here too.")
         case (.heeler?, .leading):
             String(localized: "This is Heeler's row. Sync from plugin keeps it.")
         }
@@ -194,7 +194,7 @@ enum AgentLayoutTokensEditing {
         case .stateIcon:
             String(localized: "Status icon. The status_badge field or the Status Ring shows it; it is not offered as a field.")
         case .stateText:
-            String(localized: "herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, not in this row; add status to show it as text.")
+            String(localized: "Herdr's status text. Heeler shows the status with the status_badge field or the Status Ring, not in this row; add status to show it as text.")
         case .workspace:
             String(localized: "Workspace or repo folder name")
         case .tab:
@@ -222,7 +222,7 @@ enum AgentLayoutTokensEditing {
         case .changes:
             String(localized: "Changes totals of the Agent's Checkout")
         case .custom:
-            String(localized: "Plugin field. Values come from herdr plugins and display as plain text.")
+            String(localized: "Plugin field. Values come from Herdr plugins and display as plain text.")
         case .label:
             String(localized: "Terminal label")
         }

@@ -183,7 +183,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."
+                    "Herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."
                 ))
         #expect(store.refusalCommand == nil)
 
@@ -250,7 +250,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
+                    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
                 ))
         #expect(store.refusalCommand == "herdr worktree remove --workspace w1 --force")
         #expect(store.refusalOffersChanges)
@@ -272,7 +272,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
+                    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace w1 --force"
                 ))
         #expect(store.refusalCommand == "herdr worktree remove --workspace w1 --force")
         #expect(store.refusalOffersChanges)
@@ -307,7 +307,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree: fatal: working trees containing submodules cannot be moved or removed"
+                    "Herdr couldn't remove this worktree: fatal: working trees containing submodules cannot be moved or removed"
                 ))
         #expect(store.refusalCommand == nil)
         #expect(!store.refusalOffersChanges)
@@ -325,7 +325,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr --session work worktree remove --workspace w1 --force"
+                    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr --session work worktree remove --workspace w1 --force"
                 ))
         #expect(
             store.refusalCommand
@@ -384,7 +384,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first."
+                    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first."
                 ))
         #expect(store.refusalCommand == nil)
         #expect(store.refusalOffersChanges)
@@ -406,7 +406,7 @@ struct WorktreeDetailStoreTests {
         #expect(
             store.removalPhase
                 == .failed(
-                    "herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace --sessions --force"
+                    "Herdr couldn't remove this worktree because it has checked-out submodules. Forcing the removal deletes /work/Heeler-wt and any uncommitted changes in it, so check its Changes first. To force it, run on the Host: herdr worktree remove --workspace --sessions --force"
                 ))
         #expect(store.refusalCommand == "herdr worktree remove --workspace --sessions --force")
         #expect(store.refusalOffersChanges)
@@ -418,11 +418,11 @@ struct WorktreeDetailStoreTests {
     @Test(arguments: [
         (
             "worktree operation is already in progress for this checkout",
-            "herdr couldn't remove this worktree: worktree operation is already in progress for this checkout"
+            "Herdr couldn't remove this worktree: worktree operation is already in progress for this checkout"
         ),
         (
             "Restored worktree is still loading. Try again shortly.",
-            "herdr couldn't remove this worktree: Restored worktree is still loading. Try again shortly."
+            "Herdr couldn't remove this worktree: Restored worktree is still loading. Try again shortly."
         ),
     ])
     func anOperationInProgressShowsHerdrsReason(message: String, copy: String) async throws {

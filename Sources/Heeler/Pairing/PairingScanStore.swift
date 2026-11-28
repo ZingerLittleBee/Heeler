@@ -291,7 +291,7 @@ final class PairingScanStore {
                 step: .verify,
                 message: isMachine
                     ? String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or run heeler-pair there again.")
-                    : String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in herdr instead."),
+                    : String(localized: "The Host did not accept the Device Key, so it is not authorized there yet. Add this device's authorized_keys line on the Host, or generate a Pairing Code in Herdr instead."),
                 canRetry: false)
         case .verificationFailed:
             PairingFailure(

@@ -99,13 +99,13 @@ struct AgentListFieldsSettingsTests {
 
     @Test func sourceCaptionsCoverTheSixUnderlyingSourcesAndIgnoreDraft() throws {
         #expect(AgentListFieldsSourceCaption.text(.saved) == "Your fields")
-        #expect(AgentListFieldsSourceCaption.text(.plugin) == "Following herdr plugin")
+        #expect(AgentListFieldsSourceCaption.text(.plugin) == "Following Herdr plugin")
         #expect(
             AgentListFieldsSourceCaption.text(.pluginDefaults)
-                == "herdr default fields (plugin reported a problem)")
-        #expect(AgentListFieldsSourceCaption.text(.loading) == "Reading herdr fields…")
-        #expect(AgentListFieldsSourceCaption.text(.missing) == "No herdr fields snapshot")
-        #expect(AgentListFieldsSourceCaption.text(.unavailable) == "herdr fields unavailable")
+                == "Herdr default fields (plugin reported a problem)")
+        #expect(AgentListFieldsSourceCaption.text(.loading) == "Reading Herdr fields…")
+        #expect(AgentListFieldsSourceCaption.text(.missing) == "No Herdr fields snapshot")
+        #expect(AgentListFieldsSourceCaption.text(.unavailable) == "Herdr fields unavailable")
 
         let (defaults, cleanup) = try makeDefaults()
         defer { cleanup() }
@@ -119,7 +119,7 @@ struct AgentListFieldsSettingsTests {
         #expect(editor.source(for: hostID) == .draft)
         #expect(
             AgentListFieldsSourceCaption.text(editor.underlyingSource(for: hostID))
-                == "herdr fields unavailable")
+                == "Herdr fields unavailable")
         editor.save()
         #expect(editor.underlyingSource(for: hostID) == .saved)
         #expect(AgentListFieldsSourceCaption.text(editor.underlyingSource(for: hostID)) == "Your fields")
@@ -147,8 +147,8 @@ struct AgentListFieldsSettingsTests {
     }
 
     @Test func rowSlotCopyNamesHerdrRowsAndHeelersRow() {
-        #expect(AgentListFieldsCopy.rowSlots.contains("Row 1 and Row 2 start from herdr"))
-        #expect(AgentListFieldsCopy.rowSlots.contains("Any row can use herdr and Heeler fields"))
+        #expect(AgentListFieldsCopy.rowSlots.contains("Row 1 and Row 2 start from Herdr"))
+        #expect(AgentListFieldsCopy.rowSlots.contains("Any row can use Herdr and Heeler fields"))
         #expect(AgentListFieldsCopy.rowSlots.contains("ring around each Agent's mark shows its status"))
         #expect(AgentListFieldsCopy.rowSlots.contains("status_badge adds it in a capsule"))
         #expect(AgentListFieldsCopy.rowSlots.contains("right side end its line"))
@@ -172,12 +172,12 @@ struct AgentListFieldsSettingsTests {
                 == "Field 1 of 1: pane, default style")
         #expect(
             AgentListFieldsRowLabel.accessibilityLabel(index: 0, row: [plain, dim])
-                == "Row 1, herdr row, Field 1 of 2: agent, default style, Field 2 of 2: workspace, secondary style")
-        #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 1, row: []) == "Row 2, herdr row, No fields")
+                == "Row 1, Herdr row, Field 1 of 2: agent, default style, Field 2 of 2: workspace, secondary style")
+        #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 1, row: []) == "Row 2, Herdr row, No fields")
         #expect(
             AgentListFieldsRowLabel.accessibilityLabel(
                 index: 1, row: [], trailing: [.init(.host, dim: true), .init(.status, dim: true)])
-                == "Row 2, herdr row, No fields, Right side field 1 of 2: host, "
+                == "Row 2, Herdr row, No fields, Right side field 1 of 2: host, "
                 + "Right side field 2 of 2: status, secondary style")
         #expect(AgentListFieldsRowLabel.accessibilityLabel(index: 2, row: []) == "Row 3, Heeler row, Not configured")
     }

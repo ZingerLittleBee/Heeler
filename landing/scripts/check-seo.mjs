@@ -65,9 +65,9 @@ const homeTitle = decodeEntities(home.match(/<title>([^<]+)<\/title>/)[1]);
 const homeDescription = decodeEntities(home.match(/<meta name="description" content="([^"]+)"/)[1]);
 checkMetaLength('homepage <title>', homeTitle, 60);
 checkMetaLength('homepage description', homeDescription, 155);
-assert.ok(homeDescription.includes('tmux, and Rex.'), 'homepage description must include Rex');
+assert.ok(homeDescription.includes('Tmux, and Rex.'), 'homepage description must include Rex');
 assert.doesNotMatch(homeDescription, /\bRex\s*\(/i, 'homepage description must not qualify Rex in parentheses');
-assert.ok(homeDescription.includes('herdr-core'), 'homepage description must mention herdr-core');
+assert.ok(homeDescription.includes('Herdr Core'), 'homepage description must mention Herdr Core');
 
 // H1 spacing: words across stacked spans must keep a space when extracted as text.
 const homeH1Raw = home.match(/<h1\b[^>]*>(.*?)<\/h1>/s)[1];
@@ -75,7 +75,7 @@ assert.equal(stripTags(homeH1Raw), 'Leave the desk. Keep your agents.');
 
 // Hero note & Rex consistency + no overclaiming relay copy.
 const heroNote = stripTags(home.match(/<p class="hero-n"[^>]*>(.*?)<\/p>/s)[1]);
-assert.equal(heroNote, 'Works with Herdr TUI, Herdr desktop (herdr-core), tmux, and Rex.', `unexpected hero-n: ${heroNote}`);
+assert.equal(heroNote, 'Works with Herdr TUI, Herdr desktop (Herdr Core), Tmux, and Rex.', `unexpected hero-n: ${heroNote}`);
 assert.doesNotMatch(heroNote, /\bRex\s*\(/i, `hero-n must not qualify Rex in parentheses: ${heroNote}`);
 assert.ok(!home.includes('The relay only ever sees ciphertext.'), 'stale overclaiming relay note');
 assert.ok(!home.includes('The relay sees ciphertext.'), 'stale overclaiming privacy copy');

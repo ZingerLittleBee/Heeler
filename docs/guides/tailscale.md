@@ -228,7 +228,7 @@ If the Mac still appears in the Tailscale admin console, remove it there.
 | The Mac isn't in **Choose from Tailnet…** | Check that both are in the same tailnet and approved, or type the Mac's Tailscale IP into **Address**. |
 | SSH times out | Check that the Mac is awake and online, and your access rules allow port 22. |
 | SSH sign-in fails | Use the Mac account's key or password, not your Tailscale login. |
-| SSH works but herdr checks fail | Recheck herdr in [Prepare the Host](overlay-networks.md#prepare-the-host). |
+| SSH works but Herdr checks fail | Recheck Herdr in [Prepare the Host](overlay-networks.md#prepare-the-host). |
 | **Not signed in** or **Signed out** | Tap **Sign In** on the network's row, or open the network and tap **Sign In with Browser**. |
 | Without a VPN: Terminal B can't connect to Tailscale, or shows a different machine | Keep Terminal A running or check the LaunchAgent, and use the guide's exact socket path. |
 | Without a VPN: the Mac is online but SSH times out | Check that `nc -vz 127.0.0.1 22` works on the Mac, and that your access rules allow Heeler to reach the Mac on `tcp:22`. |

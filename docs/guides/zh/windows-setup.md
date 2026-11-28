@@ -1,16 +1,16 @@
 <!-- Translated from docs/guides/windows-setup.md at 03606d07 -->
 # Windows 配置
 
-在 Windows 11 上配置 OpenSSH 与原生 Herdr TUI，以便在 Heeler 中使用实时 Agent 与终端（不含 Chat 或配对），并配置 SSH 与 herdr 开机自启。
+在 Windows 11 上配置 OpenSSH 与原生 Herdr TUI，以便在 Heeler 中使用实时 Agent 与终端（不含 Chat 或配对），并配置 SSH 与 Herdr 开机自启。
 
 > [!NOTE]
-> 如果你想在 Windows 上使用原生 Chat（Claude Code、Grok Build、Pi 与 Oh My Pi），请完成[第 1 步](#1-启用-ssh)配置 OpenSSH 后，转到[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。如需在 Windows 上使用 Rex（支持 Claude Code 的 Chat），请参阅[连接 Rex](rex.md)。
+> 如果你想在 Windows 上使用原生 Chat（Claude Code、Grok Build、Pi 与 Oh My Pi），请完成[第 1 步](#1-启用-ssh)配置 OpenSSH 后，转到[连接 Herdr Core 的 Native Windows 一节](herdr-core.md#native-windows)。如需在 Windows 上使用 Rex（支持 Claude Code 的 Chat），请参阅[连接 Rex](rex.md)。
 
 ## 开始之前
 
-- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)（0.1.13 或更高版本），并在 Windows 上准备原生 herdr 0.9.3 或更高版本。
+- 在 iPhone 或 iPad 上安装 [Heeler](https://apps.apple.com/app/id6797263135)（0.1.13 或更高版本），并在 Windows 上准备原生 Herdr 0.9.3 或更高版本。
 - 具备管理员权限的 Windows 11。
-- 请使用同一个 Windows 账户进行 SSH 登录、运行 herdr、运行编程 Agent（coding agent）以及配置开机自启任务。
+- 请使用同一个 Windows 账户进行 SSH 登录、运行 Herdr、运行编程 Agent（coding agent）以及配置开机自启任务。
 - 下文示例使用命名会话 `heeler-win-test`；如果选用其他名称，请保持前后一致。
 
 ## 1. 启用 SSH
@@ -60,9 +60,9 @@ if (-not (Get-NetFirewallRule -Name Heeler-SSH-LocalSubnet -ErrorAction Silently
 
 此规则涵盖了专用和公用网络下的本地子网连接。如果你希望将所有 SSH 访问都限制在该范围内，请检查其他允许 SSH 的防火墙规则。如果使用本地子网以外的 VPN 或跳板机（Jump Host），请改为放行其受信任的源地址。参见 [Microsoft 防火墙规则参考文档](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule)。
 
-## 2. 安装并启动原生 herdr
+## 2. 安装并启动原生 Herdr
 
-以用于 SSH 登录的 Windows 账户打开一个普通 PowerShell 窗口，使用官方 Windows 安装脚本安装 herdr：
+以用于 SSH 登录的 Windows 账户打开一个普通 PowerShell 窗口，使用官方 Windows 安装脚本安装 Herdr：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://herdr.dev/install.ps1 | iex"
@@ -75,7 +75,7 @@ herdr --version
 herdr remote-api-bridge --check
 ```
 
-预期会输出 herdr 0.9.3 或更高版本，以及桥接标记 `herdr-api-bridge-v1`。参见 [herdr 原生 Windows 指南](https://herdr.dev/docs/windows-beta/)。
+预期会输出 Herdr 0.9.3 或更高版本，以及桥接标记 `herdr-api-bridge-v1`。参见 [Herdr 原生 Windows 指南](https://herdr.dev/docs/windows-beta/)。
 
 在普通的原生 Windows 终端中先启动一次命名会话，不要使用以管理员身份打开的终端：
 
@@ -83,7 +83,7 @@ herdr remote-api-bridge --check
 herdr --session heeler-win-test
 ```
 
-这会初始化一个工作区（Workspace）和 shell 窗格。请在该会话内进入项目目录并启动配置好的编程 Agent。你可以随时分离（detach）herdr 客户端并在稍后重新连接，会话会继续在后台运行。
+这会初始化一个工作区（Workspace）和 shell 窗格。请在该会话内进入项目目录并启动配置好的编程 Agent。你可以随时分离（detach）Herdr 客户端并在稍后重新连接，会话会继续在后台运行。
 
 在另一个 PowerShell 窗口中确认该会话正在运行：
 
@@ -107,7 +107,7 @@ ipconfig
 | 字段 | 值 |
 | --- | --- |
 | Address | 手机可访问到的 Windows 地址 |
-| User | 运行 herdr 的 Windows 账户名 |
+| User | 运行 Herdr 的 Windows 账户名 |
 | Port（在 More Options 中） | `22`（除非配置了其他 SSH 端口） |
 | Authentication | `Password` |
 | Password | Windows 账户密码（而非 Windows Hello PIN 码） |
@@ -129,7 +129,7 @@ ssh <username>@<windows-address> "herdr session list --json"
 
 设备密钥（Device Key）和 RSA 密钥（RSA Key）认证需要手动注册公钥。参见 [Windows 测试清单中的密钥配置步骤](../native-windows-testing.md#4-test-device-key-authentication)以及 [Microsoft 密钥管理指南](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)。
 
-## 4. 开机自动启动 herdr
+## 4. 开机自动启动 Herdr
 
 使用任务计划程序（Task Scheduler）在与 SSH 相同的 Windows 账户下运行无头（headless）服务端。运行命令为：
 
@@ -137,7 +137,7 @@ ssh <username>@<windows-address> "herdr session list --json"
 herdr --session heeler-win-test server
 ```
 
-`server` 命令专为进程监管或服务式运行场景设计。参见 [herdr CLI 参考文档](https://herdr.dev/docs/cli-reference/#server)。
+`server` 命令专为进程监管或服务式运行场景设计。参见 [Herdr CLI 参考文档](https://herdr.dev/docs/cli-reference/#server)。
 
 在普通 PowerShell 窗口中查找完整可执行文件路径和账户主目录：
 
@@ -150,7 +150,7 @@ $HeelerHerdrExe
 $env:USERPROFILE
 ```
 
-如果固定路径存在，请优先使用该路径；否则使用 `Get-Command` 返回的路径，并在升级 herdr 后更新计划任务。请将上方输出的实际路径复制到任务计划程序中，而不要粘贴 PowerShell 表达式本身。
+如果固定路径存在，请优先使用该路径；否则使用 `Get-Command` 返回的路径，并在升级 Herdr 后更新计划任务。请将上方输出的实际路径复制到任务计划程序中，而不要粘贴 PowerShell 表达式本身。
 
 **以管理员身份打开任务计划程序（Task Scheduler）**，选择 **创建任务（Create Task）**，并按以下内容配置：
 
@@ -166,11 +166,11 @@ $env:USERPROFILE
 
 保存时在弹出的 Windows 对话框中输入该 Windows 账户的密码。这允许计划任务在桌面登录之前就以该账户的配置文件和网络权限运行。如果将来修改了账户密码，请重新保存计划任务并输入新密码。切勿使用 SYSTEM 账户运行，否则会使用不同的账户和配置目录。Microsoft 文档详细说明了[任务登录类型](https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype)和[默认的 72 小时执行时间限制](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings-executiontimelimit)。
 
-从 herdr 0.9.4 起，以提升权限运行的服务端（使用最高权限运行，或从以管理员身份打开的终端启动）只接受管理员终端的连接。如需允许普通终端连接，请在启动服务端时加上 `--allow-unelevated-clients`，或在 herdr 配置中设置 `[server] allow_unelevated_clients = true`。
+从 Herdr 0.9.4 起，以提升权限运行的服务端（使用最高权限运行，或从以管理员身份打开的终端启动）只接受管理员终端的连接。如需允许普通终端连接，请在启动服务端时加上 `--allow-unelevated-clients`，或在 Herdr 配置中设置 `[server] allow_unelevated_clients = true`。
 
 ### 验证已保存的计划任务
 
-首先检查 `herdr session list --json`。如果 `heeler-win-test` 已在运行，请等到其中的 Agent 可以安全停止时，先停止该会话再测试计划任务。herdr 会拒绝为同一个会话启动第二个服务端。
+首先检查 `herdr session list --json`。如果 `heeler-win-test` 已在运行，请等到其中的 Agent 可以安全停止时，先停止该会话再测试计划任务。Herdr 会拒绝为同一个会话启动第二个服务端。
 
 在任务计划程序中，右键单击 **Herdr Server** 并选择 **运行（Run）**。确认其状态变为 **正在运行（Running）**，然后在 SSH 账户下的 PowerShell 中运行以下检查：
 
@@ -179,7 +179,7 @@ Get-Service sshd | Select-Object Name, Status, StartType
 herdr --session heeler-win-test status server --json
 ```
 
-预期 `sshd` 显示为 `Running` 和 `Automatic`，且 herdr 的响应包含 `running: true` 和 `session: "heeler-win-test"`。
+预期 `sshd` 显示为 `Running` 和 `Automatic`，且 Herdr 的响应包含 `running: true` 和 `session: "heeler-win-test"`。
 
 在提供会话服务期间，该任务会一直保持 **正在运行（Running）** 状态。**上次运行结果（Last Run Result）** 显示为 `0x41301`（`267009`）表示任务仍在运行中，这对于长期运行的服务端属于正常现象。参见 [Microsoft 计划任务状态码文档](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-error-and-success-constants)。
 
@@ -191,8 +191,8 @@ herdr --session heeler-win-test status server --json
 
 ## 支持的功能与进一步检查
 
-原生 Windows Herdr TUI Host 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、Chat、Usage、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
+原生 Windows Herdr TUI Host 支持手动 SSH 连接、会话选择、实时 Agent（Agents）与终端（Terminals）以及目录浏览。配对（Pairing）、Chat、Usage、变更（Changes）、技能（Skills）、文件上传和通知注册目前暂不可用。请在连接前保持 Herdr 处于运行状态；Heeler 不会自动启动 Windows 服务端。
 
-Windows 上的 herdr-core Host 请参阅[连接 herdr-core 的 Native Windows 一节](herdr-core.md#native-windows)。
+Windows 上的 Herdr Core Host 请参阅[连接 Herdr Core 的 Native Windows 一节](herdr-core.md#native-windows)。
 
 如需进行终端尺寸调整、滚动、重连、会话隔离和认证方面的验收检查，请使用 [Windows 测试清单](../native-windows-testing.md)。

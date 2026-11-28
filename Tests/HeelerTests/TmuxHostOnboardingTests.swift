@@ -55,7 +55,7 @@ struct TmuxHostOnboardingTests {
 
         #expect(store.report == .allPassed)
         #expect(store.phase == .finished)
-        #expect(store.serverKindSummary == "tmux 3.7b")
+        #expect(store.serverKindSummary == "Tmux 3.7b")
         #expect(store.pluginStatus == .unsupportedServerKind)
         #expect(store.hostHelper?.status == .notInstalled)
         #expect(await connector.transports.isEmpty)
@@ -92,7 +92,7 @@ struct TmuxHostOnboardingTests {
         #expect(check == .herdrInstalled)
         #expect(hint.contains("Tmux is not installed"))
         #expect(store.report?[.serverRunning] == .blocked)
-        #expect(store.serverKindSummary == "tmux")
+        #expect(store.serverKindSummary == "Tmux")
     }
 
     @Test func anOldTmuxReadsUpdateRequiredWithTheVersionFound() async throws {
@@ -183,12 +183,12 @@ struct TmuxHostOnboardingTests {
         let tmux = ScriptedTmuxHost()
         let (store, _) = makeStore(confirmedHost(), tmux: tmux)
         await store.runChecks()
-        #expect(store.serverKindSummary == "tmux 3.7b")
+        #expect(store.serverKindSummary == "Tmux 3.7b")
 
         await tmux.uninstall()
         await store.runChecks()
 
-        #expect(store.serverKindSummary == "tmux")
+        #expect(store.serverKindSummary == "Tmux")
         #expect(failedCheck(store)?.0 == .herdrInstalled)
     }
 

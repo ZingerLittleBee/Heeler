@@ -193,7 +193,7 @@ struct VoiceInputSettingsView: View {
             if billedKeywordsOperator == nil || connection.options.sendsKeywords {
                 TextField(
                     "Keywords", text: $keywords,
-                    prompt: Text(verbatim: "herdr, Claude Code, Codex, pnpm, SwiftUI"), axis: .vertical)
+                    prompt: Text(verbatim: "Herdr, Claude Code, Codex, pnpm, SwiftUI"), axis: .vertical)
                     .lineLimit(2...6)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)

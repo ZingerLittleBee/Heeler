@@ -1,6 +1,6 @@
 # VPS Jump Host and Reverse-Tunnel Deployment
 
-This guide describes the recommended way to reach a Mac running herdr from
+This guide describes the recommended way to reach a Mac running Herdr from
 Heeler when the Mac is behind NAT and has no stable public address. A
 public VPS acts as a restricted SSH Jump Host. The Mac creates an outbound
 reverse SSH tunnel to the VPS, and the VPS keeps the forwarded port on its
@@ -49,7 +49,7 @@ An iOS connection then uses two independent SSH handshakes:
 2. The Jump Host opens only `127.0.0.1:2222`.
 3. Heeler performs a second SSH handshake with the Mac through that
    forwarded byte stream.
-4. After authenticating to the Mac, the app reaches the herdr Unix socket
+4. After authenticating to the Mac, the app reaches the Herdr Unix socket
    through `direct-streamlocal` channels and opens Attach through an SSH PTY.
 
 The VPS terminates the first SSH connection and the Mac-to-VPS tunnel, but the
@@ -127,7 +127,7 @@ turning either account into a general-purpose VPS login.
 - macOS Remote Login enabled for the intended Mac user.
 - A public-key login path that has been tested before password authentication
   is disabled anywhere.
-- herdr installed on the Mac, with its SSH server permitting stream-local
+- Herdr installed on the Mac, with its SSH server permitting stream-local
   forwarding, as described by the main transport documentation.
 
 The examples use:
@@ -187,7 +187,7 @@ no-agent-forwarding,no-X11-forwarding,no-user-rc DEVICE_PUBLIC_KEY
 ```
 
 Do not add `no-port-forwarding`: OpenSSH also applies it to the
-`direct-streamlocal` channels Heeler uses to reach the herdr API socket.
+`direct-streamlocal` channels Heeler uses to reach the Herdr API socket.
 
 Append that line to `~/.ssh/authorized_keys`, then enforce:
 

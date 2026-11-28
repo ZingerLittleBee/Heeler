@@ -25,7 +25,7 @@ struct TmuxHostModelTests {
     ])
     func anythingElseIsRefusedInWords(_ name: String) throws {
         let refusal = try #require(ServerKind.tmux.sessionNameRefusal(name))
-        #expect(refusal.contains("tmux"))
+        #expect(refusal.contains("Tmux"))
         #expect(!ServerKind.tmux.isValidSessionName(name))
     }
 
@@ -99,7 +99,7 @@ struct TmuxHostModelTests {
 
         draft.sessionName = "a/b"
         #expect(!draft.isValid)
-        #expect(draft.sessionNameRefusal()?.contains("tmux") == true)
+        #expect(draft.sessionNameRefusal()?.contains("Tmux") == true)
 
         draft.sessionName = " work "
         let edited = try #require(draft.makeHost(id: host.id))
@@ -192,7 +192,7 @@ struct TmuxHostCatalogTests {
             try store.confirmServerKind(.tmux, for: host.id)
             Issue.record("a socket path should be refused")
         } catch HostStoreError.sessionNameRefused(let reason) {
-            #expect(reason.contains("tmux"))
+            #expect(reason.contains("Tmux"))
         }
 
         #expect(store.hosts == [host])

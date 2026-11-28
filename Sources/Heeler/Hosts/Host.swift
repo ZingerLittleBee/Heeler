@@ -117,7 +117,7 @@ enum ServerKind: String, Codable, Hashable, Sendable {
         case .herdrTUI:
             let name = value.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, !HerdrSessionName.isValid(name) else { return nil }
-            return String(localized: "herdr refuses the session name \"\(name)\". Its names use letters, digits, \".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes.")
+            return String(localized: "Herdr refuses the session name \"\(name)\". Its names use letters, digits, \".\", \"_\" and \"-\", up to \(HerdrSessionName.maximumUTF8Length) bytes.")
         case .herdrCore:
             return HerdrCoreSessionName.refusal(value)
         case .tmux:
