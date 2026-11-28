@@ -44,6 +44,7 @@ struct TranscriptFollower: Sendable {
         /// How far that search goes before older history is reported
         /// unreadable.
         var lineStartSearch = 64 << 20
+        var sendReadBack = 8 << 20
         var anchorLength = 64
         /// How much of the file's start identifies it.
         var headLength = 4 << 10
