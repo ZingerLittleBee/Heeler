@@ -163,13 +163,14 @@ extension HostCapabilities {
             let posix = coreKernel == HerdrCoreLocator.macOSKernel || coreKernel == HerdrCoreLocator.linuxKernel
             let hasKnownKernel = rexChatPrograms != nil
             self.init(
-                startsAgents: posix && rexAcceptsCommand, startsTerminals: true, renameAgent: hasKnownKernel, renamesWorkspaces: hasKnownKernel,
-                worktrees: false, uploads: hasKnownKernel, composerSend: true, chat: hasKnownKernel,
+                startsAgents: hasKnownKernel && rexAcceptsCommand, startsTerminals: true, renameAgent: hasKnownKernel, renamesWorkspaces: hasKnownKernel,
+                worktrees: posix, uploads: hasKnownKernel, composerSend: true, chat: hasKnownKernel,
                 tabNames: hasKnownKernel, closeTab: false, syncLayoutFromPlugin: false, takeOver: false,
                 composerStop: true, chatPrograms: rexChatPrograms ?? [], hostScripts: false,
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
             renamesExistingTabs = hasKnownKernel
+            renamesConversationTitles = posix
             offersWindowsFiles = coreKernel == HerdrCoreLocator.windowsKernel
             if posix {
                 offersAmpPlugin = true
@@ -178,9 +179,7 @@ extension HostCapabilities {
             self.rexAPIRevision = rexAPIRevision
             rexProjects = posix
             if !startsAgents {
-                if coreKernel == HerdrCoreLocator.windowsKernel {
-                    rexAgentLaunchUnavailable = String(localized: "On Windows Rex Hosts, start the Agent in Terminal.")
-                } else if posix && rexAPIRevision != nil {
+                if hasKnownKernel && rexAPIRevision != nil {
                     rexAgentLaunchUnavailable = String(localized: "This Rex server has not confirmed support for launching commands. You can start the Agent in Terminal.")
                 } else {
                     rexAgentLaunchUnavailable = String(localized: "Connect to the Rex server so Heeler can check whether it can start Agents.")
@@ -189,11 +188,6 @@ extension HostCapabilities {
             offersDroidChatHook = rexChatPrograms?.contains(.droid) == true && coreKernel != HerdrCoreLocator.windowsKernel
             return
         }
-        // A tmux Host starts Agents and Terminals, renames a Workspace, closes
-        // a Pane or a Tab, opens a Worktree, stages images and files over SFTP,
-        // runs POSIX Host scripts for Changes, Skills, and harness edits, and
-        // offers Composer Send, Stop, and Chat for confirmed POSIX programs once
-        // a probe has named Linux or macOS. Its viewers may type concurrently.
         guard serverKind != .tmux else {
             let tmuxChatPrograms: Set<ChatProgram>? =
                 switch coreKernel {
@@ -209,6 +203,7 @@ extension HostCapabilities {
                 hostScripts: true,
                 namesCreatedWorkspaces: true, copiesPaneID: true, movesPanes: true)
             renamesExistingTabs = true
+            renamesConversationTitles = true
             offersDroidChatHook = tmuxChatPrograms?.contains(.droid) == true
             return
         }
@@ -239,18 +234,21 @@ extension HostCapabilities {
             syncLayoutFromPlugin: offered, takeOver: offered,
             composerStop: offered || coreOnPosix || coreOnWindows,
             desktopAppNaming: coreOnPosix ? desktopAppNaming : nil,
-            chatPrograms: coreChatPrograms ?? (coreOnWindows ? windowsChatPrograms : nil),
+            chatPrograms: coreChatPrograms
+                ?? (coreOnWindows
+                    ? windowsChatPrograms
+                    : (tuiOnWindows ? AgentChatAvailability.nativeWindowsFilePrograms : nil)),
             isNativeWindowsCore: coreOnWindows,
             offersAmpPlugin: (offered && platform == .posix) || (coreOnPosix && coreChatPrograms?.contains(.amp) == true),
             hostScripts: !coreOnWindows && !tuiOnWindows,
             rowsReadChanges: !tuiOnWindows,
             copiesPaneID: offered || serverKind == .herdrCore,
-            movesPanes: offered,
+            movesPanes: offered || serverKind == .herdrCore,
             startsInWindowsDirectories: tuiOnWindows)
         offersWindowsFiles = coreOnWindows
         isNativeWindowsTUI = tuiOnWindows
         offersDroidChatHook = coreChatPrograms?.contains(.droid) == true
-        renamesConversationTitles = offered
+        renamesConversationTitles = offered || serverKind == .herdrCore
     }
 
     /// What Chat on a native Windows core Host can ever open (ADR 0034). Codex and
@@ -286,7 +284,7 @@ extension HostCapabilities {
     /// confirmed against Rex 0.1.0-preview.23 on Windows 11 (2026-11-25).
     /// Codex reads open files, which nothing reads on Windows, and Pi and Oh
     /// My Pi wait for a check of Heeler's extension in a Rex terminal there.
-    static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude]
+    static let rexWindowsChatPrograms: Set<ChatProgram> = [.claude, .grok, .pi, .omp]
 
     /// The programs a macOS core Host binds exactly, each from reads the macOS
     /// recordings saw it through (ADR 0034, `host-evidence/macos`, and for Antigravity

@@ -397,7 +397,7 @@ final class ConsoleStore {
         cachedChats.onChange = { [weak self] hostID in
             guard let self, !self.isRebuilding else { return }
             if let hostID, let projection = self.projections[hostID],
-                !projection.showsSavedChats,
+                !self.showsSavedChats(for: projection),
                 self.sidebarSnapshots.snapshot(for: hostID) != nil
             {
                 let hasUnresolvedAgy = projection.agentsByPane.values.contains {
@@ -886,6 +886,12 @@ final class ConsoleStore {
         workspacesByHost[hostID] ?? []
     }
 
+    func movableWorkspaces(for hostID: Host.ID) -> [ConsoleWorkspace] {
+        let all = workspaces(for: hostID)
+        guard let allowed = projections[hostID]?.movableWorkspaceIDs else { return all }
+        return all.filter { allowed.contains($0.id) }
+    }
+
     /// The projection behind every Host-scoped RPC; an unconnected Host
     /// fails loudly instead of silently dropping the action.
     func knownHomeDirectory(on hostID: Host.ID) -> String? {
@@ -1264,15 +1270,21 @@ final class ConsoleStore {
     /// catalog or the program has no transcript adapter.
     func chatStore(for agent: ConsoleAgent, program: ChatProgram) -> AgentChatStore? {
         let capabilities = capabilities(for: agent.hostID)
-        guard capabilities.offersChat(for: program),
-              !(program == .agy && capabilities.requiresBoundAntigravity) || hasBoundAntigravity(agent) else { return nil }
+        let savedChat = isSavedChat(agent.id)
+        guard savedChat
+            || (capabilities.offersChat(for: program)
+                && (!(program == .agy && capabilities.requiresBoundAntigravity) || hasBoundAntigravity(agent)))
+        else { return nil }
         if let existing = chatStores[agent.id], existing.program == program { return existing }
         guard let hostProjection = projections[agent.hostID], let adapter = chatAdapter(program) else {
             return nil
         }
         let host = hostProjection.host
         let processBound = hostProjection.usesProcessBoundChat ? hostProjection : nil
-        if let processBound, processBound.chatCacheScope == nil { return nil }
+        let resolvedCoreScope = processBound.flatMap {
+            $0.chatCacheScope ?? (savedChat ? cachedChats.cachedCoreScope(for: agent.agent, on: host) : nil)
+        }
+        if processBound != nil, resolvedCoreScope == nil { return nil }
         chatStores[agent.id]?.end()
         let hostID = agent.hostID
         let paneID = agent.agent.paneID
@@ -1296,7 +1308,7 @@ final class ConsoleStore {
             cache: chatCache, adapter: adapter, fileCache: hostFileCache,
             cachedSession: { [weak self] agent in
                 guard let self else { return nil }
-                return await self.cachedChats.cachedSession(for: agent, on: host)
+                return await self.cachedChats.cachedSession(for: agent, on: host, coreScope: resolvedCoreScope)
             },
             processInfo: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
@@ -1331,15 +1343,48 @@ final class ConsoleStore {
             source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID, program: program) }
         }
         if let processBound {
-            // No record names a session here.
             source.processInfo = nil
-            source.coreScope = processBound.chatCacheScope
+            source.coreScope = resolvedCoreScope
             source.sessionEvidence = { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await self.checkChatSession(paneID: paneID, program: program, on: hostID)
             }
-            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: processBound.chatCacheScope)
-            // Only events after this store exists are news to it.
+            source.picks = chatPicks(paneID: paneID, program: program, on: hostID, scope: resolvedCoreScope)
+            source.onProcessSessionBound = { [weak self] session, scope in
+                guard let self, let projection = self.projections[hostID],
+                    projection.usesProcessBoundChat,
+                    self.hostPlatforms[hostID] == .posix,
+                    let snapshot = projection.agentsByPane[paneID]
+                else { return }
+                let fresh = Agent(
+                    terminalID: snapshot.agent.terminalID,
+                    kind: snapshot.agent.kind,
+                    title: snapshot.agent.title,
+                    status: snapshot.agent.status,
+                    workspaceID: snapshot.agent.workspaceID,
+                    tabID: snapshot.agent.tabID,
+                    paneID: snapshot.agent.paneID,
+                    cwd: snapshot.agent.cwd,
+                    revision: snapshot.agent.revision,
+                    name: snapshot.agent.name,
+                    terminalTitle: snapshot.agent.terminalTitle,
+                    terminalTitleStripped: snapshot.agent.terminalTitleStripped,
+                    paneTitle: snapshot.agent.paneTitle,
+                    agentSession: session,
+                    tokens: snapshot.agent.tokens,
+                    stateLabels: snapshot.agent.stateLabels,
+                    stateChangeSeq: snapshot.agent.stateChangeSeq,
+                    foregroundCwd: snapshot.agent.foregroundCwd)
+                let resolvedTitle =
+                    self.agyTitles.knownTitle(for: fresh, id: agent.id)
+                    ?? (self.agyTitles.hasResolvedState(for: snapshot)
+                        ? nil
+                        : self.cachedChats.cachedConversationTitle(for: fresh, on: projection.host))
+                let cachedFresh = resolvedTitle.map(fresh.applyingConversationTitle) ?? fresh
+                self.cachedChats.confirm(
+                    cachedFresh, for: snapshot, conversationTitle: resolvedTitle,
+                    coreScope: scope ?? projection.chatCacheScope, on: projection.host)
+            }
             chatSessionEventRevisions[agent.id] = processBound.sessionEventRevision(of: paneID)
         }
         if program == .agy, capabilities.requiresBoundAntigravity {
@@ -2146,82 +2191,89 @@ final class ConsoleStore {
             seeded = seeded.clearingUntrackedConversationTitle()
         }
         let lockID = UUID()
-        return AgentTitleRenameStore(
-            agent: seeded, program: program,
-            io: AgentTitleRenameIO(
-                agent: { [weak self] in
-                    guard let self else { throw TransportError.cancelled }
-                    let current = try connection()
-                    let fresh = try await current.agentInfo(paneID: agent.agent.paneID)
-                    return await self.readAgyTitleForRename(
-                        fresh: fresh, paneID: agent.agent.paneID,
-                        hostID: agent.hostID, generation: generation)
-                },
-                screen: { try await connection().readAgentScreen(agent.agent.paneID) },
-                prompt: { text in
-                    _ = try await connection().promptAgent(AgentPromptParams(
-                        target: agent.agent.paneID, text: text))
-                },
-                keys: { try await connection().sendAgentKeys($0, to: agent.agent.paneID) },
-                paste: { try await connection().pasteIntoAgent($0, paneID: agent.agent.paneID) },
-                refresh: { [weak self] in
-                    self?.agyTitles.bumpRefreshEpoch(for: agent.hostID)
-                    self?.reconcileAgyAnnotationTitles()
-                    await origin.refreshSidebarMetadata()
-                },
-                initialTitle: program == .agy ? { [weak self] in
-                    guard let self, let current = try? connection() else { return nil }
-                    guard let fresh = try? await current.agentInfo(paneID: agent.agent.paneID) else {
-                        return nil
-                    }
-                    let updated = await self.readAgyTitleForRename(
-                        fresh: fresh, paneID: agent.agent.paneID,
-                        hostID: agent.hostID, generation: generation)
-                    return AgentTitleNaming.title(of: updated, program: .agy)
-                } : nil,
-                isBusyInConsole: { [weak self] in
-                    self?.isAgentBusyInConsole(agent.id) == true
-                },
-                queueWhenIdle: { [weak self] liveAgent, title in
-                    self?.enqueuePendingTitleRename(
-                        for: agent.id, liveAgent: liveAgent, program: program, title: title)
-                },
-                clearQueued: { [weak self] in
-                    self?.clearPendingTitleRename(for: agent.id)
-                },
-                hasQueuedRename: { [weak self] in
-                    guard let self else { return false }
-                    let current = self.projections[agent.hostID]?.agentsByPane[agent.agent.paneID] ?? agent
-                    return self.pendingTitleRenames.hasUndispatched(for: current)
-                },
-                shouldSuppressBusyNotice: { [weak self] in
-                    self?.pendingTitleRenames.suppressBusyNotice == true
-                },
-                setSuppressBusyNotice: { [weak self] suppress in
-                    self?.pendingTitleRenames.suppressBusyNotice = suppress
-                },
-                acquire: { [weak self] in
-                    guard let self else { return false }
-                    if self.pendingTitleRenameTasks[agent.id] != nil,
-                        !self.pendingTitleRenames.isDispatched(agent.id)
-                    {
-                        self.pendingTitleRenameTasks.removeValue(forKey: agent.id)?.task.cancel()
-                        self.titleRenamesInFlight[agent.id] = nil
-                    }
-                    guard self.titleRenamesInFlight[agent.id] == nil else { return false }
-                    self.titleRenamesInFlight[agent.id] = lockID
-                    return true
-                },
-                release: { [weak self] in
-                    guard let self else { return }
-                    if self.titleRenamesInFlight[agent.id] == lockID {
-                        self.titleRenamesInFlight[agent.id] = nil
-                    }
-                    if !self.isRebuilding {
-                        self.reconcilePendingTitleRenames()
-                    }
-                },
-                sleep: pendingTitleRenameSleep))
+        let paneID = agent.agent.paneID
+        let isProcessBound = origin.usesProcessBoundChat
+        var io = AgentTitleRenameIO(
+            agent: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                let current = try connection()
+                let fresh = try await current.titleRenameAgentInfo(paneID: paneID)
+                return await self.readAgyTitleForRename(
+                    fresh: fresh, paneID: paneID,
+                    hostID: agent.hostID, generation: generation)
+            },
+            screen: { try await connection().readAgentScreen(paneID) },
+            prompt: { text in
+                try await connection().titleRenamePrompt(text, paneID: paneID)
+            },
+            keys: { try await connection().sendAgentKeys($0, to: paneID) },
+            paste: { try await connection().pasteIntoAgent($0, paneID: paneID) },
+            refresh: { [weak self] in
+                self?.agyTitles.bumpRefreshEpoch(for: agent.hostID)
+                self?.reconcileAgyAnnotationTitles()
+                await origin.refreshSidebarMetadata()
+            },
+            initialTitle: (program == .agy || origin is TmuxConsoleProjection) ? { [weak self] in
+                guard let self, let current = try? connection() else { return nil }
+                guard let fresh = try? await current.titleRenameAgentInfo(paneID: paneID) else {
+                    return nil
+                }
+                let updated = await self.readAgyTitleForRename(
+                    fresh: fresh, paneID: paneID,
+                    hostID: agent.hostID, generation: generation)
+                return AgentTitleNaming.title(of: updated, program: program)
+            } : nil,
+            isBusyInConsole: { [weak self] in
+                self?.isAgentBusyInConsole(agent.id) == true
+            },
+            queueWhenIdle: { [weak self] liveAgent, title in
+                self?.enqueuePendingTitleRename(
+                    for: agent.id, liveAgent: liveAgent, program: program, title: title)
+            },
+            clearQueued: { [weak self] in
+                self?.clearPendingTitleRename(for: agent.id)
+            },
+            hasQueuedRename: { [weak self] in
+                guard let self else { return false }
+                let current = self.projections[agent.hostID]?.agentsByPane[paneID] ?? agent
+                return self.pendingTitleRenames.hasUndispatched(for: current)
+            },
+            shouldSuppressBusyNotice: { [weak self] in
+                self?.pendingTitleRenames.suppressBusyNotice == true
+            },
+            setSuppressBusyNotice: { [weak self] suppress in
+                self?.pendingTitleRenames.suppressBusyNotice = suppress
+            },
+            acquire: { [weak self] in
+                guard let self else { return false }
+                if self.pendingTitleRenameTasks[agent.id] != nil,
+                    !self.pendingTitleRenames.isDispatched(agent.id)
+                {
+                    self.pendingTitleRenameTasks.removeValue(forKey: agent.id)?.task.cancel()
+                    self.titleRenamesInFlight[agent.id] = nil
+                }
+                guard self.titleRenamesInFlight[agent.id] == nil else { return false }
+                self.titleRenamesInFlight[agent.id] = lockID
+                return true
+            },
+            release: { [weak self] in
+                guard let self else { return }
+                if self.titleRenamesInFlight[agent.id] == lockID {
+                    self.titleRenamesInFlight[agent.id] = nil
+                }
+                if !self.isRebuilding {
+                    self.reconcilePendingTitleRenames()
+                }
+            },
+            sleep: pendingTitleRenameSleep)
+        if isProcessBound {
+            io.sessionToken = { (try? connection())?.titleRenameSessionToken(paneID: paneID) }
+        }
+        io.queueWhenIdleWithToken = { [weak self] liveAgent, title, token in
+            self?.enqueuePendingTitleRename(
+                for: agent.id, liveAgent: liveAgent, program: program, title: title, sessionToken: token)
+        }
+        return AgentTitleRenameStore(agent: seeded, program: program, io: io)
     }
 
     private func applyingAgyAnnotationTitle(to row: ConsoleAgent) -> ConsoleAgent {
@@ -2250,19 +2302,21 @@ final class ConsoleStore {
     }
 
     private func enqueuePendingTitleRename(
-        for id: ConsoleAgent.ID, liveAgent: Agent, program: ChatProgram, title: String
+        for id: ConsoleAgent.ID, liveAgent: Agent, program: ChatProgram, title: String,
+        sessionToken: String? = nil
     ) {
         cancelPendingTitleRenameWork(for: id)
-        pendingTitleRenames.enqueue(
-            PendingAgentTitleRename(
-                hostID: id.hostID,
-                paneID: liveAgent.paneID,
-                terminalID: liveAgent.terminalID,
-                workspaceID: liveAgent.workspaceID,
-                tabID: liveAgent.tabID,
-                program: program,
-                session: liveAgent.agentSession,
-                title: title))
+        var item = PendingAgentTitleRename(
+            hostID: id.hostID,
+            paneID: liveAgent.paneID,
+            terminalID: liveAgent.terminalID,
+            workspaceID: liveAgent.workspaceID,
+            tabID: liveAgent.tabID,
+            program: program,
+            session: liveAgent.agentSession,
+            title: title)
+        item.sessionToken = sessionToken
+        pendingTitleRenames.enqueue(item)
         if !isRebuilding {
             rebuild()
         }
@@ -2345,7 +2399,7 @@ final class ConsoleStore {
                 continue
             }
             let attemptKey =
-                "\(origin.transportGeneration):\(liveRow.agent.terminalID):\(effectiveStatus):\(liveRow.agent.agentSession?.value ?? ""):\(pending.title)"
+                "\(origin.transportGeneration):\(liveRow.agent.terminalID):\(effectiveStatus):\(liveRow.agent.agentSession?.value ?? pending.sessionToken ?? ""):\(pending.title)"
             guard pendingTitleRenameDeclinedKeys[id] != attemptKey else { continue }
             startPendingTitleRenameFlush(
                 id: id, pending: pending, liveRow: liveRow, origin: origin, attemptKey: attemptKey)
@@ -2391,49 +2445,54 @@ final class ConsoleStore {
                 foregroundCwd: expectedAgent.foregroundCwd)
         }
         let lockID = UUID()
+        let isProcessBound = origin.usesProcessBoundChat
+        var io = AgentTitleRenameIO(
+            agent: { [weak self] in
+                guard let self else { throw TransportError.cancelled }
+                let current = try connection()
+                let fresh = try await current.titleRenameAgentInfo(paneID: id.paneID)
+                return await self.readAgyTitleForRename(
+                    fresh: fresh, paneID: id.paneID,
+                    hostID: id.hostID, generation: generation)
+            },
+            screen: { try await connection().readAgentScreen(id.paneID) },
+            prompt: { text in
+                try await connection().titleRenamePrompt(text, paneID: id.paneID)
+            },
+            keys: { try await connection().sendAgentKeys($0, to: id.paneID) },
+            paste: { try await connection().pasteIntoAgent($0, paneID: id.paneID) },
+            refresh: { [weak self] in
+                self?.agyTitles.bumpRefreshEpoch(for: id.hostID)
+                self?.reconcileAgyAnnotationTitles()
+                await origin.refreshSidebarMetadata()
+            },
+            isBusyInConsole: { [weak self] in
+                self?.isAgentBusyInConsole(id) == true
+            },
+            onWillDispatch: { [weak self] in
+                self?.pendingTitleRenames.markDispatched(id)
+            },
+            waitForSendableScreen: true,
+            acquire: { [weak self] in
+                guard let self, self.titleRenamesInFlight[id] == nil else { return false }
+                self.titleRenamesInFlight[id] = lockID
+                return true
+            },
+            release: { [weak self] in
+                guard let self else { return }
+                if self.titleRenamesInFlight[id] == lockID {
+                    self.titleRenamesInFlight[id] = nil
+                }
+            },
+            sleep: pendingTitleRenameSleep)
+        if isProcessBound {
+            io.sessionToken = { (try? connection())?.titleRenameSessionToken(paneID: id.paneID) }
+        }
+        io.expectedSessionToken = pending.sessionToken
         let flusher = AgentTitleRenameStore(
             agent: expectedAgent,
             program: pending.program,
-            io: AgentTitleRenameIO(
-                agent: { [weak self] in
-                    guard let self else { throw TransportError.cancelled }
-                    let current = try connection()
-                    let fresh = try await current.agentInfo(paneID: id.paneID)
-                    return await self.readAgyTitleForRename(
-                        fresh: fresh, paneID: id.paneID,
-                        hostID: id.hostID, generation: generation)
-                },
-                screen: { try await connection().readAgentScreen(id.paneID) },
-                prompt: { text in
-                    _ = try await connection().promptAgent(
-                        AgentPromptParams(target: id.paneID, text: text))
-                },
-                keys: { try await connection().sendAgentKeys($0, to: id.paneID) },
-                paste: { try await connection().pasteIntoAgent($0, paneID: id.paneID) },
-                refresh: { [weak self] in
-                    self?.agyTitles.bumpRefreshEpoch(for: id.hostID)
-                    self?.reconcileAgyAnnotationTitles()
-                    await origin.refreshSidebarMetadata()
-                },
-                isBusyInConsole: { [weak self] in
-                    self?.isAgentBusyInConsole(id) == true
-                },
-                onWillDispatch: { [weak self] in
-                    self?.pendingTitleRenames.markDispatched(id)
-                },
-                waitForSendableScreen: true,
-                acquire: { [weak self] in
-                    guard let self, self.titleRenamesInFlight[id] == nil else { return false }
-                    self.titleRenamesInFlight[id] = lockID
-                    return true
-                },
-                release: { [weak self] in
-                    guard let self else { return }
-                    if self.titleRenamesInFlight[id] == lockID {
-                        self.titleRenamesInFlight[id] = nil
-                    }
-                },
-                sleep: pendingTitleRenameSleep))
+            io: io)
         flusher.input = pending.title
         let taskToken = UUID()
         let task = Task { @MainActor [weak self] in
@@ -2594,6 +2653,9 @@ final class ConsoleStore {
                     RexConsoleProjection(
                         host: host, session: makeRexSession(host), memory: coreHostMemory, pins: pins,
                         gitGate: gitExecGate(for: host.id),
+                        onSeenMarksChanged: { [weak self, id = host.id] core, marks in
+                            self?.onCoreSeenMarksChanged?(id, core, marks)
+                        },
                         onLatencyChange: onLatencyChange,
                         onChange: onChange)
                 case .herdrTUI, .unconfirmed:
@@ -3046,6 +3108,14 @@ final class ConsoleStore {
                         claudeLimits: claudeLimits, codexLimits: codexLimits, agyLimits: agyLimits)
                 }
             }
+            if let host = self.rexHost(hostID) {
+                return try await self.withRexHelperConnection(host) { helperHost, _, rexSocket in
+                    try await AgentUsageStore.reading(
+                        overHelper: helperHost, rexSocket: rexSocket,
+                        timeZone: timeZone, claudeLimits: claudeLimits,
+                        codexLimits: codexLimits, agyLimits: agyLimits)
+                }
+            }
             return try await self.withNotificationTransport(for: hostID) { transport in
                 try await AgentUsageStore.reading(
                     over: transport, timeZone: timeZone, claudeLimits: claudeLimits,
@@ -3057,8 +3127,6 @@ final class ConsoleStore {
         return store
     }
 
-    /// The Hosts the Usage tab reads among `records`, each once however many
-    /// of its Servers are on (`AgentUsageHost`).
     func agentUsageEntries(for records: [Host]) -> [AgentUsageHostEntry] {
         AgentUsageHost.grouped(records).map { host in
             let record = usageRecord(of: host)
@@ -3066,14 +3134,12 @@ final class ConsoleStore {
             return AgentUsageHostEntry(
                 id: host.id, name: host.name, store: store,
                 isConnected: usageHasConnection(record, state: store.state),
-                readsOverHostHelper: record.serverKind == .herdrCore || record.serverKind == .tmux,
+                readsOverHostHelper: record.serverKind == .herdrCore || record.serverKind == .tmux || record.serverKind == .rex,
                 recordID: record.id,
                 servers: host.records.map { .init(id: $0.id, store: agentUsageStore(for: $0.id)) })
         }
     }
 
-    /// The record of the Server a Host's Usage is read through now, and its
-    /// Accounts are reached over. A Server never read counts as still to answer.
     func usageRecord(of host: AgentUsageHost) -> Host {
         let chosen = AgentUsageHost.chosen(among: host.records.map { record in
             let state = agentUsageStores[record.id]?.state ?? .idle
@@ -3082,18 +3148,11 @@ final class ConsoleStore {
         return host.records[chosen]
     }
 
-    /// Whether a Host's Usage has a connection to answer over. A Herdr TUI Host
-    /// borrows the Console's. A core or tmux Host's read dials one when the
-    /// Console has none: its Helper answers with the server stopped, and a
-    /// native Windows Host says why it has none though its session never
-    /// connects. So only a read that could not reach the Host makes it not connected.
     private func usageHasConnection(_ host: Host, state: AgentUsageStore.State) -> Bool {
         if hostStatuses[host.id] == .connected { return true }
-        return (host.serverKind == .herdrCore || host.serverKind == .tmux) && !state.couldNotReachHost
+        return (host.serverKind == .herdrCore || host.serverKind == .tmux || host.serverKind == .rex) && !state.couldNotReachHost
     }
 
-    /// The Host's Accounts for every harness (#621), kept for as long as
-    /// the Console runs. Usage joins in while it is on.
     func hostAccountsStore(for hostID: Host.ID) -> HostAccountsStore {
         if let store = hostAccountsStores[hostID] { return store }
         let store = HostAccountsStore(
@@ -3111,11 +3170,10 @@ final class ConsoleStore {
         return store
     }
 
-    /// The variable `kind`'s Accounts set on a Host, for a Launch Preset
-    /// with an Account: the Host's Accounts name it, else the harness does.
     func accountVariable(for kind: SupportedAgentKind, on hostID: Host.ID) async throws -> String? {
-        // Rex has no per-server Accounts file. Presets can still select the harness's own folder.
-        if projections[hostID] is RexConsoleProjection { return kind.configDirectoryVariable }
+        if projections[hostID] is RexConsoleProjection, isNativeWindows(hostID) {
+            return kind.configDirectoryVariable
+        }
         let store = hostAccountsStore(for: hostID)
         try await store.load()
         return store.variable(for: kind)
@@ -3196,22 +3254,16 @@ final class ConsoleStore {
             return AgentUsageWidgetReading(
                 id: host.id, name: host.name, state: state, readAt: store?.readAt,
                 isConnected: usageHasConnection(record, state: state),
-                keepsLastAnswerUntilRead: record.serverKind == .herdrCore || record.serverKind == .tmux)
+                keepsLastAnswerUntilRead: record.serverKind == .herdrCore || record.serverKind == .tmux || record.serverKind == .rex)
         })
     }
 
-    /// The catalog's records that have Usage to read, in its order: one for
-    /// each Server of a Host.
     private var usageCatalog: [Host] {
         catalog.filter(\.serverKind.hasHostIntegrations)
     }
 
-    /// Whether a read for the widgets can run now. A Herdr TUI Host borrows the
-    /// Console's connection. A core or tmux Host's read dials one when the
-    /// Console has none, so a stopped server or a native Windows Host still
-    /// gets its answer.
     private func canReadUsageForWidgets(_ id: Host.ID) -> Bool {
-        hostStatuses[id] == .connected || coreHost(id) != nil || tmuxHost(id) != nil
+        hostStatuses[id] == .connected || coreHost(id) != nil || tmuxHost(id) != nil || rexHost(id) != nil
     }
 
     /// Reads Usage again for each Host that can be read and whose widget figures
@@ -3380,13 +3432,19 @@ final class ConsoleStore {
         }
     }
 
+    private func showsSavedChats(for projection: any ConsoleHostProjection) -> Bool {
+        guard projection.status != .connected || projection.isAwaitingSnapshot else { return false }
+        let host = projection.host
+        return capabilities(for: host.id).chat || !cachedChats.agents(on: host).isEmpty
+    }
+
     private func rebuildChatDisplayAgents() {
         let span = PerfTrace.begin("console.chat-display-agents")
         defer { PerfTrace.end(span) }
         let live = listedAgentIDs
         let savedPairs = projections.values.flatMap {
             projection -> [(agent: ConsoleAgent, readiness: HostReadiness)] in
-            guard projection.showsSavedChats else { return [] }
+            guard showsSavedChats(for: projection) else { return [] }
             let saved = cachedChats.agents(on: projection.host)
                 .filter { !live.contains($0.id) }
                 .map { pendingTitleRenames.applying(to: $0) }
@@ -3413,7 +3471,7 @@ final class ConsoleStore {
         if chatDisplayAgents != nextDisplay { chatDisplayAgents = nextDisplay }
         if savedChatEntries != nextSavedEntries { savedChatEntries = nextSavedEntries }
         var nextStructures: [Host.ID: [ChatCachedWorkspace]] = [:]
-        for projection in projections.values where projection.showsSavedChats {
+        for projection in projections.values where showsSavedChats(for: projection) {
             let structure = cachedChats.structure(on: projection.host)
             if !structure.isEmpty { nextStructures[projection.host.id] = structure }
         }
@@ -3482,7 +3540,7 @@ final class ConsoleStore {
     /// are doing, so a detail that asks is left alone by other Agents'
     /// status changes.
     func isSavedChat(_ id: ConsoleAgent.ID) -> Bool {
-        guard let projection = projections[id.hostID], projection.showsSavedChats,
+        guard let projection = projections[id.hostID], showsSavedChats(for: projection),
             !listedAgentIDs.contains(id)
         else { return false }
         return cachedChats.agents(on: projection.host).contains { $0.id == id }
@@ -3920,9 +3978,11 @@ final class ConsoleStore {
     }
 
     func chatProgram(for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin? = nil) -> ChatProgram? {
-        // Chat goes on to the address's new Agent. A detail stays with the old one,
-        // which has no Chat left to show.
         guard !hasLeftCore(corePin, on: agent.hostID) else { return nil }
+        if isSavedChat(agent.id) {
+            return AgentChatAvailability.program(
+                for: agent.agent, platform: .posix, hasAdapter: { chatAdapter($0) != nil })
+        }
         let capabilities = capabilities(for: agent.hostID)
         guard capabilities.chat else { return nil }
         if capabilities.requiresBoundAntigravity, agent.agent.kind == ChatProgram.agy.rawValue, !hasBoundAntigravity(agent) {
@@ -3931,10 +3991,6 @@ final class ConsoleStore {
         if let program = ChatProgram(rawValue: agent.agent.kind), !capabilities.offersChat(for: program) {
             return nil
         }
-        // A tmux or Rex Host is POSIX without asking it (ADRs 0044 and 0056),
-        // except a Rex Host reached by a Windows named pipe (ADR 0049). A Rex
-        // Host's Chat reads native Windows as a core's does, for the programs
-        // its capabilities name from the server's platform.
         let host = catalog.first(where: { $0.id == agent.hostID })
         let kind = host?.serverKind
         let platform =
@@ -3944,7 +4000,7 @@ final class ConsoleStore {
         if let platform {
             return AgentChatAvailability.program(
                 for: agent.agent, platform: platform,
-                readsChatOnNativeWindows: capabilities.isNativeWindowsCore || kind == .rex,
+                readsChatOnNativeWindows: capabilities.isNativeWindowsCore || capabilities.isNativeWindowsTUI || kind == .rex,
                 hasAdapter: { chatAdapter($0) != nil })
         }
         guard let host = projections[agent.hostID]?.host,
@@ -3956,7 +4012,7 @@ final class ConsoleStore {
     private func syncCachedChats() {
         for projection in projections.values {
             let host = projection.host
-            guard host.capabilities.chat, isActive,
+            guard capabilities(for: host.id).chat, isActive,
                 projection.status == .connected, !projection.isAwaitingSnapshot
             else { continue }
             guard hostPlatforms[host.id] == .posix else { continue }
@@ -3982,7 +4038,9 @@ final class ConsoleStore {
                 }
                 return row
             }
-            cachedChats.observe(observed, conversationTitles: conversationTitles, on: host)
+            cachedChats.observe(
+                observed, conversationTitles: conversationTitles,
+                coreScope: projection.chatCacheScope, on: host)
         }
     }
 
@@ -3991,7 +4049,7 @@ final class ConsoleStore {
         defer { PerfTrace.end(span) }
         for projection in projections.values {
             let host = projection.host
-            guard host.capabilities.chat, isActive,
+            guard host.capabilities.chat, !projection.usesProcessBoundChat, isActive,
                 projection.status == .connected, !projection.isAwaitingSnapshot else {
                 chatPrefetchTasks[host.id]?.cancel()
                 chatPrefetchTasks[host.id] = nil
@@ -4151,15 +4209,13 @@ final class ConsoleStore {
         for (id, store) in chatStores {
             store.hostConnectionChanged(hostStatuses[id.hostID] == .connected)
             let processBound = projections[id.hostID].flatMap { $0.usesProcessBoundChat ? $0 : nil }
-            // Another core's or server instance's Agents are other Agents: its
-            // Transcripts are keyed apart, and this store is keyed to the last one.
-            if let processBound, store.coreScope != processBound.chatCacheScope {
+            if let processBound, let liveScope = processBound.chatCacheScope,
+                !Self.coreScope(store.coreScope, belongsTo: liveScope)
+            {
                 let viewers = store.viewerTokens
                 store.end()
                 chatStores[id] = nil
                 chatSessionEventRevisions[id] = nil
-                // A Chat on screen says so only once, when it appears, and it
-                // stays on screen across this.
                 if !viewers.isEmpty, let agent = current[id],
                     let next = chatStore(for: agent, program: store.program)
                 {
@@ -4184,6 +4240,11 @@ final class ConsoleStore {
                 processBound?.settleChatPick(paneID: id.paneID, program: store.program)
             }
         }
+    }
+
+    private static func coreScope(_ storeScope: String?, belongsTo liveScope: String) -> Bool {
+        guard let storeScope else { return false }
+        return storeScope == liveScope || storeScope.hasPrefix(liveScope + "/")
     }
 
     private func publishAgentStatuses() {
@@ -4249,12 +4310,16 @@ extension ConsoleStore: NotificationTransportProvider {
                         tmuxPaths: paths))
             }
         }
+        if let host = rexHost(hostID) {
+            return try await withRexHelperConnection(host) { helperHost, _, rexSocket in
+                try await operation(HostHelperFiles(host: helperHost, rexSocket: rexSocket))
+            }
+        }
         return try await projection(for: hostID).withNotificationTransport { transport in
             try await operation(transport)
         }
     }
 
-    /// What Usage's Account changes run over. It follows the Server Kind too.
     fileprivate func withUsageHost(
         for hostID: Host.ID,
         _ operation: @escaping @Sendable (any HostServices & HostNotificationFiles) async throws -> Void
@@ -4280,25 +4345,33 @@ extension ConsoleStore: NotificationTransportProvider {
             }
             return
         }
+        if let host = rexHost(hostID) {
+            try await withRexHelperConnection(host) { helperHost, services, rexSocket in
+                try await operation(HostHelperUsageHost(
+                    services: services,
+                    files: HostHelperFiles(host: helperHost, rexSocket: rexSocket)))
+            }
+            return
+        }
         try await withNotificationTransport(for: hostID) { try await operation($0) }
     }
 
-    /// What this device has seen on a core or tmux Host. Nil on any other Host.
     func coreSeenMarks(on hostID: Host.ID) -> (core: String, marks: [String: HerdrCoreTurnState.Mark])? {
         if let core = (projections[hostID] as? HerdrCoreConsoleProjection)?.currentSeenMarks {
             return core
         }
-        return (projections[hostID] as? TmuxConsoleProjection)?.currentSeenMarks
+        if let tmux = (projections[hostID] as? TmuxConsoleProjection)?.currentSeenMarks {
+            return tmux
+        }
+        return (projections[hostID] as? RexConsoleProjection)?.currentSeenMarks
     }
 
-    /// Whether this Host's notification files can be asked for now. A stopped
-    /// core or tmux server leaves the Host's SSH up and its Helper's files in
-    /// reach, and it reads as reconnecting for as long as it stays stopped.
     func canReachNotificationFiles(_ hostID: Host.ID) -> Bool {
         switch hostStatuses[hostID] {
         case .connected: true
         case .reconnecting(_, _, .herdrCoreNotRunning): coreHost(hostID) != nil
         case .reconnecting(_, _, .tmuxServerNotRunning): tmuxHost(hostID) != nil
+        case .reconnecting(_, _, .rexServerNotRunning): rexHost(hostID) != nil
         default: false
         }
     }
@@ -4350,6 +4423,45 @@ extension ConsoleStore: NotificationTransportProvider {
 
     fileprivate func tmuxHost(_ hostID: Host.ID) -> Host? {
         catalog.first { $0.id == hostID && $0.serverKind == .tmux }
+    }
+
+    fileprivate func rexHost(_ hostID: Host.ID) -> Host? {
+        catalog.first { $0.id == hostID && $0.serverKind == .rex }
+    }
+
+    private struct RexHelperLink: Sendable {
+        let helperHost: any HostHelperHost
+        let services: any HostServices
+        let socket: RexSocket
+    }
+
+    fileprivate func withRexHelperConnection<Value: Sendable>(
+        _ host: Host,
+        _ operation: @escaping @Sendable (any HostHelperHost, any HostServices, RexSocket?) async throws -> Value
+    ) async throws -> Value {
+        let projection = projections[host.id] as? RexConsoleProjection
+        let fallbackSocket = projection?.host.rexSocket ?? host.rexSocket
+        if let session = projection?.session,
+            let live = (try? await session.withConnection({ connection -> RexHelperLink? in
+                guard await connection.transport.isConnected,
+                    let helperHost = connection.transport.hostHelperHost,
+                    let services = connection.transport.hostServices
+                else { return nil }
+                return RexHelperLink(
+                    helperHost: helperHost, services: services, socket: connection.transport.socket)
+            })) ?? nil
+        {
+            return try await operation(live.helperHost, live.services, live.socket)
+        }
+        let transport = try await connectCore(host)
+        do {
+            let value = try await operation(transport.hostHelperHost, transport.hostServices, fallbackSocket)
+            try? await transport.close()
+            return value
+        } catch {
+            try? await transport.close()
+            throw error
+        }
     }
 
     /// A core Host's connection for one operation: the Console's own while it

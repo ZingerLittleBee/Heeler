@@ -40,6 +40,7 @@ struct AgentChatSource: Sendable {
     var picks: ChatPickIO?
     /// Notifies listeners when an Antigravity CLI chat binds or resolves its root conversation.
     var onAgyConversationBound: (@MainActor @Sendable (_ root: String?, _ rootID: String?) -> Void)? = nil
+    var onProcessSessionBound: (@MainActor @Sendable (_ session: AgentSessionInfo, _ coreScope: String?) -> Void)? = nil
     /// Notifies listeners when live non-stale Background Work starts or stops holding active pace.
     var onRunningBackgroundWorkChanged: (@MainActor @Sendable (Bool) -> Void)? = nil
     /// Notifies listeners when a Chat becomes visible so in-flight background
@@ -733,7 +734,7 @@ final class AgentChatStore {
         thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: keptFiles))
         self.timing = timing
         self.now = now
-        let resolution: ConversationReference.Resolution = program.pinsComposerToSession && source.sessionEvidence != nil
+        let resolution: ConversationReference.Resolution = source.sessionEvidence != nil
             ? .noSession : ConversationReference.resolve(agent.agentSession)
         self.resolution = resolution
         conversation = ChatConversationSnapshot()
@@ -1310,16 +1311,14 @@ final class AgentChatStore {
         // handed over again is no report: OpenCode changes its conversation
         // without a status change, so the Console's record can be older than
         // the answer herdr gave Chat (`checkStartScreen`).
-        let checksDroidProcess = program.pinsComposerToSession && source.sessionEvidence != nil
-        let bindingReturned = !checksDroidProcess && isAwaitingSession && staleSession == nil && reported != .noSession
+        let checksProcess = source.sessionEvidence != nil
+        let bindingReturned = !checksProcess && isAwaitingSession && staleSession == nil && reported != .noSession
         let previous = ChatAgentActivity(agent.status)
         agent = next
-        // A program started again in the pane changes its status or
-        // session, which is when its launch may have changed.
         if statusChanged || sessionChanged || identityChanged { needsLaunchCheck = true }
         if sessionChanged || identityChanged || bindingReturned {
             sessionRecordRevision += 1
-            if checksDroidProcess {
+            if checksProcess {
                 if identityChanged { adopt(.noSession, replacingAgent: true) }
                 sessionEvidenceMayHaveChanged()
             } else {
@@ -1810,6 +1809,7 @@ final class AgentChatStore {
                 movedSinceDraft = true
                 draftAtMove = composerDraft
             }
+            reportBoundProcessSession(sessionID: sessionID)
             if program == .agy {
                 source.onAgyConversationBound?(
                     evidenceRoot ?? transcriptRoot,
@@ -1818,6 +1818,9 @@ final class AgentChatStore {
         case .picked(let sessionID, let transcriptRoot):
             followsPick = true
             adoptBinding(sessionID: sessionID, transcriptRoot: transcriptRoot, directory: nil)
+            if !source.requiresIndependentInputSession {
+                reportBoundProcessSession(sessionID: sessionID)
+            }
             if program == .agy {
                 source.onAgyConversationBound?(
                     evidenceRoot ?? transcriptRoot,
@@ -2189,9 +2192,26 @@ final class AgentChatStore {
         if conversation != next { conversation = next }
     }
 
+    private func reportBoundProcessSession(sessionID: String) {
+        guard let onBound = source.onProcessSessionBound else { return }
+        let resolvedID = followed?.sessionID ?? sessionID
+        let naming = program.sessionNaming
+        let kind: AgentSessionRefKind =
+            naming.acceptsTranscriptPath && resolvedID.hasPrefix("/") ? .path : .id
+        let info = AgentSessionInfo(
+            agent: naming.agent, kind: kind, source: naming.source, value: resolvedID)
+        guard case .bound(let reference) = ConversationReference.resolve(info),
+            reference.program == program
+        else { return }
+        onBound(info, transcriptCacheScope)
+    }
+
     private var transcriptCacheScope: String? {
         guard program == .devin, let evidenceRoot else { return source.coreScope }
-        return (source.coreScope ?? "") + "/devin-store:" + evidenceRoot
+        let base = source.coreScope.map { scope in
+            scope.range(of: "/devin-store:").map { String(scope[..<$0.lowerBound]) } ?? scope
+        } ?? ""
+        return base + "/devin-store:" + evidenceRoot
     }
 
     private func makeEngine(_ reference: ConversationReference) -> ChatConversationEngine {

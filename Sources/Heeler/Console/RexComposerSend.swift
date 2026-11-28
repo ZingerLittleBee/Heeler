@@ -95,7 +95,7 @@ final class RexComposerSend: CheckedComposerSend {
 
         if route == .chat, held.kind == ChatProgram.agy.rawValue {
             guard verifying?.session != nil else { return .refused(.inputNotReady(AgentChatStore.rexReadOnlyConversation)) }
-            if ChatSendRules.isLeadingSlashCommand(text) {
+            if ChatSendRules.isLeadingSlashCommand(text), !Self.isAllowedAgySlashCommand(text) {
                 return .refused(.inputNotReady(String(localized: "Send commands from the Antigravity terminal.")))
             }
         }
@@ -282,9 +282,11 @@ final class RexComposerSend: CheckedComposerSend {
         }
     }
 
-    /// A read that failed before anything left. A kitty flags read that shows
-    /// nothing certain is Chat's unreadable screen, and a modes answer this
-    /// build cannot read is Rex's answer, neither a silent Host.
+    private static func isAllowedAgySlashCommand(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "/rename" || trimmed.hasPrefix("/rename ")
+    }
+
     private static func beforePaste(_ error: any Error) -> Outcome {
         switch error {
         case TransportError.rexServerGone: .refused(.inputNotReady(serverGone))

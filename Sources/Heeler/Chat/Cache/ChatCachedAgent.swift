@@ -19,6 +19,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
     /// A client-resolved conversation title (such as Antigravity CLI's
     /// `.pbtxt` annotation title) kept until SFTP resolves the live session.
     var conversationTitle: String?
+    var coreScope: String?
     let cwd: String
     let foregroundCwd: String?
     let workspaceLabel: String?
@@ -28,7 +29,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
     let workspaceTabCount: Int
     let snapshotOrder: Int?
 
-    init(_ agent: ConsoleAgent, conversationTitle: String? = nil) {
+    init(_ agent: ConsoleAgent, conversationTitle: String? = nil, coreScope: String? = nil) {
         hostID = agent.hostID
         paneID = agent.agent.paneID
         terminalID = agent.agent.terminalID
@@ -43,6 +44,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
         agentSession = agent.agent.agentSession
         tokens = agent.agent.tokens
         self.conversationTitle = conversationTitle
+        self.coreScope = coreScope
         cwd = agent.agent.cwd
         foregroundCwd = agent.directory
         workspaceLabel = agent.workspaceLabel
@@ -55,7 +57,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case hostID, paneID, terminalID, workspaceID, tabID, kind, name, title
-        case terminalTitle, terminalTitleStripped, paneTitle, agentSession, tokens, conversationTitle
+        case terminalTitle, terminalTitleStripped, paneTitle, agentSession, tokens, conversationTitle, coreScope
         case cwd, foregroundCwd, workspaceLabel, tabLabel, paneLabel
         case tabPosition, workspaceTabCount, snapshotOrder
     }
@@ -76,6 +78,7 @@ struct ChatCachedAgent: Codable, Equatable, Sendable {
         agentSession = try container.decodeIfPresent(AgentSessionInfo.self, forKey: .agentSession)
         tokens = try container.decodeIfPresent([String: String].self, forKey: .tokens) ?? [:]
         conversationTitle = try container.decodeIfPresent(String.self, forKey: .conversationTitle)
+        coreScope = try container.decodeIfPresent(String.self, forKey: .coreScope)
         cwd = try container.decode(String.self, forKey: .cwd)
         foregroundCwd = try container.decodeIfPresent(String.self, forKey: .foregroundCwd)
         workspaceLabel = try container.decodeIfPresent(String.self, forKey: .workspaceLabel)

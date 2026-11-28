@@ -98,7 +98,8 @@ final class MovePaneStore {
         case let apiError as HerdrAPIError:
             String(localized: "herdr rejected the move: \(apiError.message)")
         default:
-            String(localized: "The move failed: \(String(describing: error))")
+            TransportError.herdrCoreLinkMessage(for: error)
+                ?? String(localized: "The move failed: \(String(describing: error))")
         }
     }
 }
@@ -218,7 +219,7 @@ struct MovePaneSheetPresenter: ViewModifier {
                     try await console.movePane(request.paneID, on: request.hostID, to: destination,
                                                keepingTo: request.instance, from: request.workspaceID)
                 },
-                workspaces: console.workspaces(for: request.hostID),
+                workspaces: console.movableWorkspaces(for: request.hostID),
                 onMoved: { onMoved(request, $0) }
             )
             .modifier(ConsoleSheetPresentationModifier(
