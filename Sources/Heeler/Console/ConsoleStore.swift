@@ -1201,6 +1201,20 @@ final class ConsoleStore {
         return session
     }
 
+    func sendBoundAntigravitySettingCommand(
+        _ command: String, for agent: ConsoleAgent, keepingTo corePin: TerminalCorePin,
+        verifying: ComposerWriteVerification
+    ) async -> CheckedSendOutcome {
+        let hostID = agent.hostID
+        guard let sender = projections[hostID]?.checkedComposerSend(
+            for: agent.agent.paneID, keepingTo: corePin,
+            live: { [weak self] in self?.projections[hostID] })
+        else {
+            return .failed(String(localized: "The Host is not connected."))
+        }
+        return await sender.send(command, route: .chat, attach: nil, verifying: verifying)
+    }
+
     /// Whether this Host keeps Program Status on its own tmux socket, so a
     /// decline or another answer from Heeler can write it.
     func recordsHeelerAnswers(on hostID: Host.ID) -> Bool {

@@ -284,7 +284,13 @@ final class RexComposerSend: CheckedComposerSend {
 
     private static func isAllowedAgySlashCommand(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == "/rename" || trimmed.hasPrefix("/rename ")
+        if trimmed == "/rename" || trimmed.hasPrefix("/rename ") { return true }
+        for prefix in ["/model ", "/effort "] {
+            guard trimmed.hasPrefix(prefix) else { continue }
+            let argument = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !argument.isEmpty, !argument.contains(where: \.isNewline) { return true }
+        }
+        return false
     }
 
     private static func beforePaste(_ error: any Error) -> Outcome {

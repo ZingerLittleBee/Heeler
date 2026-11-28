@@ -1494,7 +1494,6 @@ struct AgentChatSurfaceView: View {
 
     /// Session settings switched from Chat's header or status line.
     private var sessionControls: AgentSessionControls? {
-        guard !isBoundAntigravity else { return nil }
         let status = agent.agent.status
         let isEnabled = (status == .idle || status == .done)
             && !isSwitchingSetting && !isComposerSending && !session.agentKeys.isRunningQueuedWork
@@ -1520,6 +1519,7 @@ struct AgentChatSurfaceView: View {
                     }
                 })
         case .agy:
+            if isBoundAntigravity, chat == nil || console.isSavedChat(agent.id) { return nil }
             let choices = agyModels.isEmpty ? AgyModelCatalog.defaultChoices : agyModels
             guard !choices.isEmpty else { return nil }
             let current = sessionSettings
@@ -1883,19 +1883,39 @@ struct AgentChatSurfaceView: View {
             guard isOnStage(), chat.conversationGeneration == generation,
                 !session.agentKeys.isRunningQueuedWork, activity() == .idle
             else { throw CancellationError() }
-            try await typeSwitchStep(io, .paste(command + " "), whileShowing: {
-                PreSendGate.check($0, program: .agy, activity: .idle) == .send
-            })
-            try await Task.sleep(for: .milliseconds(150))
-            guard isOnStage(), chat.conversationGeneration == generation,
-                !session.agentKeys.isRunningQueuedWork, activity() == .idle
-            else { throw CancellationError() }
-            try await typeSwitchStep(io, .keys(["enter"]), whileShowing: { screen in
-                guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .agy) else {
-                    return false
+            if isBoundAntigravity {
+                guard let writeCheck = chat.composerWriteCheck(for: composer) else { throw CancellationError() }
+                let outcome = await console.sendBoundAntigravitySettingCommand(
+                    command + " ", for: agent, keepingTo: session.corePin,
+                    verifying: ComposerWriteVerification(session: writeCheck, droid: nil))
+                switch outcome {
+                case .submitted:
+                    break
+                case .outcomeUnknown:
+                    session.settingOverrides.lastSwitchHasNoAnswer = true
+                    throw CancellationError()
+                case .refused(let refusal):
+                    permissionErrorMessage = refusal.message
+                    throw CancellationError()
+                case .failed(let message):
+                    permissionErrorMessage = message
+                    throw CancellationError()
                 }
-                return typed.trimmingCharacters(in: .whitespacesAndNewlines) == command
-            })
+            } else {
+                try await typeSwitchStep(io, .paste(command + " "), whileShowing: {
+                    PreSendGate.check($0, program: .agy, activity: .idle) == .send
+                })
+                try await Task.sleep(for: .milliseconds(150))
+                guard isOnStage(), chat.conversationGeneration == generation,
+                    !session.agentKeys.isRunningQueuedWork, activity() == .idle
+                else { throw CancellationError() }
+                try await typeSwitchStep(io, .keys(["enter"]), whileShowing: { screen in
+                    guard case .text(let typed) = InputBoxStateDetector.detect(screen, program: .agy) else {
+                        return false
+                    }
+                    return typed.trimmingCharacters(in: .whitespacesAndNewlines) == command
+                })
+            }
             for _ in 0..<12 {
                 try await Task.sleep(for: .milliseconds(250))
                 let screen = try await io.readScreen()
