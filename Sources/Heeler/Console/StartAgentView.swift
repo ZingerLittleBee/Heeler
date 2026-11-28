@@ -83,8 +83,8 @@ struct StartAgentView: View {
                 if let origin = store.origin {
                     Section {
                         Text(origin.cwd)
-                            .font(.callout.monospaced())
-                            .lineLimit(2)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
                             .truncationMode(.middle)
                     } header: {
                         Text("Directory")
@@ -133,10 +133,14 @@ struct StartAgentView: View {
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Label(store.newWorkspaceDirectory, systemImage: "folder")
-                                    .font(.callout.monospaced())
-                                    .lineLimit(2)
-                                    .truncationMode(.middle)
+                                Label {
+                                    Text(store.newWorkspaceDirectory)
+                                        .font(.footnote.monospaced())
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                } icon: {
+                                    Image(systemName: "folder")
+                                }
                             }
                             Button("Browse Directory…", systemImage: "folder.badge.plus") {
                                 openDirectoryBrowser()
@@ -463,6 +467,7 @@ struct StartAgentView: View {
     private func openDirectoryBrowser() {
         guard let hostID = store.selectedHostID else { return }
         directoryBrowser = RemoteDirectoryBrowser(
+            initialPath: store.initialBrowseDirectory,
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
     }
@@ -603,39 +608,65 @@ struct StartWorkspacePicker: View {
             })
     }
 
+    @ViewBuilder
+    private var pickerOptions: some View {
+        if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
+            Text("None reported").tag(Selection?.none)
+        }
+        ForEach(workspaces) { @Sendable workspace in
+            Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+        }
+        if newDirectory != nil {
+            Text(directoryName).tag(Selection?.some(.newWorkspace))
+        } else if isNewWorkspaceSelected {
+            Text("Home").tag(Selection?.some(.newWorkspace))
+        }
+        Divider()
+        Label("New Workspace", systemImage: "folder.badge.plus")
+            .tag(Selection?.some(.browse))
+            .accessibilityIdentifier("new-workspace")
+    }
+
     /// A menu picker, as the Host row above it is: the whole row opens it,
     /// from the value at its trailing edge. New Workspace is its last
-    /// option, which browses instead of becoming the selection. It must be
-    /// the row itself: wrapped, the form draws it as a bare button.
+    /// option, which browses instead of becoming the selection. When a browsed
+    /// directory is shown, laying it out below the title row keeps the picker
+    /// anchored on the first line's trailing edge and gives the path the full
+    /// row width on the second line.
     var body: some View {
-        Picker(selection: selection) {
-            if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
-                Text("None reported").tag(Selection?.none)
-            }
-            ForEach(workspaces) { @Sendable workspace in
-                Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
-            }
-            if newDirectory != nil {
-                Text(directoryName).tag(Selection?.some(.newWorkspace))
-            } else if isNewWorkspaceSelected {
-                Text("Home").tag(Selection?.some(.newWorkspace))
-            }
-            Divider()
-            Label("New Workspace", systemImage: "folder.badge.plus")
-                .tag(Selection?.some(.browse))
-                .accessibilityIdentifier("new-workspace")
-        } label: {
-            Text("Workspace")
-            // The browsed directory in full, under the row's title.
-            if isNewWorkspaceSelected, let newDirectory {
+        if isNewWorkspaceSelected, let newDirectory {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Workspace")
+                        .foregroundStyle(.primary)
+                        .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    Picker("Workspace", selection: selection) {
+                        pickerOptions
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(.secondary)
+                    .menuOrder(.fixed)
+                    .disabled(!canBrowse)
+                    .accessibilityIdentifier("start-workspace-picker")
+                }
                 Text(newDirectory)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+        } else {
+            Picker("Workspace", selection: selection) {
+                pickerOptions
+            }
+            // The form's own picker style, not `.menu`, which draws a bare
+            // accent-colored value that only it opens.
+            .menuOrder(.fixed)
+            .disabled(!canBrowse)
+            .accessibilityIdentifier("start-workspace-picker")
         }
-        // The form's own picker style, not `.menu`, which draws a bare
-        // accent-colored value that only it opens.
-        .menuOrder(.fixed)
-        .disabled(!canBrowse)
-        .accessibilityIdentifier("start-workspace-picker")
     }
 }
 

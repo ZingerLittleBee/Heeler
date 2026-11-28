@@ -164,6 +164,7 @@ struct NewTerminalView: View {
     private func openDirectoryBrowser() {
         guard let hostID = store.selectedHostID else { return }
         directoryBrowser = RemoteDirectoryBrowser(
+            initialPath: store.initialBrowseDirectory,
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
     }

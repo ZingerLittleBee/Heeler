@@ -82,6 +82,7 @@ struct HostRemovalDependencies: Sendable {
     /// trusted host key and the Workspace New Agent last picked there. Runs
     /// after `didRemoveHost`.
     var forgetHostRecords: @MainActor @Sendable (Host.ID) async -> Void = { _ in }
+    var forgetHostDirectory: @MainActor @Sendable (HostMachine.Connection) -> Void = { _ in }
     /// Gives the second record the host keys trusted for the first: the record
     /// that holds a Host once its last Server is turned off (ADR 0047).
     var copyHostKeyTrust: @MainActor @Sendable (_ from: Host.ID, _ to: Host.ID) async -> Void = { _, _ in }
@@ -122,6 +123,9 @@ extension HostRemovalDependencies {
                 await knownHosts.forgetHost(id)
                 recentLaunches.forgetWorkspace(for: id)
                 recentLaunches.forgetHost(id)
+            },
+            forgetHostDirectory: { connection in
+                recentLaunches.forgetDirectory(for: connection)
             },
             copyHostKeyTrust: { source, record in
                 await knownHosts.copyTrust(from: source, to: record)
@@ -248,6 +252,12 @@ final class HostRemovalStore {
             }
             dependencies.didRemoveHost(host.id)
             await dependencies.forgetHostRecords(host.id)
+        }
+        if request.turnsOffServer == nil {
+            for connection in Set(hosts.map(HostMachine.Connection.init))
+            where !store.hosts.contains(where: { HostMachine.Connection($0) == connection }) {
+                dependencies.forgetHostDirectory(connection)
+            }
         }
     }
 

@@ -41,9 +41,10 @@ struct RemoteDirectoryBrowserTests {
 
     private func makeBrowser(
         _ fake: FakeLister,
-        home: String = "/home/you"
+        home: String = "/home/you",
+        initialPath: String? = nil
     ) -> RemoteDirectoryBrowser {
-        RemoteDirectoryBrowser(resolveHome: { home }, list: fake.list)
+        RemoteDirectoryBrowser(initialPath: initialPath, resolveHome: { home }, list: fake.list)
     }
 
     private func waitUntil(
@@ -318,8 +319,87 @@ struct RemoteDirectoryBrowserTests {
         var count = 0
     }
 
-    @Test func browsedDirectoryFillsTheFieldWithoutStarting() async {
+    @Test func startLoadsInitialPathWithoutProbingHome() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you/Documents/Heeler": RemoteDirectoryListing(directories: ["Sources"], truncated: false),
+            "/home/you/Documents": RemoteDirectoryListing(directories: ["Heeler"], truncated: false),
+        ]
+        var homeProbes = 0
+        let browser = RemoteDirectoryBrowser(
+            initialPath: "/home/you/Documents/Heeler",
+            resolveHome: {
+                homeProbes += 1
+                return "/home/you"
+            },
+            list: fake.list)
+
+        browser.start()
+        try await waitUntil("initial path loaded") { browser.currentPath == "/home/you/Documents/Heeler" }
+        #expect(homeProbes == 0)
+        #expect(browser.directories == ["Sources"])
+
+        browser.goBack()
+        try await waitUntil("parent path loaded") { browser.currentPath == "/home/you/Documents" }
+        #expect(fake.calls == ["/home/you/Documents/Heeler", "/home/you/Documents"])
+    }
+
+    @Test func missingInitialPathFallsBackToHome() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you": RemoteDirectoryListing(directories: ["Documents"], truncated: false),
+        ]
+        var failedOnce = false
+        let browser = RemoteDirectoryBrowser(
+            initialPath: "/home/you/Documents/Deleted",
+            resolveHome: { "/home/you" },
+            list: { path in
+                if path == "/home/you/Documents/Deleted", !failedOnce {
+                    failedOnce = true
+                    throw TransportError.invalidDirectoryPath(path: path)
+                }
+                return try await fake.list(path)
+            })
+
+        browser.start()
+        try await waitUntil("fell back to home") { browser.currentPath == "/home/you" }
+        #expect(browser.directories == ["Documents"])
+        #expect(browser.errorMessage == nil)
+        #expect(fake.calls == ["/home/you"])
+    }
+
+    @Test func unreachableInitialPathSurfacesErrorWithoutProbingHomeAndRetriesInitialPath() async throws {
+        let fake = FakeLister()
+        fake.listings = [
+            "/home/you/Documents/Heeler": RemoteDirectoryListing(directories: ["Sources"], truncated: false),
+        ]
+        fake.error = TransportError.timedOut
+        var homeProbes = 0
+        let browser = RemoteDirectoryBrowser(
+            initialPath: "/home/you/Documents/Heeler",
+            resolveHome: {
+                homeProbes += 1
+                return "/home/you"
+            },
+            list: fake.list)
+
+        browser.start()
+        try await waitUntil("timeout surfaced") { browser.errorMessage != nil }
+        #expect(homeProbes == 0)
+        #expect(browser.currentPath == nil)
+
+        fake.error = nil
+        browser.retry()
+        try await waitUntil("retry loaded initial path") { browser.currentPath == "/home/you/Documents/Heeler" }
+        #expect(homeProbes == 0)
+        #expect(fake.calls == ["/home/you/Documents/Heeler", "/home/you/Documents/Heeler"])
+    }
+
+    @Test func browsedDirectoryFillsTheFieldWithoutStarting() async throws {
         let starts = StartCounter()
+        let suite = "browser-test-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let store = StartAgentStore(
             hosts: [Host.fixture()], workspaces: { _ in [] },
             existingAgentNames: { _ in [] },
@@ -329,7 +409,8 @@ struct RemoteDirectoryBrowserTests {
                 starts.count += 1
                 return Agent(.fixture(paneID: "w1:pnew", status: .working))
             },
-            awaitAgentVisible: { _ in })
+            awaitAgentVisible: { _ in },
+            recents: RecentLaunchStore(defaults: defaults))
 
         store.applyBrowsedDirectory("/home/you/src/app")
 
