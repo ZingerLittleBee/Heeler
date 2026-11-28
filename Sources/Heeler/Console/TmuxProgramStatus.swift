@@ -54,7 +54,7 @@ struct TmuxProgramStatus: Equatable, Sendable {
     /// Programs whose idle does not end a turn. These are the `app` words in
     /// `plugin/test-vectors/tmux-heeler-status-v1.json`, the same set the Helper
     /// continues counts with.
-    static let doneReporterApps: Set<String> = ["claude-code", "codex", "pi", "omp", "grok-build"]
+    static let doneReporterApps: Set<String> = ["claude-code", "codex", "pi", "omp", "grok-build", "droid"]
 
     /// The option value after `report`, continuing the counts in `previous`.
     /// An unset option is an empty value. `clear` keeps only the counts. A

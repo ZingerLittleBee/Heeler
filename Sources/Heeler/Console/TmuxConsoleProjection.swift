@@ -1494,7 +1494,16 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {
-        { _ in nil }
+        let session = session
+        return { selector in
+            guard let command = AgentModelProbe.command(selector: selector) else { return nil }
+            let script = Data("LC_ALL=C \(command)\n".utf8)
+            let result = try await session.withTransport { transport in
+                try await transport.runTmuxScript(script, throughLoginShell: false)
+            }
+            guard result.exitStatus == 0 else { return nil }
+            return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+        }
     }
 
     // MARK: Process-bound Chat (ADRs 0034, 0044 and 0046)

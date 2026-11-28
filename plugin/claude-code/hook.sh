@@ -22,7 +22,7 @@ SESSION_OPTION=@heeler-session
 # `u` for a prompt that named no tool.
 ASK_OPTION=@heeler-ask
 # Programs known to report done, so their idle ends no turn (the shared vector).
-DONE_REPORTERS="claude-code codex pi omp grok-build"
+DONE_REPORTERS="claude-code codex pi omp grok-build droid"
 # Characters, as the Pi extension keeps a message.
 MESSAGE_LIMIT=512
 
