@@ -529,6 +529,32 @@ struct HostHelperServiceTests {
         #expect(after.status == .installed(version: HostHelperCompatibility.bundled, updateAvailable: false))
     }
 
+    @Test func aRexHostRequiresFirstWithRexBeforeNotificationsOrLiveActivities() async throws {
+        _ = try await installer.install(
+            over: try await installer.read(), bundle: HostHelperFixture.bundle(version: "0.5.13"))
+        let older = try await installer.read()
+        #expect(older.status == .installed(version: PluginVersion(0, 5, 13), updateAvailable: true))
+        #expect(older.installAction == .update)
+        let coreStanding = older.notificationStanding(for: .herdrCore)
+        #expect(coreStanding.canRegister)
+        #expect(coreStanding.drivesLiveActivity)
+        #expect(coreStanding.requirement == nil)
+        let rexStanding = older.notificationStanding(for: .rex)
+        #expect(!rexStanding.canRegister)
+        #expect(!rexStanding.drivesLiveActivity)
+        #expect(
+            rexStanding.requirement
+                == "Host Helper: 0.5.13. Notifications need a newer Host Helper. See this Host's page in Hosts.")
+
+        _ = try await installer.install(over: older, bundle: bundle)
+        let current = try await installer.read()
+        #expect(HostHelperCompatibility.firstWithRex == PluginVersion(0, 5, 14))
+        let updatedRex = current.notificationStanding(for: .rex)
+        #expect(updatedRex.canRegister)
+        #expect(updatedRex.drivesLiveActivity)
+        #expect(updatedRex.requirement == nil)
+    }
+
     /// An Update from `0.0.1`, ready to run.
     private func olderHelper() async throws -> HostHelperReading {
         _ = try await installer.install(

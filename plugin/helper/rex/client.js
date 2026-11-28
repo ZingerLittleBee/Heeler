@@ -7,7 +7,7 @@ const TERMINAL_CREATOR = "com.superlogical.terminal";
 const CONTROL_SUBPROTOCOL = "rex.control.v1";
 const CONTROL_PATH = "/api/control";
 const API_MIN_REVISION = 12;
-const API_MAX_REVISION = 19;
+const API_MAX_REVISION = 24;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 

@@ -260,7 +260,7 @@ final class NotificationPreferencesStore {
         await write(for: host, from: settings, registers: enabled) { ceremony, token, files in
             if enabled {
                 // The Helper may have gone since this screen last read it.
-                if let standing = try await files.readHostHelper()?.notificationStanding, !standing.canRegister {
+                if let standing = try await files.readHostHelper()?.notificationStanding(for: host.serverKind), !standing.canRegister {
                     throw HostHelperRequirementError(message: standing.requirement ?? "")
                 }
                 let notify = NotificationTriggerPreferences()
@@ -381,7 +381,7 @@ final class NotificationPreferencesStore {
         states[host.id] = .loading
         defer { writeSeenMarks(for: host.id) }
         do {
-            let read = try await readRegistration(for: host.id)
+            let read = try await readRegistration(for: host)
             guard isCurrent(operation, for: host) else { return }
             var file = try NotificationRegistrationFile.decode(read.registration)
             helperRequirements[host.id] = read.standing?.requirement
@@ -415,15 +415,15 @@ final class NotificationPreferencesStore {
     /// The Host's registration file, and on a core Host what its Helper stands
     /// as, over one connection. A Host with nothing of the Helper's has no
     /// directory to read a file from.
-    private func readRegistration(for hostID: Host.ID) async throws -> RegistrationRead {
-        try await transports.withNotificationFiles(for: hostID) { files in
+    private func readRegistration(for host: Host) async throws -> RegistrationRead {
+        try await transports.withNotificationFiles(for: host.id) { files in
             guard let reading = try await files.readHostHelper() else {
                 return RegistrationRead(
                     registration: try await files.readNotificationRegistration(), standing: nil, helper: nil)
             }
             return RegistrationRead(
                 registration: reading.offersRemoval ? try await files.readNotificationRegistration() : nil,
-                standing: reading.notificationStanding, helper: reading.presentation)
+                standing: reading.notificationStanding(for: host.serverKind), helper: reading.presentation)
         }
     }
 

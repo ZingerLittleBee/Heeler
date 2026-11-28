@@ -1,5 +1,5 @@
 {
-  "version": "0.5.13",
+  "version": "0.5.14",
   "files": [
     {
       "path": "core/agent-rule.js",
@@ -79,7 +79,7 @@
     },
     {
       "path": "rex/client.js",
-      "sha256": "407af39b1d2609ff4df44cffdeaf25b293d3a830f5d9ea32e4b84901f601afd9"
+      "sha256": "657b833a21b67aac386047bd74f627fe464cb3c101b26cc60599ee64e19fb1ff"
     },
     {
       "path": "rex/follower.js",
@@ -299,7 +299,7 @@
     },
     {
       "path": "version.json",
-      "sha256": "12484abe2cbe1f23464649037e50fa004d49be4a619efd1bdddbbc8f1edb799f"
+      "sha256": "8631f8bace4bcb82390105f07d56f2902d8264e934573a9b30e7d5dbd467becc"
     }
   ]
 }
