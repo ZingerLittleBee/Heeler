@@ -382,7 +382,7 @@ struct HerdrCoreWindowsTransportTests {
         #expect(await updates.next() == .status(.connecting))
 
         let failure = TransportError.channelFailed(
-            detail: "herdr-core at \(ScriptedCoreHost.windowsExecutable) did not report its version")
+            detail: "Herdr Core at \(ScriptedCoreHost.windowsExecutable) did not report its version")
         #expect(failure.isRetryable)
         #expect(await updates.next() == .status(.reconnecting(attempt: 1, delay: .seconds(1), failure: failure)))
         #expect(await host.connectCommands.isEmpty)

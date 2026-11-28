@@ -16,27 +16,27 @@ struct TransportErrorPresentationTests {
 
     @Test func herdrCoreOutcomesHaveASummaryDetailAndRecovery() {
         let notInstalled = TransportError.herdrCoreNotInstalled.presentation
-        #expect(notInstalled.summary == "herdr-core is not installed")
+        #expect(notInstalled.summary == "Herdr Core is not installed")
         #expect(notInstalled.detail?.contains("~/.local/bin/herdr-core") == true)
         #expect(notInstalled.detail?.contains("native Windows") == true)
         #expect(notInstalled.recoverySuggestion?.contains("Install") == true)
 
         let stopped = TransportError.herdrCoreNotRunning(
             socketPath: "/run/s.sock", socketFilePresent: false).presentation
-        #expect(stopped.summary == "herdr-core is not running")
+        #expect(stopped.summary == "Herdr Core is not running")
         #expect(stopped.detail?.contains("/run/s.sock") == true)
         #expect(stopped.recoverySuggestion?.contains("Start the core") == true)
         #expect(stopped.message.contains("forwarding") == false)
 
         let update = TransportError.herdrCoreUpdateRequired(
             command: "/home/me/.local/bin/herdr-core update").presentation
-        #expect(update.summary == "herdr-core needs an update")
+        #expect(update.summary == "Herdr Core needs an update")
         #expect(update.detail != nil)
         #expect(update.recoverySuggestion?.contains("/home/me/.local/bin/herdr-core update") == true)
 
         let path = "/run/" + String(repeating: "a", count: 120)
         let tooLong = TransportError.herdrCoreSocketPathTooLong(path: path, limit: 107).presentation
-        #expect(tooLong.summary == "The herdr-core socket path is too long")
+        #expect(tooLong.summary == "The Herdr Core socket path is too long")
         #expect(tooLong.detail?.contains(path) == true)
         #expect(tooLong.detail?.contains("107") == true)
         #expect(tooLong.recoverySuggestion?.contains("shorter") == true)
@@ -63,7 +63,7 @@ struct TransportErrorPresentationTests {
     @Test func notRunningWithASocketFileNamesBothCauses() {
         let presentation = TransportError.herdrCoreNotRunning(
             socketPath: "/run/s.sock", socketFilePresent: true).presentation
-        #expect(presentation.summary == "herdr-core is not running")
+        #expect(presentation.summary == "Herdr Core is not running")
         let detail = presentation.detail ?? ""
         #expect(detail.contains("/run/s.sock"))
         #expect(detail.contains("stopped or crashed"))

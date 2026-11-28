@@ -22,7 +22,7 @@ enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
         case .waitingForCore:
             String(localized: "The Host Helper has not reached this session's core yet. Start the core if it is not running.")
         case .waitingForTmux:
-            String(localized: "The Host Helper has not reached this tmux server yet. Start tmux if it is not running.")
+            String(localized: "The Host Helper has not reached this Tmux server yet. Start Tmux if it is not running.")
         case .waitingForRex:
             String(localized: "The Host Helper has not reached Rex yet. Start Rex if it is not running.")
         case .nodeGone:

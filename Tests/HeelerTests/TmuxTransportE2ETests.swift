@@ -144,7 +144,7 @@ struct TmuxTransportE2ETests {
             try await fixture.stopServer()
             let notRunning = TransportError.tmuxServerNotRunning(socketName: fixture.socketName)
             #expect(try await fixture.read(storedPaths: paths).status == .failure(notRunning))
-            #expect(notRunning.presentation.summary == "No tmux server running")
+            #expect(notRunning.presentation.summary == "No Tmux server running")
 
             // Another run of the server is another instance.
             try await fixture.startServer()

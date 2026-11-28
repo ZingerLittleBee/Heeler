@@ -293,10 +293,10 @@ struct HostServerSwitchTests {
     /// A kind whose saved Hosts did not read takes no new one, so nothing can
     /// write over what is there. The refusal says which.
     @Test(arguments: [
-        (ServerKind.tmux, "tmuxHosts", "The saved tmux Hosts could not be read, so no tmux Host can be added."),
+        (ServerKind.tmux, "tmuxHosts", "The saved Tmux Hosts could not be read, so no Tmux Host can be added."),
         (
             ServerKind.herdrCore, "herdrCoreHosts",
-            "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added."
+            "The saved Herdr Core Hosts could not be read, so no Herdr Core Host can be added."
         ),
         (ServerKind.rex, "rexHosts", "The saved Rex Hosts could not be read, so no Rex Host can be added."),
     ])

@@ -350,7 +350,7 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func runHostProcessRead(_ script: Data) async throws -> GitExecResult {
-        try refuseOnWindows("herdr-core Hosts")
+        try refuseOnWindows("Herdr Core Hosts")
         log.append("process-read")
         let body = String(decoding: script, as: UTF8.self)
         scripts.append(body)
@@ -396,14 +396,14 @@ actor ScriptedCoreHost: HerdrCoreHostConnection, ServerKindDetectionConnection {
     }
 
     func runAgentDiscovery(_ script: Data) async throws -> GitExecResult {
-        try refuseOnWindows("herdr-core Hosts")
+        try refuseOnWindows("Herdr Core Hosts")
         log.append("agent-discovery")
         scripts.append(String(decoding: script, as: UTF8.self))
         return agentDiscovery
     }
 
     func runHerdrAppControl(_ script: Data) async throws -> GitExecResult {
-        try refuseOnWindows("herdr-core Hosts")
+        try refuseOnWindows("Herdr Core Hosts")
         log.append("herdr-app")
         scripts.append(String(decoding: script, as: UTF8.self))
         return try herdrAppAnswer.get()

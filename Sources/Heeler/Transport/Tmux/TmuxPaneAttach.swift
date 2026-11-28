@@ -332,7 +332,7 @@ actor TmuxPaneAttach {
         case .failed(let failure): failure
         case .closed: CancellationError()
         case .exited, .channelEnded:
-            TransportError.malformedResponse(String(localized: "tmux: The control client ended before it attached."))
+            TransportError.malformedResponse(String(localized: "Tmux: The control client ended before it attached."))
         }
     }
 
@@ -366,7 +366,7 @@ actor TmuxPaneAttach {
                         ? .success(())
                         : .failure(
                             TransportError.malformedResponse(
-                                String(localized: "tmux: The Pane's screen could not be read."))))
+                                String(localized: "Tmux: The Pane's screen could not be read."))))
                 await client.close()
             }
         }

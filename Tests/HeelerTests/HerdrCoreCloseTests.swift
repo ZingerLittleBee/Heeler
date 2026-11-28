@@ -264,14 +264,14 @@ struct HerdrCoreCloseTests {
             try await store.closePane("t1", on: self.host.id)
         }
         let row = try #require(refusal)
-        #expect(ConsoleStore.tabCloseFailureMessage(for: row) == "herdr-core rejected the close: no")
+        #expect(ConsoleStore.tabCloseFailureMessage(for: row) == "Herdr Core rejected the close: no")
 
         let hostID = host.id
         let detail = ClosePaneStore(paneTitle: "Claude") {
             try await store.closePane("t1", on: hostID)
         }
         await detail.confirmClose()
-        #expect(detail.state == .failed("herdr-core rejected the close: no"))
+        #expect(detail.state == .failed("Herdr Core rejected the close: no"))
     }
 
     /// A core that stopped with SSH still up is said in words.
@@ -289,7 +289,7 @@ struct HerdrCoreCloseTests {
         }
         let row = ConsoleStore.tabCloseFailureMessage(for: error)
         for message in [detail, row] {
-            #expect(message.hasPrefix("herdr-core is not running: "), "\(message)")
+            #expect(message.hasPrefix("Herdr Core is not running: "), "\(message)")
             #expect(message.contains("/run/core.sock"))
             #expect(!message.contains("herdrCoreNotRunning"))
         }

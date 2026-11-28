@@ -267,7 +267,7 @@ struct HostHelperInstaller: Sendable {
             let folder = (tmuxPathsFile as NSString).deletingLastPathComponent
             try await write(
                 TmuxClaudeCodeHooks.storedPaths(tmuxPaths), to: tmuxPathsFile, in: folder,
-                step: String(localized: "Writing the stored tmux paths"))
+                step: String(localized: "Writing the stored Tmux paths"))
         }
         if let rexSocket = plan.rexSocket, let rexSocketFile = plan.rexSocketFile,
             let contents = HostHelperScript.storedRexSocket(rexSocket)
@@ -309,7 +309,7 @@ struct HostHelperInstaller: Sendable {
             step: String(localized: "Creating the folders"))
         try await write(
             TmuxClaudeCodeHooks.storedPaths(paths), to: file, in: folder,
-            step: String(localized: "Writing the stored tmux paths"))
+            step: String(localized: "Writing the stored Tmux paths"))
     }
 
     func writeRexSocket(_ socket: RexSocket, over reading: HostHelperReading) async throws {

@@ -244,7 +244,7 @@ actor TmuxSSHTransport: TmuxTransport {
             let found = TmuxPaths(executable: executable, socket: socket)
         else {
             throw TransportError.malformedResponse(
-                String(localized: "tmux: The Host's tmux or its socket is at a path Heeler cannot use."))
+                String(localized: "Tmux: The Host's Tmux or its socket is at a path Heeler cannot use."))
         }
         if found != paths {
             paths = found
@@ -278,13 +278,13 @@ actor TmuxSSHTransport: TmuxTransport {
             throughLoginShell: request.runsThroughLoginShell)
         guard result.exitStatus == 0 else {
             throw TransportError.malformedResponse(
-                String(localized: "tmux: The probe exited with status \(result.exitStatus)."))
+                String(localized: "Tmux: The probe exited with status \(result.exitStatus)."))
         }
         let report: TmuxProbe.Report
         do {
             report = try TmuxProbe.parse(stdout: result.stdout, nonce: nonce)
         } catch {
-            throw TransportError.malformedResponse(String(localized: "tmux: The probe's output is unreadable."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The probe's output is unreadable."))
         }
         if let kernel = report.kernel { self.kernel = kernel }
         if let shell = report.shell { self.shell = shell }
@@ -379,7 +379,7 @@ actor TmuxSSHTransport: TmuxTransport {
             let reading = TmuxPaneForeground.parse(stdout: result.stdout, pane: pane, nonce: nonce)
         else {
             throw TransportError.malformedResponse(
-                String(localized: "tmux: The Pane's foreground could not be read."))
+                String(localized: "Tmux: The Pane's foreground could not be read."))
         }
         return reading
     }

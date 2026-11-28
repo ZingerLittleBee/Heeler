@@ -11,7 +11,7 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
     }
 
     static let fix = String(localized: "Restarting the core from your own terminal fixes this. Heeler does not restart it.")
-    static let tmuxFix = String(localized: "Clear these variables with tmux set-environment -gu or restart the tmux server from your own terminal. Heeler does not restart it.")
+    static let tmuxFix = String(localized: "Clear these variables with tmux set-environment -gu or restart the Tmux server from your own terminal. Heeler does not restart it.")
 
     static func fix(for serverKind: ServerKind) -> String {
         serverKind == .tmux ? tmuxFix : fix
@@ -48,7 +48,7 @@ struct HerdrCoreEnvironmentNotice: Equatable, Sendable {
         case "CLAUDECODE":
             String(localized: "Programs here read as started from inside Claude Code, which can change what they report and record.")
         case "TMUX":
-            String(localized: "Grok Build turns its status off inside tmux, so its Agents read Unknown.")
+            String(localized: "Grok Build turns its status off inside Tmux, so its Agents read Unknown.")
         case "STY":
             String(localized: "Grok Build turns its status off inside GNU Screen, so its Agents read Unknown.")
         case "ZELLIJ":
@@ -93,7 +93,7 @@ struct HerdrCoreEnvironmentSection: View {
                 }
             }
         } header: {
-            Text(serverKind == .tmux ? String(localized: "tmux Environment") : String(localized: "Core Environment"))
+            Text(serverKind == .tmux ? String(localized: "Tmux Environment") : String(localized: "Core Environment"))
         } footer: {
             Text(HerdrCoreEnvironmentNotice.fix(for: serverKind))
                 .accessibilityIdentifier("hosts.detail.coreEnvironment.fix")

@@ -61,11 +61,11 @@ extension TransportConnector {
 
     /// A connector that serves only Herdr TUI Hosts says so.
     func connectCore(settings: SSHTransportSettings) async throws -> any HerdrCoreTransport {
-        throw TransportError.hostFeatureUnavailable(feature: String(localized: "herdr-core Hosts"))
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Herdr Core Hosts"))
     }
 
     func connectTmux(settings: SSHTransportSettings) async throws -> any TmuxTransport {
-        throw TransportError.hostFeatureUnavailable(feature: String(localized: "tmux Hosts"))
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Tmux Hosts"))
     }
 
     func connectRex(

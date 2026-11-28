@@ -72,7 +72,7 @@ struct TmuxHostOnboardingTests {
 
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .serverRunning)
-        #expect(hint.contains("No tmux server running"))
+        #expect(hint.contains("No Tmux server running"))
         #expect(hint.contains("\"later\""))
         #expect(store.report?[.herdrInstalled] == .passed)
         // Checking started no server.
@@ -90,7 +90,7 @@ struct TmuxHostOnboardingTests {
         #expect(store.host.tmuxPaths == nil)
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .herdrInstalled)
-        #expect(hint.contains("tmux is not installed"))
+        #expect(hint.contains("Tmux is not installed"))
         #expect(store.report?[.serverRunning] == .blocked)
         #expect(store.serverKindSummary == "tmux")
     }
@@ -163,7 +163,7 @@ struct TmuxHostOnboardingTests {
 
         let (check, hint) = try #require(failedCheck(store))
         #expect(check == .serverRunning)
-        #expect(hint.contains("No tmux server running"))
+        #expect(hint.contains("No Tmux server running"))
         #expect(await tmux.log.last == "close")
     }
 

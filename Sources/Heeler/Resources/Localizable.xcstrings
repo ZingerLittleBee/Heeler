@@ -1055,13 +1055,13 @@
         }
       }
     },
-    "%@ hasn't reported a status. In tmux its status comes from the Host Helper's extension." : {},
-    "%@ hasn't reported a status. In tmux its status is read by the Host Helper, from %@ %@." : {
+    "%@ hasn't reported a status. In Tmux its status comes from the Host Helper's extension." : {},
+    "%@ hasn't reported a status. In Tmux its status is read by the Host Helper, from %@ %@." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ hasn't reported a status. In tmux its status is read by the Host Helper, from %2$@ %3$@."
+            "value" : "%1$@ hasn't reported a status. In Tmux its status is read by the Host Helper, from %2$@ %3$@."
           }
         }
       }
@@ -2000,6 +2000,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 會在有第一則訊息後儲存此對話。傳送一則訊息即可開始。"
+          }
+        }
+      }
+    },
+    "%@ session %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ session %2$@"
           }
         }
       }
@@ -6232,6 +6242,28 @@
         }
       }
     },
+    "A Herdr Core stream has one reader." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のストリームを読み取れるのは 1 つだけです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 流只能有一个读取器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 串流只能有一個讀取端。"
+          }
+        }
+      }
+    },
     "A Host already uses this machine" : {
       "localizations" : {
         "ja" : {
@@ -6365,6 +6397,8 @@
         }
       }
     },
+    "A Tmux server started over SSH would run outside the Mac's login session" : {},
+    "A Tmux server started over SSH would run outside the desktop login session, so Heeler does not start one here. In a terminal on that machine, run:" : {},
     "A background service for Agent Notifications, Live Activity, Usage, and Pi and Oh My Pi Chat." : {
       "localizations" : {
         "ja" : {
@@ -6668,30 +6702,7 @@
         }
       }
     },
-    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD." : {},
     "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD." : {},
-    "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ワークスペースのリポジトリの新しいチェックアウトです。既存のブランチはそのままチェックアウトされ、新しいブランチは HEAD から始まります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作区仓库的全新检出副本。若分支已存在则直接检出；若为新分支则从 HEAD 创建。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作區存放庫的全新簽出。若分支已存在就簽出該分支；新分支則從 HEAD 開始。"
-          }
-        }
-      }
-    },
     "A fresh checkout of the workspace's repository. Empty fields use a generated worktree/ branch off HEAD." : {
       "localizations" : {
         "ja" : {
@@ -6799,29 +6810,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "只有 macOS 與 Linux 主機支援以配對碼取得的 herdr 端點"
-          }
-        }
-      }
-    },
-    "A herdr-core stream has one reader." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のストリームを読み取れるのは 1 つだけです。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 流只能有一个读取器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 串流只能有一個讀取端。"
           }
         }
       }
@@ -7296,7 +7284,6 @@
         }
       }
     },
-    "A tmux server started over SSH would run outside the Mac's login session" : {},
     "A vivid dark theme for both appearances" : {
       "localizations" : {
         "ja" : {
@@ -7495,7 +7482,6 @@
         }
       }
     },
-    "Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none." : {},
     "Accounts are not available on this Host." : {
       "localizations" : {
         "ja" : {
@@ -8377,46 +8363,46 @@
         }
       }
     },
-    "Add a machine that runs herdr, tmux or Rex to get started." : {
+    "Add a machine that runs herdr, Tmux or Rex to get started." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "始めるには、herdr、tmux、または Rex を実行しているマシンを追加してください。"
+            "value" : "始めるには、herdr、Tmux、または Rex を実行しているマシンを追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加一台运行 herdr、tmux 或 Rex 的主机以开始使用。"
+            "value" : "添加一台运行 herdr、Tmux 或 Rex 的主机以开始使用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器即可開始使用。"
+            "value" : "新增一台執行 herdr、Tmux 或 Rex 的機器即可開始使用。"
           }
         }
       }
     },
-    "Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here." : {
+    "Add a machine that runs herdr, Tmux or Rex to see its Agents and Terminals here." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr、tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
+            "value" : "herdr、Tmux、または Rex を実行しているマシンを追加すると、そのエージェントとターミナルがここに表示されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加运行 herdr、tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
+            "value" : "添加运行 herdr、Tmux 或 Rex 的电脑，即可在此查看其 Agent 和终端。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新增一台執行 herdr、tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
+            "value" : "新增一台執行 herdr、Tmux 或 Rex 的機器，就能在這裡看到它的 Agent 與終端機。"
           }
         }
       }
@@ -9850,25 +9836,24 @@
         }
       }
     },
-    "Agents on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host.",
+    "Agents on a Herdr Core Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core ホストでのエージェント"
+            "value" : "Herdr Core ホストでのエージェント"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主机上的 Agent"
+            "value" : "Herdr Core 主机上的 Agent"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主機上的 Agent"
+            "value" : "Herdr Core 主機上的 Agent"
           }
         }
       }
@@ -10274,6 +10259,7 @@
         }
       }
     },
+    "Allows this rule for the current Devin session." : {},
     "Already on" : {
       "localizations" : {
         "ja" : {
@@ -10749,6 +10735,7 @@
         }
       }
     },
+    "Another program is now running in this terminal. Check it before closing." : {},
     "Another terminal is already open on this Host." : {
       "localizations" : {
         "ja" : {
@@ -10946,6 +10933,8 @@
       }
     },
     "Antigravity limits" : {},
+    "Antigravity models" : {},
+    "Antigravity opens Chat after its first conversation is recorded. Use its terminal for the first message, commands and approval dialogs." : {},
     "Any Label" : {
       "localizations" : {
         "ja" : {
@@ -12385,6 +12374,7 @@
         }
       }
     },
+    "Available on This Rex Server" : {},
     "Available once the Agent is idle" : {
       "localizations" : {
         "ja" : {
@@ -14099,6 +14089,7 @@
         }
       }
     },
+    "Cancel Question" : {},
     "Cancel Voice Input" : {
       "localizations" : {
         "ja" : {
@@ -14752,6 +14743,7 @@
         }
       }
     },
+    "Chat could not read this terminal. Open it to check whether Devin has started." : {},
     "Chat could not read this terminal. Reopen it to check whether Droid has started." : {},
     "Chat follows the conversation you choose until the program restarts, or until a message you send from Chat doesn't appear in it." : {
       "localizations" : {
@@ -14886,6 +14878,7 @@
         }
       }
     },
+    "Check for Plugin Update" : {},
     "Check it on GitHub before you try again." : {
       "localizations" : {
         "ja" : {
@@ -14974,6 +14967,7 @@
         }
       }
     },
+    "Check that Python 3 can read Devin’s session database on this Host." : {},
     "Check that the Host is awake and reachable, then verify its address and port." : {
       "localizations" : {
         "ja" : {
@@ -15084,6 +15078,7 @@
         }
       }
     },
+    "Check the Agent and its environment variables." : {},
     "Check the Rex version on the Host." : {},
     "Check the conversation on GitHub before you try again." : {
       "localizations" : {
@@ -15151,6 +15146,9 @@
         }
       }
     },
+    "Check the proposal’s message field in the terminal before sending feedback." : {},
+    "Check the terminal to see whether your feedback arrived." : {},
+    "Check this Devin session and its message field before sending." : {},
     "Check this Droid session and its message box before sending." : {},
     "Check this Host's session." : {
       "localizations" : {
@@ -15174,7 +15172,6 @@
         }
       }
     },
-    "Check this terminal to see whether Droid received your feedback." : {},
     "Checked" : {
       "comment" : "VoiceOver: a task in a message's or description's checklist that is done.",
       "localizations" : {
@@ -15595,6 +15592,7 @@
         }
       }
     },
+    "Choose a conversation to read its history. Send messages in the Agent terminal." : {},
     "Choose a directory by its full path." : {
       "localizations" : {
         "ja" : {
@@ -15993,7 +15991,7 @@
     },
     "Claude Code Agents Heeler starts report their status already. Adding the hooks does the same for ones you start yourself." : {},
     "Claude Code Hooks" : {},
-    "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks." : {},
+    "Claude Code hasn't reported a status. In Tmux its status comes from Heeler's Claude Code hooks." : {},
     "Claude Code is reading or changing a setting. Try again in a moment." : {
       "comment" : "Terminal input refusal while Claude Code reads or changes a setting.",
       "localizations" : {
@@ -16396,6 +16394,7 @@
         }
       }
     },
+    "Clear these variables with tmux set-environment -gu or restart the Tmux server from your own terminal. Heeler does not restart it." : {},
     "Close" : {
       "localizations" : {
         "ja" : {
@@ -16820,6 +16819,7 @@
         }
       }
     },
+    "Close the open terminals in this worktree in Rex before removing it." : {},
     "Close the other terminal before reconnecting." : {
       "localizations" : {
         "ja" : {
@@ -17043,6 +17043,7 @@
         }
       }
     },
+    "Closing Tabs on this Rex server" : {},
     "Closing failed: %@" : {
       "comment" : "Error when closing a tab or pane failed. %@ is the underlying error.",
       "localizations" : {
@@ -18175,25 +18176,24 @@
       }
     },
     "Connect as the account that runs Rex." : {},
-    "Connect directly to the Host that owns this herdr-core Terminal" : {
-      "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
+    "Connect directly to the Host that owns this Herdr Core Terminal" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この herdr-core ターミナルを所有するホストへの直接接続"
+            "value" : "この Herdr Core ターミナルを所有するホストへの直接接続"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接连接到拥有此 herdr-core 终端的主机"
+            "value" : "直接连接到拥有此 Herdr Core 终端的主机"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接連線到擁有此 herdr-core 終端機的主機"
+            "value" : "直接連線到擁有此 Herdr Core 終端機的主機"
           }
         }
       }
@@ -18264,6 +18264,7 @@
         }
       }
     },
+    "Connect to see the actions and Chat programs available on this Host." : {},
     "Connect to the Host to preview this image." : {
       "localizations" : {
         "ja" : {
@@ -18308,6 +18309,7 @@
         }
       }
     },
+    "Connect to the Rex server so Heeler can check whether it can start Agents." : {},
     "Connected" : {
       "localizations" : {
         "ja" : {
@@ -22593,6 +22595,7 @@
         }
       }
     },
+    "Detached terminals cannot be moved to another Workspace in Rex." : {},
     "Details" : {
       "localizations" : {
         "ja" : {
@@ -22769,6 +22772,11 @@
         }
       }
     },
+    "Devin Chat" : {},
+    "Devin returned an invalid message length." : {},
+    "Devin returned an invalid message range." : {},
+    "Devin’s message field could contain a draft. Enable terminal colors or send from this terminal." : {},
+    "Devin’s session or input changed. Check the terminal before sending again." : {},
     "Diagnostics" : {
       "localizations" : {
         "ja" : {
@@ -23532,13 +23540,10 @@
     "Droid Chat hooks" : {},
     "Droid has not reported its session ID. Finish startup in the terminal and check the Droid integration on the Host if this persists." : {},
     "Droid has not shown any output yet." : {},
-    "Droid is not ready for feedback. Check the Spec message box in this terminal." : {},
     "Droid is ready, but its session has not been reported. Check the Droid hook on this Host and resume the session." : {},
     "Droid reported an unrecognized session ID. Chat cannot identify its transcript." : {},
     "Droid session" : {},
-    "Droid session %@" : {},
     "Droid's settings contain a hooks entry Heeler couldn't update." : {},
-    "Droid’s active turn could not be verified. Check the current conversation before stopping it." : {},
     "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them." : {
       "localizations" : {
         "ja" : {
@@ -24113,28 +24118,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "空白資料夾"
-          }
-        }
-      }
-    },
-    "Empty keeps herdr's numbered tab name." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空欄の場合、herdr の番号付きタブ名がそのまま使われます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空则保留 herdr 的编号标签页名称。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "留空則沿用 herdr 的編號分頁名稱。"
           }
         }
       }
@@ -26840,6 +26823,7 @@
     "Finish Droid startup in this terminal. Chat is waiting for its session." : {},
     "Finish choosing a slash command in the Droid terminal." : {},
     "Finish choosing the model in the Droid terminal." : {},
+    "Finish editing the answer in Devin’s terminal." : {},
     "Finish editing the answer in the Droid terminal." : {},
     "Finish signing in or answer any prompt in the terminal." : {
       "localizations" : {
@@ -26863,6 +26847,7 @@
         }
       }
     },
+    "Finish the active question or menu in this Devin terminal." : {},
     "Finished" : {
       "localizations" : {
         "ja" : {
@@ -28863,7 +28848,7 @@
       }
     },
     "Grok Build hasn't reported a status." : {},
-    "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper." : {},
+    "Grok Build hasn't reported a status. In Tmux its status is read by the Host Helper." : {},
     "Grok Build is already cancelling the turn." : {
       "localizations" : {
         "ja" : {
@@ -29310,6 +29295,28 @@
         }
       }
     },
+    "Grok Build turns its status off inside Tmux, so its Agents read Unknown." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Build は Tmux 内ではステータス報告を切るため、そのエージェントは不明と表示されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Build 在 Tmux 内会关闭状态报告，因此其 Agent 会显示为“未知”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grok Build 在 Tmux 內會關閉狀態回報，因此它的 Agent 會顯示為「未知」。"
+          }
+        }
+      }
+    },
     "Grok Build turns its status off inside Zellij, so its Agents read Unknown." : {
       "localizations" : {
         "ja" : {
@@ -29328,28 +29335,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok Build 在 Zellij 內會關閉狀態回報，因此它的 Agent 會顯示為「未知」。"
-          }
-        }
-      }
-    },
-    "Grok Build turns its status off inside tmux, so its Agents read Unknown." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok Build は tmux 内ではステータス報告を切るため、そのエージェントは不明と表示されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok Build 在 tmux 内会关闭状态报告，因此其 Agent 会显示为“未知”。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok Build 在 tmux 內會關閉狀態回報，因此它的 Agent 會顯示為「未知」。"
           }
         }
       }
@@ -30437,6 +30422,34 @@
         }
       }
     },
+    "Heeler cannot use the Tmux socket name \"%@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %lld bytes, and does not start with \"-\". A socket path is not supported." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler cannot use the Tmux socket name \"%1$@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %2$lld bytes, and does not start with \"-\". A socket path is not supported."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は Tmux のソケット名「%1$@」を使用できません。名前には英字・数字・\".\"・\"_\"・\"-\" が使え、%2$lld バイト以内で、\"-\" で始まらない必要があります。ソケットパスはサポートされていません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 无法使用 Tmux 套接字名称“%1$@”。名称只能使用字母、数字、“.”、“_”和“-”，最长 %2$lld 字节，且不能以“-”开头。不支持套接字路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 無法使用 Tmux socket 名稱「%1$@」。名稱僅限字母、數字、「.」、「_」與「-」，最長 %2$lld 位元組，且不能以「-」開頭。不支援 socket 路徑。"
+          }
+        }
+      }
+    },
     "Heeler cannot use the session name \"%@\" on native Windows. A name there uses letters, digits, \"-\", \"_\" and \".\", and does not start with \"-\"." : {
       "localizations" : {
         "ja" : {
@@ -30459,52 +30472,24 @@
         }
       }
     },
-    "Heeler cannot use the tmux socket name \"%@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %lld bytes, and does not start with \"-\". A socket path is not supported." : {
+    "Heeler connects over SSH to a machine that runs herdr, Tmux or Rex." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Heeler cannot use the tmux socket name \"%1$@\". A name uses letters, digits, \".\", \"_\" and \"-\", up to %2$lld bytes, and does not start with \"-\". A socket path is not supported."
-          }
-        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は tmux のソケット名「%1$@」を使用できません。名前には英字・数字・\".\"・\"_\"・\"-\" が使え、%2$lld バイト以内で、\"-\" で始まらない必要があります。ソケットパスはサポートされていません。"
+            "value" : "Heeler は herdr、Tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 无法使用 tmux 套接字名称“%1$@”。名称只能使用字母、数字、“.”、“_”和“-”，最长 %2$lld 字节，且不能以“-”开头。不支持套接字路径。"
+            "value" : "Heeler 通过 SSH 连接到运行 herdr、Tmux 或 Rex 的机器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 無法使用 tmux socket 名稱「%1$@」。名稱僅限字母、數字、「.」、「_」與「-」，最長 %2$lld 位元組，且不能以「-」開頭。不支援 socket 路徑。"
-          }
-        }
-      }
-    },
-    "Heeler connects over SSH to a machine that runs herdr, tmux or Rex." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler は herdr、tmux、または Rex を実行するマシンへ SSH 経由で接続します。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler 通过 SSH 连接到运行 herdr、tmux 或 Rex 的机器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heeler 透過 SSH 連線到執行 herdr、tmux 或 Rex 的機器。"
+            "value" : "Heeler 透過 SSH 連線到執行 herdr、Tmux 或 Rex 的機器。"
           }
         }
       }
@@ -31346,24 +31331,24 @@
         }
       }
     },
-    "Heeler couldn't read this Agent's process. Run herdr-core and SSH at the same elevation." : {
+    "Heeler couldn't read this Agent's process. Run Herdr Core and SSH at the same elevation." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler はこのエージェントのプロセスを読み取れませんでした。herdr-core と SSH を同じ権限で実行してください。"
+            "value" : "Heeler はこのエージェントのプロセスを読み取れませんでした。Herdr Core と SSH を同じ権限で実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 无法读取此 Agent 的进程。请以相同权限运行 herdr-core 和 SSH。"
+            "value" : "Heeler 无法读取此 Agent 的进程。请以相同权限运行 Herdr Core 和 SSH。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 無法讀取此 Agent 的程序。請以相同權限執行 herdr-core 與 SSH。"
+            "value" : "Heeler 無法讀取此 Agent 的程序。請以相同權限執行 Herdr Core 與 SSH。"
           }
         }
       }
@@ -32518,6 +32503,754 @@
         }
       }
     },
+    "Herdr Core Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core ホスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 主機"
+          }
+        }
+      }
+    },
+    "Herdr Core at %@ did not report its version" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Herdr Core がバージョンを報告しませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位于 %@ 的 Herdr Core 未报告其版本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位於 %@ 的 Herdr Core 未回報其版本"
+          }
+        }
+      }
+    },
+    "Herdr Core did not start." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core が起動しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未能启动。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未啟動。"
+          }
+        }
+      }
+    },
+    "Herdr Core did not start: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core が起動しませんでした: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未能启动：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未啟動：%@"
+          }
+        }
+      }
+    },
+    "Herdr Core did not start: %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core が起動しませんでした: %@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未能启动：%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未啟動：%@。"
+          }
+        }
+      }
+    },
+    "Herdr Core did not start: Could not load this Host's credentials. (%@)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core が起動しませんでした: このホストの認証情報を読み込めませんでした。（%@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未能启动：无法加载此主机的凭据。（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未啟動：無法載入此主機的憑證。（%@）"
+          }
+        }
+      }
+    },
+    "Herdr Core installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core インストール済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 已安裝"
+          }
+        }
+      }
+    },
+    "Herdr Core is not installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core がインストールされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装 Herdr Core"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未安裝"
+          }
+        }
+      }
+    },
+    "Herdr Core is not running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core は動作していません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 未執行"
+          }
+        }
+      }
+    },
+    "Herdr Core is running, but SSH will not open %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core は動作していますが、SSH が %@ を開けません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 正在运行，但 SSH 无法打开 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 正在執行，但 SSH 無法開啟 %@"
+          }
+        }
+      }
+    },
+    "Herdr Core needs an update" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core の更新が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 需要更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 需要更新"
+          }
+        }
+      }
+    },
+    "Herdr Core refuses the session name \"%@\". A name cannot be \".\" or \"..\", or contain control characters or any of / \\ : * ? \" < > |." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core はセッション名「%@」を拒否しました。名前に「.」や「..」は使えず、制御文字や / \\ : * ? \" < > | のいずれも含めません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 拒绝了会话名称“%@”。名称不能为“.”或“..”，且不能包含控制字符或 / \\ : * ? \" < > | 中的任何字符。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 拒絕工作階段名稱「%@」。名稱不能是「.」或「..」，也不能包含控制字元或下列任一字元：/ \\ : * ? \" < > |。"
+          }
+        }
+      }
+    },
+    "Herdr Core rejected the close: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core は閉じる操作を拒否しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 拒绝了关闭操作：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 拒絕了關閉：%@"
+          }
+        }
+      }
+    },
+    "Herdr Core running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 実行中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 執行中"
+          }
+        }
+      }
+    },
+    "Herdr Core was already running for session \"%@\", so Start changed nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッション「%@」の Herdr Core は既に動作していたため、「起動」は何も変更しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话“%@”的 Herdr Core 已在运行，因此“启动”未做任何更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 已在為工作階段「%@」執行，因此「啟動」沒有變更任何內容。"
+          }
+        }
+      }
+    },
+    "Herdr Core: %@ named no channel." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: %@ がチャネルを指定しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：%@ 未指定通道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：%@ 未指定通道。"
+          }
+        }
+      }
+    },
+    "Herdr Core: A document read has no version." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ドキュメントの読み取り結果にバージョンがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：读取的文档缺少版本号。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：文件讀取沒有版本。"
+          }
+        }
+      }
+    },
+    "Herdr Core: A stream exceeded its credit." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ストリームがクレジットを超えました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：流超出其信用额度。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：某個串流超出其額度。"
+          }
+        }
+      }
+    },
+    "Herdr Core: A terminal event has no terminal address." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ターミナルイベントにターミナルのアドレスがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：终端事件缺少终端地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：終端機事件沒有終端機位址。"
+          }
+        }
+      }
+    },
+    "Herdr Core: An event has no sequence." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: イベントにシーケンス番号がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件缺少序列号。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件沒有序號。"
+          }
+        }
+      }
+    },
+    "Herdr Core: An event has no type." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: イベントに種類がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件缺少类型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件沒有類型。"
+          }
+        }
+      }
+    },
+    "Herdr Core: An event line exceeds %lld bytes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: イベント行が %lld バイトを超えています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件行超过 %lld 字节。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件行超過 %lld 位元組。"
+          }
+        }
+      }
+    },
+    "Herdr Core: Invalid event notification." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: イベント通知が無効です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：事件通知无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：無效的事件通知。"
+          }
+        }
+      }
+    },
+    "Herdr Core: Invalid subscription snapshot." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: サブスクリプションのスナップショットが無効です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：订阅快照无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：無效的訂閱快照。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The hello reply is too long." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: hello の応答が長すぎます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：hello 响应过长。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：hello 回覆太長。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The hello response has no core id." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: hello の応答にコア ID がありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：hello 响应缺少核心 ID。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：hello 回應沒有核心 ID。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The locator exited with status %d." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ロケーターはステータス %d で終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：定位器已退出，状态码为 %d。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：定位器以狀態 %d 結束。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The locator was cut short." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ロケーターの出力が途中で切れました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：定位器输出意外中断。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：定位器被中途截斷。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The locator's output is unreadable." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: ロケーターの出力を読み取れません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：无法读取定位器的输出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：定位器的輸出無法讀取。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The reply names no usable channel." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: 応答に使用できるチャネルがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：响应未指定可用通道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：回覆中沒有可用的通道。"
+          }
+        }
+      }
+    },
+    "Herdr Core: The server status has no core, pid or uptime." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: サーバーの状態にコア、PID、稼働時間のいずれかがありません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：服务器状态缺少核心、PID 或运行时间。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：伺服器狀態沒有核心、pid 或運作時間。"
+          }
+        }
+      }
+    },
+    "Herdr Core: This Windows Host's home folder could not be read." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: この Windows ホストのホームフォルダを読み取れませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：无法读取此 Windows 主机的主文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：無法讀取此 Windows 主機的主資料夾。"
+          }
+        }
+      }
+    },
+    "Herdr Core: Too many unrequested channels." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: 要求していないチャネルが多すぎます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：未请求的通道过多。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：未經請求的通道太多。"
+          }
+        }
+      }
+    },
+    "Herdr Core: terminal.put named no path." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core: terminal.put がパスを指定しませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：terminal.put 未指定路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core：terminal.put 未指定路徑。"
+          }
+        }
+      }
+    },
     "Herdr TUI" : {
       "localizations" : {
         "ja" : {
@@ -33278,6 +34011,7 @@
         }
       }
     },
+    "Host System" : {},
     "Host Unavailable" : {
       "localizations" : {
         "ja" : {
@@ -34262,16 +34996,6 @@
         }
       }
     },
-    "In the Amp terminal, press Ctrl+O, search for reload, and choose Plugins › Reload. Then check again here." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 Amp 终端按 Ctrl+O，搜索 reload，选择 Plugins › Reload，然后回到这里点「再次检查」。"
-          }
-        }
-      }
-    },
     "In this directory" : {
       "localizations" : {
         "ja" : {
@@ -34316,6 +35040,7 @@
         }
       }
     },
+    "Include Done" : {},
     "Includes unpriced tokens" : {
       "localizations" : {
         "ja" : {
@@ -34648,12 +35373,25 @@
     "Install Droid Hook" : {},
     "Install Droid Hook…" : {},
     "Install Heeler’s Droid hook, then restart or resume Droid in this terminal so Chat can follow its conversation." : {},
-    "Install Heeler’s plugin on the Host to read and reply to the thread open in this Amp terminal." : {
+    "Install Heeler’s plugin on the Host to read the thread open in this Amp terminal." : {},
+    "Install Herdr Core on the Host, then check again." : {
       "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに Herdr Core をインストールし、再確認してください。"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在主机上安装 Heeler 插件，即可在这里查看并回复当前 Amp 终端中的对话。"
+            "value" : "请在主机上安装 Herdr Core，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機上安裝 Herdr Core，然後重新檢查。"
           }
         }
       }
@@ -34703,6 +35441,28 @@
         }
       }
     },
+    "Install Tmux %@ or newer on the Host, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストに Tmux %@ 以降をインストールし、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机上安装 Tmux %@ 或更高版本，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機上安裝 Tmux %@ 或更新版本，然後重新檢查。"
+          }
+        }
+      }
+    },
     "Install a supported Agent CLI on this Host, then try again." : {
       "localizations" : {
         "ja" : {
@@ -34743,28 +35503,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安裝 herdr"
-          }
-        }
-      }
-    },
-    "Install herdr-core on the Host, then check again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストに herdr-core をインストールし、再確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在主机上安装 herdr-core，然后再次检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請在主機上安裝 herdr-core，然後重新檢查。"
           }
         }
       }
@@ -34863,28 +35601,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此 Host 詳細資料安裝 Host Helper，然後重新啟動 Pi。"
-          }
-        }
-      }
-    },
-    "Install tmux %@ or newer on the Host, then check again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストに tmux %@ 以降をインストールし、再確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在主机上安装 tmux %@ 或更高版本，然后再次检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請在主機上安裝 tmux %@ 或更新版本，然後重新檢查。"
           }
         }
       }
@@ -35047,6 +35763,28 @@
         }
       }
     },
+    "Invalid Herdr Core terminal geometry." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のターミナルサイズが無効です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 终端尺寸无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無效的 Herdr Core 終端機尺寸。"
+          }
+        }
+      }
+    },
     "Invalid JSON response." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -35089,29 +35827,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無效的 SSH 端點。"
-          }
-        }
-      }
-    },
-    "Invalid herdr-core terminal geometry." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のターミナルサイズが無効です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 终端尺寸无效。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無效的 herdr-core 終端機尺寸。"
           }
         }
       }
@@ -36761,6 +37476,7 @@
         }
       }
     },
+    "Leave empty to use the Server’s default tab name." : {},
     "Leave it on unless your own server can't encrypt." : {
       "localizations" : {
         "ja" : {
@@ -38131,6 +38847,7 @@
         }
       }
     },
+    "Make sure Heeler’s plugin is enabled in the Amp terminal. Press Ctrl+O, search for reload, choose Plugins › Reload, then check again here." : {},
     "Manage Snippets" : {
       "localizations" : {
         "ja" : {
@@ -39033,6 +39750,7 @@
         }
       }
     },
+    "Move into a desktop Workspace or a New Workspace. Directory Workspaces follow a Terminal's launch folder." : {},
     "Move to Left Side" : {
       "localizations" : {
         "ja" : {
@@ -39143,6 +39861,7 @@
         }
       }
     },
+    "Moving Panes on this Rex server" : {},
     "Multiple matches" : {
       "comment" : "Tool output when Grok Build reports only the failure's tag",
       "localizations" : {
@@ -39366,6 +40085,7 @@
         }
       }
     },
+    "Native Chat" : {},
     "Native Windows connections require herdr 0.9.3 or newer with remote-api-bridge" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -39600,6 +40320,7 @@
         }
       }
     },
+    "Negotiated API Revision" : {},
     "Neither the POSIX home probe nor the native Windows USERPROFILE probe returned an absolute path." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -39778,6 +40499,7 @@
         }
       }
     },
+    "New Agent can use a Workspace, a launch preset or a new Git worktree." : {},
     "New Agent offers the preset on Hosts where this harness is installed." : {
       "localizations" : {
         "ja" : {
@@ -41068,6 +41790,72 @@
         }
       }
     },
+    "No Tmux server answers on the default socket" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のソケットで応答する Tmux サーバーがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认套接字上没有 Tmux 服务器应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設的 socket 上沒有 Tmux 伺服器回應"
+          }
+        }
+      }
+    },
+    "No Tmux server answers on the socket \"%@\"" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソケット「%@」で応答する Tmux サーバーがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "套接字“%@”上没有 Tmux 服务器应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "socket「%@」上沒有 Tmux 伺服器回應"
+          }
+        }
+      }
+    },
+    "No Tmux server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux サーバーが実行されていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有 Tmux 服务器在运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有 Tmux 伺服器在執行"
+          }
+        }
+      }
+    },
     "No Token Usage recorded on this Host yet." : {
       "localizations" : {
         "ja" : {
@@ -42018,72 +42806,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目前對話暫無可顯示的 Swarm 協作動態。"
-          }
-        }
-      }
-    },
-    "No tmux server answers on the default socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "既定のソケットで応答する tmux サーバーがありません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "默认套接字上没有 tmux 服务器应答"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "預設的 socket 上沒有 tmux 伺服器回應"
-          }
-        }
-      }
-    },
-    "No tmux server answers on the socket \"%@\"" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ソケット「%@」で応答する tmux サーバーがありません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套接字“%@”上没有 tmux 服务器应答"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "socket「%@」上沒有 tmux 伺服器回應"
-          }
-        }
-      }
-    },
-    "No tmux server running" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux サーバーが実行されていません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有 tmux 服务器在运行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有 tmux 伺服器在執行"
           }
         }
       }
@@ -43218,6 +43940,28 @@
         }
       }
     },
+    "Not supported on Herdr Core" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core ではサポートされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 不支持"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 不支援"
+          }
+        }
+      }
+    },
     "Not supported on Windows" : {
       "localizations" : {
         "ja" : {
@@ -43236,28 +43980,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Windows 上不支援"
-          }
-        }
-      }
-    },
-    "Not supported on herdr-core" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core ではサポートされていません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 不支持"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 不支援"
           }
         }
       }
@@ -44260,24 +44982,24 @@
         }
       }
     },
-    "On a machine that runs herdr-core or tmux without herdr, run this one instead." : {
+    "On a machine that runs Herdr Core or Tmux without herdr, run this one instead." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr がなく herdr-core または tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
+            "value" : "herdr がなく Herdr Core または Tmux を実行しているマシンでは、代わりにこのコマンドを実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "机器上没有 herdr、只运行 herdr-core 或 tmux 时，改为运行这条命令。"
+            "value" : "机器上没有 herdr、只运行 Herdr Core 或 Tmux 时，改为运行这条命令。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "機器上沒有 herdr、只執行 herdr-core 或 tmux 時，請改為執行這個指令。"
+            "value" : "機器上沒有 herdr、只執行 Herdr Core 或 Tmux 時，請改為執行這個指令。"
           }
         }
       }
@@ -44707,7 +45429,11 @@
         }
       }
     },
+    "Open Devin’s message field in this terminal to send." : {},
+    "Open Devin’s terminal for this action." : {},
+    "Open Devin’s terminal to review this prompt." : {},
     "Open Droid's message box in the terminal to send a message." : {},
+    "Open Files and Changes from an Agent. Open Skills from its keyboard." : {},
     "Open Heeler Settings" : {
       "localizations" : {
         "ja" : {
@@ -45116,6 +45842,7 @@
         }
       }
     },
+    "Open the Devin terminal to check the current turn before interrupting it." : {},
     "Open the Droid terminal for this action." : {},
     "Open the Droid terminal to review the full prompt." : {},
     "Open the Swarm bar above the input box to view the board in Chat, or use the terminal for /swarm board." : {
@@ -45140,6 +45867,8 @@
         }
       }
     },
+    "Open the live session to read the full message." : {},
+    "Open the local Devin session in this terminal. If it uses a shared daemon, resume it with devin --process-model=in-process --resume SESSION." : {},
     "Open the ordinary Amp input box in the terminal." : {
       "localizations" : {
         "zh-Hans" : {
@@ -45172,12 +45901,18 @@
         }
       }
     },
+    "Open the terminal to select a local Devin session. Chat follows the session held by its foreground client." : {},
     "Open the terminal to stop Droid. Its interrupt prompt is not visible." : {},
     "Open this Agent’s terminal and check that Herdr’s Droid integration reports the running session." : {},
     "Open this Agent’s terminal to check the prompt. Chat could not verify a Droid action on this screen." : {},
-    "Open this Agent’s terminal to review the complete patch and answer Droid." : {},
+    "Open this Agent’s terminal to review the complete patch and answer." : {},
+    "Open this Agent’s terminal to review the current prompt. Chat needs one verified, unanswered request." : {},
+    "Open this Devin terminal to confirm the directory shown on its trust prompt." : {},
+    "Open this Devin terminal. Finish directory trust or sign-in there. For a shared daemon, resume the session with devin --process-model in-process -r SESSION." : {},
     "Open this Droid terminal to inspect the task. Its current selection could not be verified." : {},
-    "Open this proposal’s empty Spec message box in the Droid terminal." : {},
+    "Open this proposal’s empty message field in the terminal." : {},
+    "Open this terminal to finish Devin startup. Chat needs the foreground client’s local session lock." : {},
+    "Open this terminal to review Devin’s current prompt." : {},
     "OpenCode asks what to do differently before it rejects. Answer it in the terminal." : {
       "localizations" : {
         "ja" : {
@@ -48592,6 +49327,7 @@
         }
       }
     },
+    "Plan feedback" : {},
     "Plan ready for review" : {
       "localizations" : {
         "ja" : {
@@ -49592,6 +50328,7 @@
         }
       }
     },
+    "Presses Esc twice to interrupt Devin" : {},
     "Presses Esc twice to interrupt OpenCode" : {
       "localizations" : {
         "ja" : {
@@ -51037,6 +51774,7 @@
         }
       }
     },
+    "Read this Amp thread in Chat. Use its terminal to send messages or answer requests." : {},
     "Read yesterday at %@" : {
       "comment" : "Under a GitHub title, alone or after a Host's status: when the list or item shown was read.",
       "localizations" : {
@@ -51060,6 +51798,7 @@
         }
       }
     },
+    "Read-Only Chat" : {},
     "Read-only view of this worker's sub-conversation. Send messages in the main Chat to guide the coordinator." : {
       "localizations" : {
         "ja" : {
@@ -52893,29 +53632,7 @@
         }
       }
     },
-    "Rename Agent on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core ホストでのエージェント名の変更"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 herdr-core 主机上重命名 Agent"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 herdr-core 主機上重新命名 Agent"
-          }
-        }
-      }
-    },
+    "Rename Tab" : {},
     "Rename Workspace" : {
       "localizations" : {
         "ja" : {
@@ -52938,25 +53655,24 @@
         }
       }
     },
-    "Rename Workspace on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host.",
+    "Rename Workspace on a Herdr Core Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core ホストでのワークスペース名の変更"
+            "value" : "Herdr Core ホストでのワークスペース名の変更"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 herdr-core 主机上重命名工作区"
+            "value" : "在 Herdr Core 主机上重命名工作区"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 herdr-core 主機上重新命名工作區"
+            "value" : "在 Herdr Core 主機上重新命名工作區"
           }
         }
       }
@@ -54105,7 +54821,9 @@
         }
       }
     },
+    "Return to the Devin session that owns this draft before sending it." : {},
     "Return to the Droid session that owns this draft before sending it." : {},
+    "Return to the conversation that owns this draft before sending it." : {},
     "Review" : {
       "localizations" : {
         "ja" : {
@@ -54398,11 +55116,20 @@
       }
     },
     "Rex Hosts" : {},
+    "Rex In-App Banners" : {},
     "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
     "Rex did not answer, so no terminal was made. Try again." : {},
     "Rex did not answer. The terminal may still have been made, so check the list before trying again." : {},
+    "Rex did not answer. Try again." : {},
+    "Rex did not confirm closing the Tab. Check the list before trying again." : {},
+    "Rex did not confirm closing the terminal. Check the list before trying again." : {},
+    "Rex did not confirm moving the Tab. Check the list before trying again." : {},
+    "Rex did not confirm the new Tab name. Check the Tab before renaming it again." : {},
+    "Rex did not confirm the new Workspace name. Check the Workspace before renaming it again." : {},
+    "Rex did not confirm the new block name. Check the terminal before renaming it again." : {},
     "Rex did not finish opening the connection." : {},
     "Rex did not let this account in" : {},
+    "Rex did not name the new Workspace." : {},
     "Rex dropped the connection because too many events were waiting for Heeler." : {},
     "Rex installed" : {},
     "Rex is not answering" : {},
@@ -55659,6 +56386,8 @@
         }
       }
     },
+    "Saves this permission for future Devin sessions." : {},
+    "Saves this permission for the project." : {},
     "Scan Again" : {
       "localizations" : {
         "ja" : {
@@ -56580,6 +57309,7 @@
         }
       }
     },
+    "Send commands from the Antigravity terminal." : {},
     "Send to Agent" : {
       "localizations" : {
         "ja" : {
@@ -59092,6 +59822,7 @@
         }
       }
     },
+    "Sign in to Devin in this terminal, then return to Chat." : {},
     "Sign in to Factory in this terminal. Chat will check for the session after sign-in." : {},
     "Sign in to add this device to the tailnet again." : {
       "localizations" : {
@@ -60053,6 +60784,50 @@
         }
       }
     },
+    "Start Herdr Core" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core を起動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动 Herdr Core"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "啟動 Herdr Core"
+          }
+        }
+      }
+    },
+    "Start Herdr Core?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core を起動しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要启动 Herdr Core 吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要啟動 Herdr Core 嗎？"
+          }
+        }
+      }
+    },
     "Start OpenCode 2.1 or later from New Agent, or add Heeler's plugin." : {
       "localizations" : {
         "ja" : {
@@ -60099,50 +60874,32 @@
     },
     "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex." : {},
     "Start Rex on the Host, then check again. Heeler does not start it." : {},
-    "Start herdr-core" : {
+    "Start Tmux" : {},
+    "Start Tmux in a terminal on the Mac. Heeler keeps checking." : {},
+    "Start Tmux on the Host. Heeler keeps checking." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core を起動"
+            "value" : "ホストで Tmux を起動してください。Heeler は確認を続けます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "启动 herdr-core"
+            "value" : "请在主机上启动 Tmux。Heeler 会持续检查。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啟動 herdr-core"
+            "value" : "請在主機上啟動 Tmux。Heeler 會持續檢查。"
           }
         }
       }
     },
-    "Start herdr-core?" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core を起動しますか？"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要启动 herdr-core 吗？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "要啟動 herdr-core 嗎？"
-          }
-        }
-      }
-    },
+    "Start Tmux on the Mac first" : {},
+    "Start Tmux?" : {},
     "Start in a new worktree" : {
       "localizations" : {
         "ja" : {
@@ -60307,30 +61064,6 @@
         }
       }
     },
-    "Start tmux in a terminal on the Mac. Heeler keeps checking." : {},
-    "Start tmux on the Host. Heeler keeps checking." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストで tmux を起動してください。Heeler は確認を続けます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在主机上启动 tmux。Heeler 会持续检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請在主機上啟動 tmux。Heeler 會持續檢查。"
-          }
-        }
-      }
-    },
-    "Start tmux on the Mac first" : {},
     "Started" : {
       "localizations" : {
         "ja" : {
@@ -60353,6 +61086,8 @@
         }
       }
     },
+    "Started Tmux on socket \"%@\" with the environment of your own terminal." : {},
+    "Started Tmux with the environment of your own terminal." : {},
     "Started session \"%@\" with the environment of your own terminal." : {
       "localizations" : {
         "ja" : {
@@ -60398,25 +61133,24 @@
         }
       }
     },
-    "Starting %@ on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host. %@ is the Agent program's name.",
+    "Starting %@ on a Herdr Core Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core ホストでの %@ の起動"
+            "value" : "Herdr Core ホストでの %@ の起動"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 herdr-core 主机上启动 %@"
+            "value" : "在 Herdr Core 主机上启动 %@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 herdr-core 主機上啟動 %@"
+            "value" : "在 Herdr Core 主機上啟動 %@"
           }
         }
       }
@@ -60443,6 +61177,51 @@
         }
       }
     },
+    "Starting Herdr Core on %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ での Herdr Core の起動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上启动 Herdr Core"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上啟動 Herdr Core"
+          }
+        }
+      }
+    },
+    "Starting Herdr Core…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core を起動中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在启动 Herdr Core…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在啟動 Herdr Core…"
+          }
+        }
+      }
+    },
+    "Starting Tmux…" : {},
     "Starting an Agent needs your login shell, which this Host does not report" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -60462,51 +61241,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "啟動 Agent 需要你的登入 Shell，但此主機沒有回報"
-          }
-        }
-      }
-    },
-    "Starting herdr-core on %@" : {
-      "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\". Argument: the Host's kernel name.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ での herdr-core の起動"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 %@ 上启动 herdr-core"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在 %@ 上啟動 herdr-core"
-          }
-        }
-      }
-    },
-    "Starting herdr-core…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core を起動中…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在启动 herdr-core…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在啟動 herdr-core…"
           }
         }
       }
@@ -62264,6 +62998,7 @@
         }
       }
     },
+    "Tab name" : {},
     "Tab name (optional)" : {
       "localizations" : {
         "ja" : {
@@ -63692,6 +64427,8 @@
         }
       }
     },
+    "The Agent is no longer running in this Pane." : {},
+    "The Agent is no longer running in this Terminal." : {},
     "The Agent is reading or changing a setting. Try again in a moment." : {
       "comment" : "Terminal input refusal while an Agent reads or changes a setting.",
       "localizations" : {
@@ -64002,6 +64739,7 @@
         }
       }
     },
+    "The Agent process could not be identified." : {},
     "The Agent runs every tool without asking until you switch back." : {
       "comment" : "Message of the bypass permissions confirmation dialog.",
       "localizations" : {
@@ -64367,25 +65105,24 @@
         }
       }
     },
-    "The Composer on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host.",
+    "The Composer on a Herdr Core Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core ホストでのコンポーザー"
+            "value" : "Herdr Core ホストでのコンポーザー"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主机上的输入框"
+            "value" : "Herdr Core 主机上的输入框"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主機上的輸入框"
+            "value" : "Herdr Core 主機上的輸入框"
           }
         }
       }
@@ -64457,6 +65194,7 @@
         }
       }
     },
+    "The Devin message changed while Chat was reading it." : {},
     "The Droid session or its input changed. Check the text in the terminal before sending again." : {},
     "The EasyTier console then lists this device as a new one, which needs a network assigned again. Hosts on this network reconnect afterwards." : {
       "localizations" : {
@@ -64657,6 +65395,138 @@
         }
       }
     },
+    "The Herdr Core channel is closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のチャネルは閉じられています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 通道已关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 通道已關閉。"
+          }
+        }
+      }
+    },
+    "The Herdr Core link closed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のリンクが閉じられました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 连接已关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 連結已關閉。"
+          }
+        }
+      }
+    },
+    "The Herdr Core link failed: %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のリンクが失敗しました: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 链路失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 連結失敗：%@"
+          }
+        }
+      }
+    },
+    "The Herdr Core on this Host carries it too. See the notice in the Host's details for how to fix that." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの Herdr Core にも同じ変数があるため、そちらの直し方はホストの詳細の案内を確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机上的 Herdr Core 也带有该变量。请查看主机详情中的提示以了解修复方法。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機上的 Herdr Core 也帶有它。請參閱主機詳細資料中的通知，了解如何修正。"
+          }
+        }
+      }
+    },
+    "The Herdr Core request exceeds the frame limit." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のリクエストがフレームの上限を超えています。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 请求超出帧大小上限。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 請求超出訊框上限。"
+          }
+        }
+      }
+    },
+    "The Herdr Core socket path is too long" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core のソケットパスが長すぎます"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core 套接字路径过长"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herdr Core socket 路徑過長"
+          }
+        }
+      }
+    },
     "The Host Helper" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -64726,6 +65596,8 @@
         }
       }
     },
+    "The Host Helper has not reached Rex yet. Start Rex if it is not running." : {},
+    "The Host Helper has not reached this Tmux server yet. Start Tmux if it is not running." : {},
     "The Host Helper has not reached this session's core yet. Start the core if it is not running." : {
       "localizations" : {
         "ja" : {
@@ -64748,7 +65620,6 @@
         }
       }
     },
-    "The Host Helper has not reached this tmux server yet. Start tmux if it is not running." : {},
     "The Host Helper is gone, but its OpenCode edit stays in %@. %@" : {
       "comment" : "First %@ is a file path, second the reason",
       "localizations" : {
@@ -65746,6 +66617,7 @@
         }
       }
     },
+    "The Host did not confirm whether the rename command was sent." : {},
     "The Host did not finish getting the worktree's starting commit." : {
       "localizations" : {
         "ja" : {
@@ -65945,6 +66817,34 @@
         }
       }
     },
+    "The Host has Tmux %@, and Heeler needs %@ or newer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Host has Tmux %1$@, and Heeler needs %2$@ or newer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの Tmux は %1$@ ですが、Heeler には %2$@ 以降が必要です"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上的 Tmux 为 %1$@，而 Heeler 需要 %2$@ 或更高版本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上的 Tmux 是 %1$@，而 Heeler 需要 %2$@ 或更新版本"
+          }
+        }
+      }
+    },
     "The Host has no pairing in progress for this code. Generate a new Pairing Code on the computer and scan it." : {
       "localizations" : {
         "ja" : {
@@ -66008,34 +66908,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主機的外掛為 %@，比已發布的 %@ 更新，因此 Heeler 沒有更新它。"
-          }
-        }
-      }
-    },
-    "The Host has tmux %@, and Heeler needs %@ or newer" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Host has tmux %1$@, and Heeler needs %2$@ or newer"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストの tmux は %1$@ ですが、Heeler には %2$@ 以降が必要です"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主机上的 tmux 为 %1$@，而 Heeler 需要 %2$@ 或更高版本"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主機上的 tmux 是 %1$@，而 Heeler 需要 %2$@ 或更新版本"
           }
         }
       }
@@ -67325,6 +68197,7 @@
         }
       }
     },
+    "The Pane has left this Workspace." : {},
     "The RSA Key is corrupted" : {
       "localizations" : {
         "ja" : {
@@ -67663,6 +68536,7 @@
         }
       }
     },
+    "The active turn could not be verified. Check the current conversation before stopping it." : {},
     "The address changes every time tailcat serve starts, unless the machine has a saved key: %@." : {
       "localizations" : {
         "ja" : {
@@ -68475,6 +69349,7 @@
         }
       }
     },
+    "The conversation changed after the paste. Check the terminal before sending again." : {},
     "The conversation file cannot be read" : {
       "localizations" : {
         "ja" : {
@@ -68608,6 +69483,7 @@
         }
       }
     },
+    "The destination Workspace has changed." : {},
     "The dialog didn't respond the way Heeler expected, so it stopped. Finish here or in the terminal." : {
       "comment" : "Blocked card notice after an answer's keys didn't get the expected screen",
       "localizations" : {
@@ -69183,141 +70059,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "找不到 herdr socket"
-          }
-        }
-      }
-    },
-    "The herdr-core channel is closed." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のチャネルは閉じられています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 通道已关闭。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 通道已關閉。"
-          }
-        }
-      }
-    },
-    "The herdr-core link closed." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のリンクが閉じられました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 连接已关闭。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 連結已關閉。"
-          }
-        }
-      }
-    },
-    "The herdr-core link failed: %@" : {
-      "comment" : "Argument: the underlying error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のリンクが失敗しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 链路失败：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 連結失敗：%@"
-          }
-        }
-      }
-    },
-    "The herdr-core on this Host carries it too. See the notice in the Host's details for how to fix that." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このホストの herdr-core にも同じ変数があるため、そちらの直し方はホストの詳細の案内を確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主机上的 herdr-core 也带有该变量。请查看主机详情中的提示以了解修复方法。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此主機上的 herdr-core 也帶有它。請參閱主機詳細資料中的通知，了解如何修正。"
-          }
-        }
-      }
-    },
-    "The herdr-core request exceeds the frame limit." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のリクエストがフレームの上限を超えています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 请求超出帧大小上限。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 請求超出訊框上限。"
-          }
-        }
-      }
-    },
-    "The herdr-core socket path is too long" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core のソケットパスが長すぎます"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 套接字路径过长"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core socket 路徑過長"
           }
         }
       }
@@ -71217,6 +71958,50 @@
         }
       }
     },
+    "The saved Herdr Core Hosts could not be read, so no Herdr Core Host can be added." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みの Herdr Core ホストを読み取れず、Herdr Core ホストを追加できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的 Herdr Core 主机，因此无法添加 Herdr Core 主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取已儲存的 Herdr Core 主機，因此無法新增 Herdr Core 主機。"
+          }
+        }
+      }
+    },
+    "The saved Herdr Core Hosts could not be read. Their original data was preserved, and no Herdr Core Host can be added." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みの Herdr Core ホストを読み取れませんでした。元のデータは保持されていますが、Herdr Core ホストを追加できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的 Herdr Core 主机。原始数据已保留，当前无法添加 Herdr Core 主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取已儲存的 Herdr Core 主機。其原始資料已保留，且無法新增 Herdr Core 主機。"
+          }
+        }
+      }
+    },
     "The saved Host catalog could not be read. Its original data was preserved; reinstalling or adding a Host would risk losing it." : {
       "localizations" : {
         "ja" : {
@@ -71305,46 +72090,24 @@
         }
       }
     },
-    "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added." : {
+    "The saved Tmux Hosts could not be read, so no Tmux Host can be added." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存済みの herdr-core ホストを読み取れず、herdr-core ホストを追加できません。"
+            "value" : "保存済みの Tmux ホストを読み取れず、Tmux ホストを追加できません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取已保存的 herdr-core 主机，因此无法添加 herdr-core 主机。"
+            "value" : "无法读取已保存的 Tmux 主机，因此无法添加 Tmux 主机。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法讀取已儲存的 herdr-core 主機，因此無法新增 herdr-core 主機。"
-          }
-        }
-      }
-    },
-    "The saved herdr-core Hosts could not be read. Their original data was preserved, and no herdr-core Host can be added." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存済みの herdr-core ホストを読み取れませんでした。元のデータは保持されていますが、herdr-core ホストを追加できません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法读取已保存的 herdr-core 主机。原始数据已保留，当前无法添加 herdr-core 主机。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法讀取已儲存的 herdr-core 主機。其原始資料已保留，且無法新增 herdr-core 主機。"
+            "value" : "無法讀取已儲存的 Tmux 主機，因此無法新增 Tmux 主機。"
           }
         }
       }
@@ -71411,28 +72174,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法讀取已儲存的覆蓋網路，因此不知道此主機的網路。請更新 Heeler，然後再次執行檢查。"
-          }
-        }
-      }
-    },
-    "The saved tmux Hosts could not be read, so no tmux Host can be added." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存済みの tmux ホストを読み取れず、tmux ホストを追加できません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法读取已保存的 tmux 主机，因此无法添加 tmux 主机。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法讀取已儲存的 tmux 主機，因此無法新增 tmux 主機。"
           }
         }
       }
@@ -71945,6 +72686,7 @@
         }
       }
     },
+    "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether Tmux came up." : {},
     "The start did not finish in time, and a startup file in your shell may be waiting for input. Run the checks again to see whether the core came up." : {
       "localizations" : {
         "ja" : {
@@ -73631,9 +74373,12 @@
         }
       }
     },
-    "This Pane belongs to a tmux server that is gone" : {},
-    "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
+    "This Pane belongs to a Tmux server that is gone" : {},
+    "This Pane belongs to a Tmux server that is gone. Open it again from the list." : {},
     "This Pane is gone" : {},
+    "This Rex server has not confirmed support for launching commands. You can start the Agent in Terminal." : {},
+    "This Tab has multiple Panes. Separate them in Rex before moving." : {},
+    "This Tab has one Pane and is linked to multiple Workspaces. Move its window link in Tmux." : {},
     "This Terminal belongs to a Rex server that is gone" : {},
     "This Terminal belongs to a Rex server that is gone. Open it again from the list." : {},
     "This Terminal belongs to a core that is gone" : {
@@ -73771,24 +74516,24 @@
     "This Workspace is no longer on the Rex server." : {},
     "This account may not use the socket at %@" : {},
     "This action on a Rex Host" : {},
-    "This action on a tmux Host" : {
+    "This action on a Tmux Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "tmux ホストでのこの操作"
+            "value" : "Tmux ホストでのこの操作"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "tmux 主机上的此操作"
+            "value" : "Tmux 主机上的此操作"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "tmux 主機上的此操作"
+            "value" : "Tmux 主機上的此操作"
           }
         }
       }
@@ -74057,6 +74802,7 @@
         }
       }
     },
+    "This conversation is open for reading. Use the terminal for input until Rex can verify the active conversation." : {},
     "This core lacks what the app needs" : {
       "localizations" : {
         "ja" : {
@@ -75483,6 +76229,7 @@
         }
       }
     },
+    "This saved Devin message may be incomplete." : {},
     "This server is already on." : {},
     "This service does not document a language setting." : {
       "localizations" : {
@@ -75595,6 +76342,8 @@
         }
       }
     },
+    "This starts a Tmux server on socket \"%@\" through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal." : {},
+    "This starts a Tmux server on the default socket through your interactive login shell, so the server and every Pane it starts get the environment of your own terminal." : {},
     "This starts the Host's core session \"%@\" through your interactive login shell, so the core and every Terminal it starts get the environment of your own terminal. It also tries to turn on systemd linger for your user when it is off." : {
       "localizations" : {
         "ja" : {
@@ -75729,6 +76478,7 @@
         }
       }
     },
+    "This terminal's PowerShell stays open after the Agent exits, so Heeler cannot rename it safely." : {},
     "This terminal's history is too long to show" : {},
     "This text contains control characters a terminal would read as commands. Remove them and try again." : {
       "localizations" : {
@@ -75976,6 +76726,181 @@
         }
       }
     },
+    "Tmux Environment" : {},
+    "Tmux Hosts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux ホスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 主機"
+          }
+        }
+      }
+    },
+    "Tmux did not start." : {},
+    "Tmux did not start: %@" : {},
+    "Tmux did not start: Could not load this Host's credentials. (%@)" : {},
+    "Tmux did not start: Could not locate Tmux on this Host." : {},
+    "Tmux installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux インストール済み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 已安装"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 已安裝"
+          }
+        }
+      }
+    },
+    "Tmux is not installed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux がインストールされていません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装 Tmux"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 未安裝"
+          }
+        }
+      }
+    },
+    "Tmux server running" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux サーバー実行中"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 服务器运行中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux 伺服器執行中"
+          }
+        }
+      }
+    },
+    "Tmux was already running on socket \"%@\", so Start changed nothing." : {},
+    "Tmux was already running, so Start changed nothing." : {},
+    "Tmux: %@" : {},
+    "Tmux: A launch needs a directory." : {},
+    "Tmux: A reply came that no command asked for." : {},
+    "Tmux: The Attach has no send queue." : {},
+    "Tmux: The Host's Tmux or its socket is at a path Heeler cannot use." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux: ホストの Tmux またはそのソケットが、Heeler の使用できないパスにあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：主机上的 Tmux 或其套接字位于 Heeler 无法使用的路径。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：主機上的 Tmux 或其 socket 位於 Heeler 無法使用的路徑。"
+          }
+        }
+      }
+    },
+    "Tmux: The Pane's foreground could not be read." : {},
+    "Tmux: The Pane's screen could not be read." : {},
+    "Tmux: The command failed." : {},
+    "Tmux: The command printed no pane." : {},
+    "Tmux: The command printed no session." : {},
+    "Tmux: The control client ended before it attached." : {},
+    "Tmux: The control client ended before it painted." : {},
+    "Tmux: The control client printed a line too long to read." : {},
+    "Tmux: The probe exited with status %d." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux: プローブがステータス %d で終了しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：探测已退出，状态码为 %d。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：探測以狀態 %d 結束。"
+          }
+        }
+      }
+    },
+    "Tmux: The probe's output is unreadable." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux: プローブの出力を読み取れません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：无法读取探测的输出。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tmux：探測的輸出無法讀取。"
+          }
+        }
+      }
+    },
+    "Tmux: The session name is already taken." : {},
+    "To see Agent banners while Heeler is open, use Settings → Notifications." : {},
     "Today" : {
       "localizations" : {
         "ja" : {
@@ -77811,6 +78736,28 @@
       }
     },
     "Update Rex on the Host." : {},
+    "Update Tmux on the Host, then check again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの Tmux を更新し、再確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新主机上的 Tmux，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新主機上的 Tmux，然後重新檢查。"
+          }
+        }
+      }
+    },
     "Update and Turn On" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
@@ -78040,28 +78987,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請更新此主機的憑證或授權金鑰。"
-          }
-        }
-      }
-    },
-    "Update tmux on the Host, then check again." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ホストの tmux を更新し、再確認してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请更新主机上的 tmux，然后再次检查。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請更新主機上的 tmux，然後重新檢查。"
           }
         }
       }
@@ -78729,7 +79654,6 @@
         }
       }
     },
-    "Usage comes from herdr and tmux Servers. Rex Servers report none." : {},
     "Usage comes with the Host Helper, which is not available on native Windows yet." : {
       "localizations" : {
         "ja" : {
@@ -79278,6 +80202,8 @@
         }
       }
     },
+    "Use the Antigravity terminal for commands." : {},
+    "Use the Antigravity terminal to stop work." : {},
     "Use the Tunnel's Address" : {
       "localizations" : {
         "ja" : {
@@ -79344,6 +80270,7 @@
         }
       }
     },
+    "Use the terminal for other programs and unverified prompts. Manage splits and move blocks in Rex on the Host." : {},
     "Used %lld tool" : {
       "localizations" : {
         "ja" : {
@@ -79898,6 +80825,7 @@
         }
       }
     },
+    "View This Conversation" : {},
     "Voice Input" : {
       "localizations" : {
         "ja" : {
@@ -80081,6 +81009,7 @@
         }
       }
     },
+    "Wait for Devin to finish this turn, or steer it from the terminal." : {},
     "Wait for Droid to finish this turn before sending another message." : {},
     "Wait for the title rename to finish before sending input." : {
       "localizations" : {
@@ -80245,6 +81174,7 @@
         }
       }
     },
+    "Waiting for Devin to identify the request in this terminal." : {},
     "Waiting for Droid to identify this request. You can also answer in its terminal." : {},
     "Waiting for Input" : {
       "localizations" : {
@@ -80290,6 +81220,8 @@
         }
       }
     },
+    "Waiting for Rex" : {},
+    "Waiting for Tmux" : {},
     "Waiting for Voice Input…" : {
       "localizations" : {
         "ja" : {
@@ -80532,7 +81464,6 @@
         }
       }
     },
-    "Waiting for tmux" : {},
     "Waiting for video…" : {
       "localizations" : {
         "ja" : {
@@ -80935,6 +81866,7 @@
         }
       }
     },
+    "While Heeler is open, show a banner when an Agent is blocked or reports an error." : {},
     "Widen the terminal to see the lasting rule." : {
       "localizations" : {
         "ja" : {
@@ -81535,25 +82467,24 @@
         }
       }
     },
-    "Worktrees on a herdr-core Host" : {
-      "comment" : "Feature unavailable on a herdr-core Host.",
+    "Worktrees on a Herdr Core Host" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core ホストでのワークツリー"
+            "value" : "Herdr Core ホストでのワークツリー"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主机上的工作树"
+            "value" : "Herdr Core 主机上的工作树"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "herdr-core 主機上的工作樹"
+            "value" : "Herdr Core 主機上的工作樹"
           }
         }
       }
@@ -81646,7 +82577,8 @@
         }
       }
     },
-    "Writing the stored tmux paths" : {},
+    "Writing the stored Rex socket path" : {},
+    "Writing the stored Tmux paths" : {},
     "Wrote" : {
       "comment" : "A file a command wrote whole",
       "localizations" : {
@@ -82009,24 +82941,24 @@
         }
       }
     },
-    "Your login shell on the Host finds no tmux" : {
+    "Your login shell on the Host finds no Tmux" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ホストのログインシェルで tmux が見つかりません"
+            "value" : "ホストのログインシェルで Tmux が見つかりません"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你在主机上的登录 Shell 找不到 tmux"
+            "value" : "你在主机上的登录 Shell 找不到 Tmux"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你在主機上的登入 Shell 找不到 tmux"
+            "value" : "你在主機上的登入 Shell 找不到 Tmux"
           }
         }
       }
@@ -84433,52 +85365,6 @@
         }
       }
     },
-    "herdr-core Hosts" : {
-      "comment" : "Name of a feature that is unavailable.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core ホスト"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 主机"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 主機"
-          }
-        }
-      }
-    },
-    "herdr-core at %@ did not report its version" : {
-      "comment" : "Argument: a file path on the Host.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の herdr-core がバージョンを報告しませんでした"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位于 %@ 的 herdr-core 未报告其版本"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位於 %@ 的 herdr-core 未回報其版本"
-          }
-        }
-      }
-    },
     "herdr-core connect exited before answering hello." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -84498,733 +85384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "herdr-core connect 在回應 hello 之前就結束了。"
-          }
-        }
-      }
-    },
-    "herdr-core did not start." : {
-      "comment" : "Core start failure without detail",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core が起動しませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未能启动。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未啟動。"
-          }
-        }
-      }
-    },
-    "herdr-core did not start: %@" : {
-      "comment" : "Core start failure; %@ is a complete explanation sentence",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core が起動しませんでした: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未能启动：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未啟動：%@"
-          }
-        }
-      }
-    },
-    "herdr-core did not start: %@." : {
-      "comment" : "Core start failure; %@ is the core's own failure text",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core が起動しませんでした: %@。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未能启动：%@。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未啟動：%@。"
-          }
-        }
-      }
-    },
-    "herdr-core did not start: Could not load this Host's credentials. (%@)" : {
-      "comment" : "Core start failure; %@ is the error",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core が起動しませんでした: このホストの認証情報を読み込めませんでした。（%@）"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未能启动：无法加载此主机的凭据。（%@）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未啟動：無法載入此主機的憑證。（%@）"
-          }
-        }
-      }
-    },
-    "herdr-core installed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core インストール済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 已安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 已安裝"
-          }
-        }
-      }
-    },
-    "herdr-core is not installed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core がインストールされていません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 herdr-core"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未安裝"
-          }
-        }
-      }
-    },
-    "herdr-core is not running" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core は動作していません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未运行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 未執行"
-          }
-        }
-      }
-    },
-    "herdr-core is running, but SSH will not open %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core は動作していますが、SSH が %@ を開けません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 正在运行，但 SSH 无法打开 %@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 正在執行，但 SSH 無法開啟 %@"
-          }
-        }
-      }
-    },
-    "herdr-core needs an update" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core の更新が必要です"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 需要更新"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 需要更新"
-          }
-        }
-      }
-    },
-    "herdr-core refuses the session name \"%@\". A name cannot be \".\" or \"..\", or contain control characters or any of / \\ : * ? \" < > |." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core はセッション名「%@」を拒否しました。名前に「.」や「..」は使えず、制御文字や / \\ : * ? \" < > | のいずれも含めません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 拒绝了会话名称“%@”。名称不能为“.”或“..”，且不能包含控制字符或 / \\ : * ? \" < > | 中的任何字符。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 拒絕工作階段名稱「%@」。名稱不能是「.」或「..」，也不能包含控制字元或下列任一字元：/ \\ : * ? \" < > |。"
-          }
-        }
-      }
-    },
-    "herdr-core rejected the close: %@" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core は閉じる操作を拒否しました: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 拒绝了关闭操作：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 拒絕了關閉：%@"
-          }
-        }
-      }
-    },
-    "herdr-core running" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 実行中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 运行中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 執行中"
-          }
-        }
-      }
-    },
-    "herdr-core was already running for session \"%@\", so Start changed nothing." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "セッション「%@」の herdr-core は既に動作していたため、「起動」は何も変更しませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话“%@”的 herdr-core 已在运行，因此“启动”未做任何更改。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core 已在為工作階段「%@」執行，因此「啟動」沒有變更任何內容。"
-          }
-        }
-      }
-    },
-    "herdr-core: %@ named no channel." : {
-      "comment" : "Argument: a protocol method name.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: %@ がチャネルを指定しませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：%@ 未指定通道。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：%@ 未指定通道。"
-          }
-        }
-      }
-    },
-    "herdr-core: A document read has no version." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ドキュメントの読み取り結果にバージョンがありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：读取的文档缺少版本号。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：文件讀取沒有版本。"
-          }
-        }
-      }
-    },
-    "herdr-core: A stream exceeded its credit." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ストリームがクレジットを超えました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：流超出其信用额度。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：某個串流超出其額度。"
-          }
-        }
-      }
-    },
-    "herdr-core: A terminal event has no terminal address." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ターミナルイベントにターミナルのアドレスがありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：终端事件缺少终端地址。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：終端機事件沒有終端機位址。"
-          }
-        }
-      }
-    },
-    "herdr-core: An event has no sequence." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: イベントにシーケンス番号がありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件缺少序列号。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件沒有序號。"
-          }
-        }
-      }
-    },
-    "herdr-core: An event has no type." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: イベントに種類がありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件缺少类型。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件沒有類型。"
-          }
-        }
-      }
-    },
-    "herdr-core: An event line exceeds %lld bytes." : {
-      "comment" : "Argument: the size limit in bytes.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: イベント行が %lld バイトを超えています。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件行超过 %lld 字节。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件行超過 %lld 位元組。"
-          }
-        }
-      }
-    },
-    "herdr-core: Invalid event notification." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: イベント通知が無効です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：事件通知无效。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：無效的事件通知。"
-          }
-        }
-      }
-    },
-    "herdr-core: Invalid subscription snapshot." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: サブスクリプションのスナップショットが無効です。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：订阅快照无效。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：無效的訂閱快照。"
-          }
-        }
-      }
-    },
-    "herdr-core: The hello reply is too long." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: hello の応答が長すぎます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：hello 响应过长。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：hello 回覆太長。"
-          }
-        }
-      }
-    },
-    "herdr-core: The hello response has no core id." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: hello の応答にコア ID がありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：hello 响应缺少核心 ID。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：hello 回應沒有核心 ID。"
-          }
-        }
-      }
-    },
-    "herdr-core: The locator exited with status %d." : {
-      "comment" : "Argument: the exit status.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ロケーターはステータス %d で終了しました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：定位器已退出，状态码为 %d。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：定位器以狀態 %d 結束。"
-          }
-        }
-      }
-    },
-    "herdr-core: The locator was cut short." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ロケーターの出力が途中で切れました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：定位器输出意外中断。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：定位器被中途截斷。"
-          }
-        }
-      }
-    },
-    "herdr-core: The locator's output is unreadable." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: ロケーターの出力を読み取れません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：无法读取定位器的输出。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：定位器的輸出無法讀取。"
-          }
-        }
-      }
-    },
-    "herdr-core: The reply names no usable channel." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: 応答に使用できるチャネルがありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：响应未指定可用通道。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：回覆中沒有可用的通道。"
-          }
-        }
-      }
-    },
-    "herdr-core: The server status has no core, pid or uptime." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: サーバーの状態にコア、PID、稼働時間のいずれかがありません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：服务器状态缺少核心、PID 或运行时间。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：伺服器狀態沒有核心、pid 或運作時間。"
-          }
-        }
-      }
-    },
-    "herdr-core: This Windows Host's home folder could not be read." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: この Windows ホストのホームフォルダを読み取れませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：无法读取此 Windows 主机的主文件夹。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：無法讀取此 Windows 主機的主資料夾。"
-          }
-        }
-      }
-    },
-    "herdr-core: Too many unrequested channels." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: 要求していないチャネルが多すぎます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：未请求的通道过多。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：未經請求的通道太多。"
-          }
-        }
-      }
-    },
-    "herdr-core: terminal.put named no path." : {
-      "comment" : "Detail of a connection error.",
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core: terminal.put がパスを指定しませんでした。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：terminal.put 未指定路径。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "herdr-core：terminal.put 未指定路徑。"
           }
         }
       }
@@ -86457,173 +86616,6 @@
         }
       }
     },
-    "tmux Hosts" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux ホスト"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 主机"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 主機"
-          }
-        }
-      }
-    },
-    "tmux installed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux インストール済み"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 已安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 已安裝"
-          }
-        }
-      }
-    },
-    "tmux is not installed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux がインストールされていません"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装 tmux"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 未安裝"
-          }
-        }
-      }
-    },
-    "tmux server running" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux サーバー実行中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 服务器运行中"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux 伺服器執行中"
-          }
-        }
-      }
-    },
-    "tmux: %@" : {},
-    "tmux: A launch needs a directory." : {},
-    "tmux: A reply came that no command asked for." : {},
-    "tmux: The Attach has no send queue." : {},
-    "tmux: The Host's tmux or its socket is at a path Heeler cannot use." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux: ホストの tmux またはそのソケットが、Heeler の使用できないパスにあります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：主机上的 tmux 或其套接字位于 Heeler 无法使用的路径。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：主機上的 tmux 或其 socket 位於 Heeler 無法使用的路徑。"
-          }
-        }
-      }
-    },
-    "tmux: The Pane's foreground could not be read." : {},
-    "tmux: The Pane's screen could not be read." : {},
-    "tmux: The command failed." : {},
-    "tmux: The command printed no pane." : {},
-    "tmux: The command printed no session." : {},
-    "tmux: The control client ended before it attached." : {},
-    "tmux: The control client ended before it painted." : {},
-    "tmux: The control client printed a line too long to read." : {},
-    "tmux: The probe exited with status %d." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux: プローブがステータス %d で終了しました。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：探测已退出，状态码为 %d。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：探測以狀態 %d 結束。"
-          }
-        }
-      }
-    },
-    "tmux: The probe's output is unreadable." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux: プローブの出力を読み取れません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：无法读取探测的输出。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tmux：探測的輸出無法讀取。"
-          }
-        }
-      }
-    },
-    "tmux: The session name is already taken." : {},
     "tokens" : {
       "localizations" : {
         "ja" : {

@@ -173,13 +173,13 @@ extension TransportError {
                 recoverySuggestion: String(localized: "Open it again from the list."))
         case .herdrCoreNotInstalled:
             TransportErrorPresentation(
-                summary: String(localized: "herdr-core is not installed"),
+                summary: String(localized: "Herdr Core is not installed"),
                 detail: String(localized:
                     "It is not on the SSH PATH or at ~/.local/bin/herdr-core, or where its installer puts it on native Windows"),
-                recoverySuggestion: String(localized: "Install herdr-core on the Host, then check again."))
+                recoverySuggestion: String(localized: "Install Herdr Core on the Host, then check again."))
         case .herdrCoreNotRunning(let socketPath, _) where HerdrCoreLocator.isWindowsPipe(socketPath):
             TransportErrorPresentation(
-                summary: String(localized: "herdr-core is not running"),
+                summary: String(localized: "Herdr Core is not running"),
                 detail: String(localized: "The named pipe \(socketPath) does not exist"),
                 recoverySuggestion:
                     String(localized:
@@ -187,31 +187,31 @@ extension TransportError {
         case .herdrCoreNotRunning(let socketPath, let socketFilePresent):
             socketFilePresent
                 ? TransportErrorPresentation(
-                    summary: String(localized: "herdr-core is not running"),
+                    summary: String(localized: "Herdr Core is not running"),
                     detail: String(localized:
                         "A socket file is left at \(socketPath): a core stopped or crashed, or the SSH server refuses socket forwarding"),
                     recoverySuggestion:
                         String(localized:
                             "Start the core on the Host, or allow stream-local forwarding in its SSH server, then check again."))
                 : TransportErrorPresentation(
-                    summary: String(localized: "herdr-core is not running"),
+                    summary: String(localized: "Herdr Core is not running"),
                     detail: String(localized: "Nothing is listening at \(socketPath)"),
                     recoverySuggestion: String(localized: "Start the core on the Host, then check again."))
         case .herdrCoreForwardingRefused(let socketPath):
             TransportErrorPresentation(
                 summary: String(localized: "The SSH server refuses socket forwarding"),
-                detail: String(localized: "herdr-core is running, but SSH will not open \(socketPath)"),
+                detail: String(localized: "Herdr Core is running, but SSH will not open \(socketPath)"),
                 recoverySuggestion:
                     String(localized:
                         "Allow stream-local forwarding in the Host's SSH server, then check again."))
         case .herdrCoreUpdateRequired(let command):
             TransportErrorPresentation(
-                summary: String(localized: "herdr-core needs an update"),
+                summary: String(localized: "Herdr Core needs an update"),
                 detail: String(localized: "This core lacks what the app needs"),
                 recoverySuggestion: String(localized: "Run \(command) on the Host, then check again."))
         case .herdrCoreSocketPathTooLong(let path, let limit):
             TransportErrorPresentation(
-                summary: String(localized: "The herdr-core socket path is too long"),
+                summary: String(localized: "The Herdr Core socket path is too long"),
                 detail: String(localized: "\(path) is over this Host's limit of \(limit) bytes"),
                 recoverySuggestion:
                     String(localized:
@@ -223,28 +223,28 @@ extension TransportError {
                 recoverySuggestion: String(localized: "Edit the Host's session name."))
         case .tmuxNotInstalled:
             TransportErrorPresentation(
-                summary: String(localized: "tmux is not installed"),
-                detail: String(localized: "Your login shell on the Host finds no tmux"),
+                summary: String(localized: "Tmux is not installed"),
+                detail: String(localized: "Your login shell on the Host finds no Tmux"),
                 recoverySuggestion:
-                    String(localized: "Install tmux \(TmuxVersion.minimum) or newer on the Host, then check again."))
+                    String(localized: "Install Tmux \(TmuxVersion.minimum) or newer on the Host, then check again."))
         case .tmuxUpdateRequired(let version):
             TransportErrorPresentation(
                 summary: String(localized: "Update required"),
                 detail: String(localized:
-                    "The Host has tmux \(version), and Heeler needs \(TmuxVersion.minimum) or newer"),
-                recoverySuggestion: String(localized: "Update tmux on the Host, then check again."))
+                    "The Host has Tmux \(version), and Heeler needs \(TmuxVersion.minimum) or newer"),
+                recoverySuggestion: String(localized: "Update Tmux on the Host, then check again."))
         case .tmuxStartOnMac:
             TransportErrorPresentation(
-                summary: String(localized: "Start tmux on the Mac first"),
-                detail: String(localized: "A tmux server started over SSH would run outside the Mac's login session"),
-                recoverySuggestion: String(localized: "Start tmux in a terminal on the Mac. Heeler keeps checking."))
+                summary: String(localized: "Start Tmux on the Mac first"),
+                detail: String(localized: "A Tmux server started over SSH would run outside the Mac's login session"),
+                recoverySuggestion: String(localized: "Start Tmux in a terminal on the Mac. Heeler keeps checking."))
         case .tmuxServerNotRunning(let socketName):
             TransportErrorPresentation(
-                summary: String(localized: "No tmux server running"),
+                summary: String(localized: "No Tmux server running"),
                 detail: socketName == TmuxSocketName.defaultName
-                    ? String(localized: "No tmux server answers on the default socket")
-                    : String(localized: "No tmux server answers on the socket \"\(socketName)\""),
-                recoverySuggestion: String(localized: "Start tmux on the Host. Heeler keeps checking."))
+                    ? String(localized: "No Tmux server answers on the default socket")
+                    : String(localized: "No Tmux server answers on the socket \"\(socketName)\""),
+                recoverySuggestion: String(localized: "Start Tmux on the Host. Heeler keeps checking."))
         case .tmuxPaneGone:
             TransportErrorPresentation(
                 summary: String(localized: "This Pane is gone"),
@@ -252,7 +252,7 @@ extension TransportError {
                 recoverySuggestion: nil)
         case .tmuxServerGone:
             TransportErrorPresentation(
-                summary: String(localized: "This Pane belongs to a tmux server that is gone"),
+                summary: String(localized: "This Pane belongs to a Tmux server that is gone"),
                 detail: String(localized: "Nothing was sent"),
                 recoverySuggestion: String(localized: "Open it again from the list."))
         case .rexTerminalOutputUnavailable:
@@ -396,7 +396,7 @@ extension TransportError {
     /// it is shown, rather than where it is thrown.
     static func displayedChannelDetail(_ detail: String) -> String {
         detail == HerdrCoreLink.closedDetail
-            ? String(localized: "The herdr-core link closed.") : detail
+            ? String(localized: "The Herdr Core link closed.") : detail
     }
 
     /// Names the revisions this build works with, and which side to update

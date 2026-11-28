@@ -57,7 +57,7 @@ enum HerdrCoreWire {
     static func address(_ value: String) throws -> String {
         guard !value.isEmpty, !value.contains("/") else {
             throw TransportError.hostFeatureUnavailable(
-                feature: String(localized: "Connect directly to the Host that owns this herdr-core Terminal"))
+                feature: String(localized: "Connect directly to the Host that owns this Herdr Core Terminal"))
         }
         return value
     }
@@ -81,6 +81,6 @@ enum HerdrCoreWire {
     }
 
     private static func malformed(_ detail: String) -> TransportError {
-        .malformedResponse("herdr-core: \(detail)")
+        .malformedResponse("Herdr Core: \(detail)")
     }
 }

@@ -134,7 +134,7 @@ extension ChatUnavailableReason {
         case .cannotTellSessionOnWindows(let program):
             program.sessionEvidenceHelp
         case .cannotReadProcessesOnWindows:
-            String(localized: "Heeler couldn't read this Agent's process. Run herdr-core and SSH at the same elevation.")
+            String(localized: "Heeler couldn't read this Agent's process. Run Herdr Core and SSH at the same elevation.")
         case .cannotTellSessionOnRex(let program, let extensionInPlace):
             // One whole text per combination, so each language joins its
             // sentences its own way. Oh My Pi also binds without the extension.
@@ -374,7 +374,7 @@ extension ChatTranscriptOffVariable {
     func explanation(coreCarriesIt: Bool) -> String {
         let fix =
             coreCarriesIt
-            ? String(localized: "The herdr-core on this Host carries it too. See the notice in the Host's details for how to fix that.")
+            ? String(localized: "The Herdr Core on this Host carries it too. See the notice in the Host's details for how to fix that.")
             : String(localized: "Start the Agent again without that variable to use Chat.")
         // One whole sentence per effect, not a predicate fragment: the
         // clause around "so it …" moves differently across languages. The

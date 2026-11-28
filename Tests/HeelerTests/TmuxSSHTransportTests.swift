@@ -204,12 +204,12 @@ struct TmuxSSHTransportTests {
         await #expect(throws: TransportError.timedOut) { try await transport.status() }
 
         await host.answerNextProbe(stdout: "", exitStatus: 2)
-        await #expect(throws: TransportError.malformedResponse("tmux: The probe exited with status 2.")) {
+        await #expect(throws: TransportError.malformedResponse("Tmux: The probe exited with status 2.")) {
             try await transport.status()
         }
 
         await host.answerNextProbe(stdout: "Welcome to the Host\n")
-        await #expect(throws: TransportError.malformedResponse("tmux: The probe's output is unreadable.")) {
+        await #expect(throws: TransportError.malformedResponse("Tmux: The probe's output is unreadable.")) {
             try await transport.status()
         }
 
@@ -390,17 +390,17 @@ struct TmuxSSHTransportTests {
 
     @Test func eachStateSaysWhatToDo() {
         let notRunning = TransportError.tmuxServerNotRunning(socketName: "default").presentation
-        #expect(notRunning.summary == "No tmux server running")
-        #expect(notRunning.detail == "No tmux server answers on the default socket")
+        #expect(notRunning.summary == "No Tmux server running")
+        #expect(notRunning.detail == "No Tmux server answers on the default socket")
         #expect(
             TransportError.tmuxServerNotRunning(socketName: "work").presentation.detail
-                == "No tmux server answers on the socket \"work\"")
+                == "No Tmux server answers on the socket \"work\"")
 
         let update = TransportError.tmuxUpdateRequired(version: "3.2a").presentation
         #expect(update.summary == "Update required")
-        #expect(update.detail == "The Host has tmux 3.2a, and Heeler needs 3.3 or newer")
+        #expect(update.detail == "The Host has Tmux 3.2a, and Heeler needs 3.3 or newer")
 
-        #expect(TransportError.tmuxNotInstalled.presentation.summary == "tmux is not installed")
+        #expect(TransportError.tmuxNotInstalled.presentation.summary == "Tmux is not installed")
     }
 
     @Test func onlyAStoppedServerIsWorthAskingAgain() {
@@ -413,8 +413,8 @@ struct TmuxSSHTransportTests {
         let checks = PreflightCheck.cases(for: .tmux)
         #expect(checks == [.connection, .remoteEnvironment, .herdrInstalled, .serverRunning])
         #expect(PreflightCheck.cases(for: .herdrCore) == PreflightCheck.allCases)
-        #expect(PreflightCheck.herdrInstalled.title(for: .tmux) == "tmux installed")
-        #expect(PreflightCheck.serverRunning.title(for: .tmux) == "tmux server running")
+        #expect(PreflightCheck.herdrInstalled.title(for: .tmux) == "Tmux installed")
+        #expect(PreflightCheck.serverRunning.title(for: .tmux) == "Tmux server running")
 
         func failed(_ error: TransportError) -> PreflightCheck? {
             let report = PreflightReport.failure(error, authMethod: .deviceKey)
@@ -460,7 +460,7 @@ struct TmuxSSHTransportTests {
             credentials: .password("secret"),
             hostKeyPolicy: HostKeyPolicy(knownHosts: InMemoryKnownHostsStore()) { _ in true })
 
-        await #expect(throws: TransportError.hostFeatureUnavailable(feature: "tmux Hosts")) {
+        await #expect(throws: TransportError.hostFeatureUnavailable(feature: "Tmux Hosts")) {
             _ = try await HerdrOnly().connectTmux(settings: settings)
         }
         // The Herdr TUI transport never dials a tmux Host.

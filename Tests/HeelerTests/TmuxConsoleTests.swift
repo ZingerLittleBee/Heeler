@@ -228,11 +228,11 @@ struct TmuxConsoleTests {
             status: .reconnecting(
                 attempt: 3, delay: .seconds(4), failure: .tmuxServerNotRunning(socketName: "default")),
             standingFailure: nil, latency: nil)
-        #expect(notRunning.detail.contains("No tmux server running"))
+        #expect(notRunning.detail.contains("No Tmux server running"))
 
         let missing = HostRowPresentation(
             host: host, status: .failed(.tmuxNotInstalled), standingFailure: .tmuxNotInstalled, latency: nil)
-        #expect(missing.detail == "tmux is not installed")
+        #expect(missing.detail == "Tmux is not installed")
 
         var named = host
         named.sessionName = "work"

@@ -787,7 +787,7 @@ struct ShellTerminalStoreTests {
         store.closeTerminal()
 
         try #require(await eventually { store.closeFailureMessage != nil })
-        #expect(store.closeFailureMessage == "herdr-core rejected the close: no")
+        #expect(store.closeFailureMessage == "Herdr Core rejected the close: no")
         #expect(store.shell != nil)
         #expect(forgets == 0)
     }

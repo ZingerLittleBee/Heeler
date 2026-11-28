@@ -96,7 +96,7 @@ final class ClosePaneStore {
         case TransportError.coreMutationOutcomeUnknown:
             ConsoleStore.closeUnconfirmedMessage
         case let refusal as HerdrCoreCloseRefusal:
-            String(localized: "herdr-core rejected the close: \(refusal.message)")
+            String(localized: "Herdr Core rejected the close: \(refusal.message)")
         case let apiError as HerdrAPIError:
             String(localized: "herdr rejected the close: \(apiError.message)")
         default:

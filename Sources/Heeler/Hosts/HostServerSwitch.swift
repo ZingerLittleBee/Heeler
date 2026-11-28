@@ -83,10 +83,10 @@ struct HostServerSwitch {
         case HostStoreError.sessionNameRefused(let reason):
             return reason
         case HostStoreError.catalogUnreadable where server.kind == .tmux && catalog.tmuxCatalogLoadError != nil:
-            return String(localized: "The saved tmux Hosts could not be read, so no tmux Host can be added.")
+            return String(localized: "The saved Tmux Hosts could not be read, so no Tmux Host can be added.")
         case HostStoreError.catalogUnreadable where server.kind == .herdrCore && catalog.coreCatalogLoadError != nil:
             return String(
-                localized: "The saved herdr-core Hosts could not be read, so no herdr-core Host can be added.")
+                localized: "The saved Herdr Core Hosts could not be read, so no Herdr Core Host can be added.")
         case HostStoreError.catalogUnreadable where server.kind == .rex && catalog.rexCatalogLoadError != nil:
             return String(localized: "The saved Rex Hosts could not be read, so no Rex Host can be added.")
         default:

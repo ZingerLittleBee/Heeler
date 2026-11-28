@@ -28,6 +28,6 @@ enum TmuxSocketName {
     /// Why Heeler cannot use this name, nil when it can.
     static func refusal(_ value: String) -> String? {
         guard !isValid(value) else { return nil }
-        return String(localized: "Heeler cannot use the tmux socket name \"\(normalized(value))\". A name uses letters, digits, \".\", \"_\" and \"-\", up to \(maximumUTF8Length) bytes, and does not start with \"-\". A socket path is not supported.")
+        return String(localized: "Heeler cannot use the Tmux socket name \"\(normalized(value))\". A name uses letters, digits, \".\", \"_\" and \"-\", up to \(maximumUTF8Length) bytes, and does not start with \"-\". A socket path is not supported.")
     }
 }

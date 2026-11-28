@@ -259,7 +259,7 @@ actor TmuxControlClient {
                 read = try reader.read(bytes)
             } catch {
                 finish(
-                    .failed(.malformedResponse(String(localized: "tmux: The control client printed a line too long to read."))))
+                    .failed(.malformedResponse(String(localized: "Tmux: The control client printed a line too long to read."))))
                 return
             }
             for event in read {
@@ -278,7 +278,7 @@ actor TmuxControlClient {
             }
             repliedToClient = true
             guard !waiters.isEmpty else {
-                finish(.failed(.malformedResponse(String(localized: "tmux: A reply came that no command asked for."))))
+                finish(.failed(.malformedResponse(String(localized: "Tmux: A reply came that no command asked for."))))
                 return
             }
             switch waiters.removeFirst() {

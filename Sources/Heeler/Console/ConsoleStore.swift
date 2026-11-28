@@ -2096,7 +2096,7 @@ final class ConsoleStore {
         case TransportError.coreMutationOutcomeUnknown:
             closeUnconfirmedMessage
         case let refusal as HerdrCoreCloseRefusal:
-            String(localized: "herdr-core rejected the close: \(refusal.message)")
+            String(localized: "Herdr Core rejected the close: \(refusal.message)")
         case let apiError as HerdrAPIError:
             String(localized: "herdr rejected the close: \(apiError.message)")
         case TransportError.apiRejected(_, let message):

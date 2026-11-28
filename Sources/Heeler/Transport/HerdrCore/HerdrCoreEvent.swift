@@ -291,7 +291,7 @@ struct HerdrCoreSnapshot: Equatable, Sendable {
     init(result: JSONValue) throws {
         guard let sequence = HerdrCoreWire.integer(result["seq"]), sequence >= 0,
             case .array(let records) = result["terminals"]
-        else { throw TransportError.malformedResponse(String(localized: "herdr-core: Invalid subscription snapshot.")) }
+        else { throw TransportError.malformedResponse(String(localized: "Herdr Core: Invalid subscription snapshot.")) }
         self.sequence = sequence
         terminals = try records.map { try HerdrCoreWire.typed($0) as HerdrCoreTerminalRecord }
             .filter { !$0.address.contains("/") }
@@ -346,13 +346,13 @@ struct HerdrCoreTypedEventCursor {
         do {
             envelope = try JSONDecoder().decode(JSONValue.self, from: line)
         } catch {
-            throw TransportError.malformedResponse(String(localized: "herdr-core: Invalid event notification."))
+            throw TransportError.malformedResponse(String(localized: "Herdr Core: Invalid event notification."))
         }
         let method = envelope["method"]?.stringValue
         guard method == "event" || method == "heartbeat" || method == "missed" else { return nil }
         let params = envelope["params"] ?? .null
         guard let next = HerdrCoreWire.integer(params["seq"]), next >= 0 else {
-            throw TransportError.malformedResponse(String(localized: "herdr-core: An event has no sequence."))
+            throw TransportError.malformedResponse(String(localized: "Herdr Core: An event has no sequence."))
         }
         // A heartbeat reports the core's current global sequence, not a
         // delivered-event watermark. It can precede events already queued for
@@ -374,7 +374,7 @@ struct HerdrCoreTypedEventCursor {
 
     private static func event(from params: JSONValue) throws -> HerdrCoreEvent? {
         guard let type = params["type"]?.stringValue else {
-            throw TransportError.malformedResponse(String(localized: "herdr-core: An event has no type."))
+            throw TransportError.malformedResponse(String(localized: "Herdr Core: An event has no type."))
         }
         let data = params["data"] ?? .null
         if type == "doc" {
@@ -387,7 +387,7 @@ struct HerdrCoreTypedEventCursor {
             // A newer core's kind need not be about one Terminal, as `doc` is not.
             guard terminalKinds.contains(type) else { return .unknown(type: type) }
             throw TransportError.malformedResponse(
-                String(localized: "herdr-core: A terminal event has no terminal address."))
+                String(localized: "Herdr Core: A terminal event has no terminal address."))
         }
         guard !terminal.contains("/") else { return nil }
         switch type {
@@ -487,7 +487,7 @@ struct HerdrCoreLineBuffer {
     private func checkLength() throws {
         guard pending.count <= maximumLineBytes else {
             throw TransportError.malformedResponse(
-                String(localized: "herdr-core: An event line exceeds \(maximumLineBytes) bytes."))
+                String(localized: "Herdr Core: An event line exceeds \(maximumLineBytes) bytes."))
         }
     }
 }

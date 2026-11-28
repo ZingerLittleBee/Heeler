@@ -675,7 +675,7 @@ struct HostOnboardingStoreTests {
             "protocol compatible",
         ])
         #expect(PreflightCheck.allCases.map { $0.title(for: .herdrCore) } == [
-            "SSH connection", "remote environment", "herdr-core installed", "herdr-core running",
+            "SSH connection", "remote environment", "Herdr Core installed", "Herdr Core running",
             "protocol compatible",
         ])
     }

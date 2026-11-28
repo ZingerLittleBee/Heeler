@@ -27,7 +27,7 @@ final class TmuxChatAttach: Sendable {
             let failure =
                 error
                 ?? TransportError.malformedResponse(
-                    String(localized: "tmux: The control client ended before it painted."))
+                    String(localized: "Tmux: The control client ended before it painted."))
             endResult = .failure(failure)
             let waiter = self.waiter
             self.waiter = nil
@@ -60,7 +60,7 @@ final class TmuxChatAttach: Sendable {
     static func open(session: TerminalAttachSession) async throws -> TmuxChatAttach {
         guard let tmuxSend = session.tmuxSend else {
             await session.end()
-            throw TransportError.malformedResponse(String(localized: "tmux: The Attach has no send queue."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The Attach has no send queue."))
         }
         let gate = FirstPaintGate()
         let output = session.output

@@ -65,7 +65,7 @@ struct HostSetupGuideView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             } footer: {
-                Text("Heeler connects over SSH to a machine that runs herdr, tmux or Rex.")
+                Text("Heeler connects over SSH to a machine that runs herdr, Tmux or Rex.")
             }
 
             switch platform {
@@ -115,7 +115,7 @@ struct HostSetupGuideView: View {
             ) {
                 CommandBlock(command: HostSetupGuide.pluginInstallCommand)
                 CommandBlock(command: HostSetupGuide.pairCommand)
-                Text("On a machine that runs herdr-core or tmux without herdr, run this one instead.")
+                Text("On a machine that runs Herdr Core or Tmux without herdr, run this one instead.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

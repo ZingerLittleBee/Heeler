@@ -159,7 +159,7 @@ import Testing
         let withoutHelper = try #require(HerdrCoreStatusExplanation(pane: unpiped, agentStatus: .unknown))
         #expect(
             withoutHelper.text
-                == "Grok Build hasn't reported a status. In tmux its status is read by the Host Helper.")
+                == "Grok Build hasn't reported a status. In Tmux its status is read by the Host Helper.")
         #expect(withoutHelper.offersGrokBuildEdit)
         #expect(withoutHelper.agentProcess == 77)
 
@@ -175,7 +175,7 @@ import Testing
         let codexUnpiped = TmuxInventory.Pane.make(command: "codex", arguments: ["codex"])
         #expect(
             HerdrCoreStatusExplanation(pane: codexUnpiped, agentStatus: .unknown)?.text
-                == "Codex hasn't reported a status. In tmux its status is read by the Host Helper, from Codex 0.163.")
+                == "Codex hasn't reported a status. In Tmux its status is read by the Host Helper, from Codex 0.163.")
 
         let openCodePiped = TmuxInventory.Pane.make(
             command: "opencode", hasPipe: true, pipeMark: "opencode:50:token", arguments: ["opencode"])
@@ -187,22 +187,22 @@ import Testing
             command: "claude", hasPipe: true, pipeMark: "", arguments: ["claude"])
         #expect(
             HerdrCoreStatusExplanation(pane: claude, agentStatus: .unknown)?.text
-                == "Claude Code hasn't reported a status. In tmux its status comes from Heeler's Claude Code hooks.")
+                == "Claude Code hasn't reported a status. In Tmux its status comes from Heeler's Claude Code hooks.")
 
         let pi = TmuxInventory.Pane.make(command: "pi", arguments: ["pi"])
         #expect(
             HerdrCoreStatusExplanation(pane: pi, agentStatus: .unknown)?.text
-                == "Pi hasn't reported a status. In tmux its status comes from the Host Helper's extension.")
+                == "Pi hasn't reported a status. In Tmux its status comes from the Host Helper's extension.")
 
         let omp = TmuxInventory.Pane.make(command: "omp", arguments: ["omp"])
         #expect(
             HerdrCoreStatusExplanation(pane: omp, agentStatus: .unknown)?.text
-                == "Oh My Pi hasn't reported a status. In tmux its status is read by the Host Helper, from Oh My Pi 18.8.7.")
+                == "Oh My Pi hasn't reported a status. In Tmux its status is read by the Host Helper, from Oh My Pi 18.8.7.")
 
         let agy = TmuxInventory.Pane.make(command: "agy", arguments: ["agy"])
         #expect(
             HerdrCoreStatusExplanation(pane: agy, agentStatus: .unknown)?.text
-                == "Antigravity CLI hasn't reported a status. In tmux its status is read by the Host Helper, from Antigravity CLI 1.4.0.")
+                == "Antigravity CLI hasn't reported a status. In Tmux its status is read by the Host Helper, from Antigravity CLI 1.4.0.")
 
         let gemini = TmuxInventory.Pane.make(command: "gemini", arguments: ["gemini"])
         #expect(

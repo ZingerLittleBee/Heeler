@@ -570,7 +570,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     // MARK: Launches, rename and close
 
     private var unavailable: TransportError {
-        .hostFeatureUnavailable(feature: String(localized: "This action on a tmux Host"))
+        .hostFeatureUnavailable(feature: String(localized: "This action on a Tmux Host"))
     }
 
     /// Through the user's interactive shell, as a herdr-core Host does, so the
@@ -643,7 +643,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             throw WorktreeAgentStartFailure(
                 checkoutPath: created.path,
                 underlying: TransportError.malformedResponse(
-                    String(localized: "tmux: The command printed no session.")))
+                    String(localized: "Tmux: The command printed no session.")))
         }
         do {
             _ = try await perform(
@@ -762,7 +762,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         switch String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
         case "heeler-moved": return paneID
         case "heeler-shared-window":
-            throw TransportError.malformedResponse(String(localized: "This Tab has one Pane and is linked to multiple Workspaces. Move its window link in tmux."))
+            throw TransportError.malformedResponse(String(localized: "This Tab has one Pane and is linked to multiple Workspaces. Move its window link in Tmux."))
         default: throw TransportError.tmuxPaneGone
         }
     }
@@ -918,7 +918,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             }
         }
         throw lastDuplicate
-            ?? TransportError.malformedResponse(String(localized: "tmux: The session name is already taken."))
+            ?? TransportError.malformedResponse(String(localized: "Tmux: The session name is already taken."))
     }
 
     /// Whether tmux has closed `pane`. Only tmux refusing to find it says so;
@@ -1261,7 +1261,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         case .startTmuxOnMac: .tmuxStartOnMac
         case .serverNotRunning: .tmuxServerNotRunning(socketName: host.tmuxSocketName)
         case .missingTarget:
-            .malformedResponse(String(localized: "tmux: A launch needs a directory."))
+            .malformedResponse(String(localized: "Tmux: A launch needs a directory."))
         }
     }
 
@@ -1275,9 +1275,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .last { !$0.isEmpty }
             if let detail {
-                throw TransportError.malformedResponse(String(localized: "tmux: \(detail)"))
+                throw TransportError.malformedResponse(String(localized: "Tmux: \(detail)"))
             }
-            throw TransportError.malformedResponse(String(localized: "tmux: The command failed."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The command failed."))
         }
         return result
     }
@@ -1285,7 +1285,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private func created(_ command: TmuxLaunch.Command) async throws -> TmuxLaunch.Created {
         let result = try await perform(command)
         guard let created = TmuxLaunch.created(from: result.stdout) else {
-            throw TransportError.malformedResponse(String(localized: "tmux: The command printed no pane."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The command printed no pane."))
         }
         return created
     }
@@ -1429,12 +1429,12 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .last { !$0.isEmpty }
             if let detail {
-                throw TransportError.malformedResponse(String(localized: "tmux: \(detail)"))
+                throw TransportError.malformedResponse(String(localized: "Tmux: \(detail)"))
             }
-            throw TransportError.malformedResponse(String(localized: "tmux: The command failed."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The command failed."))
         }
         guard let captured = TmuxLaunch.capturedPaneScreen(from: result.stdout) else {
-            throw TransportError.malformedResponse(String(localized: "tmux: The Pane's screen could not be read."))
+            throw TransportError.malformedResponse(String(localized: "Tmux: The Pane's screen could not be read."))
         }
         if let pin, !pin.admits(captured.instance.id) {
             throw TransportError.tmuxServerGone
@@ -1803,7 +1803,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             if detail.contains("can't find pane") { throw TransportError.tmuxPaneGone }
             if detail.contains("no server running") { throw TransportError.tmuxServerGone }
             throw TransportError.malformedResponse(
-                detail.isEmpty ? String(localized: "tmux: The command failed.") : detail)
+                detail.isEmpty ? String(localized: "Tmux: The command failed.") : detail)
         }
         guard TmuxLaunch.serverInstanceMatches(activeServer.instance, stdout: result.stdout) else {
             throw TransportError.tmuxServerGone
