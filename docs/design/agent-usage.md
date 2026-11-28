@@ -885,8 +885,15 @@ run at once, and until it ends the report already leaves the Account out.
 - Usage Limits delegate exclusively to the installed `agy` CLI (`>= 1.1.11`)
   via `agy -p "/usage" --output-format json` (and on macOS Herdr TUI through
   the plugin's `usage-agy-limits` action in herdr's GUI session), never reading
-  Keychain items or OAuth tokens directly. Per-Host Antigravity limits are on
-  by default and can be turned off (`--no-agy-limits`).
+  Keychain items or OAuth tokens directly. On macOS `agy` runs only where
+  `security show-keychain-info` succeeds: a print-mode `agy` that cannot read
+  its token from the login Keychain opens a browser sign-in on the Mac's
+  desktop and waits for it, so elsewhere the reading is `keychainUnavailable`
+  without starting `agy`. The Host Helper's worker on macOS first reads through
+  a one-shot `gui/<uid>` launchd job that runs `usage-agy-reader.js` in the
+  desktop session, and reads in place only when no desktop session takes the
+  job (ADR 0067). Per-Host Antigravity limits are on by default and can be
+  turned off (`--no-agy-limits`).
 - Antigravity CLI signs in once per Host rather than per Account directory, so
   added `programs.agy` Accounts report their own Token Usage while reporting
   Usage Limits `unavailable` with reason `singleSignIn` (the Default Account

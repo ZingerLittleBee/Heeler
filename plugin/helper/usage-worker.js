@@ -3,9 +3,12 @@
 // Code's limits in place.
 
 import { runUsageWorker } from "./shared/usage/worker.js";
+import { readAgyLimitsInDesktop } from "./usage/agy-limits-desktop.js";
 
 try {
-  await runUsageWorker();
+  await runUsageWorker({
+    readAgyLimitsElsewhere: process.platform === "darwin" ? readAgyLimitsInDesktop : null,
+  });
 } catch {
   process.exitCode = 1;
 }

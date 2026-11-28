@@ -151,7 +151,7 @@
     },
     {
       "path": "shared/usage/agy-limits.js",
-      "sha256": "4e0a7d8bb482d96f28c286499b04c43a380de67485bca99479c2acfba0da67a7"
+      "sha256": "cf166641f6f8bcae3dc615b21910a69b0a671cf4ba6380190cf043d746bc09bc"
     },
     {
       "path": "shared/usage/agy-scanner.js",
@@ -227,7 +227,7 @@
     },
     {
       "path": "shared/usage/worker.js",
-      "sha256": "aface49e6fd0e220509f3ebbd0ecd5f601ad6ca319faf65a69bfa615cf1ffee5"
+      "sha256": "8d99fc8482e726ac2a085f5febbb72329a3d2fb664fc32a39bbce276992e6f03"
     },
     {
       "path": "tmux/client.js",
@@ -274,16 +274,24 @@
       "sha256": "aedf934871a23be7a5bf6d3ab5eaa169f58551996f7e491b806a1ba6a5f3ffa1"
     },
     {
+      "path": "usage-agy-reader.js",
+      "sha256": "70105a7e43b4d48d165224aeb8020e40b389652f1851d0d5be75e23e6f62f916"
+    },
+    {
       "path": "usage-query.js",
       "sha256": "412679156afb1fd3fb7715ea76915b94e09f08839198b735e690777624e76257"
     },
     {
       "path": "usage-worker.js",
-      "sha256": "6c46176b11a0fb73dd54ae05d9c50d5700ff8d7f351f2d41f35c3aab7fa18509"
+      "sha256": "7ca26937b999fa29b4ecece05b02d73e133a4d98fbab36357468c3b6483ca8bb"
     },
     {
       "path": "usage/account-agent.js",
       "sha256": "4b1defe1528103f7ed884b778bbbe282529391b09d91dba62204aa17baaae26e"
+    },
+    {
+      "path": "usage/agy-limits-desktop.js",
+      "sha256": "7f2fd01a371f0e77781feb63d28ca5f4c1f56bb7cb323e4bfd383810b621541f"
     },
     {
       "path": "usage/layout.js",
