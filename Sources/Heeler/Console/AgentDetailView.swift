@@ -899,7 +899,14 @@ struct AgentDetailView: View {
                     terminalOpenFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it.")
                     return
                 }
-                if isVisible() { showWorkspaceTerminal(target) }
+                // The user may have left or switched Agents while the new
+                // tab waited to list; the next shell must not take the
+                // keyboard this one was handed.
+                guard isVisible() else {
+                    keyboardHandoff.cancelShellTerminal()
+                    return
+                }
+                showWorkspaceTerminal(target)
             } catch {
                 keyboardHandoff.cancelShellTerminal()
                 terminalOpenFailure = AgentOpenTerminalStore.presentation(for: error).message
