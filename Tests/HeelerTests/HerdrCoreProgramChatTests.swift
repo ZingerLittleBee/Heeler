@@ -240,9 +240,7 @@ struct HerdrCoreProgramChatTests {
         rig.store.setHosts([])
     }
 
-    /// Codex and Grok Build passed their owner check on Linux, and OpenCode stays off
-    /// there. The list is the whole switch.
-    @Test(arguments: [(ChatProgram.codex, true), (.grok, true), (.opencode, false)])
+    @Test(arguments: [(ChatProgram.codex, true), (.grok, true), (.opencode, true)])
     func theShippedLinuxListOffersWhatPassedItsOwnerCheck(_ program: ChatProgram, _ passed: Bool) async throws {
         #expect(HostCapabilities.confirmedLinuxCoreChatPrograms.contains(program) == passed)
         let (rig, rows) = try offerRig(program, offering: HostCapabilities.confirmedLinuxCoreChatPrograms)

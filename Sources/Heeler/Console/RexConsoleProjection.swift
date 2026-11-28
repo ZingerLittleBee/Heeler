@@ -1281,6 +1281,56 @@ final class RexConsoleProjection: ConsoleHostProjection {
         onChange()
     }
 
+    func openCodeEditServices() async throws -> any HarnessConfigFileAccess {
+        try await session.withConnection { $0.transport.extensionPlacing }
+    }
+
+    func openCodeEditContext(paneID: String) async throws -> (version: String?, home: String, xdgConfigHome: String?) {
+        guard !isAwaitingSnapshot, inventory != nil,
+            let address = RexPaneAddress(paneID: paneID), let listed = listedDetails(at: address),
+            let activeServer = server
+        else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let details = try await detailsWithCurrentForeground(at: address, listed: listed, server: activeServer)
+        let record = chatRecord(at: address, details: details)
+        let binder = chatBinder(at: address, details: details, program: .opencode, server: activeServer)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(values: ["PATH", "HOME", "XDG_CONFIG_HOME"])
+        guard let tree = try await binder.readTerminalProcesses(of: record, ask: ask),
+            let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid],
+            server == activeServer
+        else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let path: String?
+        switch facts.variables["PATH"] {
+        case .value(let value): path = value
+        case .unset: path = nil
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let home: String
+        switch facts.variables["HOME"] {
+        case .value(let value): home = value
+        case .unset: home = try await Self.reads(session).hostHomeDirectory()
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let xdgConfigHome: String?
+        switch facts.variables["XDG_CONFIG_HOME"] {
+        case .value(let value): xdgConfigHome = value
+        case .unset: xdgConfigHome = nil
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let program = OpenCodePluginEdit.program(running: [details.argv0 ?? details.program ?? SupportedAgentKind.opencode.executable])
+        let nonce = HostProcessReader.makeNonce()
+        let script = HerdrCoreShellLaunch.versionScript(
+            program: program, path: path, directory: details.directory, nonce: nonce)
+        let result = try await session.withConnection { link in
+            guard link.server == activeServer else { throw TransportError.rexServerGone }
+            return try await link.transport.extensionPlacing.runOpenCodeVersionScript(script)
+        }
+        guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: result.stdout, nonce: nonce) else {
+            throw TransportError.malformedResponse(
+                String(localized: "The Host's shell did not finish reading OpenCode's version."))
+        }
+        return (version: found.version, home: home, xdgConfigHome: xdgConfigHome)
+    }
+
     private nonisolated static var extensionFolderUnknown: TransportError {
         .hostFeatureUnavailable(feature: String(localized: "Heeler's extension for this Agent"))
     }

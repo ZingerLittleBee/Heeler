@@ -110,7 +110,7 @@ enum OpenCodePluginEdit {
 
     /// A file of the form that exists, the first when none does: OpenCode reads
     /// them all, and its plugin list adds up across them.
-    static func fileName(in directory: String, form: ConfigForm, over files: any HostServices) async throws -> String {
+    static func fileName(in directory: String, form: ConfigForm, over files: any HarnessConfigFileAccess) async throws -> String {
         for name in form.fileNames {
             let slice = try await files.readHostFileRange(
                 RemoteFileRange(path: RemoteFilePath.join(directory, name), offset: 0, maxBytes: 1))

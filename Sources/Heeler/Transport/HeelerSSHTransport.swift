@@ -4818,6 +4818,10 @@ extension HeelerSSHTransport: RexHostConnection, RexHostProjects {
         try await replaceHostHelperFile(
             contents, at: "\(folder)/\(HostHelperScript.extensionFileName)", privateDirectory: nil)
     }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        try await runAgentDiscovery(script)
+    }
 }
 
 // MARK: - gh on the Host (ADR 0065)

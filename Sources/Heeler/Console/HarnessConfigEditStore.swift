@@ -62,7 +62,7 @@ final class HarnessConfigEditStore {
     /// connection throws, and stops the removal as any step's does. A `cli.json`
     /// goes last, so a running OpenCode 2.x has no `tui.json` of Heeler's to make
     /// a new one from.
-    func undoEditsGoingWithTheHelper(on hostID: Host.ID, over services: any HostServices) async throws -> String? {
+    func undoEditsGoingWithTheHelper(on hostID: Host.ID, over services: any HarnessConfigFileAccess) async throws -> String? {
         var refusal: String?
         let openCode = edits(on: hostID).filter { $0.editID == OpenCodePluginEdit.id }
         let ordered =
@@ -136,12 +136,12 @@ final class HarnessConfigEditFlow: Identifiable {
     private var unconfirmedWrite: HarnessConfigPendingChange?
     private let store: HarnessConfigEditStore
     private let makeEdit: @MainActor @Sendable () async throws -> HarnessConfigEdit
-    private let services: @MainActor @Sendable () async throws -> any HostServices
+    private let services: @MainActor @Sendable () async throws -> any HarnessConfigFileAccess
 
     /// An offer, which says nothing until `locate()` or `review()` knows its file.
     init(
         hostID: Host.ID, editID: String, store: HarnessConfigEditStore,
-        services: @escaping @MainActor @Sendable () async throws -> any HostServices,
+        services: @escaping @MainActor @Sendable () async throws -> any HarnessConfigFileAccess,
         makeEdit: @escaping @MainActor @Sendable () async throws -> HarnessConfigEdit
     ) {
         self.hostID = hostID
@@ -155,7 +155,7 @@ final class HarnessConfigEditFlow: Identifiable {
     /// A listed edit, which can only be undone or forgotten.
     init(
         hostID: Host.ID, listing edit: HarnessConfigAppliedEdit, store: HarnessConfigEditStore,
-        services: @escaping @MainActor @Sendable () async throws -> any HostServices
+        services: @escaping @MainActor @Sendable () async throws -> any HarnessConfigFileAccess
     ) {
         self.hostID = hostID
         subject = .record(edit.id)

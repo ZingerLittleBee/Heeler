@@ -138,11 +138,9 @@ suite("Host Helper closure", () => {
     }
   });
 
-  // The session extension's are PowerShell's and `/bin/ps`'s, and in a tmux
-  // Pane the stored tmux's and `/bin/ps`'s for the Pane's foreground.
   for (const [name, path, calls] of [
     ["session extension", SESSION_EXTENSION, 4],
-    ["OpenCode plugin", OPENCODE_PLUGIN, 1],
+    ["OpenCode plugin", OPENCODE_PLUGIN, 3],
   ]) {
     test(`the ${name} starts only what reads its own process start`, () => {
       const source = readFileSync(path, "utf8");
@@ -156,13 +154,17 @@ suite("Host Helper closure", () => {
     });
   }
 
-  test("in a tmux Pane the session extension starts the stored tmux, which never starts a server", () => {
-    const source = readFileSync(SESSION_EXTENSION, "utf8");
-    // Every tmux command goes through the one call, with `-N` and the Pane's server.
-    assert.match(source, /\bexecFile\(target\.tmux, \["-N", "-S", target\.socket, \.\.\.args\]/);
-    assert.equal([...source.matchAll(/\btarget\.tmux\b/g)].length, 1);
-    assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "pgid=,tpgid=,tty=", "-p", String\(process\.pid\)\],/);
-  });
+  for (const [name, path] of [
+    ["session extension", SESSION_EXTENSION],
+    ["OpenCode plugin", OPENCODE_PLUGIN],
+  ]) {
+    test(`in a tmux Pane the ${name} starts the stored tmux, which never starts a server`, () => {
+      const source = readFileSync(path, "utf8");
+      assert.match(source, /\bexecFile\(target\.tmux, \["-N", "-S", target\.socket, \.\.\.args\]/);
+      assert.equal([...source.matchAll(/\btarget\.tmux\b/g)].length, 1);
+      assert.match(source, /\bexecFile\(\s*"\/bin\/ps",\s*\["-o", "pgid=,tpgid=,tty=", "-p", String\(process\.pid\)\],/);
+    });
+  }
 
   test("on Windows the session extension starts PowerShell for that read and nothing else", () => {
     const source = readFileSync(SESSION_EXTENSION, "utf8");

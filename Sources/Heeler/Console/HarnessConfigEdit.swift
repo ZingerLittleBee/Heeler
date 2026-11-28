@@ -255,7 +255,7 @@ struct HarnessConfigEditor: Sendable {
     /// A configuration file past this is no file Heeler should be rewriting.
     static let maximumFileSize = 1_048_576
 
-    let files: any HostServices
+    let files: any HarnessConfigFileAccess
     var now: @Sendable () -> Date = { Date() }
     var makeID: @Sendable () -> UUID = { UUID() }
     /// Folders another applied edit's file still names, which this one leaves in

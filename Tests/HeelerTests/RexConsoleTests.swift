@@ -68,7 +68,7 @@ struct RexConsoleTests {
             #expect(offers.chat == opensChat)
             #expect(offers.chatPrograms == programs)
             let histories: Set<ChatProgram> = switch kernel {
-            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.opencode, .amp]
+            case HerdrCoreLocator.linuxKernel, HerdrCoreLocator.macOSKernel: [.amp]
             default: []
             }
             #expect(offers.readOnlyChatPrograms == histories)

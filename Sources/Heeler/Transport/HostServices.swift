@@ -59,11 +59,18 @@ protocol HostWorktreeAccess: Sendable {
     func runGitCommand(_ command: GitCommand) async throws -> GitCommandResult
 }
 
+protocol HarnessConfigFileAccess: Sendable {
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws
+    func createHostFolder(path: String) async throws
+    func removeEmptyHostFolder(path: String) async throws
+}
+
 /// The exec and SFTP services a Host offers whichever Server Kind it runs.
 /// `Transport` refines this for Herdr TUI; herdr-core code depends on it
 /// without going through `Transport` (ADR 0032). Its gh runs are
 /// `GitHubHostCLI`'s (ADR 0065).
-protocol HostServices: OpenCodeReading, HostProjectReading, HostWorktreeAccess, GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
+protocol HostServices: HarnessConfigFileAccess, OpenCodeReading, HostProjectReading, HostWorktreeAccess, GitHubHostCLI, DroidChatHookHost, DroidForegroundReading, DevinChatReading {
     /// Stages one normalized app-owned image in private Host temporary
     /// storage. Concrete transports own destination selection, restrictive
     /// permissions, partial-file handling, and atomic completion (ADR 0006).

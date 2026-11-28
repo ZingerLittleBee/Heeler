@@ -163,7 +163,7 @@ extension HostCapabilities {
                 rowsReadChanges: false, terminalsShowInOneWindow: true, namesCreatedWorkspaces: true,
                 startsInWindowsDirectories: true)
             if posix {
-                readOnlyChatPrograms = [.opencode, .amp]
+                readOnlyChatPrograms = [.amp]
                 offersAmpPlugin = true
                 requiresBoundAntigravity = true
             }
@@ -266,23 +266,16 @@ extension HostCapabilities {
     /// (2026-11-09), started with colors and with `NO_COLOR`: each bound from the
     /// presence lock read through `/proc/<pid>/fd`, sent from Chat and answered its
     /// trust prompt, permissions and questions from cards, and both followed `/clear`.
-    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let confirmedLinuxCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
 
-    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let tmuxChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
 
-    /// The programs whose Chat a macOS core Host opens, each once the owner's signed-in
-    /// check of it on a Mac passed and was recorded (ADR 0034). OpenCode 2.0 from New
-    /// Agent reached only candidates there and 2.1 or later was not run, so it stays off.
-    /// Antigravity CLI 1.5.3 passed the owner's check in a core Terminal on 2026-11-08
-    /// (macOS 27.0.1, herdr-core 0.1.18), started with colors and with `NO_COLOR`: each
-    /// bound from its presence lock, sent from Chat and answered its trust prompt,
-    /// permissions and questions from cards, and the colored one followed `/clear`.
-    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let confirmedMacOSCoreChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
 
     /// Programs with a foreground conversation binding on both POSIX Rex Hosts.
     /// Grok Build 1.0.92 records both the foreground PID and its platform-specific
     /// process start in the local account registry (rex-chat-parity.md).
-    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin]
+    static let rexChatPrograms: Set<ChatProgram> = [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode]
 
     /// The programs a Rex Host's Chat opens for on native Windows, read as a
     /// native Windows core's Chat reads them (ADR 0034): Claude Code, bound

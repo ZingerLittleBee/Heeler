@@ -85,6 +85,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     private var sessionEventCounts: [String: UInt64] = [:]
     private var droppedPicks: [String: Set<String>] = [:]
     private var pickLabelsBetweenSnapshots: [String: String] = [:]
+    private var launchSessions: [String: String] = [:]
     private(set) var pickRemoval: Task<Void, Never>?
     private var chatTypings: [String: TmuxChatTyping] = [:]
     /// The Panes New Agent just opened, each watched until its program shows
@@ -368,6 +369,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             sessionEventCounts = [:]
             droppedPicks = [:]
             pickLabelsBetweenSnapshots = [:]
+            launchSessions = [:]
             chatTypings = [:]
             inventory = nil
             endLaunchWatches()
@@ -403,6 +405,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         pins.retainPins(hostID: host.id, paneIDs: listed)
         memory.retainTmuxPanes(listed, for: host.id)
         chatTypings = chatTypings.filter { listed.contains($0.key) }
+        launchSessions = launchSessions.filter { listed.contains($0.key) || launchWatches[$0.key] != nil }
         noteSessionEvidence(in: inventory, previous: previousInventory)
         noteTurns(in: inventory)
         let coreAfter = memory.coreID(for: host.id)
@@ -602,8 +605,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             tabLabel: request.tabLabel,
             environment: request.environment)
         let hooks = await hookSettings(for: resolved)
-        let made = try await created(
-            try command { try TmuxLaunch.agentWindow(resolved, on: server, hookSettings: hooks) })
+        let launch = try command { try TmuxLaunch.agentWindow(resolved, on: server, hookSettings: hooks) }
+        let made = try await created(launch)
+        if let sessionID = launch.launchSessionID { launchSessions[made.paneID] = sessionID }
         watchLaunch(made.paneID, paths: server.paths)
         return Agent(
             terminalID: made.paneID, kind: resolved.kind, title: "", status: .unknown,
@@ -665,8 +669,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     ) async throws -> Agent {
         let server = try await launchServer()
         let hooks = await hookSettings(for: request)
-        let made = try await created(
-            try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server, hookSettings: hooks) })
+        let launch = try command { try TmuxLaunch.agentSession(request, workspace: workspace, on: server, hookSettings: hooks) }
+        let made = try await created(launch)
+        if let sessionID = launch.launchSessionID { launchSessions[made.paneID] = sessionID }
         watchLaunch(made.paneID, paths: server.paths)
         if self.server == nil { await session.askNow() }
         return Agent(
@@ -892,12 +897,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         var lastDuplicate: TransportError?
         for _ in 0..<8 {
             do {
-                return try await created(
-                    try command {
-                        try TmuxLaunch.agentSession(
-                            request, workspace: NewWorkspaceSpec(directory: directory, label: name),
-                            on: server, hookSettings: hookSettings)
-                    })
+                let launch = try command {
+                    try TmuxLaunch.agentSession(
+                        request, workspace: NewWorkspaceSpec(directory: directory, label: name),
+                        on: server, hookSettings: hookSettings)
+                }
+                let made = try await created(launch)
+                if let sessionID = launch.launchSessionID { launchSessions[made.paneID] = sessionID }
+                return made
             } catch let error as TransportError {
                 guard case .malformedResponse(let message) = error, message.contains("duplicate session") else {
                     throw error
@@ -1512,7 +1519,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             return .unavailable(chatCannotTell(program))
         }
         return try await chatBinder(paneID: paneID, program: program, server: activeServer)
-            .check(HerdrCoreTerminalRecord(tmuxPane: pane), coreCarries: leakedEnvironmentNames)
+            .check(HerdrCoreTerminalRecord(tmuxPane: pane, launchSession: launchSessions[paneID]), coreCarries: leakedEnvironmentNames)
     }
 
     func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
@@ -1549,7 +1556,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             return .noProcess
         }
         let answer = try await chatBinder(paneID: paneID, program: program, server: activeServer)
-            .candidates(of: HerdrCoreTerminalRecord(tmuxPane: pane))
+            .candidates(of: HerdrCoreTerminalRecord(tmuxPane: pane, launchSession: launchSessions[paneID]))
         guard case .listed(var list) = answer else { return answer }
         list.core = activeServer.instance.id
         return .listed(list)
@@ -1754,6 +1761,49 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         _ operation: @escaping @Sendable (any HostServices) async throws -> Value
     ) async throws -> Value {
         try await operation(try await session.withTransport { $0.hostServices })
+    }
+
+    func openCodeEditContext(paneID: String) async throws -> (version: String?, home: String, xdgConfigHome: String?) {
+        guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead,
+            let activeServer = server
+        else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let record = HerdrCoreTerminalRecord(tmuxPane: pane, launchSession: launchSessions[paneID])
+        let binder = chatBinder(paneID: paneID, program: .opencode, server: activeServer)
+        let ask = HerdrCoreSessionBinder.ProcessAsk(values: ["PATH", "HOME", "XDG_CONFIG_HOME"])
+        guard let tree = try await binder.readTerminalProcesses(of: record, ask: ask),
+            let pid = binder.agentProcess(in: tree), let facts = tree.facts[pid],
+            server?.instance == activeServer.instance
+        else { throw HarnessConfigEditError.agentEnvironmentUnavailable }
+        let path: String?
+        switch facts.variables["PATH"] {
+        case .value(let value): path = value
+        case .unset: path = nil
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let home: String
+        switch facts.variables["HOME"] {
+        case .value(let value): home = value
+        case .unset: home = try await session.withTransport { $0.hostServices }.hostHomeDirectory()
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let xdgConfigHome: String?
+        switch facts.variables["XDG_CONFIG_HOME"] {
+        case .value(let value): xdgConfigHome = value
+        case .unset: xdgConfigHome = nil
+        case .unavailable, nil: throw HarnessConfigEditError.agentEnvironmentUnavailable
+        }
+        let program = OpenCodePluginEdit.program(running: pane.foregroundArguments ?? [pane.command])
+        let nonce = HostProcessReader.makeNonce()
+        let script = HerdrCoreShellLaunch.versionScript(
+            program: program, path: path, directory: pane.path, nonce: nonce)
+        let result = try await session.withTransport { transport in
+            try await transport.runTmuxScript(script, throughLoginShell: false)
+        }
+        guard let found = try? HerdrCoreShellLaunch.parseDiscovery(stdout: result.stdout, nonce: nonce) else {
+            throw TransportError.malformedResponse(
+                String(localized: "The Host's shell did not finish reading OpenCode's version."))
+        }
+        return (version: found.version, home: home, xdgConfigHome: xdgConfigHome)
     }
 
     /// One variable of the Grok Build process running in a Pane started at

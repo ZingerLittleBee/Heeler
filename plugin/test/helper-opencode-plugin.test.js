@@ -2,14 +2,16 @@
 // its folder, with the TUI plugin API that release hands it, in a process whose
 // environment names the Terminal (ADR 0033).
 
-import { after, afterEach, beforeEach, suite, test } from "node:test";
+import { after, afterEach, before, beforeEach, suite, test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { resolveTestTmux } from "./support/tmux.js";
 
 const FOLDER = fileURLToPath(new URL("../helper/extensions/opencode/", import.meta.url));
 
@@ -131,6 +133,10 @@ suite("Heeler's OpenCode plugin", () => {
   beforeEach(() => {
     delete process.env.HC_TERMINAL_ID;
     delete process.env.HC_TERMINAL_SOCKET;
+    delete process.env.TMUX;
+    delete process.env.TMUX_PANE;
+    delete process.env.REX_BLOCK;
+    delete process.env.REX_SESSION;
   });
 
   afterEach(() => {
@@ -311,6 +317,189 @@ suite("Heeler's OpenCode plugin", () => {
     test("its package.json names no entry, so each release finds its own by file name", () => {
       const manifest = JSON.parse(readFileSync(join(FOLDER, "package.json"), "utf8"));
       assert.deepEqual(manifest, { type: "module" });
+    });
+  });
+
+  suite("inside a Rex terminal", () => {
+    async function runningRex(version, options = {}) {
+      process.env.REX_BLOCK = "b-1";
+      process.env.REX_SESSION = "s-1";
+      const folder = copyFolder();
+      const module = await import(pathToFileURL(join(folder, "tui.js")).href);
+      const plugin = module.default;
+      const sessions = join(folder, "..", "heeler-session");
+      const file = join(sessions, `${process.pid}.json`);
+      const fake = version === 2 ? fakeV2(options) : fakeV1(options);
+      const cleanup = version === 2 ? plugin.setup(fake.api) : await plugin.tui(fake.api);
+      return {
+        sessions,
+        file,
+        fake,
+        settled: module.rexWritesSettled,
+        async stop() {
+          if (version === 2) cleanup?.();
+          else fake.dispose();
+          await module.rexWritesSettled();
+        },
+      };
+    }
+
+    for (const version of [2, 1]) {
+      suite(`OpenCode ${version}.x`, () => {
+        test("writes its session atomically beside heeler-opencode and removes it on dispose", async () => {
+          const { sessions, file, fake, settled, stop } = await runningRex(version, {
+            sessions: { ses_a: { id: "ses_a" }, ses_b: { id: "ses_b" } },
+          });
+
+          fake.show("ses_a");
+          await until(() => existsSync(file), "the Rex session file");
+          await settled();
+
+          assert.equal(statSync(sessions).mode & 0o777, 0o700);
+          assert.equal(statSync(file).mode & 0o777, 0o600);
+          assert.deepEqual(JSON.parse(readFileSync(file, "utf8")), {
+            session: "ses_a",
+            pid: process.pid,
+            start: startOfThisProcess(),
+          });
+
+          fake.show("ses_b");
+          await until(() => JSON.parse(readFileSync(file, "utf8")).session === "ses_b", "the updated Rex session");
+          await settled();
+
+          await stop();
+          assert.equal(existsSync(file), false);
+        });
+      });
+    }
+
+    test("sweeps stale dead-PID files and stays inert when TMUX is also set", async () => {
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const folder = copyFolder();
+      const sessions = join(folder, "..", "heeler-session");
+      mkdirSync(sessions, { recursive: true, mode: 0o700 });
+      const stale = join(sessions, `${deadPid}.json`);
+      writeFileSync(stale, '{"session":"ses_old"}\n');
+
+      process.env.REX_BLOCK = "b-1";
+      process.env.TMUX = "/tmp/nonexistent,99999,0";
+      process.env.TMUX_PANE = "%1";
+      const nestedMod = await import(pathToFileURL(join(folder, "tui.js")).href);
+      assert.equal(nestedMod.rexSessionFile(process.env, pathToFileURL(join(folder, "tui.js")).href), null);
+
+      delete process.env.TMUX;
+      delete process.env.TMUX_PANE;
+      const fake = fakeV2({ sessions: { ses_a: { id: "ses_a" } } });
+      fake.show("ses_a");
+      const stop = nestedMod.default.setup(fake.api);
+      await until(() => existsSync(join(sessions, `${process.pid}.json`)), "the Rex session file");
+      await nestedMod.rexWritesSettled();
+      assert.equal(existsSync(stale), false, "dead PID file should be swept");
+      assert.deepEqual(readdirSync(sessions), [`${process.pid}.json`]);
+      stop();
+    });
+  });
+
+  const { tmux: TMUX, skip: skipTmux, pathWithTmux } = resolveTestTmux();
+
+  suite("inside a tmux Pane", { skip: skipTmux }, () => {
+    let tmuxRoot;
+    let tmuxHome;
+    let tmuxSocket;
+
+    const runTmuxCmd = (...args) =>
+      execFileSync(TMUX, ["-N", "-S", tmuxSocket, ...args], {
+        encoding: "utf8",
+        env: { HOME: tmuxHome, PATH: pathWithTmux, SHELL: "/bin/sh", TERM: "xterm-256color", LC_ALL: "C" },
+      }).replace(/\n$/, "");
+
+    before(() => {
+      tmuxRoot = mkdtempSync(join(tmpdir(), "heeler-oc-tmux-"));
+      tmuxHome = join(tmuxRoot, "home");
+      mkdirSync(tmuxHome, { recursive: true });
+      tmuxSocket = join(tmuxRoot, "s.sock");
+      execFileSync(TMUX, ["-S", tmuxSocket, "new-session", "-d", "-s", "lab", "sleep 60"], {
+        encoding: "utf8",
+        env: { HOME: tmuxHome, PATH: pathWithTmux, SHELL: "/bin/sh", TERM: "xterm-256color", LC_ALL: "C" },
+      });
+    });
+
+    after(() => {
+      try {
+        runTmuxCmd("kill-server");
+      } catch {
+      }
+      rmSync(tmuxRoot, { recursive: true, force: true });
+    });
+
+    test("writes @heeler-session using stored paths.json while leading the pane foreground", async () => {
+      const folder = copyFolder();
+      const dataDir =
+        process.platform === "darwin"
+          ? join(tmuxHome, "Library", "Application Support")
+          : join(tmuxHome, ".local", "share");
+      const pathsDir = join(dataDir, "heeler", "host-helper", "tmux", basename(tmuxSocket));
+      mkdirSync(pathsDir, { recursive: true });
+      writeFileSync(join(pathsDir, "paths.json"), JSON.stringify({ executable: TMUX, socket: tmuxSocket }));
+
+      const doneFile = join(tmuxRoot, "done.json");
+      const driver = `
+        import { writeFileSync } from "node:fs";
+        import { pathToFileURL } from "node:url";
+        const [entry, doneFile] = process.argv.slice(2);
+        const mod = await import(pathToFileURL(entry).href);
+        const screen = { route: { type: "session", sessionID: "ses_tmux_1" }, sessions: { ses_tmux_1: { id: "ses_tmux_1" } } };
+        const api = {
+          ui: { router: { current: () => screen.route } },
+          data: { session: { get: (id) => screen.sessions[id] } },
+        };
+        const stop = mod.default.setup(api);
+        await mod.tmuxWritesSettled();
+        stop?.();
+        writeFileSync(doneFile, JSON.stringify({ pid: process.pid }));
+      `;
+      const script = join(tmuxRoot, "driver.mjs");
+      writeFileSync(script, driver);
+      const paneID = runTmuxCmd(
+        "new-window", "-d", "-t", "lab", "-P", "-F", "#{pane_id}",
+        "-e", `HOME=${tmuxHome}`, "-e", `PATH=${pathWithTmux}`,
+        "--", process.execPath, script, join(folder, "tui.js"), doneFile,
+      );
+
+      await until(() => existsSync(doneFile), "driver completion", 5000);
+      const { pid } = JSON.parse(readFileSync(doneFile, "utf8"));
+      const keepDone = join(tmuxRoot, "keep-done.json");
+      const keepDriver = `
+        import { writeFileSync } from "node:fs";
+        import { pathToFileURL } from "node:url";
+        const [entry, doneFile] = process.argv.slice(2);
+        const mod = await import(pathToFileURL(entry).href);
+        const screen = { route: { type: "session", sessionID: "ses_tmux_2" }, sessions: { ses_tmux_2: { id: "ses_tmux_2" } } };
+        const api = {
+          ui: { router: { current: () => screen.route } },
+          data: { session: { get: (id) => screen.sessions[id] } },
+        };
+        const stop = mod.default.setup(api);
+        await mod.tmuxWritesSettled();
+        writeFileSync(doneFile, JSON.stringify({ pid: process.pid }));
+        setInterval(() => {}, 60000);
+      `;
+      const keepScript = join(tmuxRoot, "keep-driver.mjs");
+      writeFileSync(keepScript, keepDriver);
+      const keepPane = runTmuxCmd(
+        "new-window", "-d", "-t", "lab", "-P", "-F", "#{pane_id}",
+        "-e", `HOME=${tmuxHome}`, "-e", `PATH=${pathWithTmux}`,
+        "--", process.execPath, keepScript, join(folder, "tui.js"), keepDone,
+      );
+      await until(() => existsSync(keepDone), "keep driver completion", 5000);
+      const { pid: keepPid } = JSON.parse(readFileSync(keepDone, "utf8"));
+      const option = runTmuxCmd("display-message", "-p", "-t", keepPane, "#{@heeler-session}");
+      const parsed = JSON.parse(option);
+      assert.equal(parsed.session, "ses_tmux_2");
+      assert.equal(parsed.pid, keepPid);
+      assert.equal(typeof parsed.start, "string");
+      assert.ok(parsed.start.length > 0);
+      assert.ok(pid > 0 && paneID.startsWith("%"));
     });
   });
 });

@@ -149,10 +149,34 @@ protocol RexHostStaging: Sendable {
 /// one folder when the Agent's directory has none, then writes the file as a
 /// 0600 temporary file it renames into place. Nothing else is reachable from
 /// it: no other file name, no exec, and no read of the Host's files.
-protocol RexHostExtensionPlacing: DroidChatHookHost {
+protocol RexHostExtensionPlacing: DroidChatHookHost, HarnessConfigFileAccess {
     /// `folder` is an `extensions` folder by its absolute path; any other is
     /// refused before anything is written.
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult
+}
+
+extension RexHostExtensionPlacing {
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func createHostFolder(path: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
 }
 
 /// The SSH operations behind project reads, Agent discovery and Worktree creation.
@@ -529,6 +553,26 @@ private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
 
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
         try await connection.placeHeelersExtension(contents, inFolder: folder)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        try await connection.readHostFileRange(range)
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        try await connection.replaceHostTextFile(path: path, expected: expected, contents: contents)
+    }
+
+    func createHostFolder(path: String) async throws {
+        try await connection.createHostFolder(path: path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        try await connection.removeEmptyHostFolder(path: path)
+    }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        try await connection.runOpenCodeVersionScript(script)
     }
 }
 

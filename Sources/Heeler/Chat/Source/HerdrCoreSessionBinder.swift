@@ -141,6 +141,7 @@ struct HerdrCoreSessionBinder: Sendable {
     /// What an npm install runs as on Windows, where a program cannot retitle itself.
     static let windowsRuntimes: Set<String> = ["node", "bun"]
     static let homeVariable = "HOME"
+    static let xdgConfigHomeVariable = "XDG_CONFIG_HOME"
     private static let configVariable = "CLAUDE_CONFIG_DIR"
     private static let factoryHomeOverride = "FACTORY_HOME_OVERRIDE"
     /// Past this no registry entry was ever this long, so it is not one.
@@ -253,7 +254,13 @@ struct HerdrCoreSessionBinder: Sendable {
             } else {
                 ProcessAsk(values: [Self.homeVariable])
             }
-        case .opencode, .amp: ProcessAsk()
+        case .opencode:
+            if case .rex = processScope {
+                ProcessAsk(values: [Self.homeVariable, Self.xdgConfigHomeVariable])
+            } else {
+                ProcessAsk()
+            }
+        case .amp: ProcessAsk()
         case .pi, .omp: piFamilyProcessAsk
         case .agy: antigravityProcessAsk
         }
