@@ -825,9 +825,22 @@ actor RexHostSession {
         } catch let error as RexControlError {
             throw RexNewTerminal.failure(error)
         }
-        _ = await control.deliver(
+        let delivery = await control.deliver(
             RexTerminalAttach.giveBackMethod, payload: RexTerminalAttach.ownershipPayload(created.address, take: false),
             deadline: terminalOptions.giveBackDeadline)
+        switch delivery {
+        case .answered, .refused:
+            break
+        case .notSent, .unknown:
+            guard clientEpoch == epoch else { break }
+            sizeClaims.note(.taken, at: created.address, epoch: epoch)
+            if let live = readyConnection, live.control !== control {
+                Task {
+                    await self.giveBackLeftSize(
+                        created.address, server: live.server, generation: live.generation, epoch: epoch)
+                }
+            }
+        }
         return created
     }
 
