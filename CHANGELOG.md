@@ -54,7 +54,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- **Open Terminal** in an Agent's detail and a new terminal from a terminal's detail open the new shell on a Rex Host, instead of saying its Workspace hasn't refreshed yet. (PR #881)
+- Return a new Rex terminal's size to the Rex server when the connection drops or the server is slow to answer right after **New Terminal** or **New Workspace**. Until Heeler disconnected, a terminal nobody opened on the phone kept the phone's size on other devices. (PR #883)
+- Open a new terminal on the first tap of **Open Terminal** on an Agent, or of **New Terminal** in a terminal's drawer, on a Rex Host. Heeler said the Workspace hadn't refreshed yet and opened the terminal only on a second tap. (PR #880, PR #881)
 - A macOS Rex Host reports when SSH refuses to forward its running socket under either `/tmp` or `/private/tmp`. (PR #875)
 - Show words such as `PreToolUse`, `self.view`, KB/s or `/compact` in an Agent's Chat message as text instead of links to files. A path opens in Files only when it looks like one: an absolute path with a folder such as `/tmp/log`, a path starting with `~/`, `./` or `../`, or a path through a folder to a file with an extension, such as `docs/README.md`, or to a file like `Makefile`. A path followed by a line number, such as `Sources/App.swift:12`, now opens its file too, and so does a link with a line or heading anchor, such as `[Faqs.tsx](file:///…/Faqs.tsx#L65-L75)` or `[app.ts](src/app.ts#L12)`. (PR #872)
 - Show a terminal's output as it arrives after Heeler reconnects over a slow connection. A request Heeler made while reconnecting held up the whole connection until the terminal's output had arrived, so a program that redraws its history, such as Antigravity CLI, showed only its status line for seconds and then everything at once. (PR #870)
