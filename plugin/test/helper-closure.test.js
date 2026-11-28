@@ -119,6 +119,7 @@ suite("Host Helper closure", () => {
     // `target.tmux` the tmux the app stored, run inside a tmux Pane (ADR 0046);
     // both are pinned below.
     assert.deepEqual([...started].sort(), [
+      '"/bin/launchctl"',
       '"/bin/ps"',
       '"security"',
       "executable",

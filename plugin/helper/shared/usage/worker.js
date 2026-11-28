@@ -429,7 +429,7 @@ export async function runUsageWorker({ readClaudeLimitsElsewhere = null, readAgy
       const agyVer = await agyVersion(runtime, directory, limits.agyVersion);
       limits.agyVersion = agyVer ?? undefined;
       const elsewhere = readAgyLimitsElsewhere ? await readAgyLimitsElsewhere(runtime, directory, agyVer?.version, {
-        wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
+        configDirectory: values.config, wait: async () => { await sleep(100); maintainHeartbeat(); } }) : null;
       const reading = elsewhere ?? await readAgyLimits(runtime, directory, agyVer?.version);
       limits.agy = cacheAgyLimits(limits.agy, reading);
       heartbeat();
