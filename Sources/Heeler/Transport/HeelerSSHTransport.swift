@@ -1459,9 +1459,10 @@ actor HeelerSSHTransport: Transport {
             params: WorktreeCreateParams(
                 base: worktree.base,
                 branch: worktree.branch,
+                cwd: worktree.sourceDirectory,
                 focus: false,
                 label: worktree.branch,
-                workspaceID: launch.workspaceID),
+                workspaceID: worktree.sourceDirectory == nil ? launch.workspaceID : nil),
             decoding: WorktreeCreatedResponse.self)
         do {
             let agent: Agent

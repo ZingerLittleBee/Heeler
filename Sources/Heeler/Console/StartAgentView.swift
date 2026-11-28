@@ -118,9 +118,10 @@ struct StartAgentView: View {
                             canBrowse: store.selectedHostID != nil,
                             onSelect: store.selectExistingWorkspace,
                             onSelectNewWorkspace: store.selectNewWorkspace,
-                            onNewWorkspace: openDirectoryBrowser)
+                            onNewWorkspace: openDirectoryBrowser,
+                            home: store.selectedHostID.flatMap { console.knownHomeDirectory(on: $0) })
                         if store.launchTarget == .newWorkspace {
-                            if store.offersWorkspaceName {
+                            if store.offersWorkspaceName && !store.startsInNewWorktree {
                                 TextField(
                                     String(localized: "Workspace name (optional)"),
                                     text: $store.newWorkspaceLabel)
@@ -132,24 +133,14 @@ struct StartAgentView: View {
                                     systemImage: "house")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
-                            } else {
-                                Label {
-                                    Text(store.newWorkspaceDirectory)
-                                        .font(.footnote.monospaced())
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                } icon: {
-                                    Image(systemName: "folder")
-                                }
-                            }
-                            Button("Browse Directory…", systemImage: "folder.badge.plus") {
-                                openDirectoryBrowser()
                             }
                         }
                     } header: {
                         Text("Workspace")
                     } footer: {
-                        if store.launchTarget == .newWorkspace {
+                        if store.launchTarget == .newWorkspace && store.startsInNewWorktree {
+                            Text("Creates a fresh Workspace in the new worktree, named after its branch.")
+                        } else if store.launchTarget == .newWorkspace {
                             Text(store.offersWorkspaceName
                                 ? String(localized: "Creates a fresh Workspace on the Host. An empty name uses the directory's name.")
                                 : String(localized: "Creates a Workspace in this directory, named after its folder."))
@@ -162,7 +153,7 @@ struct StartAgentView: View {
                 if store.offersWorktree {
                     Section {
                         Toggle("Start in a new worktree", isOn: $store.startsInNewWorktree)
-                            .disabled(store.selectedWorkspaceID == nil)
+                            .disabled(!store.canStartInNewWorktree)
                         if store.startsInNewWorktree {
                             let branchTitle: LocalizedStringKey =
                                 store.worktreeNeedsBranch || store.followsGitHubItem ? "Branch" : "Branch (optional)"
@@ -216,6 +207,20 @@ struct StartAgentView: View {
                     } footer: {
                         if let note = store.gitHubWorktreeNote {
                             Text(note)
+                        } else if store.launchTarget == .newWorkspace {
+                            if !store.canStartInNewWorktree {
+                                Text("Browse to a directory in a git repository to start in a new worktree of it.")
+                            } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
+                                Text(
+                                    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD."
+                                )
+                            } else if store.startsInNewWorktree {
+                                Text(
+                                    "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD."
+                                )
+                            } else {
+                                Text("Run the agent in a clean checkout of the directory's repository instead of the directory itself.")
+                            }
                         } else if store.startsInNewWorktree, store.worktreeNeedsBranch {
                             Text(
                                 "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD."
@@ -588,6 +593,7 @@ struct StartWorkspacePicker: View {
     let onSelect: (String) -> Void
     let onSelectNewWorkspace: () -> Void
     let onNewWorkspace: () -> Void
+    var home: String? = nil
 
     private var directoryName: String {
         newDirectory.map { RemoteHostPath.lastComponent(of: $0) } ?? "/"
@@ -614,10 +620,22 @@ struct StartWorkspacePicker: View {
             Text("None reported").tag(Selection?.none)
         }
         ForEach(workspaces) { @Sendable workspace in
-            Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+            if let directory = workspace.launchDirectory {
+                Button {} label: {
+                    Text(workspace.label)
+                    Text(verbatim: RemoteHostPath.middleTruncated(directory))
+                }
+                .tag(Selection?.some(.existing(workspace.id)))
+            } else {
+                Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+            }
         }
-        if newDirectory != nil {
-            Text(directoryName).tag(Selection?.some(.newWorkspace))
+        if let newDirectory {
+            Button {} label: {
+                Text(directoryName)
+                Text(verbatim: RemoteHostPath.middleTruncated(RemoteHostPath.abbreviatingHome(newDirectory, home: home)))
+            }
+            .tag(Selection?.some(.newWorkspace))
         } else if isNewWorkspaceSelected {
             Text("Home").tag(Selection?.some(.newWorkspace))
         }
@@ -633,8 +651,13 @@ struct StartWorkspacePicker: View {
     /// directory is shown, laying it out below the title row keeps the picker
     /// anchored on the first line's trailing edge and gives the path the full
     /// row width on the second line.
+    private var selectedDirectory: String? {
+        if isNewWorkspaceSelected { return newDirectory.map { RemoteHostPath.abbreviatingHome($0, home: home) } }
+        return workspaces.first { $0.id == selectedWorkspaceID }?.launchDirectory
+    }
+
     var body: some View {
-        if isNewWorkspaceSelected, let newDirectory {
+        if let selectedDirectory {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("Workspace")
@@ -651,7 +674,7 @@ struct StartWorkspacePicker: View {
                     .disabled(!canBrowse)
                     .accessibilityIdentifier("start-workspace-picker")
                 }
-                Text(newDirectory)
+                Text(selectedDirectory)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

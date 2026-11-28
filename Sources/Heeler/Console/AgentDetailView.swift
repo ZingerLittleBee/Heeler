@@ -889,9 +889,9 @@ struct AgentDetailView: View {
                 if createdTerminal.identity == nil {
                     createdTerminal.created(try await console.createShellTerminal(request, on: agent.hostID))
                 }
-                // A Host whose inventory follows events (Rex) lists the new
-                // tab a moment after the create answers.
-                if let identity = createdTerminal.identity, !createdTerminal.wasListed {
+                if let identity = createdTerminal.identity,
+                    createdTerminal.resolve(in: console.terminals, hostID: agent.hostID) == nil
+                {
                     _ = await console.waitForTerminal(identity, on: agent.hostID)
                 }
                 guard let target = createdTerminal.resolve(in: console.terminals, hostID: agent.hostID) else {

@@ -87,7 +87,7 @@ Heeler 会在不启动任何服务的情况下查看一次，并列出这台机�
 
 - **New Agent：** 轻点 **New Agent**，选择工作区，并从登录 shell 的 `PATH` 中选择 Agent，或从 **Settings > Agents & Accounts** 中选择 **Preset**。只要你填写的参数尚未指定会话，Heeler 就会在支持时传入会话标志，并以 `--no-daemon` 启动 Codex。
 - **New Terminal：** 在 core 所运行的 shell 中打开一个终端，并在桌面端空间中新增一个标签页。
-- **New Workspace：** 选择 **New Workspace** 或 **Browse Directory…**。在 macOS 和 Linux 上且桌面端正在运行时，**Workspace name (optional)** 会为该空间命名。
+- **New Workspace：** 在 **Workspace** 菜单中选择 **New Workspace**。在 macOS 和 Linux 上且桌面端正在运行时，**Workspace name (optional)** 会为该空间命名。
 - **Templates：** `~/.config/herdr-core/templates` 或 `$XDG_CONFIG_HOME/herdr-core/templates` 中的角色会显示在 **New Agent** 的 **Templates** 下，并直接运行其命令。
 - **Worktrees：** 在 macOS 和 Linux 上，在 **New Agent** 中开启 **Start in a new worktree** 并输入 **Branch**，即可检出 `~/.herdr/worktrees/<repository>/<branch>`。要移除它，轻点 **More > Worktree Details > Remove Worktree**。Heeler 会先结束该工作区的全部终端，再移除检出目录。
 

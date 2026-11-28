@@ -6668,6 +6668,8 @@
         }
       }
     },
+    "A fresh checkout of the directory's repository. A branch that exists is checked out; a new one starts from HEAD." : {},
+    "A fresh checkout of the directory's repository. Empty fields use a generated worktree/ branch off HEAD." : {},
     "A fresh checkout of the workspace's repository. A branch that exists is checked out; a new one starts from HEAD." : {
       "localizations" : {
         "ja" : {
@@ -13495,28 +13497,7 @@
         }
       }
     },
-    "Browse Directory…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フォルダを参照…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "浏览目录…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "瀏覽資料夾…"
-          }
-        }
-      }
-    },
+    "Browse to a directory in a git repository to start in a new worktree of it." : {},
     "Browsing directories" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -21407,6 +21388,7 @@
         }
       }
     },
+    "Creates a fresh Workspace in the new worktree, named after its branch." : {},
     "Creates a fresh Workspace on the Host. An empty name uses the directory's name." : {
       "localizations" : {
         "ja" : {
@@ -55029,6 +55011,7 @@
         }
       }
     },
+    "Run the agent in a clean checkout of the directory's repository instead of the directory itself." : {},
     "Run the command on the Host and compare what it prints with this fingerprint." : {
       "localizations" : {
         "ja" : {

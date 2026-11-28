@@ -68,7 +68,8 @@ struct NewTerminalView: View {
                         canBrowse: store.selectedHostID != nil,
                         onSelect: store.selectExistingWorkspace,
                         onSelectNewWorkspace: store.selectNewWorkspace,
-                        onNewWorkspace: openDirectoryBrowser)
+                        onNewWorkspace: openDirectoryBrowser,
+                        home: store.selectedHostID.flatMap { console.knownHomeDirectory(on: $0) })
                     if store.target == .newWorkspace {
                         if store.offersWorkspaceName {
                             TextField("Workspace name (optional)", text: $store.newWorkspaceLabel)
@@ -78,9 +79,6 @@ struct NewTerminalView: View {
                             Label("Directory: the Host's home directory", systemImage: "house")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                        }
-                        Button("Browse Directory…", systemImage: "folder.badge.plus") {
-                            openDirectoryBrowser()
                         }
                     }
                 } header: {
