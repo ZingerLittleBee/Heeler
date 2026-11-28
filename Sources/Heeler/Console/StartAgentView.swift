@@ -118,7 +118,8 @@ struct StartAgentView: View {
                             canBrowse: store.selectedHostID != nil,
                             onSelect: store.selectExistingWorkspace,
                             onSelectNewWorkspace: store.selectNewWorkspace,
-                            onNewWorkspace: openDirectoryBrowser)
+                            onNewWorkspace: openDirectoryBrowser,
+                            home: store.selectedHostID.flatMap { console.knownHomeDirectory(on: $0) })
                         if store.launchTarget == .newWorkspace {
                             if store.offersWorkspaceName && !store.startsInNewWorktree {
                                 TextField(
@@ -132,9 +133,6 @@ struct StartAgentView: View {
                                     systemImage: "house")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
-                            }
-                            Button("Browse Directory…", systemImage: "folder.badge.plus") {
-                                openDirectoryBrowser()
                             }
                         }
                     } header: {
@@ -593,6 +591,7 @@ struct StartWorkspacePicker: View {
     let onSelect: (String) -> Void
     let onSelectNewWorkspace: () -> Void
     let onNewWorkspace: () -> Void
+    var home: String? = nil
 
     private var directoryName: String {
         newDirectory.map { RemoteHostPath.lastComponent(of: $0) } ?? "/"
@@ -629,8 +628,12 @@ struct StartWorkspacePicker: View {
                 Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
             }
         }
-        if newDirectory != nil {
-            Text(directoryName).tag(Selection?.some(.newWorkspace))
+        if let newDirectory {
+            Button {} label: {
+                Text(directoryName)
+                Text(verbatim: RemoteHostPath.middleTruncated(RemoteHostPath.abbreviatingHome(newDirectory, home: home)))
+            }
+            .tag(Selection?.some(.newWorkspace))
         } else if isNewWorkspaceSelected {
             Text("Home").tag(Selection?.some(.newWorkspace))
         }
@@ -647,7 +650,7 @@ struct StartWorkspacePicker: View {
     /// anchored on the first line's trailing edge and gives the path the full
     /// row width on the second line.
     private var selectedDirectory: String? {
-        if isNewWorkspaceSelected { return newDirectory }
+        if isNewWorkspaceSelected { return newDirectory.map { RemoteHostPath.abbreviatingHome($0, home: home) } }
         return workspaces.first { $0.id == selectedWorkspaceID }?.launchDirectory
     }
 

@@ -13497,28 +13497,6 @@
         }
       }
     },
-    "Browse Directory…" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フォルダを参照…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "浏览目录…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "瀏覽資料夾…"
-          }
-        }
-      }
-    },
     "Browse to a directory in a git repository to start in a new worktree of it." : {},
     "Browsing directories" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",

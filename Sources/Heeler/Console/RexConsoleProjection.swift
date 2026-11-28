@@ -1376,6 +1376,8 @@ final class RexConsoleProjection: ConsoleHostProjection {
 
     /// New Terminal starts in the account's home directory and browses with
     /// these, on the connection the server's links use.
+    var knownHomeDirectory: String? { inventory?.sessions.lazy.compactMap(\.home).first }
+
     func remoteHomeDirectory() async throws -> String {
         try await session.withConnection { $0.transport.browsing }.remoteHomeDirectory()
     }
