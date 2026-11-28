@@ -450,7 +450,7 @@ struct HostStoreTests {
             try store.confirmServerKind(.herdrCore, for: host.id)
             Issue.record("\(name) should be refused")
         } catch HostStoreError.sessionNameRefused(let reason) {
-            #expect(reason.contains("herdr-core"))
+            #expect(reason.contains("Herdr Core"))
             #expect(reason.contains(name))
         }
 

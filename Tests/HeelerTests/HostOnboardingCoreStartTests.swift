@@ -184,7 +184,7 @@ struct HostOnboardingCoreStartTests {
             "locator", socket, "close",
         ])
         #expect(store.report == .allPassed)
-        #expect(store.serverKindSummary == "herdr-core 0.1.13")
+        #expect(store.serverKindSummary == "Herdr Core 0.1.13")
         #expect(store.coreStartOffer == nil)
         #expect(store.coreStart == .started(session: "work"))
         #expect(store.coreStart.note?.contains("environment") == true)

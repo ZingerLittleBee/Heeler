@@ -472,7 +472,7 @@ struct HostOnboardingStoreTests {
 
         await store.runChecks()
 
-        #expect(store.serverKindSummary == "herdr-core")
+        #expect(store.serverKindSummary == "Herdr Core")
         guard case .failed(let hint) = store.report?[.serverRunning] else {
             Issue.record("A core that is not running should fail its check")
             return
