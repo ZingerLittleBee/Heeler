@@ -963,7 +963,7 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
                 workspaceID: HerdrCoreOrganization.workspaceID(
                     of: record, firstSeenDirectories: memory.firstSeenDirectories(for: host.id)),
                 tabID: "tab-\(record.address)", paneID: record.address, cwd: record.cwd, revision: 0,
-                name: record.name)
+                name: HerdrCoreOrganization.agentName(of: record, kind: kind) ?? record.name)
     }
 
     private func startShell(
@@ -1146,7 +1146,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         } else {
             source = try await placement(workspaceID: workspaceID, directory: nil).cwd
         }
-        let created = try await git.create(branch: worktree.branch ?? "", from: source, startPoint: worktree.base)
+        let branch = worktree.branch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = worktree.base?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let created = try await git.create(
+            branch: branch.flatMap { $0.isEmpty ? nil : $0 } ?? HerdrCoreWorktrees.fallbackBranchName(),
+            from: source,
+            startPoint: base.flatMap { $0.isEmpty ? nil : $0 })
         // Before the first row shows, so it already reads as the Worktree it is.
         checkouts[created.path] = HostCheckout(
             root: created.path, mainCheckout: created.mainCheckout, isLinkedWorktree: true)
@@ -1282,8 +1287,41 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func focusAgent(_ paneID: String) async throws {}
 
     func renameAgent(_ paneID: String, name: String?) async throws {
-        throw TransportError.hostFeatureUnavailable(
-            feature: String(localized: "Rename Agent on a herdr-core Host"))
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.flatMap { $0.isEmpty ? nil : $0 }
+        if let normalized, let error = AgentName.validationError(normalized) {
+            throw TransportError.malformedResponse(error)
+        }
+        guard hasInventory, departedAgentsByPane[paneID] == nil else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let core = inventoryCore
+        let expectedKind = agentsByPane[paneID]?.agent.kind
+        let transport = try await session.withTransport(servingCore: core) { $0 }
+        let record: HerdrCoreTerminalRecord
+        do {
+            record = try await transport.terminalRecord(paneID)
+        } catch let failure as HerdrAPIError where failure.code == "not_found" {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        guard let agent = HerdrCoreAgentRule.agent(in: record),
+            expectedKind == nil || expectedKind == agent.kind,
+            let ownerPID = HerdrCoreOrganization.ownerPID(of: record)
+        else {
+            throw TransportError.herdrCoreTerminalGone
+        }
+        let labelValue = normalized.map {
+            HerdrCoreOrganization.agentNameLabelValue(pid: ownerPID, kind: agent.kind, name: $0)
+        } ?? ""
+        let params = JSONValue.object([
+            "terminal": .string(paneID),
+            "labels": .object([HerdrCoreOrganization.agentNameLabel: .string(labelValue)]),
+        ])
+        _ = try await transport.call("terminal.label", params: params, isMutation: true)
+        if !hasEnded, inventoryCore == core, let foreground = record.foreground {
+            update(paneID) { $0.noteForeground(foreground) }
+        }
+        setLabel(HerdrCoreOrganization.agentNameLabel, to: labelValue.isEmpty ? nil : labelValue, at: paneID, on: core)
     }
 
     /// One `do`, whatever comes of it. A failure asks whether the app still runs,
@@ -1677,12 +1715,32 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     func sessionFileReader() -> SessionFileReader {
         let session = session
         return { range in
-            try await session.withTransport { $0.hostServices }.readFileSlice(range)
+            let normalized = RemoteFileRange(
+                path: RemoteFilePath.windowsForSFTP(range.path),
+                offset: range.offset,
+                maxBytes: range.maxBytes)
+            return try await session.withTransport { $0.hostServices }.readFileSlice(normalized)
         }
     }
 
     func modelContextWindowResolver() -> ModelContextWindowResolver {
-        { _ in nil }
+        let session = session
+        return { [weak self] selector in
+            guard AgentModelProbe.isValidSelector(selector) else { return nil }
+            let windows = await MainActor.run {
+                self?.kernel == HerdrCoreLocator.windowsKernel || self?.isNativeWindows() == true
+            }
+            guard !windows else { return nil }
+            let script = Data(
+                "LC_ALL=C\nexport LC_ALL\n\(HerdrHostPath.pathExport)\nexec omp models ls \(selector) --json\n"
+                    .utf8)
+            let result = try await session.withTransport { transport -> GitExecResult? in
+                guard try await transport.hostServices.hostPlatform() == .posix else { return nil }
+                return try await transport.runAgentDiscovery(.posixScript(script))
+            }
+            guard let result, result.exitStatus == 0 else { return nil }
+            return AgentModelProbe.contextWindow(in: result.stdout, selector: selector)
+        }
     }
 
     // MARK: Chat
@@ -1870,8 +1928,12 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     private func setPickLabel(_ value: String?, at paneID: String, on core: String?) {
+        setLabel(HerdrCoreSessionHint.pickLabel, to: value, at: paneID, on: core)
+    }
+
+    private func setLabel(_ key: String, to value: String?, at paneID: String, on core: String?) {
         guard !hasEnded, var labels = terminalLabels(at: paneID, on: core) else { return }
-        labels[HerdrCoreSessionHint.pickLabel] = value
+        labels[key] = value
         apply(.labels(terminal: paneID, labels))
     }
 
@@ -1934,13 +1996,26 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
         let session = session
         return ChatHostFiles(
             status: { path in
-                try await session.withTransport { $0.hostServices }.fileStatus(atPath: path)
+                try await session.withTransport { $0.hostServices }
+                    .fileStatus(atPath: RemoteFilePath.windowsForSFTP(path))
             },
             list: { request in
-                try await session.withTransport { $0.hostServices }.listFiles(request)
+                let normalized = RemoteFileListingRequest(
+                    directory: RemoteFilePath.windowsForSFTP(request.directory),
+                    kinds: request.kinds,
+                    namePrefix: request.namePrefix,
+                    nameSuffixes: request.nameSuffixes,
+                    nameContains: request.nameContains,
+                    maximumEntries: request.maximumEntries,
+                    maximumScanned: request.maximumScanned)
+                return try await session.withTransport { $0.hostServices }.listFiles(normalized)
             },
             read: { range in
-                try await session.withTransport { $0.hostServices }.readHostFileRange(range)
+                let normalized = RemoteFileRange(
+                    path: RemoteFilePath.windowsForSFTP(range.path),
+                    offset: range.offset,
+                    maxBytes: range.maxBytes)
+                return try await session.withTransport { $0.hostServices }.readHostFileRange(normalized)
             },
             // Chat reads over SFTP, in the form that opens.
             home: {
@@ -1963,7 +2038,8 @@ final class HerdrCoreConsoleProjection: ConsoleHostProjection {
     }
 
     func listRemoteDirectories(at path: String) async throws -> RemoteDirectoryListing {
-        try await session.withTransport { $0.hostServices }.listDirectories(at: path)
+        try await session.withTransport { $0.hostServices }
+            .listDirectories(at: RemoteFilePath.windowsForSFTP(path))
     }
 
     func withHostServices<Value: Sendable>(

@@ -35,6 +35,7 @@ enum HerdrCoreAgentRule {
     static let reportedApps = [
         "claude-code": "claude",
         "codex": "codex",
+        "droid": "droid",
         "opencode": "opencode",
         "pi": "pi",
         "omp": "omp",
