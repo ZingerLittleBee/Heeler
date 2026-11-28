@@ -388,7 +388,10 @@ final class RexConsoleProjection: ConsoleHostProjection {
             })
         pins.retainPins(hostID: host.id, paneIDs: Set(terminalsByPane.keys))
         chatTypings = chatTypings.filter { terminalsByPane[$0.key] != nil }
-        workspaces = builder.workspaceRows()
+        let directories = Dictionary(
+            inventory.sessions.compactMap { session in session.launchDirectory.map { (session.id, $0) } }
+        ) { first, _ in first }
+        workspaces = builder.workspaceRows(launchDirectory: { directories[$0] })
         isAwaitingSnapshot = false
         sidebarRevision &+= 1
     }

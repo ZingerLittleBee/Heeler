@@ -736,6 +736,40 @@ enum RemoteHostPath {
 
     /// A folder label that recognizes the Host's separators rather than the
     /// local device's POSIX path conventions. Roots keep their useful name.
+    static func middleTruncated(_ path: String, limit: Int = 26) -> String {
+        guard path.count > limit else { return path }
+        let separator: Character = windowsRoot(of: path)?.separator ?? "/"
+        var components = path.split(separator: separator, omittingEmptySubsequences: false).map(String.init)
+        guard components.count > 2, let last = components.popLast() else {
+            return "…" + path.suffix(max(limit - 1, 1))
+        }
+        let ellipsis = "\(separator)…\(separator)"
+        var head = [components.removeFirst()]
+        if head == [""], !components.isEmpty { head.append(components.removeFirst()) }
+        var tail = [last]
+        func joined(_ head: [String], _ tail: [String]) -> String {
+            head.joined(separator: String(separator)) + ellipsis + tail.joined(separator: String(separator))
+        }
+        guard joined(head, tail).count <= limit else {
+            let lastOnly = "…\(separator)" + last
+            return lastOnly.count <= limit ? lastOnly : "…" + path.suffix(max(limit - 1, 1))
+        }
+        while !components.isEmpty {
+            let fromTail = tail.count <= head.count
+            let candidate = fromTail
+                ? joined(head, [components.last ?? ""] + tail)
+                : joined(head + [components.first ?? ""], tail)
+            guard candidate.count <= limit else { break }
+            if fromTail {
+                tail.insert(components.removeLast(), at: 0)
+            } else {
+                head.append(components.removeFirst())
+            }
+        }
+        if components.isEmpty { return path }
+        return joined(head, tail)
+    }
+
     static func lastComponent(of path: String) -> String {
         let root = windowsRoot(of: path)
         let rootEnd = root?.end ?? (path.hasPrefix("/") ? path.index(after: path.startIndex) : path.startIndex)

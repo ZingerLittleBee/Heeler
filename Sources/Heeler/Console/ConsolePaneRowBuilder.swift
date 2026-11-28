@@ -114,12 +114,13 @@ struct ConsolePaneRowBuilder {
     }
 
     /// The Workspaces by label, each keeping its listed position as `order`.
-    func workspaceRows() -> [ConsoleWorkspace] {
+    func workspaceRows(launchDirectory: (String) -> String? = { _ in nil }) -> [ConsoleWorkspace] {
         inventory.workspaces.enumerated()
             .map { order, workspace in
                 ConsoleWorkspace(
                     id: workspace.workspaceID, label: workspace.label, order: order,
-                    checkoutPath: workspace.worktree?.checkoutPath)
+                    checkoutPath: workspace.worktree?.checkoutPath,
+                    launchDirectory: launchDirectory(workspace.workspaceID))
             }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
     }

@@ -619,7 +619,15 @@ struct StartWorkspacePicker: View {
             Text("None reported").tag(Selection?.none)
         }
         ForEach(workspaces) { @Sendable workspace in
-            Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+            if let directory = workspace.launchDirectory {
+                Button {} label: {
+                    Text(workspace.label)
+                    Text(verbatim: RemoteHostPath.middleTruncated(directory))
+                }
+                .tag(Selection?.some(.existing(workspace.id)))
+            } else {
+                Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+            }
         }
         if newDirectory != nil {
             Text(directoryName).tag(Selection?.some(.newWorkspace))
@@ -638,8 +646,13 @@ struct StartWorkspacePicker: View {
     /// directory is shown, laying it out below the title row keeps the picker
     /// anchored on the first line's trailing edge and gives the path the full
     /// row width on the second line.
+    private var selectedDirectory: String? {
+        if isNewWorkspaceSelected { return newDirectory }
+        return workspaces.first { $0.id == selectedWorkspaceID }?.launchDirectory
+    }
+
     var body: some View {
-        if isNewWorkspaceSelected, let newDirectory {
+        if let selectedDirectory {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text("Workspace")
@@ -656,7 +669,7 @@ struct StartWorkspacePicker: View {
                     .disabled(!canBrowse)
                     .accessibilityIdentifier("start-workspace-picker")
                 }
-                Text(newDirectory)
+                Text(selectedDirectory)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
